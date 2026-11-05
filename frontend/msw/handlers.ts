@@ -74,14 +74,21 @@ import {
   confirmMonthly,
   copyMonthlyDrill,
   editCell,
+  editTableCell,
   findCell,
   findMonthly,
   findMonthlyFor,
+  findTableCell,
   listAudit,
   listMonthly,
   placeMonthlySafety,
   regenerateCell,
+  removeTableCell,
+  resizeTable,
+  resizeTableSplit,
   safetyView,
+  splitTableCell,
+  tablesOf,
   targetMonthOf,
   unconfirmMonthly,
   removeMonthly,
@@ -1147,6 +1154,24 @@ export const handlers = [
   http.put("*/api/plans/monthly/:id/cells/:itemId", async ({ request, params }) => {
     const s = await scenario(request, "monthly-cell");
     if (s) return s;
+    // 교사 표 칸(Human Decision 2026-11-05) — 생성 방식은 처음 쓸 때 MANUAL, 검사는 다시 돌지 않는다.
+    const own = myMonthly(Number(params.id));
+    const itemId = decodeURIComponent(String(params.itemId));
+    if (own && findTableCell(own, itemId)) {
+      const b = await playInput(request, params.id, (b) =>
+        typeof b.value === "string" ? [] : ["value"],
+      );
+      if (b instanceof Response) return b;
+      const plan = monthlyGate(params.id, b);
+      if (plan instanceof Response) return plan;
+      if (findTableCell(plan, itemId)!.cell.value === b.value)
+        return failure(
+          "VALIDATION_FAILED",
+          "칸의 값이 바뀌지 않았거나 쓸 수 없는 값입니다.",
+          "value",
+        );
+      return HttpResponse.json(monthlyOut(editTableCell(plan.id, itemId, String(b.value))));
+    }
     const w = await cellWrite(request, String(params.id), String(params.itemId), true);
     if (w instanceof Response) return w;
     // 후보 모드의 주별 안전교육 칸은 배치가 정한다 — 서버 Core 가 막는다(monthly_safety_cell_not_editable).
@@ -1164,6 +1189,96 @@ export const handlers = [
       );
     return HttpResponse.json(
       monthlyOut(editCell(w.plan.id, w.cell.item_id, String(w.b.value), w.section.section_key)),
+    );
+  }),
+  // 교사 표 나누기 · 빼기 · 크기 — 놀이 월간 시간표와 같은 경로 · 본문 · 한도(서버 monthly_router).
+  http.post("*/api/plans/monthly/:id/cells/:itemId/split", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-split");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      b.axis === "VERTICAL" || b.axis === "HORIZONTAL" ? [] : ["axis"],
+    );
+    if (b instanceof Response) return b;
+    const plan = monthlyGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const itemId = decodeURIComponent(String(params.itemId));
+    const table = tablesOf(plan).find((t) => locate(t.columns, itemId));
+    if (!table) return tableCellMissing();
+    const found = locate(table.columns, itemId)!;
+    if (found.path.length - 1 >= MAX_DEPTH)
+      return failure("VALIDATION_FAILED", "한 칸은 네 번까지 나눌 수 있습니다.", "item_id");
+    const axis = b.axis as "VERTICAL" | "HORIZONTAL";
+    const probe = splitLeaf(table.columns[found.day], itemId, axis, "probe", {
+      ...found.path.at(-1)!.cell!,
+    });
+    if (narrowest(probe, table.column_widths[found.day]) < CELL_MIN_WIDTH)
+      return tooNarrowFailure();
+    return HttpResponse.json(monthlyOut(splitTableCell(plan.id, itemId, axis)));
+  }),
+  http.delete("*/api/plans/monthly/:id/cells/:itemId/split", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-split-remove");
+    if (s) return s;
+    const b = await playInput(request, params.id, () => [], true);
+    if (b instanceof Response) return b;
+    const plan = monthlyGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const itemId = decodeURIComponent(String(params.itemId));
+    const table = tablesOf(plan).find((t) => locate(t.columns, itemId));
+    if (!table) return tableCellMissing();
+    if (locate(table.columns, itemId)!.path.length === 1)
+      return failure(
+        "VALIDATION_FAILED",
+        "열의 마지막 칸은 뺄 수 없습니다. 글을 비워 주세요.",
+        "item_id",
+      );
+    return HttpResponse.json(monthlyOut(removeTableCell(plan.id, itemId)));
+  }),
+  http.put("*/api/plans/monthly/:id/timetable/splits/:splitId", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-split-ratio");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) => (integer(b.ratio) ? [] : ["ratio"]));
+    if (b instanceof Response) return b;
+    const plan = monthlyGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const splitId = decodeURIComponent(String(params.splitId));
+    const table = tablesOf(plan).find((t) =>
+      t.columns.some((c) => boundaries(c).some((x) => x.split_id === splitId)),
+    );
+    if (!table) return failure("NOT_FOUND", "그 표 경계를 찾을 수 없습니다.", "split_id");
+    const ratio = Number(b.ratio);
+    if (ratio < RATIO_RANGE[0] || ratio > RATIO_RANGE[1]) return invalid(["ratio"]);
+    const columns = table.columns.map((c) => withRatio(c, splitId, ratio));
+    if (tooNarrow(columns, table.column_widths)) return tooNarrowFailure();
+    return HttpResponse.json(monthlyOut(resizeTableSplit(plan.id, splitId, ratio)));
+  }),
+  http.put("*/api/plans/monthly/:id/timetable/size", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-size");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      Array.isArray(b.column_widths) && b.column_widths.every(integer) && integer(b.height_mm)
+        ? []
+        : ["column_widths", "height_mm"],
+    );
+    if (b instanceof Response) return b;
+    const plan = monthlyGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const table = tablesOf(plan).find((t) => t.table_key === b.table_key);
+    if (!table) return failure("NOT_FOUND", "그 표를 찾을 수 없습니다.", "table_key");
+    const widths = b.column_widths as number[];
+    const height = Number(b.height_mm);
+    if (
+      widths.length !== table.columns.length ||
+      widths.some((w) => w < 5) ||
+      widths.reduce((x, y) => x + y, 0) !== 100 ||
+      height < 10 ||
+      height > 80
+    )
+      return invalid(["ratio"]);
+    if (tooNarrow(table.columns, widths)) return tooNarrowFailure();
+    return HttpResponse.json(
+      monthlyOut(
+        resizeTable(plan.id, table.table_key, { column_widths: widths, height_mm: height }),
+      ),
     );
   }),
   // 안전교육 놓기 · 훈련 후보 복사 — 서버 monthly_router 와 같은 순서 · 같은 오류다.
@@ -1538,6 +1653,7 @@ const monthlyOut = (p: MonthlyPlan) => ({
   ...p,
   parent_changed: annualChanged(p.parent.annual_plan_id, p.parent.confirmed_at),
   drill_candidates: p.drill_candidates ?? [],
+  teacher_tables: tablesOf(p),
   ...safetyView(p),
 });
 const weeklyOut = (p: WeeklyPlan) => ({ ...p, parent_changed: monthlyChanged(p) });
@@ -1609,6 +1725,15 @@ const timetableCellMissing = () =>
   failure("NOT_FOUND", "그 시간표 칸을 찾을 수 없습니다.", "item_id");
 const tooNarrowFailure = () =>
   failure("VALIDATION_FAILED", "칸이 너무 좁아집니다. 조금 덜 줄여 주세요.");
+const tableCellMissing = () => failure("NOT_FOUND", "그 표 칸을 찾을 수 없습니다.", "item_id");
+/** 주제형 월간 교사 표 — 소유 → 확정 → revision (서버 `_read_draft`). */
+function monthlyGate(rawId: unknown, b: Record<string, unknown>) {
+  const plan = myMonthly(Number(rawId));
+  if (!plan) return planMissing(Number(rawId));
+  if (plan.status === "CONFIRMED")
+    return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+  return plan.revision === b.expected_revision ? plan : stale();
+}
 /** 소유 → 형식 → 확정 → revision. 통과하면 계획안을 준다. */
 function playGate(rawId: unknown, b: Record<string, unknown>) {
   const plan = playOwn(rawId);

@@ -1,6 +1,12 @@
 import { apiRequest } from "./client";
 import { downloadHwpx, type ExportFormat } from "./export";
-import type { MonthlyAuditEvent, MonthlyInput, MonthlyPlan, MonthlyPlanSummary } from "./types";
+import type {
+  MonthlyAuditEvent,
+  MonthlyInput,
+  MonthlyPlan,
+  MonthlyPlanSummary,
+  MonthlyTeacherTable,
+} from "./types";
 
 /** 월간계획안 (docs/api-spec.md §9-1 · §9-3). 응답 · 오류는 바꾸지 않고 그대로 넘긴다. */
 const json = (method: string, data: unknown, signal?: AbortSignal): RequestInit => ({
@@ -60,6 +66,47 @@ export const getMonthlyPlanAudit = (id: number, itemId?: string, signal?: AbortS
       "/audit" +
       (itemId === undefined ? "" : "?item_id=" + encodeURIComponent(itemId)),
     { signal },
+  );
+/**
+ * 교사 표(행사 일정 · 특성화 · 특별활동) 칸 나누기 · 빼기 · 크기. 경로 · 본문은 놀이 월간
+ * 시간표와 같고, 표 크기만 `table_key` 를 더 보낸다 (Human Decision 2026-11-05).
+ */
+export const splitMonthlyTableCell = (
+  id: number,
+  itemId: string,
+  axis: "VERTICAL" | "HORIZONTAL",
+  expectedRevision: number,
+) =>
+  apiRequest<MonthlyPlan>(
+    cell(id, itemId) + "/split",
+    json("POST", { axis, expected_revision: expectedRevision }),
+  );
+/** 열의 마지막 칸은 422. revision 은 쿼리다. */
+export const removeMonthlyTableCell = (id: number, itemId: string, expectedRevision: number) =>
+  apiRequest<MonthlyPlan>(cell(id, itemId) + "/split?expected_revision=" + expectedRevision, {
+    method: "DELETE",
+  });
+/** 경계 하나의 첫 갈래(위 · 왼쪽) 비율 10~90. 같은 값이면 200 · 무변경. */
+export const resizeMonthlyTableSplit = (
+  id: number,
+  splitId: string,
+  ratio: number,
+  expectedRevision: number,
+) =>
+  apiRequest<MonthlyPlan>(
+    "/api/plans/monthly/" + id + "/timetable/splits/" + encodeURIComponent(splitId),
+    json("PUT", { ratio, expected_revision: expectedRevision }),
+  );
+/** 표 하나의 열 폭(합 100, 각 5 이상) · 높이 10~80mm. 칸이 3.5% 보다 좁아지면 422. */
+export const resizeMonthlyTable = (
+  id: number,
+  tableKey: MonthlyTeacherTable["table_key"],
+  size: { column_widths: number[]; height_mm: number },
+  expectedRevision: number,
+) =>
+  apiRequest<MonthlyPlan>(
+    "/api/plans/monthly/" + id + "/timetable/size",
+    json("PUT", { table_key: tableKey, ...size, expected_revision: expectedRevision }),
   );
 /** 훈련 후보를 「소방대피/재난대비」 칸에 복사한다. 같은 복사면 200 · 무변경. */
 export const copyMonthlyDrill = (

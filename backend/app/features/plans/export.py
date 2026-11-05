@@ -18,6 +18,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Response, status
 from lxml import etree
 from ssuksak.planning import PlanId, WeeklyPlan
+from ssuksak.planning.application.play_monthly_document import _part as _table_part
 from ssuksak.planning.domain.monthly_template import RepeatBy
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT
 
@@ -26,7 +27,7 @@ from app.features.plans.monthly_router import _current as _monthly_detail
 from app.features.plans.monthly_router import _monthly_repo
 from app.features.plans.monthly_router import _own_row as _monthly_row
 from app.features.plans.monthly_schemas import SectionOut
-from app.features.plans.play_monthly_hwpx import _set_paragraph, _text
+from app.features.plans.play_monthly_hwpx import _set_paragraph, _text, set_split_rows
 from app.features.plans.play_project import format_of
 from app.features.plans.play_project_hwpx import (
     PlayPeriodRows,
@@ -173,6 +174,17 @@ MONTHLY_LABELS = {
     (10, 0): "기본생활습관",
     (11, 0): "안전교육",
     (12, 0): "소방대피/재난대비",
+    (14, 0): "행사 일정",
+    (16, 0): "[ 특성화 시간표 ]",
+    (20, 0): "[ 특별활동 시간표 ]",
+    (21, 0): "월",
+}
+# 교사 표(Human Decision 2026-11-05) → (열 머리 줄 | None, 칸 줄, 첫 격자 열). 4주 · 5주 양식이
+# 같다. 아래 표부터 다시 만들어 위 표의 줄 번호가 밀리지 않게 한다. 특성화 머리 줄은 열 제목 칸이다.
+MONTHLY_TABLE_ROWS = {
+    "special_activity_timetable": (21, 22, 0),
+    "specialized_timetable": (17, 18, 0),
+    "event_schedule": (None, 14, 1),
 }
 
 _UNSUPPORTED_WEEKS = HTTPException(
@@ -196,8 +208,8 @@ def export_monthly_plan(
 ) -> Response:
     """월간계획안을 hwpx 로 내려준다. 연간과 같이 확정본만, 출처는 빼고 내보낸다.
 
-    줄은 양식에 박혀 있다. 원이 켜지 않은 Section(목표 · 기본생활습관 · 실내 대체활동)과
-    아직 계획안이 만들지 않는 줄(행사 · 시간표)은 빈칸이다 — 교사가 한글에서 적는다.
+    줄은 양식에 박혀 있다. 원이 켜지 않은 Section(목표 · 기본생활습관 · 실내 대체활동)은
+    빈칸이다. 행사 일정 · 특성화 · 특별활동 표는 교사가 쓰고 나눈 그대로 다시 그린다.
     소방대피/재난대비 줄은 양식 개편 때까지 빈칸이다.
     양식에 자리가 없는 Section 이 오면 버리지 않고 멈춘다.
     """
@@ -232,7 +244,8 @@ def export_monthly_plan(
             raise TemplateMismatch(f"월간 양식에 {section.section_key} 줄이 없다.")
 
     # 연령은 만들 때 계획안에 굳은 값이다 — 반 설정이 뒤에 바뀌어도 제출 문서는 그대로다.
-    ages = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref)).target_ages
+    core = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
+    ages = core.target_ages
     title = f"{klass.name} {plan.target_month} 놀이계획안"
     content = _fill_form(
         (TEMPLATE_DIR / MONTHLY_TEMPLATES[len(weeks)]).read_bytes(),
@@ -240,6 +253,7 @@ def export_monthly_plan(
         (f"{plan.month}월 놀이계획안", f"{_ages_label(ages)} {klass.name}"),
         texts,
         rows,
+        tables=lambda table: _fill_teacher_tables(table, core.tables),
     )
     return download(content, f"monthly-plan-{row.id}", title, format)
 
@@ -251,6 +265,7 @@ def _fill_form(
     texts: dict[tuple[int, int], str],
     rows: dict[int, list[str]],
     labels: dict[tuple[int, int], str] = MONTHLY_LABELS,
+    tables=None,
 ) -> bytes:
     """제목 칸(0,0)의 두 문단, `texts` 의 칸, `rows` 의 주차 줄(주마다 한 칸)을 채운다.
 
@@ -278,6 +293,8 @@ def _fill_form(
             raise TemplateMismatch(f"양식 주차 칸은 {len(columns)}개인데 {len(values)}주다.")
         for col, text in zip(columns, values, strict=True):
             _set_text(cells[(line, col)], text)
+    if tables is not None:
+        tables(section.find(".//hp:tbl", NS))
 
     parts[SECTION] = _dump(section)
     parts[PACKAGE] = _package(parts[PACKAGE], title)
@@ -288,6 +305,29 @@ def _fill_form(
         for info in infos:
             dst.writestr(info, parts[info.filename], compress_type=info.compress_type)
     return out.getvalue()
+
+
+def _fill_teacher_tables(table, tables) -> None:
+    """교사 표마다 열 제목 · 나눔 트리 · 크기대로 칸 구역을 다시 만든다(놀이 월간과 같은 방식)."""
+    by_key = {t.table_key: t for t in tables}
+    for key, (header, first, first_col) in MONTHLY_TABLE_ROWS.items():
+        t = by_key[key]
+        if t.titles:
+            heads = table.findall("hp:tr", NS)[header].findall("hp:tc", NS)
+            if len(heads) != len(t.titles):
+                raise TemplateMismatch(f"양식 {header}행 제목 칸이 {len(heads)}개다.")
+            for tc, cell in zip(heads, t.titles, strict=True):
+                _set_text(tc, cell.value)
+        set_split_rows(
+            table,
+            header,
+            first,
+            1,
+            tuple(_table_part(column) for column in t.columns),
+            t.column_widths,
+            t.height_mm,
+            first_col,
+        )
 
 
 # ── 주간 (§9-6) ───────────────────────────────────────────────────────────

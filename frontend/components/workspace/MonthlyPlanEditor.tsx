@@ -15,9 +15,13 @@ import {
   downloadMonthlyHwpx,
   editMonthlyCell,
   placeMonthlySafety,
+  removeMonthlyTableCell,
+  resizeMonthlyTable,
+  resizeMonthlyTableSplit,
+  splitMonthlyTableCell,
 } from "@/lib/api/monthly";
 import { isSaveConflict } from "@/lib/api/plans";
-import type { MonthlyCell, MonthlyPlan } from "@/lib/api/types";
+import type { MonthlyPlan } from "@/lib/api/types";
 import { findingLines } from "@/lib/monthly/findings";
 import { safetyLines, sectionName } from "@/lib/monthly/section-labels";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
@@ -50,6 +54,7 @@ import {
 import { useCompactShell } from "@/components/app/compact-shell";
 import { useCellHistory } from "./useCellHistory";
 import { PlanMemoNote } from "@/components/plan-generator/PlanMemo";
+import { TableTools, tableCells, tablePlace, TeacherTables } from "./MonthlyTeacherTables";
 
 const SAVE_LABEL = { idle: "", saving: "저장 중…", saved: "저장됨", failed: "저장하지 못했어요" };
 
@@ -159,6 +164,10 @@ export default function MonthlyPlanEditor({
     : ((candidate && safety
         ? { section: safety, cell: candidate.cell }
         : cells.find((c) => c.cell.item_id === selected)) ?? null);
+  // 행사 일정 · 특성화 · 특별활동 표 칸 — 교사가 쓰고 나눈다(Human Decision 2026-11-05).
+  const tableCell = confirmed
+    ? undefined
+    : tableCells(plan.teacher_tables).find((c) => c.cell.item_id === selected);
   // 안전교육 미배치 안내는 후보를 두는 방식일 때만 뜻이 있다.
   const notices = candidateMode ? plan.notices : [];
 
@@ -202,6 +211,7 @@ export default function MonthlyPlanEditor({
       const now = [
         ...cur.sections.flatMap((s) => s.cells),
         ...cur.safety_candidates.map((c) => c.cell),
+        ...tableCells(cur.teacher_tables).map((c) => c.cell),
       ].find((c) => c.item_id === itemId)?.value;
       if (now === text) return settled(failed.current.has(itemId));
       if (mounted.current) setStatus("saving");
@@ -313,6 +323,31 @@ export default function MonthlyPlanEditor({
       (cur) => copyMonthlyDrill(cur.id, itemId, cur.revision),
       "훈련 후보를 넣었어요.",
     );
+  // 표 칸 나누기 · 빼기 · 크기. 뺀 칸은 고른 칸에서 내린다.
+  const tableJob = (job: (cur: MonthlyPlan) => Promise<MonthlyPlan>, done: string) =>
+    afterSaves("table", job, done);
+  const splitTable = (itemId: string, axis: "VERTICAL" | "HORIZONTAL") =>
+    tableJob((cur) => splitMonthlyTableCell(cur.id, itemId, axis, cur.revision), "칸을 나눴어요.");
+  const removeTable = (itemId: string) =>
+    tableJob((cur) => removeMonthlyTableCell(cur.id, itemId, cur.revision), "칸을 뺐어요.").then(
+      (next) => next && setSelected(null),
+    );
+  const ratioTable = (splitId: string, ratio: number) =>
+    tableJob(
+      (cur) => resizeMonthlyTableSplit(cur.id, splitId, ratio, cur.revision),
+      "칸 크기를 바꿨어요.",
+    );
+  const heightTable = (table: MonthlyPlan["teacher_tables"][number], heightMm: number) =>
+    tableJob(
+      (cur) =>
+        resizeMonthlyTable(
+          cur.id,
+          table.table_key,
+          { column_widths: table.column_widths, height_mm: heightMm },
+          cur.revision,
+        ),
+      "표 높이를 바꿨어요.",
+    );
   const confirm = () =>
     afterSaves(
       "confirm",
@@ -321,7 +356,7 @@ export default function MonthlyPlanEditor({
     );
 
   const weekLabel = (id: string | null) => weeks.find((w) => w.week_id === id)?.label ?? "";
-  const shown = (cell: MonthlyCell) => live[cell.item_id] ?? cell.value;
+  const shown = (cell: { item_id: string; value: string }) => live[cell.item_id] ?? cell.value;
   const drillCell = plan.sections.find((s) => s.section_key === "drill")?.cells[0];
   // 훈련 후보가 있으면 훈련 칸도 「AI 후보」 탭부터 (놀이 월간과 같다).
   const drillId = plan.drill_candidates.length > 0 ? drillCell?.item_id : undefined;
@@ -366,10 +401,12 @@ export default function MonthlyPlanEditor({
   const still: Pick = { selected: null };
   const where = safetyWeek
     ? `${weekLabel(safetyWeek)} · 안전교육`
-    : picked
-      ? (picked.cell.week_id ? `${weekLabel(picked.cell.week_id)} · ` : "") +
-        sectionName(picked.section.section_key, picked.section.label)
-      : "";
+    : tableCell
+      ? tablePlace(tableCell.table, tableCell.cell.item_id)
+      : picked
+        ? (picked.cell.week_id ? `${weekLabel(picked.cell.week_id)} · ` : "") +
+          sectionName(picked.section.section_key, picked.section.label)
+        : "";
   const findings = findingLines(plan.verification.findings);
   // 맨 앞 주별 아닌 칸(주제 · 목표 등)은 위 표, 나머지는 주별 표 — 순서는 양식 그대로.
   const head = sections.findIndex((s) => s.repeat_by === "WEEK");
@@ -430,6 +467,40 @@ export default function MonthlyPlanEditor({
           {candidate && (
             <p className="m-0 text-[13px] text-[#5c5243]">이 문장을 둔 다른 주도 같이 바뀌어요.</p>
           )}
+        </>
+      )}
+      {tableCell && (
+        <>
+          <div
+            className={`${workspace.field} [&_label]:sr-only [&_textarea]:min-h-[180px] [&_textarea]:text-base`}
+          >
+            <PlayCellEditor
+              key={tableCell.cell.item_id + ":" + stamp(tableCell.cell.item_id)}
+              id="monthly-cell"
+              label={where}
+              value={shown(tableCell.cell)}
+              allowBlank
+              readOnly={locked}
+              onDraft={(text) => setLive((d) => ({ ...d, [tableCell.cell.item_id]: text }))}
+              onSave={(text) => saveCell(tableCell.cell.item_id, text)}
+              onRevert={() =>
+                setLive((d) =>
+                  Object.fromEntries(
+                    Object.entries(d).filter(([k]) => k !== tableCell.cell.item_id),
+                  ),
+                )
+              }
+            />
+          </div>
+          <TableTools
+            table={tableCell.table}
+            itemId={tableCell.cell.item_id}
+            disabled={locked}
+            onSplit={(axis) => splitTable(tableCell.cell.item_id, axis)}
+            onRemove={() => removeTable(tableCell.cell.item_id)}
+            onRatio={ratioTable}
+            onHeight={(mm) => heightTable(tableCell.table, mm)}
+          />
         </>
       )}
     </div>
@@ -630,56 +701,8 @@ export default function MonthlyPlanEditor({
           </table>
         </>
       )}
-      {/* 한글 양식의 선생님이 적는 표 — 계획안이 만들지 않는 칸이라 빈칸으로 둔다. */}
-      <table className="mt-[10px] w-full table-fixed border-collapse">
-        <colgroup>
-          <col style={{ width: "16.67%" }} />
-          <col />
-        </colgroup>
-        <tbody>
-          <tr>
-            <th scope="row" className={LABEL} style={{ height: hu(3500) }}>
-              행사 일정
-            </th>
-            <td className={`${LINE} ${HINT}`}>{TEACHER_HINT}</td>
-          </tr>
-        </tbody>
-      </table>
-      {[
-        ["특성화 시간표", ["", "", "", "", ""]],
-        ["특별활동 시간표", ["월", "화", "수", "목", "금"]],
-      ].map(([name, days]) => (
-        <div key={name as string} className="mt-[10px]">
-          <Band>{name}</Band>
-          <table className="w-full table-fixed border-collapse">
-            <tbody>
-              <tr>
-                {(days as string[]).map((d, i) => (
-                  <th
-                    key={i}
-                    scope="col"
-                    className={`${LINE} bg-[#e6f3fc] font-bold`}
-                    style={{ height: hu(1650) }}
-                  >
-                    {d}
-                  </th>
-                ))}
-              </tr>
-              <tr>
-                {(days as string[]).map((_, i) => (
-                  <td
-                    key={i}
-                    className={`${LINE} ${HINT}`}
-                    style={{ height: hu(name === "특성화 시간표" ? 4000 : 6000) }}
-                  >
-                    {TEACHER_HINT}
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      ))}
+      {/* 한글 양식의 선생님이 적는 표 — 교사가 쓰고 나눈 그대로 한글 파일에도 간다. */}
+      <TeacherTables tables={plan.teacher_tables} at={at} shown={shown} />
     </Paper>
   );
   // Ⓜ4 — 확정본 · 한글 내보내기 · 주간 만들기로.

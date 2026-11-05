@@ -192,35 +192,62 @@ def _set_special_activity(
     """특별활동 칸 구역을 요일별 나눔대로 다시 만든다. 행 · 열 번호는 표 전체를 다시 매긴다."""
     if len(days) != len(DAYS):
         raise TemplateMismatch(f"특별활동 요일이 {len(days)}개다.")
+    header = table.findall("hp:tr", NS)[SPECIAL_HEADER].findall("hp:tc", NS)
+    if [_text(tc) for tc in header] != list(DAYS):
+        raise TemplateMismatch(f"양식 {SPECIAL_HEADER}행이 요일 머리 「월 ~ 금」 이 아니다.")
+    set_split_rows(
+        table, SPECIAL_HEADER, SPECIAL_FIRST, SPECIAL_ROWS, days, size.column_widths, size.height_mm
+    )
+
+
+def set_split_rows(
+    table: etree._Element,
+    header_row: int | None,
+    first_row: int,
+    row_count: int,
+    days: tuple[PlayMonthlyDocumentPart, ...],
+    column_widths: tuple[int, ...],
+    height_mm: int,
+    first_col: int = 0,
+) -> None:
+    """칸 구역(`first_row` 부터 `row_count` 줄)을 열마다의 나눔 트리대로 다시 만든다.
+
+    열은 격자 `first_col` 부터 표 오른쪽 끝까지를 `column_widths`(%)로 나눈다. `header_row` 줄
+    칸(열 머리)은 그 폭을 따른다. 구역 줄의 `first_col` 왼쪽 칸(줄 이름)은 남겨 새 줄 수만큼
+    세로로 병합한다 — 월간 v1 「행사 일정」(Human Decision 2026-11-05). 행 · 열 번호는 표 전체를
+    다시 매긴다.
+    """
     trs = table.findall("hp:tr", NS)
     tcs = table.findall("hp:tr/hp:tc", NS)
     lines = _grid_lines(table, tcs)
     span = {tc: (lines[_col(tc)], lines[_col(tc)] + _width(tc)) for tc in tcs}
-    left, right = lines[0], lines[int(table.get("colCnt"))]
-    header = trs[SPECIAL_HEADER].findall("hp:tc", NS)
-    if [_text(tc) for tc in header] != list(DAYS):
-        raise TemplateMismatch(f"양식 {SPECIAL_HEADER}행이 요일 머리 「월 ~ 금」 이 아니다.")
-    body = trs[SPECIAL_FIRST : SPECIAL_FIRST + SPECIAL_ROWS]
-    model = body[0].find("hp:tc", NS)  # 전달본 (20,0) — 칸 서식
+    left, right = lines[first_col], lines[int(table.get("colCnt"))]
+    header = [] if header_row is None else trs[header_row].findall("hp:tc", NS)
+    if len(header) not in (0, len(days)):
+        raise TemplateMismatch(f"양식 {header_row}행 머리 칸이 {len(header)}개다.")
+    body = trs[first_row : first_row + row_count]
+    names = [tc for tc in body[0].findall("hp:tc", NS) if _col(tc) < first_col]
+    model = next(tc for tc in body[0].findall("hp:tc", NS) if _col(tc) >= first_col)  # 칸 서식
     at = list(table).index(body[0])
     for tr in body:
         for tc in tr.findall("hp:tc", NS):
-            del span[tc]
+            if tc not in names:
+                del span[tc]
         table.remove(tr)
 
     # 퍼센트로 나눈 요일 경계는 위 특성화 표의 세로선과 몇 단위씩 어긋나 아주 가는 열을 만든다.
     others = {x for tc, pair in span.items() if tc not in header for x in pair}
     edges = [
-        _snap(left + (right - left) * sum(size.column_widths[:i]) // 100, others)
-        for i in range(len(DAYS) + 1)
+        _snap(left + (right - left) * sum(column_widths[:i]) // 100, others)
+        for i in range(len(days) + 1)
     ]
-    for tc, (x0, x1) in zip(header, pairwise(edges), strict=True):
+    for tc, (x0, x1) in zip(header, pairwise(edges), strict=bool(header)):
         tc.find("hp:cellSz", NS).set("width", str(x1 - x0))
         span[tc] = (x0, x1)
 
     # 경계는 분수로 펼친 뒤 정수로 옮긴다. 정수 나눗셈은 작은 쪽을 거듭 나누면 서로 다른 경계를
     # 한 점(폭 · 높이 · 병합 수 0, 같은 주소 두 칸)으로 합친다(Codex HWTT-01).
-    height = round(size.height_mm * HWPUNIT_PER_MM)
+    height = round(height_mm * HWPUNIT_PER_MM)
     leaves = []
     for day, (x0, x1) in zip(days, pairwise(edges), strict=True):
         parts = _layout(day, Fraction(0), Fraction(1), Fraction(0), Fraction(1))
@@ -239,6 +266,10 @@ def _set_special_activity(
         _set_text(tc, text)
         new_rows[row[y0]].append(tc)
         span[tc] = (x0, x1)
+    for tc in reversed(names):
+        tc.find("hp:cellSz", NS).set("height", str(height))
+        tc.find("hp:cellSpan", NS).set("rowSpan", str(len(new_rows)))
+        new_rows[0].insert(0, tc)
     for i, tr in enumerate(new_rows):
         table.insert(at + i, tr)
 
@@ -310,7 +341,9 @@ def _grid_lines(table: etree._Element, tcs: list[etree._Element]) -> dict[int, i
             if start in lines and end not in lines:
                 lines[end] = lines[start] + _width(tc)
                 grew = True
-    if len(lines) != int(table.get("colCnt")) + 1:
+    # 월간 v1 4주 양식처럼 어느 칸 모서리도 아닌 격자 번호는 필요 없다(번호는 다시 매긴다).
+    edges = {_col(tc) + int(tc.find("hp:cellSpan", NS).get("colSpan")) for tc in tcs}
+    if not edges | {_col(tc) for tc in tcs} | {int(table.get("colCnt"))} <= lines.keys():
         raise TemplateMismatch("양식 표의 세로선을 모두 찾지 못했다.")
     return lines
 

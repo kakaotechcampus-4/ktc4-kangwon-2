@@ -1839,6 +1839,16 @@ drill_candidates[]    훈련(소방대피 · 재난대비) 후보.  필수(빈 �
 drill_candidates[].topic_id   문자열.  그 달에 규칙이 고른 훈련 주제
 drill_candidates[].label      문자열.  주제 표시 이름 (화면이 문장 옆에 보인다)
 drill_candidates[].cell       cells[] 와 같은 모양.  week_id 는 null.  후보 문장의 주소는 cell.item_id
+teacher_tables[]      교사가 쓰는 표 셋(ADR-063).  필수.  늘 event_schedule · specialized_timetable ·
+                      special_activity_timetable 순서.  표를 저장하기 전 계획안도 같은 빈 표를 같은 id 로 준다
+teacher_tables[].table_key     event_schedule | specialized_timetable | special_activity_timetable
+teacher_tables[].label         양식 이름(「행사 일정」 · 「특성화 시간표」 · 「특별활동 시간표」).  source_label 이다
+teacher_tables[].titles[]      특성화 열 제목(열마다 하나, 나누지 않는다).  다른 표는 []
+teacher_tables[].columns[]     열마다 나눔 트리 — §9-7 special_activity[] 와 같은 모양(cell | split_id · axis · ratio · children)
+teacher_tables[].column_widths 열마다 표 폭의 %.  정수 · 각 5 이상 · 합 100
+teacher_tables[].height_mm     10~80
+                      표 칸은 { item_id, value, evidence, generation } 이다.  generation 은 처음 쓰기 전 null,
+                      쓰면 MANUAL.  evidence 는 늘 [] — 행사 · 시간표는 만들지 않는다(LLM 이 사실을 지어내지 않는다)
 notices[]             안전 주 안내.  필수(빈 배열 가능).  기존 계획안은 []
 notices[].code        SAFETY_UNPLACED | SAFETY_BLANK.  필수.  배치가 없는 주 | 배치한 후보 문장이 빈 주
 notices[].week_id     문자열.  필수
@@ -2100,6 +2110,38 @@ FE 가 진짜 실패와 구분하지 못한다. **멱등이어도 소유 검사�
 검증기 자체가 돌지 못하면 `GENERATION_FAILED` 500 이다.
 
 **되돌리기는 P1 이다.** 확정 뒤 칸 편집 · 재생성 · 안전 배치 · 훈련 후보 복사는 `ALREADY_CONFIRMED` 409 다.
+
+### 교사 표 — 칸 글 · 나누기 · 빼기 · 크기 (ADR-063, Human Decision 2026-11-05(하민))
+
+칸 글은 위 **칸 편집**(`PUT cells/{item_id}`)으로 쓴다 — `item_id` 는 §9-1 `teacher_tables[]` 의 칸(열 제목 포함)이다.
+처음 쓰면 생성 방식이 `MANUAL` 이 되고 `TEACHER_EDITED` 가 남는다. 검증은 다시 돌지 않는다. 비운 칸을 다시 비우면 422 `["value"]`.
+
+나누기 · 빼기 · 크기는 놀이 월간 시간표(§9-7, ADR-047)와 **같은 경로 · 같은 본문**이다. 표 크기만 `table_key` 를 더 받는다.
+
+```
+POST   /api/plans/monthly/{id}/cells/{item_id}/split            { "axis": "VERTICAL" | "HORIZONTAL", "expected_revision": 3 }
+DELETE /api/plans/monthly/{id}/cells/{item_id}/split?expected_revision=3
+PUT    /api/plans/monthly/{id}/timetable/splits/{split_id}      { "ratio": 30, "expected_revision": 3 }
+PUT    /api/plans/monthly/{id}/timetable/size                   { "table_key": "special_activity_timetable",
+                                                                  "column_widths": [20, 20, 20, 20, 20],
+                                                                  "height_mm": 21, "expected_revision": 3 }
+```
+
+- 나누기: 원래 칸(id · 글 · 이력)은 위 · 왼쪽, 빈 새 칸이 아래 · 오른쪽에 50:50 으로 생긴다. 열 제목은 나누지 않는다(404 `["item_id"]`).
+- 빼기: 형제 칸이 자리를 채운다. 뺀 칸은 이력과 함께 보관된다.
+- 같은 비율 · 같은 크기를 다시 보내면 200 · 무변경(revision 그대로).
+- 바뀔 때마다 계획안 단위 `TIMETABLE_CHANGED` 이벤트가 남는다. §9-5 목록에는 종류만 보이고 바뀐 내용은 싣지 않는다.
+  표 칸의 칸 단위 이력은 아직 §9-5 에 나오지 않는다(후속).
+- 한글 내려받기는 나눈 모양 · 열 폭 · 높이 그대로 양식 행사 일정 · 특성화 · 특별활동 칸을 다시 그린다.
+
+| code | status | 언제 | `fields` |
+|---|---|---|---|
+| `NOT_FOUND` | 404 | 그 표 칸 · 표 · 경계가 없다 | `["item_id"]` · `["table_key"]` · `["split_id"]` |
+| `VALIDATION_FAILED` | 422 | 다섯 번째 나누기 「한 칸은 네 번까지 나눌 수 있습니다.」 | `["item_id"]` |
+| `VALIDATION_FAILED` | 422 | 열의 마지막 칸 빼기 「열의 마지막 칸은 뺄 수 없습니다. 글을 비워 주세요.」 | `["item_id"]` |
+| `VALIDATION_FAILED` | 422 | 칸 폭 3.5% 미만 「칸이 너무 좁아집니다. 조금 덜 줄여 주세요.」 | `[]` |
+| `VALIDATION_FAILED` | 422 | 비율 10~90 · 열 폭(열 수 · 각 5 이상 · 합 100) · 높이 10~80 밖 | `["ratio"]` |
+| `ALREADY_CONFIRMED` · `STALE_WRITE` | 409 | 위 다섯 API 와 같다 | |
 
 ### 오류 — 다섯 API 공통
 
