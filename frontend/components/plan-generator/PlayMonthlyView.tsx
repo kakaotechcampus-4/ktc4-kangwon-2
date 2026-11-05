@@ -29,7 +29,7 @@ import {
   timetablePlace,
 } from "@/lib/plan-generator/playMonthlyTimetable";
 import PlayCellEditor from "./PlayCellEditor";
-import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
+import PlayMonthlyConfirm, { BlankRows, PanelOverview } from "./PlayMonthlyConfirm";
 import PlayMonthlyConfirmBar from "./PlayMonthlyConfirmBar";
 import PlayMonthlyDrillPanel from "./PlayMonthlyDrillPanel";
 import PlayMonthlyRowRemove from "./PlayMonthlyRowRemove";
@@ -310,6 +310,34 @@ function PlayMonthlyBody({
   const target = safetyWeek ? weekCandidate : selected;
   const editing = !confirmed && target && labels[target] ? [target] : [];
   if (row && !confirmed) editing.push(row.description.item_id);
+  // 문서에서 「+ 채우기」로 보이는 칸(선생님 입력 칸 · 시간표는 뺀다)을 묶음별로 센다.
+  const empty = (id: string) => {
+    if (!id.startsWith("safety:")) return !cellValue(shown, id)?.trim();
+    const c = plan.safety_weeks.find((w) => w.week_id === id.slice(7))?.candidate_item_id;
+    return !c || !cellValue(shown, c)?.trim();
+  };
+  const groups = (
+    [
+      ["safety", "안전교육", plan.safety_weeks.map((w) => "safety:" + w.week_id)],
+      ["theme", "놀이 주제", [plan.theme.item_id]],
+      ["rationale", "주제선정이유", [plan.rationale.item_id]],
+      ["together", "함께 하는 활동", plan.together.map((r) => r.name.item_id)],
+      ["free_play", "유아 예상 자유놀이", plan.free_play.map((r) => r.name.item_id)],
+      ["habits", "기본생활습관", plan.habits.map((h) => h.cell.item_id)],
+      ["health", "건강", [plan.health.cell.item_id]],
+      ["nutrition", "영양", [plan.nutrition.cell.item_id]],
+    ] as const
+  ).map(([key, label, ids]) => ({ key, label, all: ids.length, ids: ids.filter(empty) }));
+  const total = groups.reduce((n, g) => n + g.all, 0);
+  const blankRows = groups
+    .filter((g) => g.ids.length)
+    .map(({ key, label, ids }) => ({
+      key,
+      label,
+      count: ids.length,
+      safety: key === "safety",
+      onJump: () => select(ids[0]),
+    }));
   const parentPlay =
     row?.parent_item_id &&
     plan.parent.plays.find((p) => p.play_name_item_id === row.parent_item_id);
@@ -317,10 +345,14 @@ function PlayMonthlyBody({
   const editTab = (
     <div className="flex flex-col gap-4">
       {!selected && (
-        <p className="m-0 text-sm text-[#5c5243]">문서의 칸을 누르면 여기서 고칠 수 있어요.</p>
+        <PanelOverview
+          filled={total - blankRows.reduce((n, r) => n + r.count, 0)}
+          total={total}
+          rows={blankRows}
+        />
       )}
       {selected && (
-        <h2 className="m-0 font-display text-[24px] font-bold leading-tight">
+        <h2 className="m-0 text-[20px] font-bold leading-tight">
           {/* 놀이 행은 문서 순서(함께 하는 활동 위→아래, 그다음 자유놀이)로 「n 번째 칸」. */}
           {row
             ? `${ORDINAL[rows.indexOf(row)] ?? rows.indexOf(row) + 1} 번째 칸`
@@ -560,9 +592,22 @@ function PlayMonthlyBody({
           <PlayMonthlyConfirmBar
             plan={plan}
             ask={
+              (blankRows.length ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
               "확정하면 확정을 풀기 전까지 고칠 수 없어요." +
               (plan.notices.length ? ` 확인할 것 ${plan.notices.length}개가 남았어요.` : "")
             }
+            // 빈칸으로 가면 확정 창을 닫는다(주제형 월간 · 주간과 같다).
+            blanks={(close) => (
+              <BlankRows
+                rows={blankRows.map((r) => ({
+                  ...r,
+                  onJump: () => {
+                    close();
+                    r.onJump();
+                  },
+                }))}
+              />
+            )}
             whenIdle={save.whenIdle}
             freeze={() => {
               setFrozen(true);

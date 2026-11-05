@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "@/lib/api/client";
 import { confirmPlayMonthly } from "@/lib/api/playMonthly";
 import { isSaveConflict } from "@/lib/api/plans";
@@ -48,10 +48,13 @@ export default function PlayMonthlyConfirmBar({
   onConfirmed,
   onConflict,
   ask,
+  blanks,
 }: {
   plan: PlayMonthlyPlan;
   /** 있으면 먼저 이 글로 묻고 「확정하기」를 한 번 더 눌러야 확정한다(Ⓜ3 확정 확인 창). */
   ask?: string;
+  /** 묻는 창 안에 함께 보일 남은 빈칸 목록. `close` 는 창을 닫는다 — 빈칸으로 갈 때 부른다. */
+  blanks?: (close: () => void) => ReactNode;
   /** 남은 저장이 모두 끝나길 기다린다. `saved` 가 false 면 실패한 저장이 있다. */
   whenIdle: () => Promise<{ saved: boolean; revision: number; rejected?: boolean }>;
   /** 이 뒤로 새 변경을 받지 않는다. */
@@ -131,7 +134,7 @@ export default function PlayMonthlyConfirmBar({
     <div className="relative">
       <button
         type="button"
-        className="min-h-[44px] rounded-md bg-primary-tint-line hover:bg-primary px-5 text-sm font-bold text-ink hover:text-white disabled:opacity-40 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+        className="min-h-[44px] rounded-md bg-primary hover:bg-primary-hover px-5 text-sm font-bold text-white disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
         disabled={confirming}
         onClick={ask ? () => setAsking(true) : confirm}
       >
@@ -147,7 +150,9 @@ export default function PlayMonthlyConfirmBar({
               disabled={confirming}
               onYes={confirm}
               onNo={() => setAsking(false)}
-            />
+            >
+              {blanks?.(() => setAsking(false))}
+            </PlayMonthlyConfirm>
           )}
           {error && (
             <p

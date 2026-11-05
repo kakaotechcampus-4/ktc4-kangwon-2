@@ -23,7 +23,7 @@ import { schoolYearOf } from "@/lib/workspace/document-archive";
 import { today } from "@/lib/workspace/model";
 import { Tape } from "@/components/workspace/WorkspaceUI";
 import { SlideTour } from "@/components/app/Tour";
-import GenerationRing from "@/components/plan-ui/GenerationRing";
+import GenerationRing, { ringFinished } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { memoError, PlanMemoField } from "./PlanMemo";
 import { BACK_BUTTON, BACK_ICON } from "./AnnualFrame";
@@ -86,6 +86,7 @@ function AnnualGenerator({ format }: { format: Format }) {
       : NO_ROOM;
   }, NO_ROOM);
   const [generating, setGenerating] = useState(false);
+  const [done, setDone] = useState(false);
   const [error, setError] = useState("");
   const [memo, setMemo] = useState("");
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
@@ -104,6 +105,7 @@ function AnnualGenerator({ format }: { format: Format }) {
     const controller = new AbortController();
     controllerRef.current = controller;
     setGenerating(true);
+    setDone(false);
     setError("");
     setMemoProblem(null);
     setOccupied(null);
@@ -129,6 +131,8 @@ function AnnualGenerator({ format }: { format: Format }) {
       } catch (e) {
         console.warn("계획안 표시 정보 캐시 저장 실패", e);
       }
+      setDone(true);
+      await ringFinished();
       router.replace("/plans/annual/" + plan.id);
     } catch (e) {
       if (controller.signal.aborted) return;
@@ -167,7 +171,14 @@ function AnnualGenerator({ format }: { format: Format }) {
   if (generating)
     return (
       <div className="flex min-h-[calc(100vh-60px)]">
-        <GenerationRing steps={[...look.steps]} onCancel={stop} />
+        <GenerationRing
+          kind={`annual:${format}`}
+          // Sol 실측(2026-11-05): 놀이 중심형은 4구간을 차례로 불러 약 176초. 주제형은 아직 안 쟀다.
+          expect={format === "PLAY_PROJECT" ? 180 : 20}
+          steps={[...look.steps]}
+          done={done}
+          onCancel={stop}
+        />
       </div>
     );
 
@@ -274,7 +285,7 @@ function AnnualGenerator({ format }: { format: Format }) {
             type="button"
             onClick={() => void generate()}
             disabled={!room.className}
-            className="mt-auto min-h-[56px] rounded-md bg-primary-tint-line hover:bg-primary text-[17px] font-bold text-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-50 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+            className="mt-auto min-h-[56px] rounded-md bg-primary hover:bg-primary-hover text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
           >
             연간계획안 만들기
           </button>
@@ -290,7 +301,7 @@ function AnnualGenerator({ format }: { format: Format }) {
             <img
               src={`/plan-formats/${look.image}.png`}
               alt={look.alt}
-              className="absolute inset-x-0 top-0 mx-auto max-h-full max-w-full rounded-md border border-[#e3ddd2] bg-white object-contain object-top shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]"
+              className="absolute inset-x-0 top-0 mx-auto max-h-full max-w-full rounded-md border border-[#e3ddd2] bg-white object-contain object-top shadow-[0_1px_2px_rgba(43,40,38,0.1),0_14px_32px_-14px_rgba(43,40,38,0.35)]"
             />
           </div>
         </section>

@@ -1,5 +1,5 @@
 import { read, commit, type Database } from "./store";
-import { annualFor, annualChanged } from "./monthly-plans";
+import { annualFor, annualChanged, DRILLS, evidence, SAFETY } from "./monthly-plans";
 import { MOCK_USER_ID } from "./template-profiles";
 import type {
   PlayMonthlyActivity,
@@ -32,46 +32,8 @@ const GEN = {
 const SYSTEM_ACTOR = "play_monthly_application";
 const ACTOR = "user_" + MOCK_USER_ID;
 const DRILL_COPY = "play_monthly.drill_copy";
-const evidence = (type: string, id: string, version: string, name: string | null = null) => [
-  {
-    source_type: type,
-    source_id: id,
-    source_version: version,
-    effective_date: null,
-    display_name: name,
-  },
-];
 const curriculum = (...ids: string[]) =>
   ids.flatMap((id) => evidence("CURRICULUM", id, "test-curriculum-v1"));
-const SAFETY: [string, string | null, string | null, string, string][] = [
-  ["STATUTORY", "sexual_violence_prevention", null, "성폭력 예방", "내 몸의 소중함"],
-  ["STATUTORY", "child_abuse_prevention", null, "아동학대 예방", "나의 권리 찾기(소중한 나)"],
-  [
-    "STATUTORY",
-    "missing_and_abduction_prevention",
-    null,
-    "실종·유괴 예방",
-    "길을 잃을 수 있는 상황 이해하기",
-  ],
-  [
-    "STATUTORY",
-    "infectious_disease_and_drug_misuse_prevention",
-    null,
-    "감염병·약물 예방",
-    "감염병 예방을 위한 개인위생 실천 습관",
-  ],
-  ["STATUTORY", "disaster_preparedness_safety", null, "재난대비", "화재의 원인과 예방법"],
-  ["STATUTORY", "traffic_safety", null, "교통안전", "차도, 보도 및 신호등의 의미 알기"],
-  ["SUPPLEMENTAL", null, "elevator", "생활안전", "안전교육 및 건강영양교육"],
-  ["SUPPLEMENTAL", null, "playground", "생활안전", "안전교육"],
-];
-const DRILLS = [
-  ["fire_a", "화재 가"],
-  ["quake", "지진"],
-  ["fire_b", "화재 나"],
-  ["fire_c", "화재 다"],
-  ["fire_d", "화재 라"],
-];
 // 서버 teacher_inputs 는 TEACHER_INPUT 칸만이다. 두 시간표는 아래 칸 · 트리로 따로 온다.
 const TEACHER_KEYS = ["fire_disaster_drill", "class_notice", "class_birthdays", "home_connection"];
 

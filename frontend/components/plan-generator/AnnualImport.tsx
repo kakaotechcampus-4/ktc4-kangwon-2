@@ -190,7 +190,7 @@ export default function AnnualImport({
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="min-h-[52px] rounded-md bg-primary-tint-line hover:bg-primary px-8 text-base font-bold text-ink hover:text-white disabled:opacity-50 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+          className="min-h-[52px] rounded-md bg-primary hover:bg-primary-hover px-8 text-base font-bold text-white disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
         >
           {saving ? "저장하는 중…" : "저장"}
         </button>

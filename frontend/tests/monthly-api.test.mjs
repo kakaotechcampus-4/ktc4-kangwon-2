@@ -230,7 +230,16 @@ test("create returns the full DTO: dynamic weeks, empty safety cells, no audit f
   }
   assert.equal(plan.sections.find((s) => s.role === "AXIS").repeat_by, null);
   const safety = plan.sections.find((s) => s.section_key === "safety_education").cells;
-  assert.ok(safety.every((c) => c.value === "" && c.state === "EMPTY_UNRESOLVED"));
+  // 서버처럼 후보 모드 — 주 칸은 비어도 되는 칸이고, 안전교육 후보 8 · 주마다 빈 배치 · 빈 주 안내.
+  assert.ok(safety.every((c) => c.value === "" && c.state === "EMPTY_VALID"));
+  assert.equal(plan.safety_candidates.length, 8);
+  assert.deepEqual(
+    plan.safety_weeks.map((w) => w.week_id),
+    plan.weeks.map((w) => w.week_id),
+  );
+  assert.ok(plan.notices.every((n) => n.code === "SAFETY_UNPLACED"));
+  // 훈련 칸이 없는 양식이면 훈련 후보도 없다.
+  assert.deepEqual(plan.drill_candidates, []);
   assert.equal(plan.constraints[0].verification, "NOT_VERIFIED_SOURCE_REQUIRED");
   for (const c of cells(plan)) {
     assert.deepEqual(Object.keys(c).sort(), [
@@ -255,6 +264,23 @@ test("create returns the full DTO: dynamic weeks, empty safety cells, no audit f
   );
   assert.equal(items[0].sections, undefined);
   assert.deepEqual((await listMonthlyPlans()).items, items);
+});
+
+test("safety placement shows the labelled sentence, same input is a no-op", async () => {
+  const { klass, ref } = await confirmedClass();
+  const plan = await createMonthlyPlan({ class_id: klass.id, month: 9, profile_ref: ref });
+  const [w1] = plan.weeks;
+  const first = plan.safety_candidates[0].cell;
+  const placed = await monthly.placeMonthlySafety(plan.id, w1.week_id, first.item_id, 1);
+  assert.equal(placed.revision, 2);
+  assert.equal(placed.safety_weeks[0].display_value, "[성폭력 예방] - " + first.value);
+  assert.equal(placed.notices.length, plan.notices.length - 1);
+  assert.equal(
+    (await monthly.placeMonthlySafety(plan.id, w1.week_id, first.item_id, 2)).revision,
+    2,
+  );
+  const cleared = await monthly.placeMonthlySafety(plan.id, w1.week_id, null, 2);
+  assert.equal(cleared.safety_weeks[0].display_value, "");
 });
 
 test("create gates: no annual, unconfirmed annual, duplicate month, unknown profile", async () => {
@@ -319,12 +345,14 @@ test("edit: matching revision +1 and only the target cell changes", async () => 
     "expected_revision",
   ]);
   assert.deepEqual(await getMonthlyPlan(plan.id), edited);
-  // 안전교육 칸도 고칠 수 있고, 비우면 다시 「근거 필요」다.
+  // 후보 모드의 주별 안전교육 칸은 배치가 정한다 — 서버처럼 422 ["item_id"]. 후보 문장은 고칠 수 있다.
   const safety = cellOf(edited, "safety_education");
-  const filled = await editMonthlyCell(plan.id, safety.item_id, "교통안전", 2);
-  assert.equal(cellOf(filled, "safety_education").state, "FILLED");
-  const cleared = await editMonthlyCell(plan.id, safety.item_id, "", 3);
-  assert.equal(cellOf(cleared, "safety_education").state, "EMPTY_UNRESOLVED");
+  await rejects(editMonthlyCell(plan.id, safety.item_id, "교통안전", 2), 422, "VALIDATION_FAILED", [
+    "item_id",
+  ]);
+  const candidate = edited.safety_candidates[0].cell;
+  const rewritten = await editMonthlyCell(plan.id, candidate.item_id, "교통안전 약속", 2);
+  assert.equal(rewritten.safety_candidates[0].cell.value, "교통안전 약속");
 });
 
 test("revision body is strict: string and boolean are rejected", async () => {

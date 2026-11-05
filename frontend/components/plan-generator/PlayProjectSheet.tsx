@@ -54,7 +54,7 @@ export default function PlayProjectSheet({
           <article
             key={page[0].period_key}
             aria-label={page.map((period) => period.label).join(" · ")}
-            className="mx-auto w-full min-w-[720px] max-w-[860px] bg-white px-9 py-8 shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]"
+            className="mx-auto w-full min-w-[720px] max-w-[860px] bg-white px-9 py-8 shadow-[0_1px_2px_rgba(43,40,38,0.1),0_14px_32px_-14px_rgba(43,40,38,0.35)]"
           >
             <h3 className={`m-0 mb-4 ${HATCH} py-2.5 text-center text-[28px] font-bold`}>
               {plan.school_year} 연간놀이계획안{className && ` - ${className}`}
@@ -201,7 +201,7 @@ export default function PlayProjectSheet({
                             );
                           })
                         ) : (
-                          <td colSpan={4} className={`${CELL} text-center text-[#8a8178]`}>
+                          <td colSpan={4} className={`${CELL} text-center text-ink-soft`}>
                             아직 고른 놀이가 없어요
                           </td>
                         )}
@@ -210,7 +210,7 @@ export default function PlayProjectSheet({
                   })}
               </tbody>
             </table>
-            <p className="mt-4 bg-[#E1F2FE] px-2 py-1 text-center text-[10px] leading-relaxed">
+            <p className="mt-4 bg-[#E1F2FE] px-2 py-1 text-center text-[12px] leading-relaxed">
               {
                 "*예상 놀이 방향은 [2019 개정 누리과정]의 목적에 따라 ‘유아 놀이 중심’ 활동이 진행 될 수 있도록 융통성 있게 구성되었습니다. "
               }

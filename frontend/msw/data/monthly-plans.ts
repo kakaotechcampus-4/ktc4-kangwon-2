@@ -19,6 +19,8 @@ import type {
 const RULE = { rule_id: "mock.monthly", rule_version: "mock-v1" };
 /** 칸 재생성 결과의 생성 방식. 서버처럼 처음 생성과 다른 rule_version 이다. */
 const CELL_RULE = { rule_id: "mock.monthly.cell", rule_version: "mock-cell-v1" };
+/** 훈련 후보 복사 칸의 생성 방식 (Core `DRILL_COPY_GENERATION`). */
+const DRILL_COPY = { rule_id: "monthly.drill_copy", rule_version: "v1" };
 /** 서버 Core 의 생성 행위자(generate_monthly_plan.SYSTEM_ACTOR). */
 const SYSTEM_ACTOR = "monthly_application";
 /** 서버는 `user_{users.id}` 다. 목업 계정 id 는 하나다. */
@@ -80,6 +82,48 @@ const cellValue = (key: string, theme: string, week: number) =>
     basic_habit: week + "주 기본생활 습관",
   })[key] ?? "";
 
+/**
+ * 안전교육 후보 8 · 훈련 주제 5 — 서버 Core 가 주제형(v1) · 놀이형(v2) 월간에 같이 주는 후보다
+ * (monthly_router `SAFETY_CANDIDATES` · `DRILL_TOPICS`). 두 목업이 같은 목록을 쓴다.
+ */
+export const evidence = (type: string, id: string, version: string, name: string | null = null) => [
+  {
+    source_type: type,
+    source_id: id,
+    source_version: version,
+    effective_date: null,
+    display_name: name,
+  },
+];
+export const SAFETY: [string, string | null, string | null, string, string][] = [
+  ["STATUTORY", "sexual_violence_prevention", null, "성폭력 예방", "내 몸의 소중함"],
+  ["STATUTORY", "child_abuse_prevention", null, "아동학대 예방", "나의 권리 찾기(소중한 나)"],
+  [
+    "STATUTORY",
+    "missing_and_abduction_prevention",
+    null,
+    "실종·유괴 예방",
+    "길을 잃을 수 있는 상황 이해하기",
+  ],
+  [
+    "STATUTORY",
+    "infectious_disease_and_drug_misuse_prevention",
+    null,
+    "감염병·약물 예방",
+    "감염병 예방을 위한 개인위생 실천 습관",
+  ],
+  ["STATUTORY", "disaster_preparedness_safety", null, "재난대비", "화재의 원인과 예방법"],
+  ["STATUTORY", "traffic_safety", null, "교통안전", "차도, 보도 및 신호등의 의미 알기"],
+  ["SUPPLEMENTAL", null, "elevator", "생활안전", "안전교육 및 건강영양교육"],
+  ["SUPPLEMENTAL", null, "playground", "생활안전", "안전교육"],
+];
+export const DRILLS = [
+  ["fire_a", "화재 가"],
+  ["quake", "지진"],
+  ["fire_b", "화재 나"],
+  ["fire_c", "화재 다"],
+  ["fire_d", "화재 라"],
+];
 /** 연간은 반당 하나다 (§4). 부모를 요청으로 받지 않고 반으로 찾는다. */
 export const annualFor = (classId: number) => read().plans.find((p) => p.class_id === classId);
 export const findMonthly = (id: number) => read().monthlyPlans.find((p) => p.id === id);
@@ -132,11 +176,28 @@ export const addMonthly = (
         item_id: "item_" + id + "_" + key + (week === null ? "" : "_w" + week),
         week_id: week === null ? null : weeks[week - 1].week_id,
         value,
-        state: value ? "FILLED" : "EMPTY_UNRESOLVED",
+        // 서버처럼 후보로 두는 안전교육 주 칸 · 훈련 문서 칸은 비어도 되는 칸으로 시작한다.
+        state: value
+          ? "FILLED"
+          : key === "safety_education" || key === "drill"
+            ? "EMPTY_VALID"
+            : "EMPTY_UNRESOLVED",
         evidence: value ? [parentEvidence] : [],
-        generation: { method: key === "theme" || !value ? "RULE_ONLY" : "RULE_LLM", ...RULE },
+        // 훈련 문서 칸은 놀이 월간 교사 칸처럼 생성 방식 없이 시작한다.
+        generation:
+          key === "drill"
+            ? null
+            : { method: key === "theme" || !value ? "RULE_ONLY" : "RULE_LLM", ...RULE },
       };
     };
+    const candidate = (key: string, value: string, sources: MonthlyCell["evidence"]) => ({
+      item_id: "item_" + id + "_" + key,
+      week_id: null,
+      value,
+      state: "FILLED" as const,
+      evidence: sources,
+      generation: { method: "RULE_LLM" as const, ...RULE },
+    });
     const plan: MonthlyPlan = {
       id,
       class_id: klass.id,
@@ -180,20 +241,50 @@ export const addMonthly = (
       ],
       verification: { executed_rules: [RULE], findings: [] },
       drill_candidates: [],
-      safety_candidates: [],
-      safety_weeks: [],
-      notices: [],
+      // 놀이 월간 목업과 같은 후보 · 문장 · 근거. 주에는 아무것도 두지 않고 시작한다(서버와 같다).
+      safety_candidates: SAFETY.map(([kind, category_id, topic_group, text, name], i) => ({
+        kind: kind as "STATUTORY" | "SUPPLEMENTAL",
+        category_id,
+        topic_group,
+        cell: candidate(
+          "safety_" + i,
+          text + " 약속을 함께 알아보아요",
+          kind === "STATUTORY"
+            ? evidence(
+                "SAFETY_RULE",
+                "annex6:" + category_id + ":1",
+                "child-welfare-act-decree-annex6-2022-06-21",
+                name,
+              )
+            : evidence("INSTITUTION_SAMPLE", "ev_sample_" + i, "v1", name),
+        ),
+      })),
+      safety_weeks: weeks.map((w) => ({
+        week_id: w.week_id,
+        candidate_item_id: null,
+        display_value: "",
+      })),
+      notices: [], // 응답마다 handler 가 다시 계산한다.
       created_at: at,
       confirmed_at: null,
     };
+    // 서버처럼 훈련 문서 칸이 있는 양식(v0.2.3 에서 고른 경우)만 훈련 후보가 온다.
+    if (plan.sections.some((s) => s.section_key === "drill" && s.cells.length))
+      plan.drill_candidates = DRILLS.map(([topic_id, label], i) => ({
+        topic_id,
+        label,
+        cell: candidate(
+          "drill_" + topic_id,
+          i + 1 + "번째 상황을 가정해 대피 훈련을 해요",
+          evidence("CURRICULUM", "t.4", "test-curriculum-v1"),
+        ),
+      }));
     db.monthlyPlans.push(plan);
     // 서버 Core 처럼 계획안 단위 CREATED 하나와 칸마다 CREATED 하나. 모두 같은 시각이다.
     const created = () => event("CREATED", at, { actor: null, system_actor: SYSTEM_ACTOR });
     db.monthlyAudit[id] = {
       plan: [created()],
-      cells: Object.fromEntries(
-        plan.sections.flatMap((s) => s.cells).map((c) => [c.item_id, [created()]]),
-      ),
+      cells: Object.fromEntries(cellsOf(plan).map(({ cell: c }) => [c.item_id, [created()]])),
     };
     return plan;
   });
@@ -210,7 +301,7 @@ const changeCell = (
 ) =>
   commit((db) => {
     const plan = db.monthlyPlans.find((p) => p.id === id)!;
-    const cell = plan.sections.flatMap((s) => s.cells).find((c) => c.item_id === itemId)!;
+    const cell = cellsOf(plan).find((x) => x.cell.item_id === itemId)!.cell;
     // 목업 칸은 늘 생성 방식이 있다(null 은 훈련 문서 칸뿐이다).
     const before = { value: cell.value, generation: { ...cell.generation! } };
     change(cell);
@@ -227,14 +318,83 @@ const changeCell = (
     );
     return plan;
   });
-export const findCell = (plan: MonthlyPlan, itemId: string) => {
-  const section = plan.sections.find((s) => s.cells.some((c) => c.item_id === itemId));
-  return section && { section, cell: section.cells.find((c) => c.item_id === itemId)! };
+/**
+ * 계획안의 모든 칸과 그 칸의 Section. 안전교육 · 훈련 후보 칸은 그 후보를 두는 Section 에 붙인다
+ * (고칠 수 있고 이력이 있다 — 다시 만들기는 REGENERATABLE 이 막는다).
+ */
+const cellsOf = (plan: MonthlyPlan) => {
+  const of = (key: string) => plan.sections.find((s) => s.section_key === key)!;
+  return [
+    ...plan.sections.flatMap((section) => section.cells.map((cell) => ({ section, cell }))),
+    // 후보를 넣기 전에 저장된 옛 목업 계획안에는 두 목록이 없다.
+    ...(plan.safety_candidates ?? []).map((c) => ({
+      section: of("safety_education"),
+      cell: c.cell,
+    })),
+    ...(plan.drill_candidates ?? []).map((d) => ({ section: of("drill"), cell: d.cell })),
+  ];
 };
+export const findCell = (plan: MonthlyPlan, itemId: string) =>
+  cellsOf(plan).find(({ cell }) => cell.item_id === itemId);
+/** 그 주에 후보를 두거나(null 이면 비운다) 바꾼다. 같은 입력이면 그대로(revision · 이력 그대로). */
+export const placeMonthlySafety = (id: number, weekId: string, candidate: string | null) =>
+  commit((db) => {
+    const plan = db.monthlyPlans.find((p) => p.id === id)!;
+    const week = plan.safety_weeks.find((w) => w.week_id === weekId)!;
+    const before = week.candidate_item_id;
+    if (before === candidate) return plan;
+    week.candidate_item_id = candidate;
+    plan.revision += 1;
+    const audit = (db.monthlyAudit[id] ??= { plan: [], cells: {} });
+    audit.plan.push(
+      event("ARRANGEMENT_CHANGED", nextStamp(audit), {
+        arrangement_change: {
+          scope: weekId,
+          before: before ? [before] : [],
+          after: candidate ? [candidate] : [],
+        },
+      }),
+    );
+    return plan;
+  });
+/**
+ * 훈련 후보를 훈련 문서 칸에 복사한다 — 칸은 후보의 값 · 근거, `RULE_ONLY`(monthly.drill_copy).
+ * 서버처럼 값 · 근거 · 방식에 복사 원본까지 같아야 같은 복사다(그대로 돌려준다).
+ */
+export const copyMonthlyDrill = (id: number, itemId: string) =>
+  commit((db) => {
+    const plan = db.monthlyPlans.find((p) => p.id === id)!;
+    const from = plan.drill_candidates.find((d) => d.cell.item_id === itemId)!.cell;
+    const to = plan.sections.find((s) => s.section_key === "drill")!.cells[0];
+    const audit = (db.monthlyAudit[id] ??= { plan: [], cells: {} });
+    const log = (audit.cells[to.item_id] ??= []);
+    const source = log.findLast((e) => e.type === "CANDIDATE_COPIED")?.copied_from;
+    const generation = { method: "RULE_ONLY" as const, ...DRILL_COPY };
+    const same = (c: Pick<MonthlyCell, "value" | "evidence" | "generation">, src?: string | null) =>
+      JSON.stringify([c.value, c.evidence, c.generation, src]);
+    if (same(to, source) === same({ ...from, generation }, itemId)) return plan;
+    log.push(
+      event("CANDIDATE_COPIED", nextStamp(audit), {
+        value_change: { before: to.value, after: from.value },
+        generation_change: to.generation ? { before: to.generation, after: generation } : null,
+        copied_from: itemId,
+      }),
+    );
+    Object.assign(to, {
+      value: from.value,
+      state: from.value.trim() ? "FILLED" : "EMPTY_VALID",
+      evidence: structuredClone(from.evidence),
+      generation,
+    });
+    plan.revision += 1;
+    return plan;
+  });
 /** 근거 · 생성 방식은 그대로다 — 교사 수정은 변경 이력(TEACHER_EDITED)에만 남는다. */
 export const editCell = (id: number, itemId: string, value: string, sectionKey: string) =>
   changeCell(id, itemId, "TEACHER_EDITED", (cell) => {
     cell.value = value;
+    // 처음 쓰는 훈련 문서 칸만 MANUAL 이 된다(놀이 월간 교사 칸과 같다).
+    cell.generation ??= { method: "MANUAL", rule_id: null, rule_version: null };
     cell.state = value
       ? "FILLED"
       : sectionKey === "safety_education"
@@ -272,6 +432,31 @@ export const unconfirmMonthly = (id: number) =>
     audit.plan.push(event("UNCONFIRMED", nextStamp(audit)));
     return plan;
   });
+/** 서버 `candidate_display_value` — 「[교통안전] - 문장」 · 「[생활안전] - 문장」, 빈 문장은 "". */
+const LABELS = Object.fromEntries(SAFETY.map(([, category_id, , label]) => [category_id, label]));
+const shownSafety = (c: MonthlyPlan["safety_candidates"][number]) =>
+  !c.cell.value.trim()
+    ? ""
+    : "[" + (c.kind === "STATUTORY" ? LABELS[c.category_id!] : "생활안전") + "] - " + c.cell.value;
+/** 주별 표시 문장과 빈 주 안내. 서버처럼 저장하지 않고 응답마다 계산한다(확정을 막지 않는다). */
+export const safetyView = (p: MonthlyPlan) => {
+  // 후보를 넣기 전에 저장된 옛 목업 계획안에는 두 목록이 없다.
+  const byId = new Map((p.safety_candidates ?? []).map((c) => [c.cell.item_id, c]));
+  const weeks = (p.safety_weeks ?? []).map((w) => {
+    const c = w.candidate_item_id ? byId.get(w.candidate_item_id) : undefined;
+    return { ...w, display_value: c ? shownSafety(c) : "" };
+  });
+  return {
+    safety_weeks: weeks,
+    notices: weeks
+      .filter((w) => !w.display_value)
+      .map((w) => ({
+        code: (w.candidate_item_id === null ? "SAFETY_UNPLACED" : "SAFETY_BLANK") as
+          "SAFETY_UNPLACED" | "SAFETY_BLANK",
+        week_id: w.week_id,
+      })),
+  };
+};
 /** 부모 연간이 지금 확정이 아니거나 확정 시각이 스냅샷과 다르면 바뀐 것이다. */
 export const annualChanged = (annualId: number, confirmedAt: string) => {
   const annual = read().plans.find((p) => p.id === annualId);
@@ -285,9 +470,7 @@ export const annualChanged = (annualId: number, confirmedAt: string) => {
  */
 export function listAudit(plan: MonthlyPlan, itemId: string | null): MonthlyAuditEvent[] | null {
   const audit = read().monthlyAudit[plan.id] ?? { plan: [], cells: {} };
-  let located = plan.sections.flatMap((section) =>
-    section.cells.map((cell) => ({ section, cell })),
-  );
+  let located = cellsOf(plan);
   if (itemId !== null) {
     located = located.filter(({ cell }) => cell.item_id === itemId);
     if (!located.length) return null;
@@ -295,7 +478,8 @@ export function listAudit(plan: MonthlyPlan, itemId: string | null): MonthlyAudi
   const at = (e: MockAuditEvent) => Date.parse(e.occurred_at);
   const keyed: { key: number[]; out: MonthlyAuditEvent }[] = [
     ...audit.plan
-      .filter((e) => itemId === null || e.type === "CONFIRMED")
+      // 칸 하나를 물어도 계획안 확정 · 확정 취소는 같이 준다(서버 get_monthly_audit).
+      .filter((e) => itemId === null || e.type === "CONFIRMED" || e.type === "UNCONFIRMED")
       .map((e, i) => ({
         key: [at(e), 0, 0, i],
         out: { ...placed(e), scope: "PLAN" as const },

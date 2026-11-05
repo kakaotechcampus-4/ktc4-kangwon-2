@@ -197,11 +197,12 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await cell(0).click();
   await field.fill("친구와 함께 만드는 새로운 우리 반 놀이");
   await page.getByRole("button", { name: "확정하기", exact: true }).click();
+  // 안전교육을 아직 놓지 않은 주는 빈칸으로 센다(c4cb083c) — 확정 창이 「빈칸이 남아 있어요」로 시작한다.
   await page
-    .getByRole("group", { name: /^확정하면/ })
+    .getByRole("group", { name: /확정하면 확정을 풀기 전까지/ })
     .getByRole("button", { name: "확정하기", exact: true })
     .click();
-  await expect(page.getByText("확정했어요. 이제 고칠 수 없어요.")).toBeVisible();
+  await expect(page.getByText("확정했어요. 고치려면 확정을 풀어 주세요.")).toBeVisible();
   // 확정 후 화면: 확정본 · 한글 내보내기 · 주간 만들기 · 홈.
   await expect(page.getByRole("heading", { name: /월 월간계획안을 확정했어요$/ })).toBeVisible();
   await expect(

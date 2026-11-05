@@ -21,7 +21,7 @@ import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER, planClassLine } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
-import GenerationRing from "@/components/plan-ui/GenerationRing";
+import GenerationRing, { ringFinished } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { BACK_BUTTON, BACK_ICON } from "@/components/plan-generator/AnnualFrame";
 import { Tape, useClasses } from "./WorkspaceUI";
@@ -82,6 +82,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
   const [detail, setDetail] = useState<MonthData | null>(null);
   const [weekId, setWeekId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
   const controller = useRef<AbortController | null>(null);
   useCompactShell(busy);
   useEffect(() => () => controller.current?.abort(), []);
@@ -193,6 +194,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     const ctl = new AbortController();
     controller.current = ctl;
     setBusy(true);
+    setDone(false);
     setProblem("");
     setMemoProblem(null);
     try {
@@ -206,7 +208,10 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
         },
         ctl.signal,
       );
-      if (!ctl.signal.aborted) open(plan.id, week.week_id);
+      if (ctl.signal.aborted) return;
+      setDone(true);
+      await ringFinished();
+      open(plan.id, week.week_id);
     } catch (e) {
       // 취소했거나 새 요청이 시작됐으면 이 요청은 화면을 바꾸지 않는다(새 요청의 busy 도 풀지 않는다).
       const stale = () => ctl.signal.aborted || controller.current !== ctl;
@@ -234,7 +239,11 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     return (
       <div className="flex min-h-[calc(100vh-60px)]">
         <GenerationRing
+          kind="weekly"
+          // Sol 실측: 33초(2026-11-05).
+          expect={35}
           title={`${label} 주간계획안을 만들고 있어요`}
+          done={done}
           steps={[`${label} 놀이 이어받기`, "요일별 활동 나누기", "문서로 정리하기"]}
           onCancel={() => {
             controller.current?.abort();
@@ -390,12 +399,13 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
             </p>
           )}
 
-          <div className="mt-auto flex shrink-0 flex-col gap-2">
+          {/* 만들기 단추는 화면 아래에 붙여 둔다 — 낮은 화면(1440×900)에서도 스크롤 없이 보이게. */}
+          <div className="sticky bottom-0 z-10 mt-auto flex shrink-0 flex-col gap-2 bg-paper pb-1 pt-2">
             <button
               type="button"
               onClick={() => void create()}
               disabled={!!blocked}
-              className="min-h-[54px] rounded-md bg-primary-tint-line hover:bg-primary text-[17px] font-bold text-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-50 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+              className="min-h-[54px] rounded-md bg-primary hover:bg-primary-hover text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
             >
               {mine ? `${label} 주간계획안 열기` : `${label} 주간계획안 만들기`}
             </button>

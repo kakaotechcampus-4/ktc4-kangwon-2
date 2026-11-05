@@ -258,7 +258,7 @@ function Panel({
         {!v1 && (
           <span className="contents">
             <span aria-hidden="true" className="w-[18px]" />
-            <span className="flex-1 rounded-md border border-dashed border-[#d7d0c7] py-[15px] text-center text-[15px] text-[#8a8178]">
+            <span className="flex-1 rounded-md border border-dashed border-[#d7d0c7] py-[15px] text-center text-[15px] text-ink-soft">
               주간 없음
             </span>
           </span>
@@ -301,7 +301,7 @@ function Panel({
         <div className="flex items-center gap-3">
           <Link
             href={`/plans/annual/new?format=${format}`}
-            className="flex min-h-[54px] flex-1 items-center justify-center rounded-md bg-primary-tint-line hover:bg-primary text-base font-bold text-ink hover:text-white no-underline transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+            className="flex min-h-[54px] flex-1 items-center justify-center rounded-md bg-primary hover:bg-primary-hover text-base font-bold text-white no-underline transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
           >
             연간부터 시작하기
           </Link>
