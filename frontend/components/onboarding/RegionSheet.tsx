@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { PROVINCE_OPTIONS, districtsFor } from "@/lib/onboarding/regions";
+import { PROVINCE_OPTIONS, districtsFor, matchesRegion } from "@/lib/onboarding/regions";
 
 const SEJONG = "세종특별자치시";
 
@@ -19,6 +19,7 @@ const iconButton =
  * 지역 고르개 — 칠판 위에 뜨는 작은 칠판, 이름은 분필로 적은 글씨. 휴대폰에서는 아래에서 올라오는 판,
  * 데스크톱에서는 나무테를 두른 가운데 판이다.
  * 시·도를 고르면 같은 자리의 목록이 그 시·도의 시·군·구로 바뀐다. 세종은 시·군·구가 없어 바로 끝난다.
+ * 위 검색칸에 이름이나 초성(예: ㅊㅊ)을 치면 목록이 걸러진다. 한 개만 남으면 Enter 로 고른다.
  * 네이티브 `<dialog>` 라서 포커스를 가두고 Esc 로 닫히며, 닫으면 눌렀던 단추로 포커스가 돌아간다.
  */
 export default function RegionSheet({
@@ -30,18 +31,31 @@ export default function RegionSheet({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [province, setProvince] = useState("");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     const dialog = ref.current;
     if (dialog && !dialog.open) dialog.showModal();
   }, []);
 
+  // 목록이 바뀌면 검색어는 비운다.
+  function openProvince(value: string) {
+    setProvince(value);
+    setQuery("");
+  }
   function pickProvince(value: string) {
     if (value === SEJONG) onPick(value, SEJONG);
-    else setProvince(value);
+    else openProvince(value);
   }
 
-  const districts = districtsFor(province);
+  const entries = province
+    ? districtsFor(province).map((d) => ({ key: d, label: d, pick: () => onPick(province, d) }))
+    : PROVINCE_OPTIONS.map((p) => ({
+        key: p.value,
+        label: p.label,
+        pick: () => pickProvince(p.value),
+      }));
+  const shown = entries.filter((e) => matchesRegion(e.label, query));
   return (
     <dialog
       ref={ref}
@@ -55,7 +69,7 @@ export default function RegionSheet({
         {province && (
           <button
             type="button"
-            onClick={() => setProvince("")}
+            onClick={() => openProvince("")}
             aria-label="시·도 다시 고르기"
             className={`${iconButton} -ml-2.5 text-ink`}
           >
@@ -104,27 +118,38 @@ export default function RegionSheet({
       {province && <p className="sr-only">{province}</p>}
       {/* 제목과 아래 이름 목록을 가르는 분필 점선 */}
       <div aria-hidden="true" className="mx-6 mb-3 border-t-2 border-dashed border-line" />
+      <div className="px-6 pb-3">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && shown.length === 1) shown[0].pick();
+          }}
+          aria-label={province ? "시·군·구 찾기" : "시·도 찾기"}
+          placeholder="이름이나 초성으로 찾기 (예: ㄱㅅ)"
+          autoComplete="off"
+          spellCheck={false}
+          enterKeyHint="search"
+          className="w-full border-b-2 border-line bg-transparent px-1 pb-2 pt-1 text-[17px] text-ink placeholder:text-ink-soft focus:border-primary focus:outline-none"
+        />
+      </div>
       <ul
         className={`grid max-h-[60vh] gap-x-4 gap-y-1 overflow-y-auto px-6 pb-2 pt-1 ${province ? "grid-cols-3 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}
         style={{ wordBreak: "keep-all" }}
       >
-        {!province &&
-          PROVINCE_OPTIONS.map((p) => (
-            <li key={p.value}>
-              <button type="button" className={item} onClick={() => pickProvince(p.value)}>
-                {p.label}
-              </button>
-            </li>
-          ))}
-        {province &&
-          districts.map((d) => (
-            <li key={d}>
-              <button type="button" className={item} onClick={() => onPick(province, d)}>
-                {d}
-              </button>
-            </li>
-          ))}
+        {shown.map((e) => (
+          <li key={e.key}>
+            <button type="button" className={item} onClick={e.pick}>
+              {e.label}
+            </button>
+          </li>
+        ))}
       </ul>
+      {shown.length === 0 && (
+        <p role="status" className="px-6 pb-2 text-[15px] text-ink-soft">
+          찾는 이름이 없어요. 다른 글자로 찾아보세요.
+        </p>
+      )}
     </dialog>
   );
 }
