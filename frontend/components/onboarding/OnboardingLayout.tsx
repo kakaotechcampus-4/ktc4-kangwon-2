@@ -213,7 +213,7 @@ export default function OnboardingLayout({
 }
 
 /**
- * 카드 오른쪽 칸 위쪽 — 말풍선과 그 아래 손 흔드는 포스티. 아래쪽 버튼 자리는 OnboardingLayout 의 footer 다.
+ * 카드 오른쪽 칸 위쪽 — 말풍선과 그 아래 손 흔드는 포스티를 칸 세로 가운데에 둔다. 아래쪽 버튼 자리는 OnboardingLayout 의 footer 다.
  * 말풍선은 친 글자만큼만 자란다 — 가로는 글 길이에 맞춰 가운데에서 양옆으로(칸 너비까지), 세로는 위로.
  * 포스티가 따라 움직이지 않도록 말풍선 자리(`h-[124px]`, 가장 긴 문구인 4줄 높이)를 따로 잡고
  * 그 아래쪽에 붙인다. 꼬리는 말풍선 가운데라 늘 포스티 위에 있다.
@@ -222,7 +222,7 @@ function PostyPanel({ say, live }: { say?: PostySay; live: boolean }) {
   return (
     <aside
       aria-label="진행 안내"
-      className="hidden flex-col items-center gap-[18px] border-l border-shell bg-ivory px-7 pt-6 md:col-start-2 md:row-start-1 md:flex"
+      className="hidden flex-col items-center justify-center gap-[18px] border-l border-shell bg-ivory px-7 py-8 md:col-start-2 md:row-start-1 md:flex"
     >
       <div className="flex h-[124px] w-full flex-none flex-col items-center justify-end">
         {say && (
@@ -242,7 +242,7 @@ function PostyPanel({ say, live }: { say?: PostySay; live: boolean }) {
           </div>
         )}
       </div>
-      <Posty pose="wave" tone="note" face="base" size={112} tape label="포스티가 손을 흔들어요" />
+      <Posty pose="wave" tone="note" face="base" size={152} tape label="포스티가 손을 흔들어요" />
     </aside>
   );
 }
