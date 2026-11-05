@@ -20,14 +20,13 @@ export default function KakaoStart() {
     setBusy(true);
     try {
       await startKakaoLogin();
-      // 이동하는 동안 단추는 「가는 중」으로 둔다. 다시 눌리면 state 가 바뀌어 앞 요청이 버려진다.
+      // 이동하는 동안 단추는 「이동하는 중」으로 둔다. 다시 눌리면 state 가 바뀌어 앞 요청이 버려진다.
     } catch (e) {
+      // 망이 끊긴 경우의 TypeError 같은 영어 문구를 그대로 띄우지 않는다.
       setError(
         errorCode(e) === "DEPENDENCY_UNAVAILABLE"
-          ? "지금은 카카오로 로그인할 수 없어요. 위 이메일로 로그인해주세요."
-          : e instanceof Error
-            ? e.message
-            : "카카오로 가지 못했어요. 다시 시도해주세요.",
+          ? "지금은 카카오로 로그인할 수 없어요. 이메일로 로그인해 주세요."
+          : "카카오 로그인을 열지 못했어요. 잠시 뒤 다시 해 주세요.",
       );
       setBusy(false);
     }
@@ -42,7 +41,7 @@ export default function KakaoStart() {
         className="flex min-h-12 w-full items-center justify-center gap-2.5 rounded-md border border-[#e5cf00] bg-[#FEE500] px-4 text-sm font-semibold text-black/85 shadow-pg-hard transition-transform hover:-translate-x-px hover:-translate-y-px active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:cursor-progress disabled:opacity-80"
       >
         {busy ? <Spinner /> : <KakaoSymbol />}
-        {busy ? "카카오로 가는 중…" : "카카오로 시작하기"}
+        {busy ? "카카오로 이동하는 중…" : "카카오로 시작하기"}
       </button>
       {error && (
         <p
