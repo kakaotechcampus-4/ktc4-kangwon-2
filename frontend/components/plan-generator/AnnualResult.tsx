@@ -54,7 +54,7 @@ export default function AnnualResult({ id }: { id: number }) {
         ),
     );
   }
-  // 확정 · 확정 취소가 끝나면 응답 계획안으로 바꾸고 key 를 올려 ⑥ · ⑤ 로 다시 그린다(안내는 비운다).
+  // 확정이 끝나면 응답 계획안으로 바꾸고 key 를 올려 ⑥ · ⑤ 로 다시 그린다(안내는 비운다).
   const replacePlan = (fresh: AnnualPlanResponse) => {
     ++lastReload.current; // 늦게 온 다시 불러오기 응답이 확정본을 덮지 못하게.
     setLoaded((cur) => ({
@@ -146,8 +146,6 @@ export default function AnnualResult({ id }: { id: number }) {
                 />,
               ]
         }
-        onUnconfirmed={replacePlan}
-        onConflict={reloadAfterConflict}
       />
     );
   return plan.format === "PLAY_PROJECT" ? (

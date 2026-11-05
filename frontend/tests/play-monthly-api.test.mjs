@@ -575,7 +575,7 @@ test("the literal play path is never taken as a legacy id", async () => {
   assert.deepEqual(Object.keys(items[0]).includes("profile_ref"), false);
 });
 
-test("a confirmed plan is 409 ALREADY_CONFIRMED on every change, and cannot be deleted", async () => {
+test("a confirmed plan is 409 ALREADY_CONFIRMED on every change, and can be deleted (ADR-062)", async () => {
   const { id, rev, plan } = await seeded(true);
   const confirmed = (p) =>
     rejects(p, 409, "ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.", []);
@@ -583,15 +583,10 @@ test("a confirmed plan is 409 ALREADY_CONFIRMED on every change, and cannot be d
   await confirmed(pm.placePlayMonthlySafety(id, "2026-11-W1", null, rev));
   await confirmed(pm.copyPlayMonthlyDrill(id, plan.drill_candidates[0].cell.item_id, rev));
   await confirmed(pm.removePlayMonthlyActivity(id, plan.together[0].activity_id, rev));
-  await rejects(
-    pm.deletePlayMonthly(id),
-    409,
-    "GATE_BLOCKED",
-    "확정된 계획안은 지울 수 없습니다.",
-    [],
-  );
   assert.equal((await pm.getPlayMonthly(id)).status, "CONFIRMED");
   assert.equal((await pm.listPlayMonthly()).items[0].confirmed_at !== null, true);
+  await pm.deletePlayMonthly(id);
+  assert.equal((await pm.listPlayMonthly()).items.length, 0);
 });
 
 test("timetable: split, remove, ratio and size follow the server limits; export is confirmed-only", async () => {

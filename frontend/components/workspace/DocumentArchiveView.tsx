@@ -24,8 +24,9 @@ import {
 } from "@/lib/workspace/document-archive";
 import { classServerId } from "@/lib/api/onboarding";
 import { listMonthlyPlans } from "@/lib/api/monthly";
+import { listPlayMonthly } from "@/lib/api/playMonthly";
 import { listWeeklyPlans } from "@/lib/api/weekly";
-import type { AnnualPlanSummary, MonthlyPlanSummary, WeeklyPlanSummary } from "@/lib/api/types";
+import type { AnnualPlanSummary, PlayMonthlySummary, WeeklyPlanSummary } from "@/lib/api/types";
 import { ageSelectionLabel, selectedAgesFor, type ClassroomEntry } from "@/lib/onboarding/types";
 import type { RecordKind } from "@/lib/api/documents";
 import { Message, ws } from "./WorkspaceUI";
@@ -129,6 +130,7 @@ export default function DocumentArchiveView({
   onPickClass,
   documents,
   annual,
+  onAnnualChanged,
   activeId,
   editingId,
   onBackToPreview,
@@ -144,6 +146,8 @@ export default function DocumentArchiveView({
   onPickClass: (id: string) => void;
   documents: ArchiveDoc[];
   annual: AnnualPlanSummary[] | null;
+  /** 연간을 지운 뒤 목록을 다시 받는다 — 연간 목록은 부른 쪽이 가진다. */
+  onAnnualChanged: () => void;
   activeId: string;
   editingId: string;
   onBackToPreview: () => void;
@@ -211,11 +215,14 @@ export default function DocumentArchiveView({
     setChildSearch("");
   }
 
+  // 주제형 · 놀이 중심 월간을 한 목록에 둔다 — 놀이 월간도 보여야 지울 수 있다(놀이 연간을 지우려면 먼저).
   const [monthly, setMonthly] = useState<{
     classId: number;
-    items: MonthlyPlanSummary[];
+    items: (PlayMonthlySummary & { play?: boolean })[];
     error: string;
   } | null>(null);
+  // 계획안을 지우면 올린다 — 월간 · 주간 목록을 다시 받는다.
+  const [planReload, setPlanReload] = useState(0);
   const [weekly, setWeekly] = useState<{
     key: string;
     items: WeeklyPlanSummary[];
@@ -226,8 +233,16 @@ export default function DocumentArchiveView({
   useEffect(() => {
     if (!needMonthly || serverClassId === null) return;
     let live = true;
-    listMonthlyPlans(serverClassId)
-      .then(({ items }) => live && setMonthly({ classId: serverClassId, items, error: "" }))
+    Promise.all([listMonthlyPlans(serverClassId), listPlayMonthly(serverClassId)])
+      .then(
+        ([theme, play]) =>
+          live &&
+          setMonthly({
+            classId: serverClassId,
+            items: [...theme.items, ...play.items.map((p) => ({ ...p, play: true }))],
+            error: "",
+          }),
+      )
       .catch(
         (e: unknown) =>
           live &&
@@ -240,7 +255,7 @@ export default function DocumentArchiveView({
     return () => {
       live = false;
     };
-  }, [needMonthly, serverClassId]);
+  }, [needMonthly, serverClassId, planReload]);
 
   const weekKey = type === "weekly" && serverClassId !== null ? `${serverClassId}|${month}` : "";
   useEffect(() => {
@@ -261,7 +276,7 @@ export default function DocumentArchiveView({
     return () => {
       live = false;
     };
-  }, [weekKey]);
+  }, [weekKey, planReload]);
 
   // 서버 반 번호로 거른다. 반 이름이 같아도 다른 반의 문서가 섞이면 안 된다.
   const annualOfClass = useMemo(
@@ -317,6 +332,11 @@ export default function DocumentArchiveView({
   function closePreview() {
     setPlanPreview(null);
     onCloseDetail();
+  }
+  function planDeleted(kind: PlanPreviewTarget["kind"]) {
+    closePreview();
+    if (kind === "annual") onAnnualChanged();
+    else setPlanReload((n) => n + 1);
   }
 
   const days = useMemo(() => weekDays(day), [day]);
@@ -490,13 +510,19 @@ export default function DocumentArchiveView({
                   period: p.target_month,
                   periodKey: p.target_month,
                   createdAt: p.created_at,
-                  href: `/plans/monthly?plan_id=${p.id}&class_id=${p.class_id}&month=${p.month}`,
+                  href: p.play
+                    ? `/plans/monthly/play/${p.id}`
+                    : `/plans/monthly?plan_id=${p.id}&class_id=${p.class_id}&month=${p.month}`,
+                  play: p.play,
                 })
               }
             >
               <div className={styles.cover} data-type="monthly">
                 <b>{monthLabel(p.target_month)}</b>
-                <small>{classroom?.className}</small>
+                <small>
+                  {classroom?.className}
+                  {p.play ? " · 놀이 중심형" : ""}
+                </small>
                 <MonthlyCover month={p.month} className={styles.coverArt} />
               </div>
               <div className={styles.docTitle}>{p.month}월 월간계획안</div>
@@ -513,7 +539,7 @@ export default function DocumentArchiveView({
 
   function weeklyView() {
     const items = sorted([...weeklyOfMonth].sort((a, b) => (a.week_id < b.week_id ? 1 : -1)));
-    const parent = monthlyOfClass.find((p) => p.target_month === month);
+    const parent = monthlyOfClass.find((p) => !p.play && p.target_month === month);
     return (
       <>
         <PeriodNav
@@ -873,6 +899,7 @@ export default function DocumentArchiveView({
                     <PlanArchivePreview
                       key={`${shownPlan.kind}:${shownPlan.id}`}
                       target={shownPlan}
+                      onDeleted={() => planDeleted(shownPlan.kind)}
                     />
                   )}
                 </aside>

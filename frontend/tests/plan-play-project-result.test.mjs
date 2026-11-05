@@ -117,14 +117,12 @@ const plansStub = {
   isSaveConflict: (error) => error?.status === 409,
   errorFields: (error) => error?.body?.error?.fields ?? [],
   downloadAnnualHwpx: async () => {},
-  unconfirmAnnualPlan: async () => {},
 };
 const frameModules = {
   "next/link": esModule((props) => jsx("a", props)),
   "@/components/workspace/WorkspaceUI": { Tape: () => null },
   "@/lib/api/plans": plansStub,
   "@/lib/hooks/use-hwpx-download": { useHwpxDownload: () => ({ exporting: false }) },
-  "./UnconfirmButton": esModule((props) => jsx("unconfirm", props)),
   "./playProjectPagination": sheetHelpers,
 };
 
@@ -309,7 +307,7 @@ test("confirm asks first, waits for the queue, then confirms with its revision",
   const dialog = all(render()).find((n) => n.type === "confirm-dialog");
   assert.equal(
     dialog.props.message,
-    "확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 월간계획안을 만들게 돼요.",
+    "확정하면 고칠 수 없어요(고치려면 문서 보관함에서 지우고 다시 만들어요). 이 내용으로 월간계획안을 만들게 돼요.",
   );
   assert.equal(dialog.props.no, "더 다듬기");
   await dialog.props.onYes();
@@ -421,11 +419,8 @@ test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ wi
   );
   assert.equal(done.props.pages[0].props.className, "햇살반");
   assert.equal(compact.at(-1), false, "확정본은 펼친다");
-  done.props.onUnconfirmed({ ...pp, status: "DRAFT" });
-  assert.ok(
-    all(render()).some((n) => n.type === "play-result"),
-    "확정을 풀면 ⑤ 로 돌아간다",
-  );
+  // 확정 취소는 없다(ADR-062) — 확정본 화면은 되돌리는 손잡이를 받지 않는다.
+  assert.equal(done.props.onUnconfirmed, undefined);
 });
 
 test("phone period tabs use two grid columns in the 767px media block", () => {

@@ -6,11 +6,7 @@ import workspace from "@/components/workspace/Workspace.module.css";
 import { ApiError } from "@/lib/api/client";
 import { getMe } from "@/lib/api/auth";
 import { getClasses } from "@/lib/api/classes";
-import {
-  downloadPlayMonthlyHwpx,
-  getPlayMonthly,
-  unconfirmPlayMonthly,
-} from "@/lib/api/playMonthly";
+import { downloadPlayMonthlyHwpx, getPlayMonthly } from "@/lib/api/playMonthly";
 import type { PlayMonthlyPlan } from "@/lib/api/types";
 import { usePlayMonthlySave } from "@/lib/hooks/use-play-monthly-save";
 import {
@@ -44,12 +40,10 @@ import AnnualFrame, {
   BigView,
   BUTTON,
   PlanDone,
-  UNCONFIRM,
   tabClass,
   UndoRedo,
   useSheetZoom,
 } from "./AnnualFrame";
-import UnconfirmButton from "./UnconfirmButton";
 import { PlanMemoNote } from "./PlanMemo";
 
 const STALE_NOTICE = "다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.";
@@ -135,11 +129,6 @@ export default function PlayMonthlyView({ id }: { id: number }) {
         ),
     );
   }
-  // 확정을 풀면 응답으로 바꾸고 번호를 올려 다시 그린다 — 확정 뒤 멈춘 저장 줄을 새로 시작한다.
-  function replace(fresh: PlayMonthlyPlan) {
-    ++lastReload.current;
-    setLoaded((cur) => ({ key, plan: fresh, error: "", version: (cur?.version ?? 0) + 1 }));
-  }
   const current = loaded?.key === key ? loaded : null;
   const plan = current?.plan ?? null;
   const error = valid ? (current?.error ?? "") : "올바른 계획안 주소가 아닙니다.";
@@ -192,7 +181,6 @@ export default function PlayMonthlyView({ id }: { id: number }) {
       className={names?.classId === plan.class_id ? names.name : ""}
       notice={current?.notice}
       onConflict={reloadAfterConflict}
-      onReplace={replace}
     />
   );
 }
@@ -216,13 +204,11 @@ function PlayMonthlyBody({
   className,
   notice,
   onConflict,
-  onReplace,
 }: {
   initial: PlayMonthlyPlan;
   className: string;
   notice?: string;
   onConflict: (partial?: boolean) => void;
-  onReplace: (plan: PlayMonthlyPlan) => void;
 }) {
   const [plan, setPlan] = useState(initial);
   // 입력 중 글(문서가 바로 따라간다) · 고른 칸 · 입력창을 다시 열 번호(되돌리기 · 거절) · 안내.
@@ -527,21 +513,11 @@ function PlayMonthlyBody({
           label: `${(plan.month % 12) + 1}월 월간 만들기 →`,
           hint: "놀이 중심형은 주간 없이 다음 달로 가요",
         }}
-        unconfirm={
+        notes={
           <>
             {notice && <span role="status">{notice}</span>}
             {plan.parent_changed && <span role="status">상위 계획안이 바뀌었어요</span>}
             {message && <span role="status">{message}</span>}
-            <UnconfirmButton
-              message="확정을 풀면 다시 고칠 수 있어요."
-              className={UNCONFIRM}
-              run={() => unconfirmPlayMonthly(plan.id, plan.revision)}
-              onDone={onReplace}
-              onConflict={() => {
-                setStopped(true);
-                onConflict();
-              }}
-            />
           </>
         }
       />
@@ -576,7 +552,7 @@ function PlayMonthlyBody({
             plan={plan}
             ask={
               (blankRows.length ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
-              "확정하면 확정을 풀기 전까지 고칠 수 없어요." +
+              "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 지우고 다시 만들어요." +
               (plan.notices.length ? ` 확인할 것 ${plan.notices.length}개가 남았어요.` : "")
             }
             // 빈칸으로 가면 확정 창을 닫는다(주제형 월간 · 주간과 같다).

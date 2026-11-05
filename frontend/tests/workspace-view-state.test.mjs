@@ -555,6 +555,7 @@ test("보관함은 놀이 프로젝트형 연간계획안의 둘째 줄에만 �
     "@/lib/api/onboarding": { classServerId: () => 3 },
     "@/lib/onboarding/types": {},
     "@/lib/api/monthly": {},
+    "@/lib/api/playMonthly": {},
     "@/lib/api/weekly": {},
     "./DocumentArchivePreview": { PlanArchivePreview: "plan-preview" },
     // 같은 원 남의 반은 제 파일이 본다. 여기서는 내 반 보관함만 그린다.

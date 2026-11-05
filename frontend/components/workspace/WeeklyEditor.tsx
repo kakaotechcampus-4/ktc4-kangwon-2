@@ -22,14 +22,12 @@ import {
   removeWeeklyActivityCell,
   removeWeeklyIndoorPlay,
   splitWeeklyActivityCell,
-  unconfirmWeeklyPlan,
 } from "@/lib/api/weekly";
 import type { WeeklyCell, WeeklyPlan } from "@/lib/api/types";
 import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
 import { findingLines } from "@/lib/monthly/findings";
 import PlayMonthlyConfirm, { BlankRows } from "@/components/plan-generator/PlayMonthlyConfirm";
-import UnconfirmButton from "@/components/plan-generator/UnconfirmButton";
 import { CARD, PICKED, PUT } from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import AnnualFrame, {
   BACK_BUTTON,
@@ -38,7 +36,6 @@ import AnnualFrame, {
   BUTTON,
   PlanDone,
   POPOVER,
-  UNCONFIRM,
   tabClass,
   UndoRedo,
   useSheetZoom,
@@ -338,7 +335,7 @@ export default function WeeklyEditor({
     afterSaves(
       "confirm",
       (cur) => confirmWeeklyPlan(cur.id, cur.revision),
-      "확정했어요. 고치려면 확정을 풀어 주세요.",
+      "확정했어요. 고치려면 문서 보관함에서 지우고 다시 만들어 주세요.",
     );
 
   const shown = (cell: WeeklyCell) => live[cell.item_id] ?? cell.value;
@@ -634,7 +631,7 @@ export default function WeeklyEditor({
           hint: `${month}월 월간에서 아직 만들지 않은 주를 이어서 만들어요`,
           onClick: onBack,
         }}
-        unconfirm={
+        notes={
           <>
             {notice}
             {problem && (
@@ -644,13 +641,6 @@ export default function WeeklyEditor({
             )}
             {message && <span role="status">{message}</span>}
             {plan.parent_changed && <span role="status">월간계획안이 바뀌었어요</span>}
-            <UnconfirmButton
-              message="확정을 풀면 다시 고칠 수 있어요."
-              className={UNCONFIRM}
-              run={() => unconfirmWeeklyPlan(latest.current.id, latest.current.revision)}
-              onDone={accept}
-              onConflict={conflict}
-            />
           </>
         }
       />
@@ -710,7 +700,7 @@ export default function WeeklyEditor({
                 <PlayMonthlyConfirm
                   message={
                     (blanks.length ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
-                    "확정하면 확정을 풀기 전까지 고칠 수 없어요. 확정한 주간은 한글 파일로 내려받을 수 있어요."
+                    "확정하면 고칠 수 없어요(고치려면 문서 보관함에서 지우고 다시 만들어요). 확정한 주간은 한글 파일로 내려받을 수 있어요."
                   }
                   yes="확정하기"
                   no="더 다듬기"
