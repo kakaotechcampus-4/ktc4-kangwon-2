@@ -344,7 +344,7 @@ def build_weekly_request(
         *(label for _, label in reference_candidates),
     ])
     suffix = DAY_CELLS_SUFFIX if any(t.days for t in targets) else ""
-    candidates = "+activity-candidates-v1" if any(t.activity_type is not None for t in targets) else ""
+    candidates = "+activity-candidates-v2" if any(t.activity_type is not None for t in targets) else ""
     if candidates:
         source_refs |= {t.section_key for t in targets if t.activity_type is not None}
     memo = _memo_addresses(targets) if teacher_memo else None
@@ -362,6 +362,10 @@ def build_weekly_request(
         system_prompt += (
             " activity_type가 있는 target은 교사가 고를 한 주 활동 후보이며 요일에 배치하지 않는다. "
             "각 후보는 Rule이 정한 그 유형과 허용 근거로 짧은 활동명: 설명을 쓴다. 유형 이름은 value에 붙이지 않는다. "
+            "활동명은 문서에 단독으로 들어가므로, 허용 근거에 드러난 대상과 핵심 놀이 행동을 짧은 이름에도 남긴다. "
+            "근거의 행동을 설명에만 두고 활동명을 소재나 주제만 남도록 줄이지 않는다. "
+            "작품명과 역할놀이의 익숙한 이름은 자연스럽게 유지하고, 모든 제목에 같은 행동어를 억지로 붙이지 않는다. "
+            "이름과 설명 모두 근거에 없는 행동·재료·절차를 보태지 않는다. "
             "후보를 부모 소주제와 일치시키려고 대상을 바꾸거나 모두 같은 놀이로 만들지 않는다. "
             "같은 Section의 후보끼리 활동 이름이 겹치지 않게 하되 근거에 없는 활동으로 개수를 채우지 않는다. "
             "indoor_play.candidate로 시작하는 target도 같은 형식의 실내 자유놀이 후보다. "

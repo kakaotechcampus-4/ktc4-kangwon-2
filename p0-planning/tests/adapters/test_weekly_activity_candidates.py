@@ -105,27 +105,38 @@ def test_foreign_candidate_and_narrow_splits_do_not_save():
     assert harness.weekly_plans.get(plan.plan_id) is plan
 
 
-def test_bad_candidate_format_repairs_once_and_records_the_repair_version():
+@pytest.mark.parametrize("indoor", [False, True])
+def test_bad_candidate_format_repairs_once_and_records_the_repair_version(indoor):
+    section = "indoor_play" if indoor else "group_activity"
+
     class BrokenOnce(RequestAwareWeeklyLlm):
         def generate_weekly(self, request):
             response = super().generate_weekly(request)
             if len(self.requests) != 1:
                 return response
             answer = json.loads(response.content)
-            candidate = next(s for s in answer["sections"] if s["section_key"].startswith("group_activity.candidate."))
+            candidate = next(s for s in answer["sections"] if s["section_key"].startswith(section + ".candidate."))
             candidate["value"] = "An activity without its description"
             return replace(response, content=json.dumps(answer))
 
     harness, provider = WeeklyHarness(), BrokenOnce()
     parent = harness.monthly_parent(mode=MonthlyGenerationMode.LLM_PLANNER)
-    plan = _day_generation(harness, provider).execute(replace(_day_command(parent), activity_candidates=True)).plan
+    plan = _day_generation(harness, provider).execute(replace(
+        _day_command(parent), activity_candidates=True, indoor_play_candidates=indoor,
+    )).plan
     assert len(provider.requests) == 2
-    assert plan.activity_candidates[0].cell.generation.rule_version == provider.requests[0].repair_prompt_version
+    repaired = next(c for c in plan.activity_candidates if c.cell.section_key == section)
+    assert repaired.cell.generation.rule_version == provider.requests[0].repair_prompt_version
     from ssuksak.planning.planner.weekly import LINKED_OUTDOOR_INSTRUCTION, LINKED_WRITING_GUIDANCE
     for request in provider.requests:
         assert "+monthly-linked-v7" in request.prompt_version
+        assert "허용 근거에 드러난 대상과 핵심 놀이 행동을 짧은 이름에도 남긴다" in request.system_prompt
+        assert "+activity-candidates-v2" in request.prompt_version
+        assert "+activity-candidates-v2" in request.repair_prompt_version
         assert LINKED_OUTDOOR_INSTRUCTION in request.system_prompt
         assert LINKED_WRITING_GUIDANCE in request.system_prompt
+        assert "작품명과 역할놀이의 익숙한 이름은 자연스럽게 유지" in request.system_prompt
+        assert "이름과 설명 모두 근거에 없는 행동·재료·절차를 보태지 않는다" in request.system_prompt
 
 
 def test_candidate_generation_and_repair_use_streaming_with_an_output_cap():

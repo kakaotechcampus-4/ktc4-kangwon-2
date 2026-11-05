@@ -111,6 +111,8 @@ def test_day_composition_links_approved_context_and_parent_play_through_regenera
     assert LINKED_WRITING_GUIDANCE in request.system_prompt
     assert "parent의 같은 주 indoor_alternative" in request.system_prompt
     assert "'활동명: 설명'" in request.system_prompt
+    assert "+activity-candidates-" not in request.prompt_version
+    assert "활동명은 문서에 단독으로 들어가므로" not in request.system_prompt
     assert "근거에 없는 새 재료·실험 비교 조건·진행 순서·정해진 결과물" in request.system_prompt
     branches = weekly_response_schema(request)["properties"]["sections"]["items"]["anyOf"]
     assert any(b["properties"]["section_key"]["enum"] == ["outdoor_play"]
