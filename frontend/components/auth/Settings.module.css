@@ -16,7 +16,8 @@
   border: 0;
   background: none;
   font-family: var(--font-display), sans-serif;
-  font-size: 15px;
+  /* 손글씨는 같은 px 에서 본문 글꼴보다 작아 보인다. 묶음 제목이라 시안 크기(19 · 고른 탭 22)를 따른다. */
+  font-size: 19px;
   font-weight: 700;
   color: var(--pg-ink-soft);
   /* 찢긴 끝까지 그림자가 따라가게 box-shadow 가 아니라 drop-shadow 를 쓴다. */
@@ -44,6 +45,7 @@
 }
 .tab[aria-selected="true"] {
   z-index: 3;
+  font-size: 22px;
   margin-bottom: -18px;
   color: var(--pg-ink);
   filter: drop-shadow(0 2px 3px rgba(106, 96, 80, 0.32));
@@ -600,6 +602,12 @@
   .tabs {
     gap: 6px;
     padding-left: 8px;
+  }
+  .tab {
+    font-size: 17px;
+  }
+  .tab[aria-selected="true"] {
+    font-size: 19px;
   }
   .tab span {
     padding: 6px 16px;
