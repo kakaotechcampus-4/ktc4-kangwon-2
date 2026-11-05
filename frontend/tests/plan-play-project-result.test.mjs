@@ -226,7 +226,20 @@ test("helpers: five picks in order, moves, removal focus, and the left tab keys"
     "cand2",
     "cand4",
   ]);
-  assert.equal(placePlayPick(FULL, "cand9", "cand0"), FULL);
+  // 다른 후보를 끌어 놓으면 다 찼을 때는 그 줄과 바뀌고, 자리가 남으면 그 줄 앞에 들어간다.
+  assert.deepEqual(placePlayPick(FULL, "cand9", "cand1"), [
+    "cand0",
+    "cand9",
+    "cand2",
+    "cand3",
+    "cand4",
+  ]);
+  assert.deepEqual(placePlayPick(["cand0", "cand1"], "cand9", "cand1"), [
+    "cand0",
+    "cand9",
+    "cand1",
+  ]);
+  assert.equal(placePlayPick(FULL, "cand9", "cand8"), FULL);
   assert.equal(placePlayPick(FULL, "cand2", "cand2"), FULL);
   assert.equal(removeFocusSlot(3, 1), 1);
   assert.equal(removeFocusSlot(3, 2), null);
@@ -424,21 +437,51 @@ test("phone period tabs use two grid columns in the 767px media block", () => {
   const wrapping = mobile.match(/\.wrappingTabs\s*\{([^}]+)\}/)[1];
   assert.match(wrapping, /display:\s*grid\s*;/);
   assert.match(wrapping, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)\s*;/);
-  // ④ 계절 탭은 Tailwind 로 같은 배치 — 좁으면 두 열, md 부터 한 줄.
+  // ④ · ⑤ 계절 탭은 한 줄 모양(⑤ 문서 머리줄 것)을 같이 쓴다 — flex-wrap 이라 좁으면 다음 줄로 내려간다.
   const result = readFileSync(
     new URL("../components/plan-generator/PlayProjectResult.tsx", import.meta.url),
     "utf8",
   );
-  // ④ 탭 줄(md:flex 를 쓰는 쪽)만 본다. ⑤ 탭 줄은 머리줄 · flex-wrap 이라 넘치지 않는다.
-  const pick = [
+  const bars = [
     ...result.matchAll(
-      /role="tablist"\s*\n\s*aria-label="놀이 프로젝트 기간"\s*\n\s*className="([^"]+)"/g,
+      /role="tablist"\s*\r?\n\s*aria-label="놀이 프로젝트 기간"\s*\r?\n\s*className="([^"]+)"/g,
     ),
-  ]
-    .map((m) => m[1])
-    .find((c) => c.includes("md:flex"));
-  assert.match(pick, /\bgrid-cols-2\b/);
-  assert.match(pick, /\bmd:flex\b/);
+  ].map((m) => m[1]);
+  assert.equal(bars.length, 1);
+  assert.match(bars[0], /\bflex-wrap\b/);
+});
+
+test("④ uses the same season tabs as ⑤; ⑤ drags 다른 후보 in and out; 크게 보기 has its own zoom", () => {
+  saveStub.calls = [];
+  const render = renderer(fullPlan(), {});
+  const tabs = (tree) =>
+    all(tree).filter(
+      (n) => n.props?.role === "tablist" && n.props["aria-label"] === "놀이 프로젝트 기간",
+    );
+  const short = renderer(plan());
+  assert.equal(tabs(short()).length, 1, "④ 에도 같은 탭 줄");
+  // 다른 후보 「놀이 7」을 고른 놀이 2번째 줄(놀이 1)에 끌어 놓으면 그 줄과 바뀐다.
+  const drag = (rowKey) => ({
+    preventDefault() {},
+    stopPropagation() {},
+    currentTarget: { dataset: {} },
+    dataTransfer: { getData: () => rowKey },
+  });
+  const pickedRow = all(render()).find(
+    (n) => n.type === "li" && n.props.onDrop && text(n).startsWith("놀이 1종이 상자"),
+  );
+  pickedRow.props.onDrop(drag("cand7"));
+  assert.deepEqual(saveStub.calls.at(-1).period0, ["cand0", "cand7", "cand2", "cand3", "cand4"]);
+  // 고른 놀이를 「다른 후보」로 끌어 오면 뺀다.
+  const rest = all(render()).find(
+    (n) => n.type === "section" && n.props.onDrop && text(n).startsWith("다른 후보"),
+  );
+  rest.props.onDrop(drag("cand2"));
+  assert.deepEqual(saveStub.calls.at(-1).period0, ["cand0", "cand7", "cand3", "cand4"]);
+  const zoomIns = () => all(render()).filter((n) => n.props?.["aria-label"] === "문서 확대");
+  assert.equal(zoomIns().length, 1);
+  button(render(), "⤢ 크게 보기").props.onClick();
+  assert.equal(zoomIns().length, 2, "읽기 전용 창에도 − · +");
 });
 
 test("PlayProjectResult does not use browser storage", () => {
