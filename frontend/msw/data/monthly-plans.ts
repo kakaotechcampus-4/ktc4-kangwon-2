@@ -436,8 +436,9 @@ const shownSafety = (c: MonthlyPlan["safety_candidates"][number]) =>
     : "[" + (c.kind === "STATUTORY" ? LABELS[c.category_id!] : "생활안전") + "] - " + c.cell.value;
 /** 주별 표시 문장과 빈 주 안내. 서버처럼 저장하지 않고 응답마다 계산한다(확정을 막지 않는다). */
 export const safetyView = (p: MonthlyPlan) => {
-  const byId = new Map(p.safety_candidates.map((c) => [c.cell.item_id, c]));
-  const weeks = p.safety_weeks.map((w) => {
+  // 후보를 넣기 전에 저장된 옛 목업 계획안에는 두 목록이 없다.
+  const byId = new Map((p.safety_candidates ?? []).map((c) => [c.cell.item_id, c]));
+  const weeks = (p.safety_weeks ?? []).map((w) => {
     const c = w.candidate_item_id ? byId.get(w.candidate_item_id) : undefined;
     return { ...w, display_value: c ? shownSafety(c) : "" };
   });

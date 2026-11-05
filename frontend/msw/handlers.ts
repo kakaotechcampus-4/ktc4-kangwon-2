@@ -1503,12 +1503,7 @@ const monthlyOut = (p: MonthlyPlan) => ({
   ...p,
   parent_changed: annualChanged(p.parent.annual_plan_id, p.parent.confirmed_at),
   drill_candidates: p.drill_candidates ?? [],
-  // 옛 목업 저장본(후보 없음)도 그대로 읽힌다.
-  ...safetyView({
-    ...p,
-    safety_candidates: p.safety_candidates ?? [],
-    safety_weeks: p.safety_weeks ?? [],
-  }),
+  ...safetyView(p),
 });
 const weeklyOut = (p: WeeklyPlan) => ({ ...p, parent_changed: monthlyChanged(p) });
 const weeklyMissing = () => failure("NOT_FOUND", "주간계획안을 찾을 수 없습니다.", "id");
