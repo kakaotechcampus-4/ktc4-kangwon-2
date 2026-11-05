@@ -125,7 +125,23 @@ export default function OnboardingLayout({
               </div>
             )}
 
-            <main className="flex flex-1 flex-col px-6 pb-6 pt-7 sm:px-10">{children}</main>
+            <main className="flex flex-1 flex-col px-6 pb-6 pt-7 sm:px-10">
+              {children}
+              {/* 칠판에 썼다가 지우다 만 서비스 문구(소개 화면과 같은 말). 글 흐름 맨 아래라 내용과 겹치지 않고,
+                  빈 곳이 있으면 그 아래쪽에 앉는다. 장식이라 읽히지 않게 하고, 빈 곳이 없는 휴대폰에서는 숨긴다. */}
+              {stage && (
+                <p
+                  aria-hidden="true"
+                  className="pointer-events-none mt-auto hidden select-none pt-10 font-display text-[40px] font-bold leading-[1.15] text-ink opacity-[0.1] [filter:url(#chalk-text)] md:block lg:text-[48px]"
+                >
+                  쌤의 계획이
+                  <br />
+                  쉬워지는 순간,
+                  <br />
+                  <span className="text-primary">쌤플.</span>
+                </p>
+              )}
+            </main>
           </div>
 
           {stage && <PostyPanel say={say} live={live} />}
