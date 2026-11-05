@@ -9,6 +9,7 @@ import type {
   MonthlyPlanSummary,
   ReadyProfile,
 } from "../../lib/api/types";
+import { drillText } from "../../lib/monthly/section-labels";
 
 /**
  * 월간계획안 목업 (docs/api-spec.md §9-1 · §9-3). 양식 설정은 template-profiles.ts 다.
@@ -364,7 +365,8 @@ export const placeMonthlySafety = (id: number, weekId: string, candidate: string
 export const copyMonthlyDrill = (id: number, itemId: string) =>
   commit((db) => {
     const plan = db.monthlyPlans.find((p) => p.id === id)!;
-    const from = plan.drill_candidates.find((d) => d.cell.item_id === itemId)!.cell;
+    const drill = plan.drill_candidates.find((d) => d.cell.item_id === itemId)!;
+    const from = { ...drill.cell, value: drillText(drill) };
     const to = plan.sections.find((s) => s.section_key === "drill")!.cells[0];
     const audit = (db.monthlyAudit[id] ??= { plan: [], cells: {} });
     const log = (audit.cells[to.item_id] ??= []);

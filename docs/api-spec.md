@@ -2050,7 +2050,8 @@ item_id            문자열.  §9-1 drill_candidates[].cell.item_id.  형식이
 expected_revision  위와 같다
 ```
 
-- 그 훈련 후보의 문장과 근거를 그 시점 그대로 훈련 문서 칸에 복사한다. 칸은 `RULE_ONLY` 가 되고 근거는 후보의 근거가 된다.
+- 그 훈련 후보의 문장과 근거를 그 시점 그대로 훈련 문서 칸에 복사한다. 칸 값은 「[주제 label]」 다음 줄에 문장이다(안전교육 칸과 같은 모양,
+  Human Decision 2026-11-05(하민)). 칸은 `RULE_ONLY` 가 되고 근거는 후보의 근거가 된다.
   복사한 뒤 후보와 칸은 서로 따라가지 않는다. 성공하면 revision +1 · 변경 이력에 `CANDIDATE_COPIED`(§9-5) · §9-1 응답.
 - **같은 복사면 저장하지 않는다.** 칸이 이미 그 후보의 복사본이면 200 · 저장된 그대로(revision · 이력 그대로)다.
 - 복사한 칸은 기존 `PUT .../cells/{훈련 칸 item_id}`(§9-3 칸 편집)로 고칠 수 있다. **빈 훈련 칸에 교사가 처음 쓰면 `MANUAL`** 이다
@@ -2808,7 +2809,7 @@ notices[].code        SAFETY_UNPLACED · SAFETY_BLANK · HABIT_BLANK · HEALTH_B
 | `POST .../activities` | `{ "section": "together", "expected_revision": 3 }` | 그 구간 맨 끝에 빈 행을 더한다. `section` 은 `together` · `free_play`. 새 칸은 쓰기 전까지 `generation: null`. `ARRANGEMENT_CHANGED` |
 | `DELETE .../activities/{item_id}?expected_revision=3` | 없음 | 행을 문서에서 뺀다. 이력에는 남고 id 는 다시 쓰지 않는다. 되돌리기 · 순서 바꾸기는 없다. `ARRANGEMENT_CHANGED` |
 | `PUT .../safety-weeks/{week_id}` | `{ "candidate_item_id": "item_41", "expected_revision": 3 }` | 그 주에 둘 안전 후보를 정한다. `null` 이면 비운다. **`candidate_item_id` 키는 필수이고 값만 null 일 수 있다** — 키가 없으면 422. `ARRANGEMENT_CHANGED` |
-| `POST .../drill-candidates/{item_id}/copy` | `{ "expected_revision": 3 }` | 그 훈련 후보를 「소방대피/재난대비」 교사 입력 칸에 복사한다(그 시점의 값과 근거). 칸은 `RULE_ONLY`(`play_monthly.drill_copy`). `CANDIDATE_COPIED` |
+| `POST .../drill-candidates/{item_id}/copy` | `{ "expected_revision": 3 }` | 그 훈련 후보를 「소방대피/재난대비」 교사 입력 칸에 복사한다(그 시점의 값과 근거, 값은 「[주제 label]」 다음 줄에 문장 — 2026-11-05). 칸은 `RULE_ONLY`(`play_monthly.drill_copy`). `CANDIDATE_COPIED` |
 
 ```
 value                 문자열.  필수.  앞뒤 공백을 털고 0~600자.  빈 값을 받는다(칸을 비운다).  600자 근거는 ADR-046 §6
