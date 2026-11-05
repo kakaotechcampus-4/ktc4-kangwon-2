@@ -59,7 +59,11 @@ const { firstWeeklyMonth, firstOpenWeek, inheritWeek } = load(
     "@/lib/onboarding/settings": {},
     "@/lib/onboarding/types": { MONTH_ORDER, planClassLine: (c) => c.className },
     "@/lib/hooks/use-client-state": {},
-    "@/components/plan-ui/GenerationRing": { __esModule: true, default: stub },
+    "@/components/plan-ui/GenerationRing": {
+      __esModule: true,
+      default: stub,
+      ringFinished: async () => {},
+    },
     "@/components/plan-generator/PlanMemo": { PlanMemoField: stub, memoError: stub },
     "@/components/app/compact-shell": {},
     "./WorkspaceUI": {},

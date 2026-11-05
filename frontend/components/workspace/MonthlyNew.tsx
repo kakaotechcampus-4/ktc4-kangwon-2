@@ -39,7 +39,7 @@ import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { playSeason } from "@/components/plan-generator/playProjectPagination";
-import GenerationRing from "@/components/plan-ui/GenerationRing";
+import GenerationRing, { ringFinished } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { BACK_BUTTON, BACK_ICON } from "@/components/plan-generator/AnnualFrame";
 import { Tape, useClasses } from "./WorkspaceUI";
@@ -446,6 +446,7 @@ export default function MonthlyNew({
   const [focus, setFocus] = useState<string[]>([]);
   const [extras, setExtras] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
   const controller = useRef<AbortController | null>(null);
   useCompactShell(busy);
   useEffect(() => () => controller.current?.abort(), []);
@@ -521,6 +522,7 @@ export default function MonthlyNew({
     const ctl = new AbortController();
     controller.current = ctl;
     setBusy(true);
+    setDone(false);
     setProblem("");
     setMemoProblem(null);
     const note = memo.trim() ? { memo: memo.trim() } : {};
@@ -536,7 +538,10 @@ export default function MonthlyNew({
           },
           ctl.signal,
         );
-        if (!ctl.signal.aborted) router.push(`/plans/monthly/play/${plan.id}`);
+        if (ctl.signal.aborted) return;
+        setDone(true);
+        await ringFinished();
+        router.push(`/plans/monthly/play/${plan.id}`);
       } else if (template && centerId !== null) {
         let ref = sameColumns(current, template, extras) ? current!.profile_ref : null;
         if (!ref) {
@@ -558,7 +563,10 @@ export default function MonthlyNew({
           { class_id: classId, month, profile_ref: ref, ...note },
           ctl.signal,
         );
-        if (!ctl.signal.aborted) onOpen({ id: plan.id, classId, month });
+        if (ctl.signal.aborted) return;
+        setDone(true);
+        await ringFinished();
+        onOpen({ id: plan.id, classId, month });
       }
     } catch (e) {
       // 취소했거나 새 요청이 시작됐으면 이 요청은 화면을 바꾸지 않는다(새 요청의 busy 도 풀지 않는다).
@@ -595,7 +603,11 @@ export default function MonthlyNew({
     return (
       <div className="flex min-h-[calc(100vh-60px)]">
         <GenerationRing
+          kind={play ? "monthly:PLAY_PROJECT" : "monthly:MONTHLY_THEME"}
+          // Sol 실측: 주제형 28초(2026-10-31) · 38초, 놀이 중심형 40 · 33 · 43초(2026-11-05).
+          expect={play ? 40 : 35}
           title={`${month}월 월간계획안을 만들고 있어요`}
+          done={done}
           steps={
             play
               ? LOOK.play.steps(month, inherit?.kind === "play" ? inherit.season : "")
