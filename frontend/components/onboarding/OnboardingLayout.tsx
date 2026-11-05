@@ -132,7 +132,9 @@ export default function OnboardingLayout({
               aria-hidden="true"
               className="flex-none px-6 pb-5 font-display text-[18px] font-bold text-ink-soft sm:px-10 sm:pb-6"
             >
-              쌤의 계획이 쉬워지는 순간, <span className="text-primary">쌤플.</span>
+              쌤의 계획이 쉬워지는 순간,
+              <br />
+              <span className="text-primary">쌤플.</span>
             </p>
           </div>
 
