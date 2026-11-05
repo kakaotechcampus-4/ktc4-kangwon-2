@@ -7,11 +7,12 @@ const SEJONG = "세종특별자치시";
 
 /**
  * 칸 하나 = 칠판에 적은 이름. 손글씨체는 읽기 어렵다는 시험 의견이 있어 기본 글씨체로 쓴다.
- * 마우스를 올리면(키보드로 가도) 노란 분필로 물결 밑줄이 그어진다.
- * 밑줄은 늘 있되 투명하다가 색만 바뀐다 — 줄이 생기고 사라져도 글자가 움직이지 않는다.
+ * 마우스를 올리면 이름을 분필 네모로 두른다(키보드로 가면 더 진한 흰 분필로).
+ * 테두리는 늘 있되 투명하다가 색만 바뀐다 — 네모가 생기고 사라져도 글자가 움직이지 않는다.
+ * 네모는 글자 양옆으로 조금 더 나가되(-mx · px), 글자 자리는 다른 칸과 그대로 맞는다.
  */
 const item =
-  "flex min-h-12 w-full items-center px-1 text-left text-[18px] font-bold leading-tight text-ink underline decoration-transparent decoration-wavy decoration-2 underline-offset-[7px] transition-[text-decoration-color] duration-150 hover:decoration-primary focus-visible:decoration-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none";
+  "-mx-2.5 inline-flex min-h-12 items-center rounded-[4px] border-[1.5px] border-transparent px-2.5 text-left text-[18px] font-bold leading-tight text-ink transition-colors duration-150 hover:border-ink-soft focus-visible:border-ink focus-visible:outline-none motion-reduce:transition-none";
 const iconButton =
   "inline-flex h-10 w-10 items-center justify-center squircle [--r:12px] text-ink-soft hover:bg-primary-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
 
