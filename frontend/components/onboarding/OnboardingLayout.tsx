@@ -145,8 +145,9 @@ export default function OnboardingLayout({
 
 /**
  * 카드 오른쪽 칸 위쪽 — 말풍선과 그 아래 손 흔드는 포스티. 아래쪽 버튼 자리는 OnboardingLayout 의 footer 다.
- * 말풍선은 친 글자만큼만 자란다. 포스티가 따라 움직이지 않도록 말풍선 자리(`h-[124px]`, 가장 긴 문구인
- * 4줄 높이)를 따로 잡고 그 아래쪽에 붙인다 — 글이 늘면 말풍선은 포스티 머리 위에서 위로 자란다.
+ * 말풍선은 친 글자만큼만 자란다 — 가로는 글 길이에 맞춰 가운데에서 양옆으로(칸 너비까지), 세로는 위로.
+ * 포스티가 따라 움직이지 않도록 말풍선 자리(`h-[124px]`, 가장 긴 문구인 4줄 높이)를 따로 잡고
+ * 그 아래쪽에 붙인다. 꼬리는 말풍선 가운데라 늘 포스티 위에 있다.
  */
 function PostyPanel({ say, live }: { say?: PostySay; live: boolean }) {
   return (
@@ -154,10 +155,10 @@ function PostyPanel({ say, live }: { say?: PostySay; live: boolean }) {
       aria-label="진행 안내"
       className="hidden flex-col items-center gap-[18px] border-l border-shell bg-ivory px-7 pt-6 md:col-start-2 md:row-start-1 md:flex"
     >
-      <div className="flex h-[124px] w-full flex-none flex-col justify-end">
+      <div className="flex h-[124px] w-full flex-none flex-col items-center justify-end">
         {say && (
           <div
-            className="paper relative w-full squircle [--r:16px] border border-line bg-paper px-4 py-3.5 text-left"
+            className="paper relative max-w-full squircle [--r:16px] border border-line bg-paper px-4 py-3.5 text-left"
             style={{ wordBreak: "keep-all" }}
           >
             <span
