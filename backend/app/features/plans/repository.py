@@ -15,6 +15,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from ssuksak.planning import InvalidDomainValueError, PlanId
 
+from app.features.centers.models import Class
 from app.features.plans.codec import from_jsonable, to_jsonable
 from app.features.plans.models import Plan
 
@@ -30,6 +31,12 @@ def _confirmed_at(body: dict) -> datetime | None:
         if event.get("event_type") == "CONFIRMED":
             return datetime.fromisoformat(event["occurred_at"])
     return None
+
+
+def _class_snapshot(session: Session, classroom_ref: str) -> dict[str, str]:
+    """확정하는 순간의 반 이름 · 담임 이름. 이후 반을 고쳐도 확정본은 이 값을 쓴다(ADR-062)."""
+    klass = session.get(Class, int(classroom_ref))
+    return {"class_name": klass.name, "teacher_name": klass.teacher_name}
 
 
 class PostgresPlanRepository[TPlan]:
@@ -68,6 +75,9 @@ class PostgresPlanRepository[TPlan]:
             "confirmed_at": _confirmed_at(body),
             "body": body,
         }
+        # 확정이 되는 저장에서만 찍는다. 확정 취소 뒤 다시 확정하면 그때의 반 값으로 덮는다.
+        if body["status"] == "CONFIRMED" and (row is None or row.status != "CONFIRMED"):
+            values |= _class_snapshot(self._session, values["classroom_ref"])
         if row is None:
             self._session.add(Plan(plan_ref=plan_id.value, sub_themes={}, **values))
         else:
@@ -98,6 +108,9 @@ class PostgresPlanRepository[TPlan]:
         if not isinstance(plan_id, PlanId):
             raise InvalidDomainValueError("PostgresPlanRepository requires PlanId keys")
         body = to_jsonable(plan)
+        snapshot = {}
+        if body["status"] == "CONFIRMED" and status != "CONFIRMED":
+            snapshot = _class_snapshot(self._session, str(plan.classroom_ref))
         statement = (
             update(Plan)
             .where(
@@ -112,6 +125,7 @@ class PostgresPlanRepository[TPlan]:
                 status=body["status"],
                 confirmed_at=_confirmed_at(body),
                 revision=Plan.revision + 1,
+                **snapshot,
             )
             .returning(Plan.revision)
             .execution_options(synchronize_session=False)

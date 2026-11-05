@@ -73,6 +73,11 @@ class Plan(Base):
         # 월간 · 주간은 대상 달을 가진다 — 주간은 그 주가 속한 달이다(목록을 달로 거른다).
         CheckConstraint("(kind = 'annual') = (target_month IS NULL)", name="target_month_kind"),
         CheckConstraint("(kind = 'weekly') = (week_id IS NOT NULL)", name="week_id_kind"),
+        # 확정본은 반 이름 · 담임 이름을 들고 있어야 한다 — 내보내기가 반을 새로 읽지 않는다.
+        CheckConstraint(
+            "status <> 'CONFIRMED' OR (class_name IS NOT NULL AND teacher_name IS NOT NULL)",
+            name="confirmed_has_class_snapshot",
+        ),
     )
 
     # 계약의 id 는 정수다(api-spec §4). 화면이 이미 정수로 만들어져 있다.
@@ -102,6 +107,14 @@ class Plan(Base):
     )
     status: Mapped[str] = mapped_column(
         String(20), comment="DRAFT | CONFIRMED. body 의 status 에서 꺼낸 값이다"
+    )
+    class_name: Mapped[str | None] = mapped_column(
+        String(50),
+        comment="확정할 때 찍은 반 이름. 내보내기가 쓴다 (ADR-010 결정 1 · ADR-062)",
+    )
+    teacher_name: Mapped[str | None] = mapped_column(
+        String(50),
+        comment="확정할 때 찍은 담임 이름. 지금 찍는 문서는 없다 (ADR-010 결정 1 · ADR-062)",
     )
     revision: Mapped[int] = mapped_column(
         default=1, server_default="1", comment="저장할 때마다 +1. 읽은 값과 다르면 그 사이 바뀐 것"

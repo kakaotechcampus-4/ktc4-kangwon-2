@@ -1027,7 +1027,11 @@ def test_삭제가_읽은_뒤_다른_요청이_확정하면_확정본을_지우�
         if not confirmed:
             confirmed = True
             session.expunge(row)  # 삭제 요청은 DRAFT 로 읽은 값을 그대로 들고 간다
-            session.execute(update(Plan).where(Plan.id == current_id).values(status="CONFIRMED"))
+            session.execute(
+                update(Plan)
+                .where(Plan.id == current_id)
+                .values(status="CONFIRMED", class_name="햇살반", teacher_name="김선생")
+            )
             session.commit()
         return row
 

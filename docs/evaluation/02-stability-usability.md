@@ -15,6 +15,7 @@
 - 두 사람이 같은 문서를 동시에 고칠 때 — ADR-035 `035-concurrent-writes-and-confirm-retry.md`
 - 확정이 중간에 끊기지 않게 — ADR-040 `040-atomic-document-reconfirmation.md`
 - 생성이 길어질 때 구간마다 120초 감시 타이머 · nginx 510초 — PR #229
+- 확정한 계획안은 반을 고쳐도 확정할 때의 반 이름으로 내려받는다 — DB 검사 `ck_plans_confirmed_has_class_snapshot` · `backend/tests/test_plan_class_snapshot.py` · ADR-062
 
 ## 교사가 쓸 수 있는가
 
