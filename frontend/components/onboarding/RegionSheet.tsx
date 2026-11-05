@@ -7,12 +7,45 @@ const SEJONG = "세종특별자치시";
 
 /**
  * 칸 하나 = 칠판에 적은 이름. 손글씨체는 읽기 어렵다는 시험 의견이 있어 기본 글씨체로 쓴다.
- * 마우스를 올리면 이름을 분필 네모로 두른다(키보드로 가면 더 진한 흰 분필로).
- * 테두리는 늘 있되 투명하다가 색만 바뀐다 — 네모가 생기고 사라져도 글자가 움직이지 않는다.
+ * 마우스를 올리면(키보드로 가도) 이름을 분필로 쓱 친 네모로 두른다(ChalkBox).
  * 네모는 글자 양옆으로 조금 더 나가되(-mx · px), 글자 자리는 다른 칸과 그대로 맞는다.
  */
 const item =
-  "-mx-2.5 inline-flex min-h-12 items-center rounded-[4px] border-[1.5px] border-transparent px-2.5 text-left text-[18px] font-bold leading-tight text-ink transition-colors duration-150 hover:border-ink-soft focus-visible:border-ink focus-visible:outline-none motion-reduce:transition-none";
+  "group relative -mx-2.5 inline-flex min-h-12 items-center px-2.5 text-left text-[18px] font-bold leading-tight text-ink focus-visible:outline-none";
+
+/** 손으로 친 네모 — 칸마다 조금씩 다르게 비뚤고, 한 획으로 그어 시작한 귀퉁이에서 살짝 삐져나온다. */
+const CHALK_BOXES = [
+  "M3 6 L97.5 3.5 L97 36.5 L2.5 37 L3.5 1.5",
+  "M2.5 4 L98 5.5 L97.5 37.5 L3 35.5 L2 8 L6 3.8",
+  "M4 3 L96.5 4.5 L98 35 L3 37.5 L2.5 4.5",
+];
+
+/**
+ * 분필로 친 네모. 칸 크기에 맞춰 늘어나도(preserveAspectRatio none) 선 굵기는 그대로이고
+ * (non-scaling-stroke), 분필 가루처럼 끊기고 번진 결은 판 안의 #chalk-box 필터가 낸다.
+ * 늘 그려 두고 투명하게 있다가, 칸에 마우스를 올리거나 키보드로 가면 보인다.
+ */
+function ChalkBox({ index }: { index: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 100 40"
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute inset-0 h-full w-full overflow-visible opacity-0 transition-opacity duration-150 group-hover:opacity-85 group-focus-visible:opacity-100 motion-reduce:transition-none"
+    >
+      <path
+        d={CHALK_BOXES[index % CHALK_BOXES.length]}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+        filter="url(#chalk-box)"
+      />
+    </svg>
+  );
+}
 const iconButton =
   "inline-flex h-10 w-10 items-center justify-center squircle [--r:12px] text-ink-soft hover:bg-primary-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
 
@@ -71,6 +104,40 @@ export default function RegionSheet({
       aria-labelledby="region-sheet-title"
       className="chalkboard m-0 mt-auto h-[min(640px,85vh)] w-full max-w-none squircle [--r-bl:0px] [--r-br:0px] [--r:24px] p-0 pb-7 text-ink open:flex open:flex-col backdrop:bg-[rgba(46,42,38,0.55)] sm:m-auto sm:max-w-[560px] sm:[--r:0px]"
     >
+      {/* ChalkBox 가 쓰는 분필 결 — 선을 살짝 비틀고(displacement), 가루처럼 군데군데 비운다(noise 를 알파로). */}
+      <svg aria-hidden="true" width="0" height="0" className="absolute">
+        <filter id="chalk-box" x="-10%" y="-20%" width="120%" height="140%">
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.9"
+            numOctaves={2}
+            seed={3}
+            result="n"
+          />
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="n"
+            scale={1.6}
+            xChannelSelector="R"
+            yChannelSelector="G"
+            result="d"
+          />
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="1.4"
+            numOctaves={1}
+            seed={8}
+            result="g"
+          />
+          <feColorMatrix
+            in="g"
+            type="matrix"
+            values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -2.2 1.75"
+            result="mask"
+          />
+          <feComposite in="d" in2="mask" operator="in" />
+        </filter>
+      </svg>
       <div
         aria-hidden="true"
         className="mx-auto mt-3 h-1 w-10 flex-none rounded-sm bg-line sm:hidden"
@@ -153,10 +220,11 @@ export default function RegionSheet({
           className={`grid gap-x-4 gap-y-1 px-6 pb-2 pt-1 ${province ? "grid-cols-3 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}
           style={{ wordBreak: "keep-all" }}
         >
-          {shown.map((e) => (
+          {shown.map((e, i) => (
             <li key={e.key}>
               <button type="button" className={item} onClick={e.pick}>
                 {e.label}
+                <ChalkBox index={i} />
               </button>
             </li>
           ))}
