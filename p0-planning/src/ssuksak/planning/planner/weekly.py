@@ -167,6 +167,8 @@ class WeeklyTarget:
     days: tuple[str, ...] = ()  # repeat_by DAY: the OperatingDay values to write, in order
     parent_groundable: bool = False
     activity_type: str | None = None
+    activity_basis: str | None = None
+    required_name_terms: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,6 +220,19 @@ class WeeklyPlanningRequest:
             raise InvalidDomainValueError("A parent-groundable target needs its current parent value")
         if any(t.parent_groundable for t in self.targets) and not self.reference_wiring:
             raise InvalidDomainValueError("Parent outdoor grounding requires the linked reference policy")
+        evidence = dict(self.evidence_texts)
+        for target in self.targets:
+            if target.activity_basis is not None and (
+                target.activity_type is None or not isinstance(target.activity_basis, str)
+                or not target.activity_basis.strip() or not any(
+                    target.activity_basis in evidence.get(ref, "") for ref in target.allowed_grounding_refs
+                )
+            ):
+                raise InvalidDomainValueError("A candidate activity basis must be a span of its allowed evidence")
+            if not isinstance(target.required_name_terms, tuple) or any(
+                not isinstance(term, str) or not term.strip() for term in target.required_name_terms
+            ) or target.required_name_terms and target.activity_basis is None:
+                raise InvalidDomainValueError("Candidate name requirements need a grounded activity basis")
 
     def target(self, section_key: str) -> WeeklyTarget | None:
         return next((t for t in self.targets if t.section_key == section_key), None)
@@ -312,6 +327,8 @@ def build_weekly_request(
                 **({"days": list(t.days)} if t.days else {}),
                 **({"parent_groundable": True} if t.parent_groundable else {}),
                 **({"activity_type": t.activity_type} if t.activity_type is not None else {}),
+                **({"activity_basis": t.activity_basis, "required_name_terms": list(t.required_name_terms)}
+                   if t.activity_basis is not None else {}),
                 **({"reference_candidates": [
                     {"reference_id": rid, "label": label} for rid, label in reference_candidates
                 ]} if t.section_key == OUTDOOR_KEY else {}),
@@ -344,7 +361,7 @@ def build_weekly_request(
         *(label for _, label in reference_candidates),
     ])
     suffix = DAY_CELLS_SUFFIX if any(t.days for t in targets) else ""
-    candidates = "+activity-candidates-v3" if any(t.activity_type is not None for t in targets) else ""
+    candidates = "+activity-candidates-v4" if any(t.activity_type is not None for t in targets) else ""
     if candidates:
         source_refs |= {t.section_key for t in targets if t.activity_type is not None}
     memo = _memo_addresses(targets) if teacher_memo else None
@@ -366,9 +383,11 @@ def build_weekly_request(
             "그 설명의 대상과 실제 행동을 남겨 문서용 활동명을 쓴다. 출력 형식은 활동명: 설명을 유지한다. "
             "유형과 활동명만 읽어도 할 일이 떠올라야 한다. 나누기·탐색·알아보기 같은 말을 붙이는 것만으로 구체화하지 않는다. "
             "이야기나누기는 이야기할 대상이나 상황을, 미술·과학은 표현하거나 살펴볼 대상과 근거에 있는 방식을 남긴다. "
-            "한 근거에 여러 활동이 있으면 정해진 유형에 해당하는 활동 하나를 분명히 골라 쓰며, 서로 섞어 새 활동을 만들지 않는다. "
+            "activity_basis는 이 후보가 사용할 원문 활동이다. 전체 근거에 다른 활동이 있어도 그 활동으로 바꾸거나 서로 섞어 새 활동을 만들지 않는다. "
+            "required_name_terms는 문서 이름에 남겨야 할 활동 정보이며 모두 포함한다. 설명도 activity_basis의 같은 활동을 다룬다. "
             "작품명과 익숙한 놀이명은 유지하고, 모든 제목에 같은 행동어를 억지로 붙이지 않는다. "
             "제목과 설명은 같은 활동을 뜻해야 하며, 근거에 없는 재료·놀이 방법·절차·결과물을 보태지 않는다. "
+            "설명은 무엇을 말하고 듣고 만드는지 직접 쓰며, 관심이나 즐거움을 경험한다는 말만으로 마치지 않는다. 소리는 듣는 대상이며 소리가 들리는 모습처럼 시각 표현을 붙이지 않는다. "
             "후보를 부모 소주제와 일치시키려고 대상을 바꾸거나 모두 같은 놀이로 만들지 않는다. "
             "같은 Section의 후보끼리 활동 이름이 겹치지 않게 하되 근거에 없는 활동으로 개수를 채우지 않는다. "
             "indoor_play.candidate로 시작하는 target도 같은 형식의 실내 자유놀이 후보다. "
@@ -685,6 +704,8 @@ def validate_weekly(
                 candidate_name = (key.partition(".")[0], normalized)
                 if v.unresolved or not separator or not name.strip() or not description.strip() or candidate_name in candidate_names:
                     issues.append(WeeklyIssue(WeeklyIssueCode.ACTIVITY_CANDIDATE_INVALID, key))
+                elif any(normalize_visible_text(term) not in normalized for term in target.required_name_terms):
+                    issues.append(WeeklyIssue(WeeklyIssueCode.ACTIVITY_CANDIDATE_INVALID, key, "required_activity_name_term_missing"))
                 candidate_names.add(candidate_name)
             continue
         written = {normalize_visible_text(text) for text in request.other_day_values if text.strip()}

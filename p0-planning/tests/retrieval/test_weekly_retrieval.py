@@ -167,6 +167,33 @@ def test_reviewed_candidate_sources_match_the_unchanged_evidence_artifact():
         assert records[ref].month == 3
 
 
+@pytest.mark.parametrize("text,expected,terms", [
+    ("【이야기나누기】 친구와 같은 점과 다른 점 【음악】 사랑의 인사 【미술】 친구 얼굴 꾸미기",
+     "【이야기나누기】 친구와 같은 점과 다른 점", ()),
+    ("[명화] ‘아이들 놀이’", "[명화] ‘아이들 놀이’", ("감상",)),
+    ("동화[바람과 햇님]듣기", "동화[바람과 햇님]듣기", ("듣기",)),
+    ("‘ㄱ, ㄴ, ㄷ’ 낱말을 배워요", "‘ㄱ, ㄴ, ㄷ’ 낱말을 배워요", ()),
+    ("종이, 빨대로 만들기", "종이, 빨대로 만들기", ()),
+])
+def test_candidate_activity_basis_uses_only_explicit_tag_boundaries(text, expected, terms):
+    from ssuksak.planning.retrieval.weekly import candidate_activity_basis
+
+    basis, required = candidate_activity_basis(_record("ev_1", text=text))
+    assert basis == expected and required == terms
+    assert basis in text
+
+
+def test_reviewed_letter_activity_does_not_apply_to_revised_or_unrelated_sources():
+    from ssuksak.planning.retrieval.weekly import candidate_activity_basis
+
+    ref = "ev_e5e84e83db52_p01_r00428_c01_i01"
+    text = "<이야기 나누기> 편지 발표, 함께 지켜요"
+    assert candidate_activity_basis(_record(ref, text=text)) == ("편지 발표", ("편지", "발표"))
+    assert candidate_activity_basis(_record("ev_99", text=text)) == (text, ())
+    revised = "<이야기 나누기> 편지 읽기, 함께 지켜요"
+    assert candidate_activity_basis(_record(ref, text=revised)) == (revised, ())
+
+
 def test_a_classification_for_another_store_is_refused():
     store = InMemoryInstitutionEvidenceRepository((_record("ev_1"),)).get_store()
     other = WeeklyEvidenceClassification(

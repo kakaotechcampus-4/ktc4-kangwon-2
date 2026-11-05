@@ -36,7 +36,30 @@ REVIEWED_UNCLEAR_ACTIVITY_SOURCES = frozenset({
     ("ev_5d3e713585b1_p01_r00603_c06_i01", "우리반 미술 도구"),  # no expression activity
     ("ev_5d3e713585b1_p01_r00603_c07_i01", "누구의 얼굴일까?"),  # no expression activity
     ("ev_5d3e713585b1_p01_r00603_c08_i01", "우리반 놀잇감을 탐색해요"),  # no art expression method
+    ("ev_010245b6472d_p01_r00208_c03_i01", "‘ㄱ, ㄴ, ㄷ’ 낱말을 배워요"),  # no play method
+    ("ev_010245b6472d_p01_r00208_c04_i01", "같은 신발 다른 신발"),  # no language activity method
+    ("ev_5d3e713585b1_p01_r00252_c04_i01", "새로운 우리반, 새로운 선생님"),  # topic heading only
+    ("ev_5d3e713585b1_p01_r00252_c07_i01", "이럴땐 이렇게"),  # no situation or activity
 })
+
+
+def candidate_activity_basis(record) -> tuple[str, tuple[str, ...]]:
+    """Select a literal source span; never invent an activity from a broad topic."""
+    text = (record.text or "").strip()
+    if (record.record_id, record.text) == (
+        "ev_e5e84e83db52_p01_r00428_c01_i01", "<이야기 나누기> 편지 발표, 함께 지켜요"
+    ):
+        return "편지 발표", ("편지", "발표")
+    if re.fullmatch(r"동화\s*[\[<【(].+[\]>】)]\s*듣기", text):
+        return text, ("듣기",)
+    tags = list(re.finditer(
+        r"[\[<【(]\s*(이야기\s*나누기|동화|동시|동요|새노래|음률|음악|미술|신체|게임|과학|요리|동극|명화)\s*[\]>】)]",
+        text,
+    ))
+    if tags and not text[:tags[0].start()].strip():
+        basis = text[tags[0].start():tags[1].start() if len(tags) > 1 else len(text)].strip()
+        return basis, ("감상",) if tags[0].group(1) == "명화" else ()
+    return text, ()
 
 
 def activity_type(record) -> str:
