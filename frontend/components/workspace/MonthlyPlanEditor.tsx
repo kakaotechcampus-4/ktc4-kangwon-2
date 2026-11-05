@@ -382,6 +382,7 @@ export default function MonthlyPlanEditor({
 
   const editTab = (
     <div className="flex flex-col gap-4">
+      {!where && <p className="m-0 text-sm text-[#5c5243]">문서에서 고칠 칸을 눌러 주세요.</p>}
       {where && (
         <div className="flex items-end justify-between gap-3">
           <h2 className="m-0 text-[20px] font-bold leading-tight">{where}</h2>

@@ -389,6 +389,7 @@ export default function WeeklyEditor({
 
   const editTab = (
     <div className="flex flex-col gap-4">
+      {!picked && <p className="m-0 text-sm text-[#5c5243]">문서에서 고칠 칸을 눌러 주세요.</p>}
       {picked && (
         <>
           <div className="flex items-end justify-between gap-3">
