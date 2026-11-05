@@ -290,7 +290,7 @@ const without = (f: Record<string, Falling>, id: string) => {
 };
 
 /**
- * 넣은 이름 — 칠판에 붙인 노란 이름표. 누르면 포스티가 떼어 가 떨어지며 사라진다.
+ * 넣은 이름 — 칠판에 붙인 노란 이름표. 누르면 떨어지며 사라진다.
  * 서버에서 빼는 일은 누르자마자 한다(지금까지와 같다). 떨어지는 모습만 화면에 잠깐 더 남긴다 —
  * items 에서 빠진 뒤에도 떨어지는 동안은 그 자리에 그리고, 서버가 실패하면 쪽지를 되돌린다.
  */
@@ -358,7 +358,6 @@ function KidChips({
               >
                 {/* 쪽지 위 글자는 칠판 분필이 아니라 원래 먹색(.paper). */}
                 <span className="paper text-[19px] font-bold leading-tight">{child.name}</span>
-                <Posty pose="hang" back size={30} label={null} className="tagPosty" />
               </button>
             </li>
           );

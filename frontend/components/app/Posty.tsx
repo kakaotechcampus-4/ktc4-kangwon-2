@@ -19,17 +19,7 @@ export type PostyTone =
 
 /** 팔다리 각도. 상체는 그대로다. */
 export type PostyPose =
-  | "stand"
-  | "up"
-  | "hand"
-  | "point"
-  | "wave"
-  | "cheer"
-  | "run"
-  | "think"
-  | "sit"
-  | "sitWave"
-  | "hang";
+  "stand" | "up" | "hand" | "point" | "wave" | "cheer" | "run" | "think" | "sit" | "sitWave";
 
 /** 표정. */
 export type PostyFace = "base" | "done" | "empty" | "fix" | "oh" | "think";
@@ -184,18 +174,6 @@ const POSE: Record<PostyPose, Pose> = {
     ],
     height: 56,
   },
-  /** 두 손을 머리 위로 뻗어 무언가에 매달린다. 발은 아래로 늘어진다. 뒷모습(`back`)과 함께 쓴다. */
-  hang: {
-    arms: [
-      [3.4, 5, 0],
-      [44.6, 5, 0],
-    ],
-    feet: [
-      [19.5, 54],
-      [28.5, 54],
-    ],
-    height: 60,
-  },
 };
 
 /** 읽어 줄 이름. 장식으로 쓸 때는 `label={null}`. */
@@ -325,7 +303,6 @@ export function Posty({
   face = "base",
   size = 96,
   tape = false,
-  back = false,
   walk = false,
   wave = false,
   label,
@@ -339,11 +316,6 @@ export function Posty({
   size?: number;
   /** 머리에 붙이는 종이테이프. 첫 인사에만 쓴다. */
   tape?: boolean;
-  /**
-   * 뒷모습 — 얼굴이 없고, 접힌 귀퉁이는 반대쪽(왼쪽 아래)에 홈으로만 보이며, 위쪽에 쪽지 뒷면의 풀 띠가 있다.
-   * 아이 이름표를 떼어 가는 포스티(`hang`)에 쓴다.
-   */
-  back?: boolean;
   /**
    * 걷는 모습. 팔다리가 번갈아 흔들리고 몸이 한 번씩 뜬다.
    * 흔드는 각도가 커서 **서 있기 포즈에만** 쓴다 — 든 팔을 흔들면 춤이 된다.
@@ -390,37 +362,21 @@ export function Posty({
       )}
       {leg(HIP.left, feet[0], false, w, foot, swinging ? "postySwingFront" : undefined)}
       {leg(HIP.right, feet[1], true, w, foot, swinging ? "postySwingBack" : undefined)}
-      {back ? (
-        <>
-          {/* 뒤에서 보면 앞으로 접힌 귀퉁이는 홈으로만 보이고, 위쪽에 쪽지 뒷면의 풀 띠가 있다. */}
-          <path
-            d="M7 5H41V43H17L7 34Z"
-            fill={`var(${skin.paper})`}
-            stroke={`var(${skin.line})`}
-            strokeWidth={1.8}
-            strokeLinejoin="round"
-          />
-          <rect x={8} y={6} width={32} height={6} fill={`var(${skin.fold})`} />
-        </>
-      ) : (
-        <>
-          <path
-            d="M7 5H41V34L31 43H7Z"
-            fill={`var(${skin.paper})`}
-            stroke={`var(${skin.line})`}
-            strokeWidth={1.8}
-            strokeLinejoin="round"
-          />
-          <path
-            d="M41 34H31V43Z"
-            fill={`var(${skin.fold})`}
-            stroke={`var(${skin.line})`}
-            strokeWidth={1.8}
-            strokeLinejoin="round"
-          />
-        </>
-      )}
-      {tape && !back && (
+      <path
+        d="M7 5H41V34L31 43H7Z"
+        fill={`var(${skin.paper})`}
+        stroke={`var(${skin.line})`}
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+      <path
+        d="M41 34H31V43Z"
+        fill={`var(${skin.fold})`}
+        stroke={`var(${skin.line})`}
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+      {tape && (
         <rect
           x={17}
           y={0.8}
@@ -432,7 +388,7 @@ export function Posty({
           strokeWidth={1.2}
         />
       )}
-      {!back && <Face kind={face} />}
+      <Face kind={face} />
     </svg>
   );
 }
