@@ -1229,10 +1229,13 @@ function ClassRail({
                   aria-pressed={foreign === c.id}
                   onClick={() => onPickForeign(c.id)}
                 >
-                  {/* 같은 원 다른 반은 담임 이름을 붙여 누구 반인지 보인다(ADR-068). */}
+                  {/* 같은 원 다른 반은 담임 이름을 붙여 누구 반인지 보인다(ADR-068).
+                      둘째 줄에 두어 상태 배지가 길어도 이름이 잘리지 않는다. */}
                   <span className={styles.grow}>
                     {c.name}
-                    {c.teacher_name && ` · ${c.teacher_name}`}
+                    {c.teacher_name && (
+                      <small className={styles.railTeacher}>담임 {c.teacher_name}</small>
+                    )}
                   </span>
                   <span className={styles.railBadge} data-state={state}>
                     {ACCESS_LABEL[state]}

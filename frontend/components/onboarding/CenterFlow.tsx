@@ -45,7 +45,6 @@ const TITLES: Record<Step, string> = {
 };
 const HINTS: Partial<Record<Step, string>> = {
   region: "시·도를 고르면 시·군·구가 이어서 나와요.",
-  find: "이름 일부만 쳐도 돼요.",
   manual: "이번 달에 새로 문을 연 원은 목록에 아직 없을 수 있어요.",
 };
 /** 오른쪽 칸 포스티의 말(데스크톱). */
@@ -233,7 +232,10 @@ export default function CenterFlow() {
     ),
   ];
   // 지금 질문이 맨 위, 이미 답한 칸은 그 아래에 최근 것부터 쌓는다.
-  const order = [place, ...Array.from({ length: place }, (_, i) => place - 1 - i)];
+  // 찾기만은 예외 — 결과 쪽지가 길어 지역 칸까지 쌓으면 칠판이 화면 밖으로 길어진다. 지역은 힌트 줄에 적는다.
+  const order =
+    step === "find" ? [place] : [place, ...Array.from({ length: place }, (_, i) => place - 1 - i)];
+  const hint = step === "find" ? `${regionText}에서 찾아요. 이름 일부만 쳐도 돼요.` : HINTS[step];
 
   return (
     <OnboardingLayout
@@ -245,7 +247,7 @@ export default function CenterFlow() {
         <Footer step={step} busy={busy} valid={valid[step]} onNext={advance} onManual={manual} />
       }
     >
-      <Question title={TITLES[step]} hint={HINTS[step]} focus={step === "region"} />
+      <Question title={TITLES[step]} hint={hint} focus={step === "region"} />
       <Cascade fields={fields} order={order} />
       <ErrorLine>{error}</ErrorLine>
       {sheet && <RegionSheet onPick={pickRegion} onClose={() => setSheet(false)} />}
@@ -307,7 +309,7 @@ function DaycareResults({
   return (
     <ul
       aria-label="찾은 어린이집"
-      className="paper -mt-3 grid max-h-[300px] gap-2 overflow-y-auto pr-1"
+      className="paper -mt-3 grid max-h-[232px] gap-2 overflow-y-auto pr-1"
     >
       {items.map((d) => (
         <li key={d.key}>
@@ -356,7 +358,7 @@ function JoinCard({ daycare, settings }: { daycare: Daycare | null; settings: Cl
           홈 · 우리 반에는 <b>선생님이 만든 반만</b> 보여요.
         </li>
         <li>
-          다른 반 문서는 문서 보관함에서 <b>접근 신청</b>으로 봐요.
+          다른 반 문서는 문서 보관함에서 <b>열람 요청</b>으로 봐요.
         </li>
         <li>원 정보는 바꿀 수 없어요.</li>
       </ul>

@@ -557,8 +557,8 @@ export function ReceivedPanel({
         <div className={ws.accessName}>
           <h2>받은 열람 요청</h2>
           <p>
-            승인하면 <b>두 반이 서로 보여요</b> — 그 선생님은 우리 반 문서를, 선생님은 그 선생님 반
-            문서를 보고 확정 문서를 hwp 로 받을 수 있어요. 고치는 건 각자 자기 반만 해요.
+            승인하면 <b>두 반이 서로 보여요.</b> 보기 · hwp 받기만 되고, 고치는 건 각자 자기 반만
+            해요.
           </p>
         </div>
       </div>

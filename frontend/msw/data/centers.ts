@@ -62,6 +62,8 @@ export const addCenter = (data: CenterInput) =>
     const [sido, sigungu, name, address] = data.registry_key?.split("|") ?? [];
     const c = {
       ...data,
+      // 화면은 새 원이면 원장 이름을 늘 보낸다 — handlers 가 빈 값을 400 으로 막는다.
+      director_name: data.director_name ?? "",
       ...(data.registry_key ? { name, region_sido: sido, region_sigungu: sigungu } : {}),
       registry_key: data.registry_key ?? null,
       kind: data.registry_key ? "민간" : null,

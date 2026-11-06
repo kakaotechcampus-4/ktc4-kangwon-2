@@ -114,7 +114,8 @@ export async function chooseCenter(settings: ClassSettings): Promise<Center> {
   // 지역은 붙이지 않고 두 칸 그대로 보낸다 — 서버가 region_sido · region_sigungu 로 받는다(§1).
   const data = {
     name: settings.orgName,
-    director_name: settings.directorName,
+    // 같은 원으로 들어가는 길은 원장 이름을 묻지 않는다 — 비어 있으면 칸째 뺀다.
+    ...(settings.directorName.trim() ? { director_name: settings.directorName } : {}),
     region_sido: settings.regionProvince.trim(),
     region_sigungu: settings.regionDistrict.trim(),
     ...(settings.registryKey ? { registry_key: settings.registryKey } : {}),

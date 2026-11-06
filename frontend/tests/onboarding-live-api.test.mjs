@@ -359,7 +359,7 @@ test("S1: 목록에서 고른 원이 이미 있으면 그 원으로 들어가고
     const center = await onboarding.chooseCenter({
       ...SETTINGS,
       orgName: "리틀빌리지어린이집",
-      directorName: "내가 적은 원장",
+      directorName: "",
       registryKey: key,
     });
 
@@ -367,6 +367,10 @@ test("S1: 목록에서 고른 원이 이미 있으면 그 원으로 들어가고
     assert.equal(center.director_name, "김원장", "먼저 가입한 선생님이 적은 원장 이름이다");
     const post = rec.seen.find((r) => r.method === "POST" && r.path === "/api/centers");
     assert.equal(post.body.registry_key, key);
+    assert.ok(
+      !("director_name" in post.body),
+      "합류 단계는 원장 이름을 묻지 않는다 — 빈 칸을 보내면 422",
+    );
     // 다음 단계(반 만들기)가 이 원으로 가도록 연결이 남는다.
     assert.equal(await onboarding.syncCenter(SETTINGS), 77);
   } finally {
