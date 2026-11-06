@@ -179,7 +179,7 @@ export type PlanPreviewTarget = {
   play?: boolean;
 };
 
-/** 지운다. 이 계획안으로 만든 하위가 있으면 서버가 409 `IN_USE` 다(ADR-062). */
+/** 지운다. 이 계획안으로 만든 하위가 있으면 서버가 409 `IN_USE` 다(ADR-064). */
 function deletePlan(target: PlanPreviewTarget) {
   if (target.kind === "annual") return deleteAnnualPlan(target.id);
   if (target.kind === "weekly") return deleteWeeklyPlan(target.id);
@@ -202,8 +202,8 @@ const IN_USE_MESSAGE: Record<PlanPreviewTarget["kind"], string> = {
 
 /**
  * 권한 검사는 기존 GET API가 한다. 이동/해제 뒤 늦은 응답은 버린다.
- * `onDeleted` 가 있으면 「삭제」를 그린다(상태 무관, 확정본도 — ADR-062). 남의 반은 넘기지 않는다.
- * 확정본이고 편집 화면이 있으면 「수정하기」(누르면 확정을 풀고 편집 화면으로 간다)도 그린다 — 계획안 화면에는 확정 취소가 없다(ADR-062).
+ * `onDeleted` 가 있으면 「삭제」를 그린다(상태 무관, 확정본도 — ADR-064). 남의 반은 넘기지 않는다.
+ * 확정본이고 편집 화면이 있으면 「수정하기」(누르면 확정을 풀고 편집 화면으로 간다)도 그린다 — 계획안 화면에는 확정 취소가 없다(ADR-064).
  */
 export function PlanArchivePreview({
   target,

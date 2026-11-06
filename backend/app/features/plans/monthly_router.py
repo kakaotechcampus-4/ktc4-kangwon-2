@@ -12,7 +12,7 @@ HTTP 요청을 Core 명령으로 바꾸고, 돌아온 도메인 객체를 계약
     C. 짧은 쓰기 — 중복을 다시 보고 Postgres 에 저장 · commit
 
 READY 는 바뀌지 않는 값이라 A 와 C 사이에 달라지지 않는다. 부모는 그 사이 확정이 풀리거나
-지워질 수 있어(ADR-055 · ADR-062) C 첫머리에 공유 잠금으로 다시 본다(`_lock_parent`). 같은 반 ·
+지워질 수 있어(ADR-055 · ADR-064) C 첫머리에 공유 잠금으로 다시 본다(`_lock_parent`). 같은 반 ·
 같은 달 동시 요청은 C 의 부분 유일 인덱스가 최종으로 막는다.
 
 **편집 · 재생성 · 확정도 같은 세 단계다**(결정 문서 12.10). 다른 점은 C 가 조건부 UPDATE 라는
@@ -292,7 +292,7 @@ def _gate(message: str) -> HTTPException:
 def _lock_parent(session: Session, parent_id: int, message: str) -> None:
     """생성의 C 단계 첫머리 — 부모가 아직 있고 CONFIRMED 인지 공유 잠금(`FOR SHARE`)으로 다시 본다.
 
-    부모 DELETE 는 부모 행을 `FOR UPDATE` 로 잡고 자식을 본다(ADR-062 — 확정본도 지운다).
+    부모 DELETE 는 부모 행을 `FOR UPDATE` 로 잡고 자식을 본다(ADR-064 — 확정본도 지운다).
     겹치면 한쪽이 기다리고, 늦은 쪽이 상대 결과를 본다 — 부모 없는 자식이 저장되지 않는다.
     """
     locked = session.scalar(
@@ -473,7 +473,7 @@ def get_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser):
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
-    """월간계획안을 지운다. 초안이든 확정본이든 지운다(ADR-062). 연간과 같은 이유다 — 지울
+    """월간계획안을 지운다. 초안이든 확정본이든 지운다(ADR-064). 연간과 같은 이유다 — 지울
     길이 있어야 다시 만든다.
 
     반 하나에 그 달 월간은 하나다(models.py 부분 유니크 인덱스). 만들기가 409 로 막히므로,

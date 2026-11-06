@@ -199,7 +199,7 @@ def test_확정_중에_온_삭제는_기다렸다가_확정이_끝난_뒤_지운
     )
 
     assert blocked  # 삭제가 확정의 잠금을 기다렸다
-    # 확정본도 지운다(ADR-062). 확정이 먼저 끝나고, 그 뒤에 삭제가 확정본을 지운다.
+    # 확정본도 지운다(ADR-064). 확정이 먼저 끝나고, 그 뒤에 삭제가 확정본을 지운다.
     assert confirm.status_code == 200
     assert removed.status_code == 204, removed.text
     assert client.get(f"/api/plans/annual/{plan_id}").status_code == 404

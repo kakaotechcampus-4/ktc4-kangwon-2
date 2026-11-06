@@ -432,7 +432,7 @@ export const confirmMonthly = (id: number) =>
     return plan;
   });
 
-/** 서버 `DELETE` 와 같다 — 확정본도 지우고(ADR-062), 이 월간으로 만든 주간이 있으면 「IN_USE」. */
+/** 서버 `DELETE` 와 같다 — 확정본도 지우고(ADR-064), 이 월간으로 만든 주간이 있으면 「IN_USE」. */
 export const removeMonthly = (id: number) =>
   commit((db): "IN_USE" | null => {
     if (db.weeklyPlans.some((w) => w.parent.monthly_plan_id === id)) return "IN_USE";

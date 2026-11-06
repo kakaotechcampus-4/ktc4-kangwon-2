@@ -144,7 +144,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await expect(
     page.getByRole("heading", { name: `${generated.school_year} 연간계획안을 확정했어요` }),
   ).toBeVisible();
-  // 확정 취소는 없다(ADR-062) — 고치려면 문서 보관함에서 지운다.
+  // 확정 취소는 없다(ADR-064) — 고치려면 문서 보관함에서 지운다.
   await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toHaveCount(0);
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "한글 파일(hwpx)로 내려받기", exact: true }).click();

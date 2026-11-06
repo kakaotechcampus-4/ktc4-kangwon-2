@@ -234,7 +234,7 @@ export const listPlans = (classId?: number): AnnualPlanSummary[] =>
       confirmed_at: p.confirmed_at,
     }));
 
-/** 서버 `DELETE` 와 같다 — 확정본도 지우고(ADR-062), 딸린 월간이 있으면 지우지 않고 「IN_USE」. */
+/** 서버 `DELETE` 와 같다 — 확정본도 지우고(ADR-064), 딸린 월간이 있으면 지우지 않고 「IN_USE」. */
 export const removePlan = (id: number) =>
   commit((db): "IN_USE" | null => {
     const plan = db.plans.find((p) => p.id === id);

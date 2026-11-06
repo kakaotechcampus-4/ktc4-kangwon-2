@@ -1008,7 +1008,7 @@ def test_확정_전_월간계획안을_지우면_그_달을_다시_만들_수_�
 
 
 def test_확정된_월간계획안도_지우면_그_달을_다시_만들_수_있다(world):
-    """확정본도 지운다(ADR-062, Human Decision 2026-11-05 하민). 고치려면 지우고 다시 만든다."""
+    """확정본도 지운다(ADR-064, Human Decision 2026-11-05 하민). 고치려면 지우고 다시 만든다."""
     plan = _confirmed(world)
 
     assert client.delete(f"/api/plans/monthly/{plan['id']}").status_code == 204

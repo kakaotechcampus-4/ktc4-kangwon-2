@@ -449,7 +449,7 @@ test("지우기: 월간이 딸린 확정본은 409 IN_USE · test-reset 은 꺼�
   assert.deepEqual([db.plans.length, db.monthlyPlans.length, db.weeklyPlans.length], [0, 0, 0]);
 });
 
-test("지우기: 딸린 월간이 없으면 확정본도 지운다(ADR-062)", async () => {
+test("지우기: 딸린 월간이 없으면 확정본도 지운다(ADR-064)", async () => {
   const klass = await newClass();
   const plan = await createAnnualPlan({
     class_id: klass.id,

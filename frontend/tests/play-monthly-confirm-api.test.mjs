@@ -174,7 +174,7 @@ test("confirm: an already confirmed plan answers 200 as stored, with any or no b
   assert.equal((await audit(id)).filter((e) => e.type === "CONFIRMED").length, 1);
 });
 
-test("after confirming, edits are 409 ALREADY_CONFIRMED and delete still works (ADR-062)", async () => {
+test("after confirming, edits are 409 ALREADY_CONFIRMED and delete still works (ADR-064)", async () => {
   const { id, rev, plan } = await seeded();
   const done = await pm.confirmPlayMonthly(id, rev);
   await rejects(

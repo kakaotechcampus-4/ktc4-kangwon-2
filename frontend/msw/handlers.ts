@@ -863,7 +863,7 @@ export const handlers = [
     if (s) return s;
     const plan = playOwn(String(params.id));
     if (plan instanceof Response) return plan;
-    removePlayMonthly(plan.id); // 확정본도 지운다(ADR-062)
+    removePlayMonthly(plan.id); // 확정본도 지운다(ADR-064)
     return new HttpResponse(null, { status: 204 });
   }),
   http.put("*/api/plans/monthly/play/:id/cells/:itemId", async ({ request, params }) => {
@@ -1222,7 +1222,7 @@ export const handlers = [
     const plan = myMonthly(Number(params.id));
     return plan ? HttpResponse.json(monthlyOut(plan)) : planMissing(Number(params.id));
   }),
-  // 확정본도 지운다(ADR-062). 이 월간으로 만든 주간이 있으면 409 IN_USE.
+  // 확정본도 지운다(ADR-064). 이 월간으로 만든 주간이 있으면 409 IN_USE.
   http.delete("*/api/plans/monthly/:id", async ({ request, params }) => {
     const s = await scenario(request, "monthly-delete");
     if (s) return s;
@@ -1599,7 +1599,7 @@ export const handlers = [
     if (s) return s;
     const plan = myWeekly(Number(params.id));
     if (!plan) return weeklyMissing();
-    removeWeekly(plan.id); // 확정본도 지운다(ADR-062)
+    removeWeekly(plan.id); // 확정본도 지운다(ADR-064)
     return new HttpResponse(null, { status: 204 });
   }),
   // 월간 양식 설정 조회 (§9-2).

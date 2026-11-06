@@ -496,7 +496,7 @@ test("토요일을 켜면 표시 기간이 하루 늘고 요일이 여섯이다"
   assert.notEqual(plan.display_end_date, plan.week_period.end_date);
 });
 
-test("확정하면 고칠 수 없고, 지우는 것은 된다(ADR-062) · 주간이 딸린 월간은 409 IN_USE", async () => {
+test("확정하면 고칠 수 없고, 지우는 것은 된다(ADR-064) · 주간이 딸린 월간은 409 IN_USE", async () => {
   const { klass, monthly } = await classWithMonthly();
   let plan = await weekly.createWeeklyPlan({
     class_id: klass.id,

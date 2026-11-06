@@ -339,7 +339,7 @@ def test_초안은_지워지고_204(world):
 
 
 def test_확정본도_지워지고_204(world):
-    """확정본도 지운다(ADR-062, Human Decision 2026-11-05 하민)."""
+    """확정본도 지운다(ADR-064, Human Decision 2026-11-05 하민)."""
     _, row = _play(world, confirmed=True)
 
     response = client.delete(f"{URL}/{row.id}")

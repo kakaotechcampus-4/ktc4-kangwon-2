@@ -483,7 +483,7 @@ def test_목록_남의_원_반은_404(world):
 
 
 def test_DRAFT_도_확정본도_지우고_다시_만들_수_있다(world, db_session):
-    """확정본도 지운다(ADR-062, Human Decision 2026-11-05 하민)."""
+    """확정본도 지운다(ADR-064, Human Decision 2026-11-05 하민)."""
     created = _create(world).json()
     assert client.delete(f"/api/plans/weekly/{created['id']}").status_code == 204
     again = _create(world).json()
@@ -496,7 +496,7 @@ def test_DRAFT_도_확정본도_지우고_다시_만들_수_있다(world, db_ses
 
 
 def test_주간이_딸린_월간은_확정본이어도_지우지_못하고_주간을_지우면_지운다(world):
-    """주간은 월간을 부모로 든다. 부모만 지우면 주간 조회가 깨진다(ADR-062)."""
+    """주간은 월간을 부모로 든다. 부모만 지우면 주간 조회가 깨진다(ADR-064)."""
     monthly_id = world["monthly"]["id"]
     weekly = _create(world).json()
 

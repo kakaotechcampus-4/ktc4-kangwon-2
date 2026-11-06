@@ -422,7 +422,7 @@ test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ wi
   );
   assert.equal(done.props.pages[0].props.className, "햇살반");
   assert.equal(compact.at(-1), false, "확정본은 펼친다");
-  // 확정 취소는 없다(ADR-062) — 확정본 화면은 되돌리는 손잡이를 받지 않는다.
+  // 확정 취소는 없다(ADR-064) — 확정본 화면은 되돌리는 손잡이를 받지 않는다.
   assert.equal(done.props.onUnconfirmed, undefined);
 });
 

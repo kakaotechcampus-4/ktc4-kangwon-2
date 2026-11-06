@@ -31,7 +31,7 @@ export const listPlayMonthly = (classId?: number, signal?: AbortSignal) =>
   });
 export const getPlayMonthly = (id: number, signal?: AbortSignal) =>
   apiRequest<PlayMonthlyPlan>(BASE + "/" + id, { signal });
-/** 지운다(204, 확정본도 — ADR-062). revision 은 받지 않는다. */
+/** 지운다(204, 확정본도 — ADR-064). revision 은 받지 않는다. */
 export const deletePlayMonthly = (id: number) =>
   apiRequest<void>(BASE + "/" + id, { method: "DELETE" });
 /**

@@ -594,13 +594,13 @@ def get_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
-    """연간계획안을 지운다. 초안이든 확정본이든 지운다(ADR-062).
+    """연간계획안을 지운다. 초안이든 확정본이든 지운다(ADR-064).
 
     **지울 길이 있어야 다시 만들 수 있다.** 반 하나에 연간은 하나고(models.py 부분 유니크
     인덱스), 만들기는 409 로 막는다. 지우기가 없으면 교사가 첫 초안이 마음에 안 들어도
     영영 다시 못 만든다.
 
-    **확정본도 지운다**(Human Decision 2026-11-05 하민, ADR-062). 화면에서 확정 취소를 없앴다 —
+    **확정본도 지운다**(Human Decision 2026-11-05 하민, ADR-064). 화면에서 확정 취소를 없앴다 —
     확정본을 고치려면 문서 보관함에서 지우고 다시 만든다. 이력 · 근거는 본문(`body`) 안에
     있어 행과 함께 사라지고, `plans` 를 가리키는 FK 는 없어 고아가 남지 않는다.
 
@@ -644,7 +644,7 @@ def test_reset_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) 
     **파일럿 시작 전에 끈다.** `ALLOW_TEST_RESET` 가 꺼져 있으면 이 경로는 404 다 —
     있는지조차 알리지 않는다. 기본은 꺼짐이다(`config.py`).
 
-    **왜 필요한가** — `DELETE` 는 딸린 월간이 있으면 막는다(확정본은 ADR-062 부터 지운다).
+    **왜 필요한가** — `DELETE` 는 딸린 월간이 있으면 막는다(확정본은 ADR-064 부터 지운다).
     시험하는 동안 아래부터 하나씩 지우지 않고 처음부터 다시 시작하는 길을 열어 둔다.
 
     **진짜 지우기는 따로 둔다.** 위 `DELETE /{plan_id}` 는 그대로 딸린 월간을

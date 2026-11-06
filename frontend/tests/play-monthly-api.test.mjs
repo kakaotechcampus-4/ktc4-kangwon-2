@@ -661,7 +661,7 @@ test("the literal play path is never taken as a legacy id", async () => {
   assert.deepEqual(Object.keys(items[0]).includes("profile_ref"), false);
 });
 
-test("a confirmed plan is 409 ALREADY_CONFIRMED on every change, and can be deleted (ADR-062)", async () => {
+test("a confirmed plan is 409 ALREADY_CONFIRMED on every change, and can be deleted (ADR-064)", async () => {
   const { id, rev, plan } = await seeded(true);
   const confirmed = (p) =>
     rejects(p, 409, "ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.", []);

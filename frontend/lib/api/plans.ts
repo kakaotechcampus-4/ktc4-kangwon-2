@@ -77,7 +77,7 @@ export const isRejectedSave = (error: unknown) => error instanceof ApiError && e
 export const getAnnualPlanAudit = (id: number, signal?: AbortSignal) =>
   apiRequest<{ items: AnnualAuditEvent[] }>("/api/plans/annual/" + id + "/audit", { signal });
 /**
- * 연간계획안을 지운다(확정본도, ADR-062). 반 하나에 연간은 하나라, 다시 만들려면 먼저 지워야 한다.
+ * 연간계획안을 지운다(확정본도, ADR-064). 반 하나에 연간은 하나라, 다시 만들려면 먼저 지워야 한다.
  *
  * 월간이 딸려 있으면 409 `IN_USE` 다.
  */

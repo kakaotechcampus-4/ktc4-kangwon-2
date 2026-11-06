@@ -359,7 +359,7 @@ def delete_weekly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> R
     """주간계획안을 지운다(결정 ③). 월간과 같은 이유다 — 반 · 주당 하나라 만들기가
     409 로 막히므로, 지우기가 없으면 첫 초안이 마음에 안 들어도 그 주는 다시 못 만든다.
 
-    **확정본도 지운다**(ADR-062, Human Decision 2026-11-05 하민). 화면의 확정 취소를 없앴다 —
+    **확정본도 지운다**(ADR-064, Human Decision 2026-11-05 하민). 화면의 확정 취소를 없앴다 —
     고치려면 문서 보관함에서 지우고 다시 만든다. 이력 · 근거는 본문 안에 있어 행과 함께 사라진다.
     """
     row = _own_row(session, user, plan_id)

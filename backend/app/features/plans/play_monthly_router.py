@@ -304,7 +304,7 @@ def get_play_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser):
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_play_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
-    """초안이든 확정본이든 지운다(ADR-062, Human Decision 2026-11-05 하민). revision 을 받지
+    """초안이든 확정본이든 지운다(ADR-064, Human Decision 2026-11-05 하민). revision 을 받지
     않는다 — 기존 월간 삭제와 같다. 놀이 월간 아래에는 주간을 만들 수 없어 자식 검사가 없다."""
     row = _own_row(session, user, plan_id)
     deleted = session.execute(

@@ -319,7 +319,7 @@ test("확정본이면 Ⓜ4 — 다음 달 월간으로 가고, 한글 내보내�
   );
 });
 
-test("확정본에는 [확정 취소]가 없다(ADR-062) · 상위가 바뀌면 한 줄 안내", async () => {
+test("확정본에는 [확정 취소]가 없다(ADR-064) · 상위가 바뀌면 한 줄 안내", async () => {
   const done = fixture(true);
   const { tree } = await open(done.id, async () => ({ ...done, parent_changed: true }));
   assert.equal(withText(tree, "span", "상위 계획안이 바뀌었어요").length, 1);

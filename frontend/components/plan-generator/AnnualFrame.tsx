@@ -360,7 +360,7 @@ export function BigView({
 /** 왼쪽 패널 안 「지금 고른 칸」 줄. */
 /**
  * ⑥ 확정 후. 문서 전체(읽기 전용) · PDF · 한글 내보내기 · 월간 만들기 · 홈.
- * 확정 취소는 없다 — 고치려면 문서 보관함에서 지우고 다시 만든다(ADR-062).
+ * 확정 취소는 없다 — 고치려면 문서 보관함에서 지우고 다시 만든다(ADR-064).
  * 월간 진입은 두 형식 다 `/plans/monthly` 다 — 놀이 중심형은 그 화면이 놀이 월간 만들기로 가른다.
  */
 export function AnnualDone({ plan, pages }: { plan: AnnualPlanResponse; pages: ReactNode[] }) {

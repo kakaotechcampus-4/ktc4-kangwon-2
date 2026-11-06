@@ -385,7 +385,7 @@ def test_확정_전_연간계획안을_지우면_다시_만들_수_있다(db_ses
 
 
 def test_확정된_연간계획안도_지우면_다시_만들_수_있다(db_session, mine):
-    """확정본도 지운다(ADR-062, Human Decision 2026-11-05 하민). 고치려면 지우고 다시 만든다."""
+    """확정본도 지운다(ADR-064, Human Decision 2026-11-05 하민). 고치려면 지우고 다시 만든다."""
     plan_id = _create(mine)["id"]
     assert client.post(f"/api/plans/annual/{plan_id}/confirm").status_code == 200
 
@@ -436,7 +436,7 @@ def test_켜면_확정본도_딸린_월간까지_한_번에_지운다(db_session
     )
     db_session.commit()
 
-    # 진짜 지우기는 딸린 월간에서 막는다(확정본은 ADR-062 부터 지운다).
+    # 진짜 지우기는 딸린 월간에서 막는다(확정본은 ADR-064 부터 지운다).
     assert _error(client.delete(f"/api/plans/annual/{plan_id}")) == (409, "IN_USE")
     assert client.delete(f"/api/plans/annual/{plan_id}/test-reset").status_code == 204
 
