@@ -31,10 +31,30 @@ export interface CenterInput {
   director_name: string;
   region_sido: string;
   region_sigungu: string;
+  /** 정부 어린이집 목록에서 고른 원의 열쇠(ADR-068). 직접 적은 원은 없다. */
+  registry_key?: string;
 }
-export interface Center extends CenterInput {
+export interface Center extends Omit<CenterInput, "registry_key"> {
   id: number;
   created_at: string;
+  registry_key: string | null;
+  /** 정부 목록의 유형 · 주소. 직접 적은 원은 null. */
+  kind: string | null;
+  address: string | null;
+  /** 이 원으로 가입한 교사 수. */
+  teacher_count: number;
+  /** 만들 때만 온다 — 같은 원이 있어 그리로 들어갔으면 true. */
+  joined?: boolean;
+}
+/** docs/api-spec.md §1 「어린이집 찾기」 — 정부 어린이집 목록 한 곳. */
+export interface Daycare {
+  key: string;
+  name: string;
+  kind: string;
+  status: string;
+  address: string;
+  /** 쌤플에 이미 있는 원이면 가입한 교사 수. */
+  teacher_count: number;
 }
 /**
  * 반 연령은 age_min·age_max 두 값이다 (docs/api-spec.md §2).

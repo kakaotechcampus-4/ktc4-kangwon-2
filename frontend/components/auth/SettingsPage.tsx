@@ -23,7 +23,7 @@ import {
 import { captureSession } from "@/lib/auth/request-session";
 import { resetTour } from "@/components/app/Tour";
 import { Message, WorkspacePage, ws } from "@/components/workspace/WorkspaceUI";
-import { ClassesEditor, KidsEditor, NoteSheet, OrgEditor } from "./SettingsNoteEditors";
+import { ClassesEditor, KidsEditor, NoteSheet } from "./SettingsNoteEditors";
 import { SettingsIcon, type SettingsIconName } from "./SettingsIcons";
 import styles from "./Settings.module.css";
 
@@ -208,10 +208,14 @@ export default function SettingsPage() {
       icon: "buildings",
       tone: "yellow",
       tilt: -2,
-      Editor: OrgEditor,
+      // 원 정보는 아무도 고치지 않는다 — 같은 원 선생님 모두의 정보다(ADR-068). 연필을 두지 않는다.
+      Editor: null,
       summary: settings.orgName
         ? [settings.orgName, region].filter(Boolean).join(" · ")
         : "아직 등록하지 않았습니다.",
+      note: settings.registryKey
+        ? "정부 어린이집 목록(어린이집정보공개포털)에서 가져와 바꿀 수 없어요."
+        : "원 정보는 바꿀 수 없어요.",
     },
     {
       title: "반 · 담당 반",
@@ -292,26 +296,31 @@ export default function SettingsPage() {
                   icon={o.icon}
                   tone={o.tone}
                   tilt={o.tilt}
-                  peel={{
-                    // 단추 모양 없이 연필만. 누르는 자리는 44px 로 남긴다.
-                    trigger: (open) => (
-                      <button
-                        type="button"
-                        className={styles.edit}
-                        aria-label={`${o.title} 수정`}
-                        title={`${o.title} 수정`}
-                        onClick={open}
-                      >
-                        <SettingsIcon name="pencil" size={22} />
-                      </button>
-                    ),
-                    // 저장 길은 첫 설정 화면과 같다(useOnboardingFlow).
-                    content: (close) => <o.Editor onDone={close} />,
-                    // 저장하면 이 브라우저의 원 · 반 설정이 바뀐다. 쪽지 요약을 다시 읽는다.
-                    onClosed: () => setSettings(loadClassSettings() || EMPTY_CLASS_SETTINGS),
-                  }}
+                  peel={
+                    o.Editor
+                      ? {
+                          // 단추 모양 없이 연필만. 누르는 자리는 44px 로 남긴다.
+                          trigger: (open) => (
+                            <button
+                              type="button"
+                              className={styles.edit}
+                              aria-label={`${o.title} 수정`}
+                              title={`${o.title} 수정`}
+                              onClick={open}
+                            >
+                              <SettingsIcon name="pencil" size={22} />
+                            </button>
+                          ),
+                          // 저장 길은 첫 설정 화면과 같다(useOnboardingFlow).
+                          content: (close) => o.Editor && <o.Editor onDone={close} />,
+                          // 저장하면 이 브라우저의 원 · 반 설정이 바뀐다. 쪽지 요약을 다시 읽는다.
+                          onClosed: () => setSettings(loadClassSettings() || EMPTY_CLASS_SETTINGS),
+                        }
+                      : undefined
+                  }
                 >
                   <p className={styles.summary}>{o.summary}</p>
+                  {"note" in o && <p className={styles.summary}>{o.note}</p>}
                 </Note>
               ))}
             </div>

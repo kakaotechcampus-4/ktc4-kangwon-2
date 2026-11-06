@@ -49,7 +49,7 @@ export type ForeignAccess = "NONE" | AccessStatus;
 export const ACCESS_LABEL: Record<ForeignAccess, string> = {
   NONE: "잠김",
   PENDING: "요청 중",
-  APPROVED: "보기 전용",
+  APPROVED: "함께 봐요",
   REJECTED: "거절됨",
   REVOKED: "승인 취소됨",
 };
@@ -100,7 +100,8 @@ const MOOD: Record<
     face: "oh",
     tone: "sun",
     word: "담임 선생님 승인을 받아야 볼 수 있어요.",
-    lead: () => "승인 전에는 종류 · 기간 · 상태만 보여요. 승인되면 보기와 hwp 내려받기가 열려요.",
+    lead: () =>
+      "승인 전에는 종류 · 기간 · 상태만 보여요. 승인되면 보기와 hwp 내려받기가 열리고, 선생님 반도 담임 선생님이 볼 수 있어요.",
   },
   PENDING: {
     pose: "think",
@@ -127,7 +128,7 @@ const MOOD: Record<
     pose: "cheer",
     face: "done",
     tone: "sage",
-    word: "승인받았어요 · 보기 전용",
+    word: "승인받았어요 · 서로 함께 봐요",
     lead: () =>
       "보기와 확정 문서 hwp 내려받기만 돼요. 고치기 · 확정 · 삭제는 담임 선생님만 할 수 있어요.",
   },
@@ -556,8 +557,8 @@ export function ReceivedPanel({
         <div className={ws.accessName}>
           <h2>받은 열람 요청</h2>
           <p>
-            승인하면 그 선생님은 우리 반 문서를 보고 확정 문서를 hwp 로 받을 수 있어요. 고칠 수는
-            없어요.
+            승인하면 <b>두 반이 서로 보여요</b> — 그 선생님은 우리 반 문서를, 선생님은 그 선생님 반
+            문서를 보고 확정 문서를 hwp 로 받을 수 있어요. 고치는 건 각자 자기 반만 해요.
           </p>
         </div>
       </div>

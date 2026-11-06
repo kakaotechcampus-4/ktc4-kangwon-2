@@ -1229,7 +1229,11 @@ function ClassRail({
                   aria-pressed={foreign === c.id}
                   onClick={() => onPickForeign(c.id)}
                 >
-                  <span className={styles.grow}>{c.name}</span>
+                  {/* 같은 원 다른 반은 담임 이름을 붙여 누구 반인지 보인다(ADR-068). */}
+                  <span className={styles.grow}>
+                    {c.name}
+                    {c.teacher_name && ` · ${c.teacher_name}`}
+                  </span>
                   <span className={styles.railBadge} data-state={state}>
                     {ACCESS_LABEL[state]}
                   </span>

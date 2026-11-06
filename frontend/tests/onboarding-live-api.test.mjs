@@ -232,7 +232,7 @@ test("S1: 원 생성은 지역 두 칸을 그대로 보내고 응답 id 를 다�
   }
 });
 
-test("S1: 이미 만든 원은 다시 만들지 않고 고친다 — 409 가 나던 자리", async () => {
+test("S1: 이미 만든 원은 다시 만들지도 고치지도 않는다 — 원 정보는 바꿀 수 없다(ADR-068)", async () => {
   const stop = await start();
   const rec = recorder();
   try {
@@ -244,11 +244,12 @@ test("S1: 이미 만든 원은 다시 만들지 않고 고친다 — 409 가 나
     assert.equal(again, centerId, "같은 원을 쓴다");
     const posts = rec.seen.filter((r) => r.method === "POST" && r.path === "/api/centers");
     assert.equal(posts.length, 1, "원을 또 만들지 않는다");
-    const patch = rec.seen.find((r) => r.method === "PATCH");
-    assert.ok(patch, "PATCH /api/centers/{id} 를 불러야 한다");
-    assert.equal(patch.body.name, "이름 바꾼 어린이집");
-    assert.equal(patch.body.director_name, "박원장");
-    assert.equal(read().centers.at(-1).name, "이름 바꾼 어린이집");
+    assert.equal(
+      rec.seen.find((r) => r.method === "PATCH"),
+      undefined,
+      "원 정보 수정 API 가 없다",
+    );
+    assert.equal(read().centers.at(-1).name, SETTINGS.orgName, "서버 원 이름은 그대로다");
   } finally {
     rec.stop();
     stop();
@@ -279,7 +280,7 @@ test("S1: 생성이 실패하면 id 없이 던진다 — 화면이 다음 단계
   }
 });
 
-test("S1: 기기를 바꿔 연결이 없어도 원을 또 만들지 않고 고친다 — 409 로 막히던 자리", async () => {
+test("S1: 기기를 바꿔 연결이 없어도 원을 또 만들지 않고 내 원에 다시 잇는다 — 409 로 막히던 자리", async () => {
   // 서버에는 원이 있는데 브라우저 연결만 없는 상태다. 목업 저장소는 그 둘을 따로 둘 수
   // 없어서(연결을 지우면 목업의 「내 원」도 사라진다) 서버 쪽 응답만 여기서 바꿔 준다.
   const stop = await start();
@@ -295,21 +296,79 @@ test("S1: 기기를 바꿔 연결이 없어도 원을 또 만들지 않고 고�
       http.get("*/api/auth/me", () =>
         HttpResponse.json({ id: 1, email: "fixture@example.com", name: "선생님", center_id: 42 }),
       ),
-      http.patch("*/api/centers/42", async ({ request }) =>
-        HttpResponse.json({ id: 42, ...(await request.json()) }),
+      http.get("*/api/centers/42", () =>
+        HttpResponse.json({
+          id: 42,
+          name: "서버의 어린이집",
+          director_name: "김원장",
+          region_sido: "강원특별자치도",
+          region_sigungu: "춘천시",
+          created_at: "2026-10-01T00:00:00Z",
+          registry_key: null,
+          kind: null,
+          address: null,
+          teacher_count: 1,
+        }),
       ),
     );
 
     const centerId = await onboarding.syncCenter({ ...SETTINGS, orgName: "옮겨 온 어린이집" });
 
     assert.equal(centerId, 42, "내 원을 찾아 그대로 쓴다");
-    const patch = rec.seen.find((r) => r.method === "PATCH" && r.path === "/api/centers/42");
-    assert.ok(patch, "거절당한 뒤에는 PATCH /api/centers/{id} 로 간다");
-    assert.equal(patch.body.name, "옮겨 온 어린이집");
+    assert.equal(
+      rec.seen.find((r) => r.method === "PATCH"),
+      undefined,
+      "고치지 않고 내 원을 읽기만 한다",
+    );
     // 다음 단계(반 만들기)가 이 id 로 가도록 연결도 남는다.
     const stored = JSON.parse(localStorage.snapshot()).find(([key]) => key.includes("apiLinks"));
     assert.ok(stored, "연결 정보를 저장해야 한다");
     assert.equal(JSON.parse(stored[1]).center.id, 42);
+  } finally {
+    rec.stop();
+    stop();
+  }
+});
+
+test("S1: 목록에서 고른 원이 이미 있으면 그 원으로 들어가고 서버 값을 돌려준다(ADR-068)", async () => {
+  const stop = await start();
+  const rec = recorder();
+  try {
+    server.use(
+      http.post("*/api/centers", async ({ request }) =>
+        HttpResponse.json(
+          {
+            id: 77,
+            name: "리틀빌리지어린이집",
+            director_name: "김원장",
+            region_sido: "강원특별자치도",
+            region_sigungu: "춘천시",
+            created_at: "2026-10-01T00:00:00Z",
+            registry_key: (await request.json()).registry_key,
+            kind: "민간",
+            address: "강원특별자치도 춘천시 영서로 2920",
+            teacher_count: 2,
+            joined: true,
+          },
+          { status: 200 },
+        ),
+      ),
+    );
+    const key = "강원특별자치도|춘천시|리틀빌리지어린이집|강원특별자치도 춘천시 영서로 2920";
+
+    const center = await onboarding.chooseCenter({
+      ...SETTINGS,
+      orgName: "리틀빌리지어린이집",
+      directorName: "내가 적은 원장",
+      registryKey: key,
+    });
+
+    assert.equal(center.joined, true);
+    assert.equal(center.director_name, "김원장", "먼저 가입한 선생님이 적은 원장 이름이다");
+    const post = rec.seen.find((r) => r.method === "POST" && r.path === "/api/centers");
+    assert.equal(post.body.registry_key, key);
+    // 다음 단계(반 만들기)가 이 원으로 가도록 연결이 남는다.
+    assert.equal(await onboarding.syncCenter(SETTINGS), 77);
   } finally {
     rec.stop();
     stop();
