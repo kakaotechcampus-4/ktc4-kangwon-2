@@ -59,10 +59,17 @@ def test_center_create_rejects_blank_strings(field, blank):
         CenterCreate(**{**VALID, field: blank})
 
 
-@pytest.mark.parametrize("missing", list(VALID))
+# 원장 이름은 빼도 스키마를 지난다 — 이미 있는 원으로 들어갈 때는 묻지 않는다(ADR-068).
+# 새로 만드는 원이면 라우터가 422 로 막는다 — tests/test_same_center.py.
+@pytest.mark.parametrize("missing", [k for k in VALID if k != "director_name"])
 def test_center_create_requires_every_field(missing):
     with pytest.raises(ValidationError):
         CenterCreate(**{k: v for k, v in VALID.items() if k != missing})
+
+
+def test_center_create_allows_missing_director_name():
+    body = CenterCreate(**{k: v for k, v in VALID.items() if k != "director_name"})
+    assert body.director_name is None
 
 
 def test_center_create_applies_column_lengths():
@@ -121,7 +128,8 @@ def test_every_invalid_field_is_collected():
 
     assert response.status_code == 422
     fields = response.json()["error"]["fields"]
-    assert fields == ["name", "director_name", "region_sido"]
+    # 원장 이름은 원이 있는지 본 뒤 라우터가 따로 본다 — 스키마 단계 목록에는 없다.
+    assert fields == ["name", "region_sido"]
 
 
 def test_unknown_field_is_reported_not_ignored():
