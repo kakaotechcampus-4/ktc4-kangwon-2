@@ -231,7 +231,11 @@ export function EvaluationToday({
 
   return (
     <>
-      <section className={`${ws.card} ${styles.today}`} data-done={left ? undefined : true}>
+      <section
+        className={`${ws.card} ${styles.today}`}
+        data-done={left ? undefined : true}
+        data-tour="eval-today"
+      >
         <span aria-hidden="true" className={ws.tape} />
         <p className={styles.todayEyebrow}>오늘 평가를 받는다면</p>
         <div className={styles.todaySay}>
@@ -275,7 +279,7 @@ export function EvaluationToday({
         </div>
       </section>
 
-      <section className={`${ws.card} ${styles.folder}`}>
+      <section className={`${ws.card} ${styles.folder}`} data-tour="eval-folder">
         <h2 className={styles.folderTitle}>내 컴퓨터 폴더</h2>
         <p className={styles.folderLead}>
           서류를 모아 둔 폴더를 고르면 파일 <strong>이름만</strong> 읽어 있는지 찾아요. 열지도,
@@ -332,7 +336,7 @@ export default function EvaluationSheet({
 }) {
   return (
     <div className={ws.stack}>
-      <section className={styles.sheet} aria-label="평가 때 낼 서류">
+      <section className={styles.sheet} aria-label="평가 때 낼 서류" data-tour="eval-sheet">
         <h2 className={`${styles.sheetTitle} ${styles.sheetHeadline}`}>평가 때 낼 서류</h2>
 
         {rows.map(({ doc, made, result, checked, done }) => (
