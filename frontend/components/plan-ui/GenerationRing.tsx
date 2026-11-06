@@ -42,6 +42,17 @@ export function ringProgress(t: number, expect: number) {
 /** `done` 을 켠 뒤 링이 끝까지 차는 시간. 부모는 이만큼 기다렸다가 화면을 바꾼다. */
 export const ringFinished = () => new Promise<void>((resolve) => setTimeout(resolve, 600));
 
+/**
+ * [생성 멈추기] 뒤 만들기 화면에 한 줄 — 연간 · 월간 · 주간이 같은 모양을 쓴다. 적은 메모 · 고른 값은 그대로 둔다.
+ * 놀이 중심형 연간은 서버도 구간 사이에서 멈추고 저장하지 않는다(router `_disconnected`). 한 번에
+ * 끝나는 다른 생성은 이미 보낸 요청을 서버가 끝까지 처리할 수 있다.
+ */
+export const STOPPED_NOTE = (
+  <p role="status" className="m-0 rounded-md bg-[#f7f4ee] px-4 py-3 text-sm text-[#5c5243]">
+    생성을 멈췄어요.
+  </p>
+);
+
 export default function GenerationRing({
   title = "연간계획안을 만들고 있어요",
   steps = ["주제 정하기", "소주제 나누기", "문서로 정리하기"],
@@ -68,7 +79,7 @@ export default function GenerationRing({
     const id = setInterval(() => setT((Date.now() - started) / 1000), 200);
     return () => clearInterval(id);
   }, [done, started]);
-  // 다 만들었을 때만 걸린 시간을 적는다 — 그만 만들기 · 실패는 생성 시간이 아니다.
+  // 다 만들었을 때만 걸린 시간을 적는다 — 생성 멈추기 · 실패는 생성 시간이 아니다.
   useEffect(() => {
     if (done) remember(kind, (Date.now() - started) / 1000);
   }, [done, kind, started]);
@@ -141,9 +152,10 @@ export default function GenerationRing({
           <button
             type="button"
             onClick={onCancel}
-            className="flex min-h-[44px] items-center text-sm text-[#5c5243] underline"
+            className="flex min-h-[44px] items-center gap-2 rounded-md border border-line bg-paper px-4 text-sm text-[#5c5243] hover:bg-[#f7f4ee] hover:text-ink"
           >
-            그만 만들기
+            <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] bg-current" />
+            생성 멈추기
           </button>
         )}
       </section>

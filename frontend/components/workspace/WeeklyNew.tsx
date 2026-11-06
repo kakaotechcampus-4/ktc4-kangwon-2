@@ -21,7 +21,7 @@ import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER, planClassLine } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
-import GenerationRing, { ringFinished } from "@/components/plan-ui/GenerationRing";
+import GenerationRing, { ringFinished, STOPPED_NOTE } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { BACK_BUTTON, BACK_ICON } from "@/components/plan-generator/AnnualFrame";
 import { Tape, useClasses } from "./WorkspaceUI";
@@ -72,6 +72,7 @@ type MonthData = { month: number; monthly: MonthlyPlan | null; plans: WeeklyPlan
 
 export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }) {
   const [problem, setProblem] = useState("");
+  const [stopped, setStopped] = useState(false);
   const [memo, setMemo] = useState("");
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
   const classes = useClasses(setProblem);
@@ -196,6 +197,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     setBusy(true);
     setDone(false);
     setProblem("");
+    setStopped(false);
     setMemoProblem(null);
     try {
       const plan = await createWeeklyPlan(
@@ -249,6 +251,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
           onCancel={() => {
             controller.current?.abort();
             setBusy(false);
+            setStopped(true);
           }}
         />
       </div>
@@ -391,6 +394,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
             />
           )}
 
+          {stopped && STOPPED_NOTE}
           {problem && (
             <p
               role="alert"

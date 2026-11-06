@@ -1,6 +1,7 @@
 """놀이 프로젝트형 연간계획안을 생성하고 응답 형식으로 옮긴다 (api-spec §4)."""
 
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from typing import Annotated
 
@@ -99,12 +100,17 @@ def provider():
     return MockPlayProjectProvider() if is_mock() else monthly_llm_provider()
 
 
+class GenerationStopped(Exception):
+    """교사가 「생성 멈추기」로 요청을 끊었다 — 다음 구간을 부르지 않고 저장하지 않는다."""
+
+
 def generate(
     school_year: int,
     classroom_ref: str,
     target_ages: frozenset[int],
     memo: str = "",
     names: NameTable | None = None,
+    stopped: Callable[[], bool] = lambda: False,
 ):
     plan_id = UuidGenerator().new_plan_id()
     use_case = GeneratePlayProjectPlan(
@@ -118,6 +124,10 @@ def generate(
     reflected = []
     avoid_play_names = ()
     for period in PLAY_PROJECT_LAYOUT_V0_2.periods:
+        # 구간마다 Sol 한 번(약 40~60초) — 끊긴 요청이면 남은 구간을 부르지 않는다
+        # (하민 결정 2026-11-06).
+        if stopped():
+            raise GenerationStopped(period.key)
         result, quotes = use_case.generate_period(
             GeneratePlayProjectPlanCommand(
                 school_year=school_year,
@@ -135,6 +145,8 @@ def generate(
         avoid_play_names += tuple(
             candidate.play_name.value for candidate in result.periods[0].candidates
         )
+    if stopped():  # 마지막 구간 중에 끊겼어도 저장하지 않는다 — 다시 만들 때 409 가 나지 않는다.
+        raise GenerationStopped("save")
     return replace(
         results[0],
         periods=tuple(result.periods[0] for result in results),

@@ -9,7 +9,8 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Response, status
+import anyio
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -136,6 +137,9 @@ _ALREADY_EXISTS = HTTPException(
         "fields": ["class_id"],
     },
 )
+# 「생성 멈추기」로 끊긴 요청 — 받는 브라우저가 없어 화면에 나오지 않는다
+# (499 는 nginx 관례, 기록용).
+_STOPPED = {"code": "GENERATION_STOPPED", "message": "생성을 멈췄습니다.", "fields": []}
 
 
 def _repo(session: Session, user: User) -> PostgresPlanRepository[YearlyPlan]:
@@ -354,7 +358,16 @@ def _play_project_generation_error(error: Exception) -> HTTPException:
     )
 
 
-def _play_project_plan(session: Session, user: User, klass, memo: str, names):
+def _disconnected(request: Request):
+    """동기 핸들러(스레드)에서 「브라우저가 요청을 끊었나」를 묻는다.
+
+    「생성 멈추기」(하민 결정 2026-11-06).
+
+    Next 프록시는 브라우저가 끊으면 이 서버 연결도 끊는다(proxy-request.js `res.on('close')`)."""
+    return lambda: anyio.from_thread.run(request.is_disconnected)
+
+
+def _play_project_plan(session: Session, user: User, klass, memo: str, names, stopped):
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     session.commit()
 
@@ -366,7 +379,12 @@ def _play_project_plan(session: Session, user: User, klass, memo: str, names):
             frozenset(range(klass.age_min, klass.age_max + 1)),
             memo,
             names,
+            stopped,
         )
+    except play_project.GenerationStopped as stop:
+        # 받는 쪽이 없다. 남은 구간의 Sol 을 부르지 않고 저장하지 않는다(다시 만들어도 409 가 없다).
+        _log.info("annual play-project generation stopped before=%s", stop)
+        raise HTTPException(499, detail=_STOPPED) from None
     except Exception as error:
         raise_if_mask_failed(error)
         raise _play_project_generation_error(error) from error
@@ -431,7 +449,9 @@ def _domain_error(error: Exception) -> HTTPException:
     response_model=Annotated[AnnualPlanOut | PlayProjectPlanOut, Field(discriminator="format")],
     status_code=status.HTTP_201_CREATED,
 )
-def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: CurrentUser):
+def create_annual_plan(
+    body: CreateAnnualPlan, request: Request, session: DbSession, user: CurrentUser
+):
     """12개월치를 만들어 DRAFT 로 저장한다.
 
     **학년도를 받지 않는다.** `class_id` 가 정한다 — `classes` 행이 학년도마다 새로
@@ -453,7 +473,7 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     if duplicate is not None:
         raise _ALREADY_EXISTS
     if body.format == "PLAY_PROJECT":
-        return _play_project_plan(session, user, klass, body.memo, names)
+        return _play_project_plan(session, user, klass, body.memo, names, _disconnected(request))
     if body.form_id is not None and find_own_form(session, user.center_id, body.form_id) is None:
         # 남의 원 양식 번호를 넣어도 통과하면 안 된다. 없는 것과 남의 것을 가르지 않는다(ADR-017).
         # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
