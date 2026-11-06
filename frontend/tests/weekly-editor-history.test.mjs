@@ -190,6 +190,7 @@ test("removing an edited indoor play drops its undo steps, so confirm still goes
     "@/components/app/compact-shell": { useCompactShell() {} },
     "./useCellHistory": compile("../components/workspace/useCellHistory.ts", { react }),
     "./WeeklySheet": es((p) => jsx("sheet", p)),
+    "./WeeklyGroupActivityPanel": es((p) => jsx("group", p)),
     "./WeeklyIndoorPlayPanel": es((p) => jsx("indoor", p)),
     "./Workspace.module.css": es({}),
     "@/components/plan-generator/PlanMemo": { PlanMemoNote: () => null },

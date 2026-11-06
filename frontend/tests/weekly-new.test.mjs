@@ -185,6 +185,7 @@ test("다듬기 칸 출처: 교사 수정은 이력으로, 후보를 다시 넣�
         "@/components/plan-generator/PlanMemo",
         "@/components/app/compact-shell",
         "./WeeklySheet",
+        "./WeeklyGroupActivityPanel",
         "./WeeklyIndoorPlayPanel",
         "./Workspace.module.css",
         "./useCellHistory",
