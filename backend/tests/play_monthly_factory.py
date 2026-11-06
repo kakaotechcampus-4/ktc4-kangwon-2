@@ -175,7 +175,7 @@ def _valid(request) -> dict:
                 "content_ids": ids[:2],
                 "parent_ref": None,
             }
-            for n in range(1, 6)
+            for n in range(1, 9)
         ],
         "free_play": [
             {
@@ -184,7 +184,7 @@ def _valid(request) -> dict:
                 "content_ids": ids[2:3],
                 "parent_ref": None,
             }
-            for n in range(1, 6)
+            for n in range(1, 9)
         ],
         # Contains safety words (교통안전 …) on purpose: ordinary here, not leakage.
         "safety": [
@@ -251,6 +251,18 @@ CLASSIFIED = JsonSafetyEvidenceClassificationRepository().get_classification()
 QUALITY_TABLE = JsonSafetyReferenceQualityRepository().get_quality()
 
 
+def with_room(plan: PlayMonthlyPlan, *sections: str) -> PlayMonthlyPlan:
+    """목록(기본 두 목록)의 마지막 행을 하나씩 후보 목록으로 돌려 둔다 — 5행이 차 있으면 행 더하기가
+    422 다(ADR-065)."""
+    for section in sections or ("together", "free_play"):
+        plan = plan.remove_activity(
+            getattr(plan, section)[-1].cell.item_id,
+            actor_id=ActorId("teacher-factory"),
+            occurred_at=datetime(2027, 2, 20, tzinfo=UTC),
+        )
+    return plan
+
+
 def make_play_monthly(
     classroom_ref: str, school_year: int = 2027, month: int = 4
 ) -> PlayMonthlyPlan:
@@ -272,7 +284,7 @@ def make_play_monthly(
         clock=FixedClock(datetime(2027, 2, 20, tzinfo=UTC)),
         id_generator=UuidGenerator(),  # 한 테스트에서 여러 장을 만들어도 plan_ref 가 겹치지 않는다
     )
-    return use_case.execute(
+    plan = use_case.execute(
         GeneratePlayMonthlyPlanCommand(
             parent_plan_id=PlanId("parent-1"),
             classroom_ref=classroom_ref,
@@ -289,6 +301,15 @@ def make_play_monthly(
             drill_catalog_version=DRILLS.catalog_version,
         )
     )
+    # layout v0.3.0 은 후보 8개씩이 모두 후보 목록에서 시작한다 — 교사처럼 앞 다섯 개씩 넣어 둔다.
+    for section in ("together", "free_play"):
+        for pooled in [r for r in plan.activity_pool if r.section == section][:5]:
+            plan = plan.pick_activity(
+                pooled.activity.cell.item_id,
+                actor_id=ActorId("teacher-factory"),
+                occurred_at=datetime(2027, 2, 20, tzinfo=UTC),
+            )
+    return plan
 
 
 def save_play_monthly(session, center_id: int, plan: PlayMonthlyPlan) -> Plan:

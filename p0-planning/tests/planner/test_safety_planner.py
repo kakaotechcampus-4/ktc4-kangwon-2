@@ -378,7 +378,7 @@ def test_the_prompt_names_one_focus_and_one_primary_per_week(packet, snapshot):
 
     assert weeks[1]["primary_ref"] == "safe-ev-2" and weeks[1]["supplemental_label"] == "life_safety"
     assert weeks[1]["sample_refs"] == ["safe-ev-2"]
-    # 2026-10-22: the Rule writes 「[label] - 」; a supplemental week is a topic phrase only.
+    # 2026-10-22: the Rule writes 「[label] 」 (no 「 - 」 since 2026-11-06); a supplemental week is a topic phrase only.
     assert "the application adds the category label" in SAFETY_SYSTEM_PROMPT
     assert "write only a short Korean topic phrase" in SAFETY_SYSTEM_PROMPT
 

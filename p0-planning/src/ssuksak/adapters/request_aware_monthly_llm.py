@@ -77,6 +77,12 @@ class RequestAwareMonthlyLlm:
             }
 
         def week_value(section_key: str, index: int) -> dict[str, object]:
+            value = _week_value(section_key, index)
+            if section_key in getattr(request, "detail_section_keys", ()):
+                value["detail"] = f"{index}주에는 친구들과 함께 몸을 움직이며 즐겁게 놀아요."  # ADR-066
+            return value
+
+        def _week_value(section_key: str, index: int) -> dict[str, object]:
             if section_key == "safety_education":
                 # No placement plan: leave it unresolved, never invent content.
                 return safety_value(index) or {
@@ -182,6 +188,8 @@ class RequestAwareMonthlyLlm:
                 grounding_ref_for(request, request.target_section_key),
             ),
         }
+        if getattr(request, "detail_requested", False):  # ADR-066
+            payload["section"]["detail"] = "친구들과 새로운 방법으로 몸을 움직이며 놀아요."
         if getattr(request, "memo_addresses", None) is not None:
             payload["memo_applied"] = list(request.memo_addresses)
             payload["memo_skipped"] = []

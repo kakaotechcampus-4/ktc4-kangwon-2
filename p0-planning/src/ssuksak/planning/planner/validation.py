@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 import json
+import logging
 import re
 from .v1_guidance import curriculum_source_refs
 
@@ -32,12 +33,16 @@ from .contracts import (
     CANDIDATE_PREFIXES,
     DRILL_CANDIDATE_PREFIX,
     SAFETY_CANDIDATE_PREFIX,
+    MonthlyCellPlanningRequest,
+    MonthlyCellProposal,
     MonthlyPlanProposal,
     MonthlyPlanningRequest,
     ProposedSectionValue,
 )
 from .text_policy import normalize_visible_text, visible_text_violations
 from .weekly import unsupported_facts
+
+_log = logging.getLogger(__name__)
 
 
 class ProposalValidationCode(str, Enum):
@@ -947,6 +952,69 @@ def _drill_candidate_issues(
         if value.reference_id is not None:
             fail(ProposalValidationCode.UNKNOWN_REFERENCE_ID, "REFERENCE_FORBIDDEN_FOR_SECTION")
     return issues
+
+
+MAX_ACTIVITY_DETAIL_SENTENCES = 2
+
+
+def _detail_keeper(packet: MonthlyContextPacket, asked, hidden: frozenset[str], facts: str):
+    evidence_texts = {normalize_visible_text(item.text) for item in packet.grounding_items}
+
+    def keep(value: ProposedSectionValue) -> bool:
+        text = value.detail
+        return (
+            value.section_key in asked
+            and not value.unresolved
+            and bool(value.value.strip())
+            and not visible_text_violations(text, evidence_refs=hidden)
+            and sentence_count(text) <= MAX_ACTIVITY_DETAIL_SENTENCES
+            and normalize_visible_text(text) not in evidence_texts
+            and not unsupported_facts(text, facts)
+        )
+
+    return keep
+
+
+def sanitize_cell_activity_detail(
+    proposal: MonthlyCellProposal,
+    packet: MonthlyContextPacket,
+    request: MonthlyCellPlanningRequest,
+) -> MonthlyCellProposal:
+    """ADR-066 (Human Decision 2026-11-06): the regenerated cell's detail, same policy as generation."""
+    value = proposal.section
+    if not value.detail:
+        return proposal
+    asked = (request.target_section_key,) if request.detail_requested else ()
+    if _detail_keeper(packet, asked, _hidden_ids(request, packet), request.user_content)(value):
+        return proposal
+    _log.info("activity_detail_dropped count=1 reason=POLICY")
+    return replace(proposal, section=replace(value, detail=""))
+
+
+def sanitize_activity_details(
+    proposal: MonthlyPlanProposal,
+    packet: MonthlyContextPacket,
+    request: MonthlyPlanningRequest,
+) -> MonthlyPlanProposal:
+    """ADR-066: drop (to "") every detail the request did not ask for or that breaks text policy.
+
+    A detail is supplementary: it never becomes a finding, a repair target or a failure.
+    Kept only on a resolved cell of an asked section, within the visible-text policy, at most
+    two sentences, not a verbatim evidence copy and with no fact the input does not hold."""
+    keep = _detail_keeper(packet, request.detail_section_keys, _hidden_ids(request, packet), _input_facts(request))
+    dropped = 0
+    weeks = []
+    for week in proposal.weeks:
+        sections = []
+        for value in week.sections:
+            if value.detail and not keep(value):
+                value = replace(value, detail="")
+                dropped += 1
+            sections.append(value)
+        weeks.append(replace(week, sections=tuple(sections)))
+    if dropped:
+        _log.info("activity_detail_dropped count=%d reason=POLICY", dropped)
+    return replace(proposal, weeks=tuple(weeks))
 
 
 def validate_monthly_proposal(

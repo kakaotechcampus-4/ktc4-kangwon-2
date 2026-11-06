@@ -27,13 +27,17 @@ from ssuksak.planning.application.generate_play_project_plan import (
 )
 from ssuksak.planning.domain.plan import PlanStatus
 from ssuksak.planning.domain.provenance import EvidenceSourceType, GenerationMethod
+from ssuksak.planning.domain.teacher_memo import MemoNotice, MemoNoticeReason
 from ssuksak.planning.domain.theme_reference import ActivationStatus
 from ssuksak.planning.planner.contracts import (
     ProposalParseError,
     ProposalRejectedError,
     RawLlmResponse,
 )
-from ssuksak.planning.planner.play_project import PLAY_PROJECT_PROMPT_VERSION
+from ssuksak.planning.planner.play_project import (
+    PLAY_PROJECT_PROMPT_VERSION,
+    remaining_memo_notices,
+)
 
 CATALOG_ID = "ssuksak.nuri-curriculum-content"
 VERSION = "nuri-curriculum-content-v0.1.0"
@@ -279,14 +283,23 @@ def test_a_teacher_memo_reaches_the_prompt_and_marks_only_the_rows_it_changed():
         **_proposal(),
         "memo_applied": ["cand2"],
         "memo_skipped": [{"summary": "안전교육 시수 지정", "reason": "RULE_CONFLICT"}],
+        "memo_reflected": ["물놀이를 많이"],
     }
     provider = _FakeProvider(payload)
     use_case, command, _ = _run(provider)
 
-    plan = use_case.execute(replace(command, teacher_memo="물놀이를 많이 넣어 주세요"))
+    plan, reflected = use_case.generate_period(
+        replace(command, teacher_memo="물놀이를 많이 넣어 주세요")
+    )
 
     (request,) = provider.requests
-    assert request.prompt_version == PLAY_PROJECT_PROMPT_VERSION + "+teacher-memo-v1"
+    # Human Decision 2026-11-05: the period-scoped memo rule rides on the memo tag.
+    assert request.prompt_version == (
+        PLAY_PROJECT_PROMPT_VERSION + "+teacher-memo-v1+period-memo-v1+memo-share-v1"
+    )
+    assert "많아야 3개 후보에만" in request.system_prompt
+    assert "다른 구간" in request.system_prompt
+    assert reflected == ("물놀이를 많이",)
     assert json.loads(request.user_content)["teacher_memo"]["addresses"][:2] == ["cand1", "cand2"]
     marked = [
         c.row_key
@@ -296,3 +309,20 @@ def test_a_teacher_memo_reaches_the_prompt_and_marks_only_the_rows_it_changed():
     assert marked == ["cand2"]
     assert plan.teacher_memo == "물놀이를 많이 넣어 주세요"
     assert [n.reason.value for n in plan.memo_notices] == ["RULE_CONFLICT"]
+
+
+def test_a_request_one_period_reflected_is_not_left_as_not_applied():
+    """Human Decision 2026-11-05: notices are matched to the memo by verbatim position."""
+    memo = "봄에는 꽃 놀이,  여름에는 물놀이를 넣어 주세요. 공룡도요"
+    spring = MemoNotice("여름에는 물놀이를 넣어 주세요", MemoNoticeReason.OUT_OF_RANGE)
+    dino = MemoNotice("공룡도요", MemoNoticeReason.OUT_OF_RANGE)
+    paraphrased = MemoNotice("공룡 놀이", MemoNoticeReason.OUT_OF_RANGE)
+    left = remaining_memo_notices(
+        memo,
+        (
+            ((spring, dino), ("봄에는 꽃 놀이,",)),
+            ((dino, paraphrased), ("여름에는   물놀이를 넣어 주세요",)),
+            ((), ()),
+        ),
+    )
+    assert left == (dino, paraphrased)

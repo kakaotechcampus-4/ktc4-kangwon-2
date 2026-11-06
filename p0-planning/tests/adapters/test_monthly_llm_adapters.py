@@ -172,6 +172,7 @@ def test_elice_cell_request_uses_the_strict_cell_schema():
     cell_request = SimpleNamespace(
         system_prompt="system",
         memo_addresses=None,
+        detail_requested=False,
         user_content="user",
         target_section_key="focus",
         valid_grounding_refs=frozenset({"ev-1"}),

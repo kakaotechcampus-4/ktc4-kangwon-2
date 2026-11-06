@@ -125,7 +125,8 @@ class WeeklyActivities(_WeeklyLifecycle):
             return plan
         cell = blank or self._blank_indoor(plan)
         if candidate is not None:
-            value = f"[{candidate.activity_type}] - {candidate.name}"
+            # 「[영역] 이름」 — 대·소집단과 같은 모양(Human Decision 2026-11-06, 하민). 그 전 값은 「[영역] - 이름」.
+            value = f"[{candidate.activity_type}] {candidate.name}"
             generation = GenerationMethodDetail(GenerationMethod.RULE_ONLY, "weekly.activity_copy", "v1")
             event = AuditEvent(AuditEventType.CANDIDATE_COPIED, self._clock.now(), plan.plan_id,
                               item_id=cell.item_id, actor_id=actor, copied_from=candidate.cell.item_id,

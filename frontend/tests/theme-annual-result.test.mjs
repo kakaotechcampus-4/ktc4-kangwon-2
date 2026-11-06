@@ -203,3 +203,30 @@ test("an earlier failed save does not hide a later one; going back to the old va
   await view.confirm();
   assert.deepEqual(view.events, ["write:C", "write:3월 원래", "confirm"]);
 });
+
+test("AnnualThemeSheet read-only matches the hwpx: week rows only, extra topics in the last week, a filler under the short half", () => {
+  const { default: Sheet } = compile("components/plan-generator/AnnualThemeSheet.tsx", {
+    "@/lib/plan-generator/subThemeSlots": slotsModule,
+    "./PlayMonthlySheet": { HATCH: "" },
+    "./rowDrag": {},
+  });
+  const months = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2].map((month) => ({
+    month,
+    theme: "t",
+    week_count: month === 3 ? 5 : 4,
+    sub_themes: month === 4 ? ["a", "b", "c", "d", "e"] : ["a", "b", "c", "d"],
+  }));
+  const tree = nodes(jsx(Sheet, { title: "", months }));
+  const cells = tree.filter((n) => n.type === "td");
+  assert.ok(
+    cells.some((n) => [].concat(n.props.children).includes("d\ne")),
+    "4월 남는 소주제는 4주 칸에 줄을 바꿔",
+  );
+  assert.ok(!cells.some((n) => n.props.children === "+"));
+  // 왼쪽 25줄 · 오른쪽 24줄 — 오른쪽 아래에 한 줄 높이 빈 칸.
+  const filler = cells.filter((n) => n.props.colSpan === 4);
+  assert.deepEqual(
+    filler.map((n) => n.props.style.height),
+    [36],
+  );
+});

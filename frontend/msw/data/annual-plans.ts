@@ -106,6 +106,8 @@ const projectPeriods = (planId: number): PlayProjectAnnualPlan["periods"] =>
       const number = index + 1;
       return {
         row_key: "cand" + number,
+        // 일부 후보(1 · 5 · 9번)는 요청을 반영했다고 둔다 — 메모가 없으면 detail 이 false 로 읽는다.
+        memo_applied: number % 4 === 1,
         play_name: projectCell(
           itemId(planId, periodIndex, number, 1),
           `${period.months[0]}~${period.months[period.months.length - 1]}월 함께하는 놀이 ${number}`,
@@ -185,7 +187,15 @@ const detail = (p: MockAnnualPlan): AnnualPlanResponse => {
       status: p.status,
       format: p.format,
       format_version: p.format_version,
-      periods: p.periods.map((period) => ({ ...period, selected: period.selected ?? [] })),
+      periods: p.periods.map((period) => ({
+        ...period,
+        selected: period.selected ?? [],
+        // 서버처럼 메모가 없으면 항상 false. 이 키 전에 저장된 목업에는 없다.
+        candidates: period.candidates.map((c) => ({
+          ...c,
+          memo_applied: Boolean(p.memo) && (c.memo_applied ?? false),
+        })),
+      })),
       memo: p.memo,
       memo_notices: p.memo_notices,
     };
@@ -224,12 +234,11 @@ export const listPlans = (classId?: number): AnnualPlanSummary[] =>
       confirmed_at: p.confirmed_at,
     }));
 
-/** 서버 `DELETE` 와 같다 — 확정본 · 딸린 월간이 있으면 지우지 않고 그 까닭을 돌려준다. */
+/** 서버 `DELETE` 와 같다 — 확정본도 지우고(ADR-064), 딸린 월간이 있으면 지우지 않고 「IN_USE」. */
 export const removePlan = (id: number) =>
-  commit((db): "CONFIRMED" | "IN_USE" | null => {
+  commit((db): "IN_USE" | null => {
     const plan = db.plans.find((p) => p.id === id);
     if (!plan) return null;
-    if (plan.status === "CONFIRMED") return "CONFIRMED";
     const mine = (p: { class_id: number }) => p.class_id === plan.class_id;
     if (db.monthlyPlans.some(mine) || db.playMonthlyPlans.some(mine)) return "IN_USE";
     db.plans = db.plans.filter((p) => p !== plan);

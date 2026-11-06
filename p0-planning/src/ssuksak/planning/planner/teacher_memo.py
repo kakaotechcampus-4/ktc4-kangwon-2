@@ -39,6 +39,17 @@ teacher_memo는 담임교사가 이번 생성에 적은 요청 사항이다. 지
   모두 반영했으면 빈 배열이다.
 """
 
+# Human Decision 2026-11-06(하민): 교사가 골라 쓰는 후보 목록은 메모를 몇 개에만 반영한다 —
+# 후보가 메모 한 가지로 쏠리지 않게. 놀이 중심형 월간 · 놀이 프로젝트형 연간에 붙는다.
+# ponytail: 개수는 프롬프트로만 정한다. 넘겨도 검사하지 않는다(내용이 메모를 탔는지는 결정적으로 못 잰다).
+MEMO_SHARE = 3
+CANDIDATE_MEMO_PROMPT_TAG = "+memo-share-v1"
+CANDIDATE_MEMO_PROMPT = f"""
+- together · free_play · rows처럼 교사가 그중에서 골라 쓰는 후보 목록에서는 메모를 목록마다
+  많아야 {MEMO_SHARE}개 후보에만 반영한다. 나머지 후보는 메모가 없을 때처럼 원래 기준대로 다양하게 쓴다 —
+  교사가 메모와 다른 놀이도 고를 수 있게. memo_applied에도 반영한 그 후보만 넣는다.
+  후보 목록이 아닌 칸(주제 · 안전교육 · 습관 등)에는 이 제한이 없다.
+"""
 
 # 2층(ADR-060): 안전교육 후보가 있는 월간에 메모가 오면 붙는다. 배치는 Rule 이 한다.
 SAFETY_REQUESTS = "safety_requests"

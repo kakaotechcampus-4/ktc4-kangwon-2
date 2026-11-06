@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import replace
 
 from ..domain.activity_reference import OUTDOOR_PLAY_SLOT
+from ..domain.monthly_constraint import CellState
 from ..domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
 from ..domain.monthly_template import RepeatBy
+from ..domain.monthly_template_snapshot import ACTIVITY_DETAIL_SECTION_KEYS
 from ..domain.provenance import (
     AuditEvent,
     AuditEventType,
@@ -30,7 +32,12 @@ from ..rules.monthly_activity_selection import (
     RULE_VERSION as ACTIVITY_RULE_VERSION,
     select_activity_for_cell,
 )
+from ..domain.teacher_memo import without_memo_evidence
 from ..rules.monthly_cell_state import resolve_cell_state
+from ..rules.monthly_template_resolver import (
+    RULE_ID as TEMPLATE_RULE_ID,
+    RULE_VERSION as TEMPLATE_RULE_VERSION,
+)
 from .generate_monthly_plan import LLM_INTEGRATION_RULE_ID
 from .monthly_dto import (
     ActivityCatalogSelector,
@@ -277,6 +284,7 @@ class RegenerateMonthlyPlanItem:
             generation=generation,
             evidence=evidence,
             actor_id=actor_id,
+            detail=proposal.detail,
         )
         return RegenerateMonthlyPlanItemResult(updated, planner_outcome=outcome)
 
@@ -289,6 +297,7 @@ class RegenerateMonthlyPlanItem:
         generation,
         evidence,
         actor_id,
+        detail="",
     ):
         event = AuditEvent(
             AuditEventType.REGENERATED,
@@ -311,7 +320,46 @@ class RegenerateMonthlyPlanItem:
             evidence=evidence,
             audit=cell.audit.append(event),
         )
-        return plan.replace_cell(cell.item_id, updated_cell)
+        plan = plan.replace_cell(cell.item_id, updated_cell)
+        return self._replace_detail(
+            plan, updated_cell, detail=detail, actor_id=actor_id, occurred_at=event.occurred_at
+        )
+
+    def _replace_detail(self, plan, parent, *, detail, actor_id, occurred_at):
+        """ADR-066 (Human Decision 2026-11-06): the same week's hidden description follows its
+        regenerated activity, never left describing the old one. Written like at generation:
+        the new detail (RULE_LLM, the parent's prompt version and Evidence) or "" (RULE_ONLY).
+        Nothing to trace when it was blank and stays blank; a Plan without details is unchanged."""
+        key = ACTIVITY_DETAIL_SECTION_KEYS.get(parent.section_key)
+        section = plan.section(key) if key is not None else None
+        current = section.cell_for_week(parent.week_id) if section is not None else None
+        if current is None or (not detail and not current.value.strip()):
+            return plan
+        generation = (
+            GenerationMethodDetail(GenerationMethod.RULE_LLM, LLM_INTEGRATION_RULE_ID, parent.generation.rule_version)
+            if detail
+            else GenerationMethodDetail(GenerationMethod.RULE_ONLY, TEMPLATE_RULE_ID, TEMPLATE_RULE_VERSION)
+        )
+        event = AuditEvent(
+            AuditEventType.REGENERATED,
+            occurred_at,
+            plan.plan_id,
+            item_id=current.item_id,
+            actor_id=actor_id,
+            value_change=ValueChange(current.value, detail),
+            generation_change=GenerationMethodChange(current.generation, generation),
+        )
+        return plan.replace_cell(
+            current.item_id,
+            replace(
+                current,
+                value=detail,
+                cell_state=CellState.FILLED if detail else CellState.EMPTY_VALID,
+                generation=generation,
+                evidence=without_memo_evidence(parent.evidence) if detail else (),
+                audit=current.audit.append(event),
+            ),
+        )
 
 
 def _theme_cell(plan: MonthlyPlan):
@@ -341,6 +389,8 @@ def _month_snapshot(
         section
         for section in plan.sections
         if section.repeat_by is RepeatBy.WEEK
+        # ADR-066: hidden descriptions are not cell-regeneration context.
+        and section.section_key not in ACTIVITY_DETAIL_SECTION_KEYS.values()
     )
     return tuple(
         MonthlyCellSnapshot(

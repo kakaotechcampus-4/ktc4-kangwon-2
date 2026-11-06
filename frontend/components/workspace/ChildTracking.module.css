@@ -10,13 +10,13 @@
   --tracking-page-bottom: 36px;
   /* 상단바·페이지 여백·128px 헤더·20px 간격을 뺀 왼쪽 패널의 가용 높이. */
   --tracking-selector-height: calc(
-    100dvh - var(--tracking-shell-height) - var(--tracking-page-top) - var(--tracking-page-bottom) -
-      128px - 20px
+    calc(100 * var(--app-dvh)) - var(--tracking-shell-height) - var(--tracking-page-top) -
+      var(--tracking-page-bottom) - 128px - 20px
   );
   container: child-tracking / inline-size;
   width: 100%;
   min-width: 0;
-  min-height: calc(100dvh - 60px);
+  min-height: calc(calc(100 * var(--app-dvh)) - 60px);
   max-width: none;
   margin: 0;
   padding: 24px 32px 36px;
@@ -599,7 +599,7 @@
 @media (max-width: 1023px) {
   .page {
     --tracking-shell-height: 144px;
-    min-height: calc(100dvh - 60px - 84px);
+    min-height: calc(calc(100 * var(--app-dvh)) - 60px - 84px);
   }
 }
 

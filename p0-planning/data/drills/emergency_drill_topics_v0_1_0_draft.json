@@ -1,10 +1,10 @@
 {
-  "$schema_note": "P0 내부 Reference **Draft**다. 공개 API Schema가 아니며 runtime에 연결하지 않는다. 놀이중심 월간(PLAY_MONTHLY)의 소방대피/재난대비 훈련 주제 후보 집합이다.",
+  "$schema_note": "P0 내부 Reference다. 공개 API Schema가 아니며, 사람 승인(review) 뒤 runtime에 연결해 쓴다. 놀이중심 월간(PLAY_MONTHLY)의 소방대피/재난대비 훈련 주제 후보 집합이다.",
   "schema_version": "drill-topic-reference.schema.v0",
   "catalog_id": "ssuksak.emergency-drill-topics",
   "catalog_version": "emergency-drill-topics-v0.1.0",
   "supersedes": null,
-  "draft": true,
+  "draft": false,
   "created_on": "2026-10-27",
   "locale": "ko-KR",
   "purpose": "Rule이 대상 월에 맞는 주제 5개를 고정하고, LLM은 각 주제의 훈련 주제 문장만 쓴다. 실제 날짜·대피 경로·집결 장소·담당자·실시 결과는 교사가 작성한다.",

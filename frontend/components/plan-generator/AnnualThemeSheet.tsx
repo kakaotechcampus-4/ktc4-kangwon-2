@@ -54,6 +54,11 @@ export default function AnnualThemeSheet({
         }
       : {};
   const HOVER = onSelect ? "cursor-pointer hover:bg-[#faf7fd]" : "";
+  // 읽기 전용(확정본 · 크게 보기)은 한글 내려받기처럼 주 수만큼만 줄을 긋고, 남는 소주제는 마지막 주 칸에 줄을 바꿔 잇는다.
+  const rowsOf = (m: SheetMonth) =>
+    onSelect ? slotRows(m.sub_themes, m.week_count) : Math.max(m.week_count, 1);
+  const total = (list: SheetMonth[]) => list.reduce((n, m) => n + rowsOf(m), 0);
+  const height = Math.max(total(months.slice(0, 6)), total(months.slice(6)));
   const half = (list: SheetMonth[]) => (
     <table className="w-full table-fixed border-collapse text-[13px] leading-tight">
       <colgroup>
@@ -77,11 +82,14 @@ export default function AnnualThemeSheet({
       </thead>
       <tbody>
         {list.map((m) => {
-          const rows = slotRows(m.sub_themes, m.week_count);
+          const rows = rowsOf(m);
           const flag = flagged.includes(m.month) ? "bg-[#fdecea]" : "bg-[#EEF9FE]";
           return Array.from({ length: rows }, (_, i) => {
             const extra = i >= m.week_count;
-            const value = m.sub_themes[i] ?? "";
+            const value =
+              !onSelect && i === rows - 1
+                ? m.sub_themes.slice(i).join("\n")
+                : (m.sub_themes[i] ?? "");
             // 편집 중일 때만 빈 주 칸(노랑) · 주 수를 넘친 칸(빨강)을 칠한다.
             const tint =
               onSelect && extra ? "bg-[#fdecea]" : onSelect && !value.trim() ? "bg-[#fff8e1]" : "";
@@ -118,7 +126,7 @@ export default function AnnualThemeSheet({
                 <td className={`${CELL} h-[36px] text-center`}>{extra ? "+" : i + 1}</td>
                 <td
                   data-slot={`${m.month}-${i}`}
-                  className={`${CELL} ${HOVER} ${tint} ${on(m.month, i)} ${onMove ? "group relative pl-6 transition-[background-color,opacity] duration-200 [&[data-dragging]]:opacity-40 [&[data-drop]]:bg-[#efe7f8]" : ""}`}
+                  className={`${CELL} whitespace-pre-line ${HOVER} ${tint} ${on(m.month, i)} ${onMove ? "group relative pl-6 transition-[background-color,opacity] duration-200 [&[data-dragging]]:opacity-40 [&[data-drop]]:bg-[#efe7f8]" : ""}`}
                   {...area(m.month, i)}
                   {...(onMove && {
                     onDragOver: (event: DragEvent<HTMLElement>) => {
@@ -177,6 +185,16 @@ export default function AnnualThemeSheet({
             );
           });
         })}
+        {/* 짧은 쪽 아래 빈 칸 — 한글 내려받기(annual_hwpx.py)가 좌우 높이를 맞추려 남는 줄을 한 칸으로 합친다. */}
+        {height > total(list) && (
+          <tr>
+            <td
+              colSpan={4}
+              className={`${CELL} bg-[#EEF9FE]`}
+              style={{ height: (height - total(list)) * 36 }}
+            />
+          </tr>
+        )}
       </tbody>
     </table>
   );

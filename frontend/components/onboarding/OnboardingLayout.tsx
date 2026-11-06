@@ -56,7 +56,7 @@ export default function OnboardingLayout({
     <div
       // 데스크톱은 **흰 카드만** 화면 세로 가운데에 둔다. 머리 줄은 카드 바로 위에 띄워 두고 가운데 계산에서 뺀다.
       // 위아래 여백을 머리 줄 높이보다 크게 같게 두어, 창이 낮아도 머리 줄이 화면 밖으로 밀려나지 않는다.
-      className={`${fontClassName} flex min-h-screen flex-col items-center bg-[var(--pg-board)] font-body text-ink sm:justify-center sm:bg-cream sm:px-6 sm:py-[88px]`}
+      className={`${fontClassName} flex min-h-[calc(100*var(--app-vh))] flex-col items-center bg-[var(--pg-board)] font-body text-ink sm:justify-center sm:bg-cream sm:px-6 sm:py-[88px]`}
     >
       <div className="relative flex w-full max-w-[1100px] flex-1 flex-col sm:flex-none">
         <header className="absolute inset-x-0 bottom-full hidden h-[72px] items-center justify-between sm:flex">

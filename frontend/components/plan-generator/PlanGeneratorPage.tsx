@@ -23,7 +23,7 @@ import { schoolYearOf } from "@/lib/workspace/document-archive";
 import { today } from "@/lib/workspace/model";
 import { Tape } from "@/components/workspace/WorkspaceUI";
 import { SlideTour } from "@/components/app/Tour";
-import GenerationRing, { ringFinished } from "@/components/plan-ui/GenerationRing";
+import GenerationRing, { ringFinished, STOPPED_NOTE } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { memoError, PlanMemoField } from "./PlanMemo";
 import { BACK_BUTTON, BACK_ICON } from "./AnnualFrame";
@@ -88,6 +88,7 @@ function AnnualGenerator({ format }: { format: Format }) {
   const [generating, setGenerating] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
+  const [stopped, setStopped] = useState(false);
   const [memo, setMemo] = useState("");
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
   // 그 반에 연간이 이미 있을 때(409) 어느 반인지. 교사가 「새로 만들기」를 고를 때만 지운다 —
@@ -107,6 +108,7 @@ function AnnualGenerator({ format }: { format: Format }) {
     setGenerating(true);
     setDone(false);
     setError("");
+    setStopped(false);
     setMemoProblem(null);
     setOccupied(null);
     let classId: number | null = null;
@@ -145,10 +147,11 @@ function AnnualGenerator({ format }: { format: Format }) {
     }
   }
 
-  /** [그만 만들기]. 화면만 멈춘다 — 이미 보낸 요청은 서버가 끝까지 처리할 수 있다. */
+  /** [생성 멈추기]. 요청을 끊는다 — 놀이 중심형은 서버도 남은 구간을 부르지 않고 저장하지 않는다. */
   function stop() {
     controllerRef.current?.abort();
     setGenerating(false);
+    setStopped(true);
   }
 
   /** 그 반의 연간계획안을 지우고 다시 만든다. 교사가 「새로 만들기」를 눌렀을 때만 온다. */
@@ -170,7 +173,7 @@ function AnnualGenerator({ format }: { format: Format }) {
 
   if (generating)
     return (
-      <div className="flex min-h-[calc(100vh-60px)]">
+      <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
           kind={`annual:${format}`}
           // Sol 실측(2026-11-05): 놀이 중심형은 4구간을 차례로 불러 약 176초. 주제형은 아직 안 쟀다.
@@ -183,7 +186,8 @@ function AnnualGenerator({ format }: { format: Format }) {
     );
 
   return (
-    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)]">
+    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)]">
+      {stopped && STOPPED_NOTE}
       {error && (
         <p
           role="alert"

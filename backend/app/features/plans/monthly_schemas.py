@@ -5,8 +5,9 @@
 """
 
 from datetime import date, datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field, StrictStr
+from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from app.features.plans.schemas import EvidenceOut, GenerationOut, MemoIn, MemoNoticeOut
 
@@ -120,6 +121,36 @@ class NoticeOut(BaseModel):
     week_id: str
 
 
+class TableCellOut(BaseModel):
+    """교사 표 칸 하나 — 놀이 월간 `CellOut` 과 같은 모양. 처음 쓰기 전에는 generation 이 null."""
+
+    item_id: str
+    value: str
+    evidence: list[EvidenceOut]
+    generation: GenerationOut | None
+
+
+class TablePartOut(BaseModel):
+    """한 열의 나눔 트리 — 놀이 월간 `TimetablePartOut` 과 같은 모양(ADR-047)."""
+
+    cell: TableCellOut | None = None
+    split_id: str | None = None
+    axis: Literal["VERTICAL", "HORIZONTAL"] | None = None
+    ratio: int | None = None
+    children: list["TablePartOut"] = Field(default_factory=list)
+
+
+class TeacherTableOut(BaseModel):
+    """한글 양식 끝의 교사가 적는 표(Human Decision 2026-11-05). 계획안이 만들지 않는다."""
+
+    table_key: Literal["event_schedule", "specialized_timetable", "special_activity_timetable"]
+    label: str  # 양식의 이름(source_label)
+    titles: list[TableCellOut]  # 특성화 시간표의 열 제목 칸. 다른 표는 빈 목록
+    columns: list[TablePartOut]
+    column_widths: list[int]  # 표 폭의 %
+    height_mm: int
+
+
 class MonthlyPlanOut(BaseModel):
     id: int
     class_id: int
@@ -140,6 +171,7 @@ class MonthlyPlanOut(BaseModel):
     safety_candidates: list[SafetyCandidateOut]
     safety_weeks: list[SafetyWeekOut]
     drill_candidates: list[DrillCandidateOut]
+    teacher_tables: list[TeacherTableOut] = []
     notices: list[NoticeOut]
     constraints: list[ConstraintOut]
     verification: VerificationOut
@@ -175,6 +207,12 @@ class RevisionIn(BaseModel):
 class SafetyWeekIn(RevisionIn):
     # 키는 필수 · 값만 null 일 수 있다(null 이면 그 주를 비운다)
     candidate_item_id: StrictStr | None
+
+
+class TableSizeIn(RevisionIn):
+    table_key: Literal["event_schedule", "specialized_timetable", "special_activity_timetable"]
+    column_widths: list[StrictInt]
+    height_mm: StrictInt
 
 
 class EditMonthlyCell(RevisionIn):

@@ -10,6 +10,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 1440 기준 비례 화면(시험 — 하민 2026-11-05). 창 폭 1024 이상이면 `app/layout.tsx` 의 스크립트가
+   --app-zoom = 창 폭 / 1440(최대 1) 을 넣어 1440 보다 좁은 화면만 그 비율로 줄인다. 확대된 요소 안에서는
+   vh · vw 도 같이 줄어서, 화면 높이 · 폭이 필요한 곳은 아래 변수(zoom 으로 나눈 값)를 쓴다. */
+:root {
+  --app-zoom: 1;
+  --app-vh: calc(1vh / var(--app-zoom));
+  --app-dvh: calc(1dvh / var(--app-zoom));
+  --app-vw: calc(1vw / var(--app-zoom));
+}
+html {
+  zoom: var(--app-zoom);
+  /* 스크롤바는 배경에 묻히게 — 길은 비우고(밑 배경이 비침) 손잡이만 테두리 색. 사이드바 등은 따로 정한다. */
+  scrollbar-color: var(--pg-line) transparent;
+}
 /* 스쿼클 모서리(이어지는 곡선) — 시작 설정 화면이 쓴다. 반지름은 `[--r:14px]` 로 주고, 한 모서리만 다르면
    `[--r-bl:6px]` · `[--r-br:0px]` 로 덮는다. corner-shape 를 아는 브라우저(Chromium)에서만 스쿼클이 된다.
    스쿼클은 같은 반지름이면 덜 둥글어 보여 1.65배로 키운다(카드 24 → 40). 모르는 브라우저(Safari · Firefox)는

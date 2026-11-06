@@ -23,6 +23,7 @@ from .validation import (
     hydrate_reference_values,
     merge_repair_patches,
     repair_targets,
+    sanitize_activity_details,
     validate_monthly_proposal,
 )
 
@@ -125,7 +126,7 @@ class MonthlyPlanner:
                 _log.warning("Monthly LLM proposal rejected: %s", finding_summary(validation.issues))
             raise ProposalRejectedError(validation.codes, validation.issues)
         return MonthlyPlanningOutcome(
-            proposal=proposal,
+            proposal=sanitize_activity_details(proposal, packet, request),
             model=response.model,
             prompt_version=request.prompt_version,
             packet_fingerprint=request.packet_fingerprint,

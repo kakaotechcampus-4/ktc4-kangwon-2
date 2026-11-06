@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from ..domain.drill_topic_reference import drill_cell_value
 from ..domain.identifiers import ActorId, ItemId, PlanId
 from ..domain.monthly_plan import DRILL_COPY_GENERATION, MonthlyPlan
 from ..domain.monthly_template_profile import DRILL_SECTION_KEY
@@ -64,6 +65,7 @@ class CopyMonthlyDrillCandidate:
         candidate = found.cell
         if not candidate.value.strip():
             raise MonthlyApplicationError("monthly_drill_candidate_blank", "The drill candidate is blank")
+        value = drill_cell_value(found.label, candidate.value)
         cell = section.cells[0]
         source = next(
             (e.copied_from for e in reversed(cell.audit.events) if e.event_type is AuditEventType.CANDIDATE_COPIED),
@@ -71,7 +73,7 @@ class CopyMonthlyDrillCandidate:
         )
         # Another candidate with the same sentence is still a new source, so it is recorded.
         if (cell.value, cell.evidence, cell.generation, source) == (
-            candidate.value, candidate.evidence, DRILL_COPY_GENERATION, candidate.item_id,
+            value, candidate.evidence, DRILL_COPY_GENERATION, candidate.item_id,
         ):
             return plan  # the Cell already holds this copy
         event = AuditEvent(
@@ -80,7 +82,7 @@ class CopyMonthlyDrillCandidate:
             plan_id=plan.plan_id,
             item_id=cell.item_id,
             actor_id=actor_id,
-            value_change=ValueChange(cell.value, candidate.value),
+            value_change=ValueChange(cell.value, value),
             generation_change=(
                 None if cell.generation is None else GenerationMethodChange(cell.generation, DRILL_COPY_GENERATION)
             ),
@@ -90,7 +92,7 @@ class CopyMonthlyDrillCandidate:
             cell.item_id,
             replace(
                 cell,
-                value=candidate.value,
+                value=value,
                 cell_state=candidate.cell_state,
                 evidence=candidate.evidence,
                 generation=DRILL_COPY_GENERATION,

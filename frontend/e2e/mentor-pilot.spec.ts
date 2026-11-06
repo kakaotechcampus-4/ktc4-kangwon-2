@@ -140,13 +140,14 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   expect(savedAnnual.months[0].safety_education_state).toBe("SOURCE_REQUIRED");
   await page.getByRole("button", { name: "확정하기", exact: true }).click();
   await page
-    .getByRole("group", { name: /^확정하면/ })
+    .getByRole("group", { name: /확정하면 고칠 수 없어요/ })
     .getByRole("button", { name: "확정하기", exact: true })
     .click();
   await expect(
     page.getByRole("heading", { name: `${generated.school_year} 연간계획안을 확정했어요` }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toBeVisible();
+  // 확정 취소는 없다(ADR-064) — 고치려면 문서 보관함에서 「수정하기」를 누른다.
+  await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toHaveCount(0);
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "한글 파일(hwpx)로 내려받기", exact: true }).click();
   await verifyHwpx(await download, info.outputPath("pilot-annual.hwpx"), [
@@ -166,11 +167,17 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   const outdoor = doc
     .getByRole("row")
     .filter({ has: page.getByRole("rowheader", { name: "바깥놀이", exact: true }) });
-  const firstWeek = await doc.getByRole("columnheader").nth(1).boundingBox();
-  const firstCell = await outdoor.locator("td").first().boundingBox();
-  expect(Math.abs(firstWeek!.x - firstCell!.x)).toBeLessThan(2);
+  // 문서는 나타난 뒤 「맞춤」 배율로 한 번 더 그려진다 — 자리가 잡힐 때까지 다시 잰다.
+  await expect
+    .poll(async () => {
+      const firstWeek = await doc.getByRole("columnheader").nth(1).boundingBox();
+      const firstCell = await outdoor.locator("td").first().boundingBox();
+      return Math.abs(firstWeek!.x - firstCell!.x);
+    })
+    .toBeLessThan(2);
   const cell = (n: number) => outdoor.locator("td").nth(n).locator("[data-cell]");
-  const field = page.getByRole("textbox", { name: / · 바깥놀이$/ });
+  // 칸 편집은 이름 · 설명 두 칸이다(ADR-066) — 문서 칸에 보이는 글은 이름이다.
+  const field = page.getByRole("textbox", { name: "바깥놀이 이름", exact: true });
   await cell(0).click();
   await expect(cell(0)).toHaveAttribute("aria-pressed", "true");
   await expect(field).toBeVisible();
@@ -194,10 +201,12 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await page.getByRole("button", { name: "확정하기", exact: true }).click();
   // 안전교육을 아직 놓지 않은 주는 빈칸으로 센다(c4cb083c) — 확정 창이 「빈칸이 남아 있어요」로 시작한다.
   await page
-    .getByRole("group", { name: /확정하면 확정을 풀기 전까지/ })
+    .getByRole("group", { name: /확정하면 고칠 수 없어요/ })
     .getByRole("button", { name: "확정하기", exact: true })
     .click();
-  await expect(page.getByText("확정했어요. 고치려면 확정을 풀어 주세요.")).toBeVisible();
+  await expect(
+    page.getByText("확정했어요. 고치려면 문서 보관함의 「수정하기」를 눌러 주세요."),
+  ).toBeVisible();
   // 확정 후 화면: 확정본 · 한글 내보내기 · 주간 만들기 · 홈.
   await expect(page.getByRole("heading", { name: /월 월간계획안을 확정했어요$/ })).toBeVisible();
   await expect(

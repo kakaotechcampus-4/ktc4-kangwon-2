@@ -106,6 +106,20 @@ def test_at_most_two_per_institution_and_top_k():
     assert sum(record_id in {"ev_1", "ev_2", "ev_3"} for record_id in found) == 2
 
 
+def test_candidate_pools_fill_leftover_slots_with_capped_sources_after_distinct_ones():
+    # Human Decision 2026-11-05(하민): for candidates the source cap orders, it does not cut.
+    records = tuple(_record(f"ev_{i}", text=f"가을 열매 쌓기 {i}") for i in range(1, 7)) + (
+        _record("ev_7", text="가을 열매 쌓기 7", institution="B"),
+        _record("ev_8", text="가을 열매 쌓기 8", institution="C"),
+    )
+    assert len(_search(records, top_k=5)) == 4
+    found = _search(records, top_k=5, by_activity_type=True)
+    assert len(found) == 5
+    assert {"ev_7", "ev_8"} <= set(found[:4]) and sum(r not in {"ev_7", "ev_8"} for r in found[:4]) == 2
+    assert found[4] not in {"ev_7", "ev_8"}
+    assert len(_search(records, top_k=20, by_activity_type=True)) == 8
+
+
 def test_parent_citation_survives_top_k_without_bypassing_eligibility_or_source_cap():
     records = tuple(_record(f"ev_{i:02}", institution=f"I{i}") for i in range(12)) + (
         _record("ev_99", text="놀이터 약속", institution="parent"),

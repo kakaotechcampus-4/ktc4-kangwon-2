@@ -26,7 +26,7 @@
 .card {
   position: fixed;
   width: 340px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(calc(100 * var(--app-vw)) - 32px);
   padding: 22px 20px 14px 22px;
   border: 1px solid var(--pg-note-line);
   border-radius: 4px;
@@ -166,7 +166,7 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(880px, calc(100vw - 32px));
+  width: min(880px, calc(calc(100 * var(--app-vw)) - 32px));
   padding: 22px 22px 14px;
   border: 1px solid var(--pg-note-line);
   border-radius: 4px;
@@ -194,7 +194,7 @@
 /* 낮은 화면에서는 그림을 줄여 쪽지가 화면 안에 들게 한다(포스티 · 테이프가 잘리지 않게 넘침 스크롤은 두지 않는다). */
 @media (max-height: 760px) {
   .shot {
-    max-height: calc(100vh - 300px);
+    max-height: calc(calc(100 * var(--app-vh)) - 300px);
   }
 }
 .slide .ghost,

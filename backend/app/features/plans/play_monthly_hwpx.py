@@ -10,7 +10,8 @@
 - 놀이 목록: 행 수대로 문단을 만든다. 번호 · 글머리는 양식 문단 모양이 단다. 자르지 않는다.
 - 표시(2026-10-28 하민 결정, 3월 검증 사례와 같게): 예상 기간 「2026.03.01 ~ 2026.03.31」,
   기본생활습관은 「[분류]」 문단 + 문장 문단, 건강 · 영양은 「[건강] 」 · 「[영양] 」 + 문장.
-  빈 칸에는 붙이지 않는다.
+  빈 칸에는 붙이지 않는다. 훈련 · 건강 · 영양 · 안전교육의 「[..]」 는 화면 문서처럼 굵게
+  (2026-11-06).
 - 비워 두는 곳: 우리반 안내사항(출력 안 함, 2026-10-28 결정). 하단 고정 문구 두 줄은 손대지 않는다.
 - 제목 · 반 표시 · 예상 기간 · 가운데 「예상되는 놀이 방향」 은 계획의 표시 칸 값을 그대로 쓴다
   (layout v0.2.0, 2026-10-28 D-2 · D-6 — 교사가 지운 빈 값도 빈 채로). 반 표시 = 연령 + 반 이름.
@@ -30,6 +31,7 @@
 
 import copy
 import io
+import re
 import zipfile
 from fractions import Fraction
 from itertools import pairwise
@@ -85,6 +87,69 @@ SPECIAL_HEADER, SPECIAL_FIRST, SPECIAL_ROWS = 19, 20, 2  # 요일 머리 · 칸 
 DAYS = ("월", "화", "수", "목", "금")
 HWPUNIT_PER_MM = 7200 / 25.4
 SNAP = round(0.5 * HWPUNIT_PER_MM)  # 요일 경계가 이만큼 안에 다른 줄 세로선이 있으면 그 선을 쓴다
+HEADER = "Contents/header.xml"
+HH = {"hh": "http://www.hancom.co.kr/hwpml/2011/head"}
+_TAG = re.compile(r"(\[[^\]\n]*\])")  # 화면 문서(`Cell strong`)가 굵게 그리는 「[..]」
+# charPr 자식 순서(OWPML)에서 bold 뒤에 오는 것들 — bold 는 이들 앞에 넣는다.
+_AFTER_BOLD = ("underline", "strikeout", "outline", "shadow", "emboss", "engrave", "supscript")
+
+
+class Styles:
+    """화면 문서와 같게 칸 글을 꾸민다 — 「[..]」 굵게 · 문단 가운데(2026-11-06, 화면 → 한글).
+
+    칸이 쓰던 글자 · 문단 모양을 header.xml 에 복제해 그 한 가지만 바꾼다(크기 · 글꼴은 그대로).
+    """
+
+    def __init__(self, header: etree._Element):
+        self.header = header
+        self.made: dict[tuple[str, str], str] = {}
+
+    def _variant(self, kind: str, source: str, change) -> str:
+        if (kind, source) not in self.made:
+            group = self.header.find(f".//hh:{kind}Properties", HH)
+            items = group.findall(f"hh:{kind}Pr", HH)
+            new = copy.deepcopy(next(e for e in items if e.get("id") == source))
+            new.set("id", str(max(int(e.get("id")) for e in items) + 1))
+            change(new)
+            group.append(new)
+            group.set("itemCnt", str(len(items) + 1))
+            self.made[(kind, source)] = new.get("id")
+        return self.made[(kind, source)]
+
+    def bold_tags(self, tc: etree._Element) -> None:
+        for run in list(tc.iterfind("hp:subList/hp:p/hp:run", NS)):
+            t = run.find("hp:t", NS)
+            if t is None or not _TAG.search(t.text or ""):
+                continue
+            bold = self._variant("char", run.get("charPrIDRef"), _add_bold)
+            p = run.getparent()
+            at = p.index(run)
+            p.remove(run)
+            for i, piece in enumerate(s for s in _TAG.split(t.text) if s):
+                new = copy.deepcopy(run)
+                new.find("hp:t", NS).text = piece
+                if _TAG.fullmatch(piece):
+                    new.set("charPrIDRef", bold)
+                p.insert(at + i, new)
+
+    def center(self, tc: etree._Element) -> None:
+        for p in tc.iterfind("hp:subList/hp:p", NS):
+            p.set("paraPrIDRef", self._variant("para", p.get("paraPrIDRef"), _centered))
+
+
+def _add_bold(char_pr: etree._Element) -> None:
+    if char_pr.find("hh:bold", HH) is not None:
+        return
+    bold = etree.Element(f"{{{HH['hh']}}}bold")
+    later = [e for e in char_pr if etree.QName(e).localname in _AFTER_BOLD]
+    if later:
+        later[0].addprevious(bold)
+    else:
+        char_pr.append(bold)
+
+
+def _centered(para_pr: etree._Element) -> None:
+    para_pr.find("hh:align", HH).set("horizontal", "CENTER")
 
 
 def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument) -> bytes:
@@ -136,10 +201,22 @@ def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument) -> bytes:
             WEEK_HABIT: [
                 f"[{w.habit_label}]\n{w.habit}" if w.habit_label else w.habit for w in doc.weeks
             ],
-            WEEK_SAFETY: [w.safety for w in doc.weeks],
+            WEEK_SAFETY: [
+                f"[{w.safety_label}]\n{w.safety}" if w.safety_label else w.safety for w in doc.weeks
+            ],
         },
     )
     _set_special_activity(table, doc.special_activity, doc.special_activity_size)
+
+    # 화면 문서처럼 훈련 · 건강 · 영양 · 안전교육 칸의 「[..]」 는 굵게(습관 머리는 화면에 없다).
+    # `cells` 는 채우기 전 주소다 — 주차 · 특활 줄이 표 번호를 다시 매긴다.
+    styles = Styles(etree.fromstring(parts[HEADER]))
+    for address in ((11, 3), (12, 3), (12, 11)):
+        styles.bold_tags(cells[address])
+    for tc in table.findall("hp:tr", NS)[WEEK_SAFETY].findall("hp:tc", NS):
+        if _col(tc) >= WEEK_FIRST_COLUMN:
+            styles.bold_tags(tc)
+    parts[HEADER] = _dump(styles.header)
 
     parts[SECTION] = _dump(section)
     parts[PACKAGE] = _package(parts[PACKAGE], doc.title)
@@ -190,35 +267,62 @@ def _set_special_activity(
     """특별활동 칸 구역을 요일별 나눔대로 다시 만든다. 행 · 열 번호는 표 전체를 다시 매긴다."""
     if len(days) != len(DAYS):
         raise TemplateMismatch(f"특별활동 요일이 {len(days)}개다.")
+    header = table.findall("hp:tr", NS)[SPECIAL_HEADER].findall("hp:tc", NS)
+    if [_text(tc) for tc in header] != list(DAYS):
+        raise TemplateMismatch(f"양식 {SPECIAL_HEADER}행이 요일 머리 「월 ~ 금」 이 아니다.")
+    set_split_rows(
+        table, SPECIAL_HEADER, SPECIAL_FIRST, SPECIAL_ROWS, days, size.column_widths, size.height_mm
+    )
+
+
+def set_split_rows(
+    table: etree._Element,
+    header_row: int | None,
+    first_row: int,
+    row_count: int,
+    days: tuple[PlayMonthlyDocumentPart, ...],
+    column_widths: tuple[int, ...],
+    height_mm: int,
+    first_col: int = 0,
+) -> None:
+    """칸 구역(`first_row` 부터 `row_count` 줄)을 열마다의 나눔 트리대로 다시 만든다.
+
+    열은 격자 `first_col` 부터 표 오른쪽 끝까지를 `column_widths`(%)로 나눈다. `header_row` 줄
+    칸(열 머리)은 그 폭을 따른다. 구역 줄의 `first_col` 왼쪽 칸(줄 이름)은 남겨 새 줄 수만큼
+    세로로 병합한다 — 월간 v1 「행사 일정」(Human Decision 2026-11-05). 행 · 열 번호는 표 전체를
+    다시 매긴다.
+    """
     trs = table.findall("hp:tr", NS)
     tcs = table.findall("hp:tr/hp:tc", NS)
     lines = _grid_lines(table, tcs)
     span = {tc: (lines[_col(tc)], lines[_col(tc)] + _width(tc)) for tc in tcs}
-    left, right = lines[0], lines[int(table.get("colCnt"))]
-    header = trs[SPECIAL_HEADER].findall("hp:tc", NS)
-    if [_text(tc) for tc in header] != list(DAYS):
-        raise TemplateMismatch(f"양식 {SPECIAL_HEADER}행이 요일 머리 「월 ~ 금」 이 아니다.")
-    body = trs[SPECIAL_FIRST : SPECIAL_FIRST + SPECIAL_ROWS]
-    model = body[0].find("hp:tc", NS)  # 전달본 (20,0) — 칸 서식
+    left, right = lines[first_col], lines[int(table.get("colCnt"))]
+    header = [] if header_row is None else trs[header_row].findall("hp:tc", NS)
+    if len(header) not in (0, len(days)):
+        raise TemplateMismatch(f"양식 {header_row}행 머리 칸이 {len(header)}개다.")
+    body = trs[first_row : first_row + row_count]
+    names = [tc for tc in body[0].findall("hp:tc", NS) if _col(tc) < first_col]
+    model = next(tc for tc in body[0].findall("hp:tc", NS) if _col(tc) >= first_col)  # 칸 서식
     at = list(table).index(body[0])
     for tr in body:
         for tc in tr.findall("hp:tc", NS):
-            del span[tc]
+            if tc not in names:
+                del span[tc]
         table.remove(tr)
 
     # 퍼센트로 나눈 요일 경계는 위 특성화 표의 세로선과 몇 단위씩 어긋나 아주 가는 열을 만든다.
     others = {x for tc, pair in span.items() if tc not in header for x in pair}
     edges = [
-        _snap(left + (right - left) * sum(size.column_widths[:i]) // 100, others)
-        for i in range(len(DAYS) + 1)
+        _snap(left + (right - left) * sum(column_widths[:i]) // 100, others)
+        for i in range(len(days) + 1)
     ]
-    for tc, (x0, x1) in zip(header, pairwise(edges), strict=True):
+    for tc, (x0, x1) in zip(header, pairwise(edges), strict=bool(header)):
         tc.find("hp:cellSz", NS).set("width", str(x1 - x0))
         span[tc] = (x0, x1)
 
     # 경계는 분수로 펼친 뒤 정수로 옮긴다. 정수 나눗셈은 작은 쪽을 거듭 나누면 서로 다른 경계를
     # 한 점(폭 · 높이 · 병합 수 0, 같은 주소 두 칸)으로 합친다(Codex HWTT-01).
-    height = round(size.height_mm * HWPUNIT_PER_MM)
+    height = round(height_mm * HWPUNIT_PER_MM)
     leaves = []
     for day, (x0, x1) in zip(days, pairwise(edges), strict=True):
         parts = _layout(day, Fraction(0), Fraction(1), Fraction(0), Fraction(1))
@@ -237,6 +341,10 @@ def _set_special_activity(
         _set_text(tc, text)
         new_rows[row[y0]].append(tc)
         span[tc] = (x0, x1)
+    for tc in reversed(names):
+        tc.find("hp:cellSz", NS).set("height", str(height))
+        tc.find("hp:cellSpan", NS).set("rowSpan", str(len(new_rows)))
+        new_rows[0].insert(0, tc)
     for i, tr in enumerate(new_rows):
         table.insert(at + i, tr)
 
@@ -308,7 +416,9 @@ def _grid_lines(table: etree._Element, tcs: list[etree._Element]) -> dict[int, i
             if start in lines and end not in lines:
                 lines[end] = lines[start] + _width(tc)
                 grew = True
-    if len(lines) != int(table.get("colCnt")) + 1:
+    # 월간 v1 4주 양식처럼 어느 칸 모서리도 아닌 격자 번호는 필요 없다(번호는 다시 매긴다).
+    edges = {_col(tc) + int(tc.find("hp:cellSpan", NS).get("colSpan")) for tc in tcs}
+    if not edges | {_col(tc) for tc in tcs} | {int(table.get("colCnt"))} <= lines.keys():
         raise TemplateMismatch("양식 표의 세로선을 모두 찾지 못했다.")
     return lines
 

@@ -91,7 +91,9 @@ function plan() {
 const sheetHelpers = compile("../components/plan-generator/playProjectPagination.ts", {});
 const { default: Sheet } = compile("../components/plan-generator/PlayProjectSheet.tsx", {
   "./playProjectPagination": sheetHelpers,
-  "./rowDrag": compile("../components/plan-generator/rowDrag.ts", {}),
+  "./rowDrag": compile("../components/plan-generator/rowDrag.ts", {
+    "@/lib/appZoom": { appZoom: () => 1 },
+  }),
   "./PlayMonthlySheet": { HATCH: "hatch" },
 });
 // 입력창 대역 — 화면이 넘긴 값과 콜백만 본다. 입력창 규칙은 play-cell-editor.test.mjs 가 다룬다.
@@ -117,14 +119,12 @@ const plansStub = {
   isSaveConflict: (error) => error?.status === 409,
   errorFields: (error) => error?.body?.error?.fields ?? [],
   downloadAnnualHwpx: async () => {},
-  unconfirmAnnualPlan: async () => {},
 };
 const frameModules = {
   "next/link": esModule((props) => jsx("a", props)),
   "@/components/workspace/WorkspaceUI": { Tape: () => null },
   "@/lib/api/plans": plansStub,
   "@/lib/hooks/use-hwpx-download": { useHwpxDownload: () => ({ exporting: false }) },
-  "./UnconfirmButton": esModule((props) => jsx("unconfirm", props)),
   "./playProjectPagination": sheetHelpers,
 };
 
@@ -158,6 +158,7 @@ function renderer(planValue, props = {}) {
       "./GenerationFlow.module.css": esModule(new Proxy({}, { get: (_, k) => k })),
       "./PlayProjectResult.module.css": esModule(new Proxy({}, { get: (_, k) => k })),
       "./PlayProjectPicking": esModule((p) => jsx("picking", p)),
+      "@/components/plan-ui/PlayPickBoard": { MemoMark: () => jsx("memo-mark", {}) },
       "./PlayProjectSheet": esModule(Sheet),
       "./PlayCellEditor": esModule(CellEditor),
       "./PlayMonthlyConfirm": esModule((p) => jsx("confirm-dialog", p)),
@@ -226,7 +227,20 @@ test("helpers: five picks in order, moves, removal focus, and the left tab keys"
     "cand2",
     "cand4",
   ]);
-  assert.equal(placePlayPick(FULL, "cand9", "cand0"), FULL);
+  // 다른 후보를 끌어 놓으면 다 찼을 때는 그 줄과 바뀌고, 자리가 남으면 그 줄 앞에 들어간다.
+  assert.deepEqual(placePlayPick(FULL, "cand9", "cand1"), [
+    "cand0",
+    "cand9",
+    "cand2",
+    "cand3",
+    "cand4",
+  ]);
+  assert.deepEqual(placePlayPick(["cand0", "cand1"], "cand9", "cand1"), [
+    "cand0",
+    "cand9",
+    "cand1",
+  ]);
+  assert.equal(placePlayPick(FULL, "cand9", "cand8"), FULL);
   assert.equal(placePlayPick(FULL, "cand2", "cand2"), FULL);
   assert.equal(removeFocusSlot(3, 1), 1);
   assert.equal(removeFocusSlot(3, 2), null);
@@ -296,7 +310,7 @@ test("confirm asks first, waits for the queue, then confirms with its revision",
   const dialog = all(render()).find((n) => n.type === "confirm-dialog");
   assert.equal(
     dialog.props.message,
-    "확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 월간계획안을 만들게 돼요.",
+    "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요.\n이 내용으로 월간계획안을 만들게 돼요.",
   );
   assert.equal(dialog.props.no, "더 다듬기");
   await dialog.props.onYes();
@@ -408,11 +422,8 @@ test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ wi
   );
   assert.equal(done.props.pages[0].props.className, "햇살반");
   assert.equal(compact.at(-1), false, "확정본은 펼친다");
-  done.props.onUnconfirmed({ ...pp, status: "DRAFT" });
-  assert.ok(
-    all(render()).some((n) => n.type === "play-result"),
-    "확정을 풀면 ⑤ 로 돌아간다",
-  );
+  // 확정 취소는 없다(ADR-064) — 확정본 화면은 되돌리는 손잡이를 받지 않는다.
+  assert.equal(done.props.onUnconfirmed, undefined);
 });
 
 test("phone period tabs use two grid columns in the 767px media block", () => {
@@ -424,21 +435,51 @@ test("phone period tabs use two grid columns in the 767px media block", () => {
   const wrapping = mobile.match(/\.wrappingTabs\s*\{([^}]+)\}/)[1];
   assert.match(wrapping, /display:\s*grid\s*;/);
   assert.match(wrapping, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)\s*;/);
-  // ④ 계절 탭은 Tailwind 로 같은 배치 — 좁으면 두 열, md 부터 한 줄.
+  // ④ · ⑤ 계절 탭은 한 줄 모양(⑤ 문서 머리줄 것)을 같이 쓴다 — flex-wrap 이라 좁으면 다음 줄로 내려간다.
   const result = readFileSync(
     new URL("../components/plan-generator/PlayProjectResult.tsx", import.meta.url),
     "utf8",
   );
-  // ④ 탭 줄(md:flex 를 쓰는 쪽)만 본다. ⑤ 탭 줄은 머리줄 · flex-wrap 이라 넘치지 않는다.
-  const pick = [
+  const bars = [
     ...result.matchAll(
-      /role="tablist"\s*\n\s*aria-label="놀이 프로젝트 기간"\s*\n\s*className="([^"]+)"/g,
+      /role="tablist"\s*\r?\n\s*aria-label="놀이 프로젝트 기간"\s*\r?\n\s*className="([^"]+)"/g,
     ),
-  ]
-    .map((m) => m[1])
-    .find((c) => c.includes("md:flex"));
-  assert.match(pick, /\bgrid-cols-2\b/);
-  assert.match(pick, /\bmd:flex\b/);
+  ].map((m) => m[1]);
+  assert.equal(bars.length, 1);
+  assert.match(bars[0], /\bflex-wrap\b/);
+});
+
+test("④ uses the same season tabs as ⑤; ⑤ drags 다른 후보 in and out; 크게 보기 has its own zoom", () => {
+  saveStub.calls = [];
+  const render = renderer(fullPlan(), {});
+  const tabs = (tree) =>
+    all(tree).filter(
+      (n) => n.props?.role === "tablist" && n.props["aria-label"] === "놀이 프로젝트 기간",
+    );
+  const short = renderer(plan());
+  assert.equal(tabs(short()).length, 1, "④ 에도 같은 탭 줄");
+  // 다른 후보 「놀이 7」을 고른 놀이 2번째 줄(놀이 1)에 끌어 놓으면 그 줄과 바뀐다.
+  const drag = (rowKey) => ({
+    preventDefault() {},
+    stopPropagation() {},
+    currentTarget: { dataset: {} },
+    dataTransfer: { getData: () => rowKey },
+  });
+  const pickedRow = all(render()).find(
+    (n) => n.type === "li" && n.props.onDrop && text(n).startsWith("놀이 1종이 상자"),
+  );
+  pickedRow.props.onDrop(drag("cand7"));
+  assert.deepEqual(saveStub.calls.at(-1).period0, ["cand0", "cand7", "cand2", "cand3", "cand4"]);
+  // 고른 놀이를 「다른 후보」로 끌어 오면 뺀다.
+  const rest = all(render()).find(
+    (n) => n.type === "section" && n.props.onDrop && text(n).startsWith("다른 후보"),
+  );
+  rest.props.onDrop(drag("cand2"));
+  assert.deepEqual(saveStub.calls.at(-1).period0, ["cand0", "cand7", "cand3", "cand4"]);
+  const zoomIns = () => all(render()).filter((n) => n.props?.["aria-label"] === "문서 확대");
+  assert.equal(zoomIns().length, 1);
+  button(render(), "⤢ 크게 보기").props.onClick();
+  assert.equal(zoomIns().length, 2, "읽기 전용 창에도 − · +");
 });
 
 test("PlayProjectResult does not use browser storage", () => {
@@ -543,4 +584,17 @@ test("zoom steps round fit, move ten percent, and clamp manual zoom to 50–150"
   assert.equal(zoom(50, -1), 50);
   assert.equal(zoom(32, 1), 50);
   assert.equal(zoom(32, -1), 50);
+});
+
+test("PlayProjectSheet draws 배움 like the hwpx — bold [영역] then 범주 - 내용; cells sit in the middle", () => {
+  const p = fullPlan();
+  p.periods[0].candidates[0].learning.value = "자연탐구 - 탐구과정 즐기기 - 궁금한 것을 탐구한다.";
+  const tree = all(resolve(jsx(Sheet, { plan: p, picks: { period0: FULL }, periods: [0] })));
+  assert.equal(text(tree.find((n) => n.type === "b")), "[자연탐구]");
+  const lines = tree.filter((n) => n.type === "span").map(text);
+  assert.ok(lines.includes("[자연탐구] 탐구과정 즐기기 - 궁금한 것을 탐구한다."));
+  assert.ok(lines.includes("배움 한 줄"), "세 조각이 아닌 줄은 그대로");
+  assert.ok(
+    tree.filter((n) => n.type === "td").every((n) => /align-middle/.test(n.props.className)),
+  );
 });
