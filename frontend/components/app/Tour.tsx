@@ -467,6 +467,29 @@ export function resetTour() {
 
 type Hole = { top: number; left: number; width: number; height: number };
 
+/**
+ * 화면 좌표(getBoundingClientRect)를 덮개 안 style px 로 바꾼다.
+ *
+ * html 에 zoom(1440 기준 비례 화면)이 걸리면 getBoundingClientRect 가 그 배율을 **넣기도 하고(크롬 128+)
+ * 빼기도 한다(사파리 · 옛 크롬)**. 「배율로 나눈다」고 정해 두면 빼는 브라우저에서 두 번 나눠져,
+ * 구멍이 칸보다 크고 오른쪽 아래로 밀렸다(PM 점검 — 팀원 화면). 배율을 짐작하지 않고, 덮개와 같은 자리에
+ * 100px 막대를 잠깐 세워 같은 자로 잰다 — 어느 브라우저든 둘이 같은 셈으로 나온다.
+ */
+function toLocal(box: DOMRect) {
+  const ruler = document.createElement("div");
+  ruler.style.cssText = "position:fixed;left:0;top:0;width:100px;height:0;visibility:hidden";
+  document.body.appendChild(ruler);
+  const at = ruler.getBoundingClientRect();
+  ruler.remove();
+  const k = at.width / 100 || 1;
+  return {
+    top: (box.top - at.top) / k,
+    left: (box.left - at.left) / k,
+    width: box.width / k,
+    height: box.height / k,
+  };
+}
+
 /** 안내 카드 너비. 칸 옆에 붙일 자리를 셀 때 쓴다 — CSS 의 `.card` 와 같다. */
 const CARD = 340;
 
@@ -529,18 +552,19 @@ export default function Tour() {
     el.scrollIntoView({ block: "center" });
     const pad = step.pad ?? 8;
     const measure = () => {
-      const box = el.getBoundingClientRect();
-      const z = appZoom();
+      const box = toLocal(el.getBoundingClientRect());
       setHole({
-        top: box.top / z - pad,
-        left: box.left / z - pad,
-        width: box.width / z + pad * 2,
-        height: box.height / z + pad * 2,
+        top: box.top - pad,
+        left: box.left - pad,
+        width: box.width + pad * 2,
+        height: box.height + pad * 2,
       });
     };
     measure();
     const watch = new ResizeObserver(measure);
     watch.observe(el);
+    // 칸 크기는 그대로인데 위쪽 내용이 늦게 그려져 칸이 밀릴 때도 따라간다.
+    watch.observe(document.body);
     window.addEventListener("resize", measure);
     return () => {
       watch.disconnect();
