@@ -417,7 +417,7 @@ export const changeWeeklyIndoor = (
       if (!candidate && empty) return plan;
       const cell = empty ?? blank();
       if (candidate) {
-        cell.value = `[${candidate.activity_type}] - ${candidate.name}`;
+        cell.value = `[${candidate.activity_type}] ${candidate.name}`;
         cell.state = "FILLED";
         cell.evidence = candidate.cell.evidence;
         cell.generation = {

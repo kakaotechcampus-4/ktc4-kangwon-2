@@ -134,12 +134,13 @@ export default function WeeklySheet({
 }) {
   const span = days.length;
   // 안전교육은 「[주제] 문장」 한 줄에 [주제]를 굵게, 넣은 활동은 「[종류]」 밑에 이름(PM 2026-11-06).
+  // 안전교육 · 실내놀이의 옛 값(11-06 전) 「[주제] - 」는 「 - 」를 떼고 보인다.
   const cellOf = (cell: WeeklyCell, key = "") => (
     <Cell
       {...at}
       id={cell.item_id}
       value={
-        key === "safety_education"
+        key === "safety_education" || key === "indoor_play"
           ? shown(cell).replace(/^(\[[^\]\n]+\]) - /, "$1 ")
           : key === "group_activity"
             ? shown(cell).replace(/^(\[[^\]\n]+\]) /, "$1\n")

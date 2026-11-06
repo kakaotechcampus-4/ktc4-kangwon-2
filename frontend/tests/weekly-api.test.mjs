@@ -233,7 +233,7 @@ test("자유놀이 후보는 여러 개를 넣고 고치고 순서를 바꾼 뒤
   assert.equal(rows(plan)[0].value, "");
   plan = await weekly.addWeeklyIndoorPlay(plan.id, candidates[0].cell.item_id, plan.revision);
   const first = rows(plan)[0].item_id;
-  assert.equal(rows(plan)[0].value, `[${candidates[0].activity_type}] - ${candidates[0].name}`);
+  assert.equal(rows(plan)[0].value, `[${candidates[0].activity_type}] ${candidates[0].name}`);
   plan = await weekly.addWeeklyIndoorPlay(plan.id, candidates[1].cell.item_id, plan.revision);
   plan = await weekly.editWeeklyCell(plan.id, first, "고친 자유놀이", plan.revision);
   const revision = plan.revision;
@@ -308,7 +308,7 @@ test("자유놀이 패널은 종류별 후보와 선택 목록을 구분하고 �
   );
   const Panel = panelModule.exports.default;
   const selected = [
-    { item_id: "one", value: "[역할놀이] - 가게 놀이" },
+    { item_id: "one", value: "[역할놀이] 가게 놀이" },
     { item_id: "two", value: "[쌓기놀이] - 길 만들기" },
   ];
   const plan = {
@@ -356,7 +356,7 @@ test("자유놀이 패널은 종류별 후보와 선택 목록을 구분하고 �
   assert.equal(text(tree).includes("숨길 집단 후보"), false);
   const buttons = all(tree).filter((n) => n.type === "button");
   const byLabel = (label) => buttons.find((n) => n.props["aria-label"] === label);
-  // 넣은 후보는 서버가 옮겨 쓴 「[종류] - 이름」으로 알아보고 후보 목록에서 뺀다(PM 2026-11-06). 빼면 다시 보인다.
+  // 넣은 후보는 서버가 옮겨 쓴 「[종류] 이름」(옛 「[종류] - 이름」도)으로 알아보고 후보 목록에서 뺀다(PM 2026-11-06). 빼면 다시 보인다.
   assert.equal(byLabel("이번 주 놀이에 넣기: 가게 놀이"), undefined);
   const without = all(
     Panel({

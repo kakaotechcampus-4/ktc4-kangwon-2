@@ -1196,14 +1196,14 @@ def test_요일_양식_주간은_고정_양식의_요일_칸에_채운다(world,
     assert text((0, 0)).startswith(f"{plan['week_period']['label']} 주간놀이계획안")
     paragraphs = cells[(7, 1)].findall("hp:subList/hp:p", NS)
     assert ["".join(p.itertext()) for p in paragraphs] == [
-        "[역할놀이] - 가을 가게",
-        "[쌓기놀이] - 열매 길",
+        "[역할놀이] 가을 가게",
+        "[쌓기놀이] 열매 길",
         "분류 없는 교사 메모",
     ]
     assert core.cell("indoor_play").value.startswith("[역할놀이] 가을 가게")
     with zipfile.ZipFile(BytesIO(response.content)) as archive:
         header = etree.fromstring(archive.read("Contents/header.xml"))
-        assert "[역할놀이] - 가을 가게" in archive.read("Preview/PrvText.txt").decode()
+        assert "[역할놀이] 가을 가게" in archive.read("Preview/PrvText.txt").decode()
     namespaces = {
         **NS,
         "hh": "http://www.hancom.co.kr/hwpml/2011/head",
@@ -1228,8 +1228,10 @@ def test_주간_안전교육은_옛_값의_줄표를_떼고_한_줄이다():
 def test_indoor_display_keeps_blank_and_untagged_teacher_text():
     from app.features.plans.export import _indoor_play_text
 
-    for value in ("", "교사가 직접 쓴 놀이", "[역할놀이] - 가게 놀이", "[역할놀이]\n가게 놀이"):
+    for value in ("", "교사가 직접 쓴 놀이", "[역할놀이] 가게 놀이", "[역할놀이]\n가게 놀이"):
         assert _indoor_play_text(value) == value
+    # 2026-11-06 전 값의 「 - 」는 뗀다.
+    assert _indoor_play_text("[역할놀이] - 가게 놀이") == "[역할놀이] 가게 놀이"
 
 
 @pytest.mark.parametrize("saturday", [False, True])
@@ -1273,7 +1275,7 @@ def test_indoor_candidates_select_edit_order_export_and_archive(
     )
     plan = add(plan, candidates[0]["cell"]["item_id"]).json()
     first = rows(plan)[0]
-    assert first["value"] == f"[{candidates[0]['activity_type']}] - {candidates[0]['name']}"
+    assert first["value"] == f"[{candidates[0]['activity_type']}] {candidates[0]['name']}"
     plan = add(plan, candidates[1]["cell"]["item_id"]).json()
     assert len(rows(plan)) == 2
     for candidate in candidates[2:7]:
@@ -1281,7 +1283,7 @@ def test_indoor_candidates_select_edit_order_export_and_archive(
     plan = client.put(
         f"/api/plans/weekly/{plan['id']}/cells/{first['item_id']}",
         json={
-            "value": "[역할놀이] - 교사가 다듬은 가게 놀이",
+            "value": "[역할놀이] 교사가 다듬은 가게 놀이",
             "expected_revision": plan["revision"],
         },
     ).json()
