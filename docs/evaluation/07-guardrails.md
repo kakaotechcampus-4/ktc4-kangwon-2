@@ -61,6 +61,8 @@
 - 생성에 쓰는 기관 근거 자료에서 사람이 개인정보로 판정한 기록 42개를 통째 제외하고 분류 4종을 같은 SHA에 연결했다 — [검토·승인 기록](../evidence-store-v0-2-human-review.md) · `p0-planning/tests/evidence/test_evidence_store.py` · `p0-planning/tests/finalization/test_freeze.py`
 - 그 42개가 남아 있던 옛 근거 본체 v0.1.0 을 저장소에서 지웠다(git 이력에는 남는다) — `p0-planning/data/evidence/` · `p0-planning/tests/unit/test_safety_evidence_classification.py`
 
+- 계획안의 장소 경계: 다른 기관의 특정 시설·현장학습 근거를 새 맥락형 월간/주간 후보에서 제외하고, 연·월·주 생성 값의 시설명 패턴을 교사 요청과 대조한다. 반복 오류 저장 거절과 원래 요청/거절 응답의 분리는 `tests/planner/test_venue_policy.py`로 확인한다. 모든 지명을 판별하는 의미 검사는 아니다 — `p0-planning/CLAUDE.md`의 Named venue boundary.
+
 ## 아직 아닌 것
 
 - 속도 제한(rate limit)이 없다

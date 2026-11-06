@@ -10,6 +10,8 @@ from __future__ import annotations
 import collections
 import re
 
+from ..venue_policy import venue_bound_evidence
+
 from ..evidence.store import InstitutionEvidenceStore
 from ..evidence.weekly_classification import (
     WeeklyEvidenceClassification,
@@ -75,12 +77,14 @@ def weekly_section_evidence(
     by_activity_type: bool = False,
     preferred_refs: tuple[str, ...] = (),
     explicit_indoor_methods: bool = False,
+    exclude_venue_bound: bool = False,
 ) -> tuple[RetrievedEvidence, ...]:
     """query_text: the parent theme and this week's focus, for the Korean 2-gram score."""
     classification.require_bound_to(store.content_sha256)
     records = [
         record for record in store.by_month(calendar_month)
         if record.general_grounding_eligible and classification.class_of(record) is weekly_class
+        and (not exclude_venue_bound or not venue_bound_evidence(record.text))
     ]
     grams = ngrams(query_text)
     if focus_text.strip():

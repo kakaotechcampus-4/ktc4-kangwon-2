@@ -70,8 +70,12 @@ class RetrievalRequest:
     safety_categories: tuple[str, ...] = ()
     # Annual subthemes of the month (v1). Only the goals block uses them, to fill subtheme gaps.
     subthemes: tuple[str, ...] = ()
+    # Current contextual generation excludes other institutions' venue-bound activities.
+    exclude_venue_bound: bool = False
 
     def __post_init__(self) -> None:
+        if type(self.exclude_venue_bound) is not bool:
+            raise InvalidDomainValueError("RetrievalRequest.exclude_venue_bound must be boolean")
         if not isinstance(self.target_month, YearMonth):
             raise InvalidDomainValueError("RetrievalRequest.target_month must be YearMonth")
         if not isinstance(self.ages, frozenset) or not self.ages:

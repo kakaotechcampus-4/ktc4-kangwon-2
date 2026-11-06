@@ -19,8 +19,9 @@ from .parser import _STRING, _object_schema
 from .teacher_memo import TEACHER_MEMO_PROMPT, TEACHER_MEMO_PROMPT_TAG, memo_properties
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 from .weekly import unsupported_facts
+from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG, venue_memo
 
-PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v6"  # v5: materials naming · v6: support text, learning ids
+PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v6" + VENUE_POLICY_TAG
 LEARNING_MIN, LEARNING_MAX = 2, 3  # 2026-10-24 decision
 TEXT_FIELDS = ("play_name", "materials", "support_direction")
 
@@ -141,7 +142,7 @@ def build_play_project_request(
         ],
     }
     memo = tuple(f"cand{i}" for i in range(1, row_count + 1)) if teacher_memo else None
-    prompt_version, system_prompt = PLAY_PROJECT_PROMPT_VERSION, SYSTEM_PROMPT
+    prompt_version, system_prompt = PLAY_PROJECT_PROMPT_VERSION, SYSTEM_PROMPT + VENUE_GUIDANCE
     if memo is not None:  # rows answer in order, so row i is cand{i}
         payload["teacher_memo"] = {"text": teacher_memo, "addresses": list(memo)}
         prompt_version += TEACHER_MEMO_PROMPT_TAG
@@ -203,7 +204,8 @@ def validate_play_project(
         for name in TEXT_FIELDS:
             limit = MAX_RATIONALE_CHARS if name == "support_direction" else None
             found = visible_text_violations(
-                getattr(row, name), **({"max_chars": limit} if limit else {})
+                getattr(row, name), teacher_venue_text=venue_memo(request.user_content),
+                **({"max_chars": limit} if limit else {})
             )
             # 2026-10-24 decision: safety words (e.g. 교통안전) are ordinary play content here;
             # SAFETY_CONTENT_LEAKAGE guards monthly cells, not play-project text.

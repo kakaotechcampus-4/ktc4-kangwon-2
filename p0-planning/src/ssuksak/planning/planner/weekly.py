@@ -38,6 +38,7 @@ from .teacher_memo import (
     split_memo_applied,
 )
 from .text_policy import normalize_visible_text, visible_text_violations
+from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG
 from .v1_guidance import (
     NATURAL_PLAY_GUIDANCE,
     V1_GUIDANCE,
@@ -203,6 +204,7 @@ class WeeklyPlanningRequest:
     reference_examples: tuple[str, ...] = ()
     # ADR-060: the cell addresses memo_applied may name; None = no teacher memo.
     memo_addresses: tuple[str, ...] | None = None
+    teacher_venue_text: str = ""
 
     def __post_init__(self) -> None:
         if not isinstance(self.week_id, WeekId):
@@ -361,6 +363,9 @@ def build_weekly_request(
         body["indoor_adaptation_policy"] = INDOOR_ALTERNATIVE_TAG.lstrip("+")
     if memo is not None:
         linked += TEACHER_MEMO_PROMPT_TAG
+    contextual = curriculum is not None or reference_wiring
+    if contextual:
+        linked += VENUE_POLICY_TAG
     system_prompt = SYSTEM_PROMPT
     if reference_wiring:
         system_prompt = system_prompt.replace(OUTDOOR_REFERENCE_INSTRUCTION, LINKED_OUTDOOR_INSTRUCTION)
@@ -386,7 +391,7 @@ def build_weekly_request(
     return WeeklyPlanningRequest(
         prompt_version=(WEEKLY_CONTEXT_PROMPT_VERSION if curriculum is not None else WEEKLY_PROMPT_VERSION) + linked + suffix,
         system_prompt=system_prompt + (DAY_PROMPT if suffix else "") + (V1_GUIDANCE if curriculum is not None else "")
-        + (TEACHER_MEMO_PROMPT if memo is not None else ""),
+        + (TEACHER_MEMO_PROMPT if memo is not None else "") + (VENUE_GUIDANCE if contextual else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True),
         week_id=week_id,
         targets=targets,
@@ -402,6 +407,7 @@ def build_weekly_request(
         reference_wiring=reference_wiring,
         reference_examples=examples,
         memo_addresses=memo,
+        teacher_venue_text=teacher_memo,
     )
 
 
@@ -445,6 +451,8 @@ def cell_request(
         memo = (weekly_memo_address(section_key, day),)
         body["teacher_memo"]["addresses"] = list(memo)
         linked += TEACHER_MEMO_PROMPT_TAG
+    if VENUE_POLICY_TAG in request.prompt_version:
+        linked += VENUE_POLICY_TAG
     return replace(
         request,
         prompt_version=(WEEKLY_CONTEXT_CELL_PROMPT_VERSION if contextual else WEEKLY_CELL_PROMPT_VERSION) + linked + suffix,
@@ -459,6 +467,7 @@ def cell_request(
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True),
         targets=(target,),
         allowed_fact_text=" ".join((request.allowed_fact_text, *teacher_facts)),
+        teacher_venue_text=" ".join((request.teacher_venue_text, *teacher_facts)),
         cell_key=section_key,
         memo_addresses=memo,
         # The caller labels the Section's other day cells "section_key:DAY".
@@ -758,7 +767,8 @@ def _value_issues(
     ):
         issues.append(WeeklyIssue(WeeklyIssueCode.RESOLVED_REQUIRES_GROUNDING, key, day=day))
     policy = [
-        code for code in visible_text_violations(v.value, evidence_refs=request.context_source_refs)
+        code for code in visible_text_violations(v.value, evidence_refs=request.context_source_refs,
+                                                 teacher_venue_text=request.teacher_venue_text)
         if not (key == SAFETY_KEY and code == "SAFETY_CONTENT_LEAKAGE")
     ]
     if policy:

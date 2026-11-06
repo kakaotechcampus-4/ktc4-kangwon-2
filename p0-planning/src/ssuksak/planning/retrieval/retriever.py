@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import collections
 
+from ..venue_policy import VENUE_POLICY_TAG, venue_bound_evidence
+
 from ..domain.activity_reference import ActivityCatalog, OUTDOOR_PLAY_SLOT
 from ..domain.errors import InvalidDomainValueError
 from ..evidence.classification import EvidenceSemanticClassification, SemanticClass
@@ -107,6 +109,8 @@ class MonthlyEvidenceRetriever:
         cap: int | None = None,
         subthemes: tuple[str, ...] = (),
     ) -> EvidenceBlock:
+        if request.exclude_venue_bound:
+            records = [record for record in records if not venue_bound_evidence(record.text)]
         ranked = rank_records(
             records,
             requested_ages=request.ages,
@@ -215,6 +219,8 @@ class MonthlyEvidenceRetriever:
             calendar_month=request.target_month.calendar_month,
             ages=request.ages,
         )
+        if request.exclude_venue_bound:
+            candidates = tuple(item for item in candidates if not venue_bound_evidence(item.label))
         ordered = sorted(
             candidates,
             key=lambda item: (
@@ -343,7 +349,7 @@ class MonthlyEvidenceRetriever:
             blocks=(institution, contrast, *classified, references, other, *safety),
             evidence_store_version=self._store.ingestion_version,
             evidence_store_sha256=self._store.content_sha256,
-            retrieval_version=RETRIEVAL_VERSION
+            retrieval_version=RETRIEVAL_VERSION + (VENUE_POLICY_TAG if request.exclude_venue_bound else "")
             + (
                 GOALS_SUBTHEME_FILL_TAG
                 if request.subthemes and SemanticClass.GOALS in request.grounding_classes

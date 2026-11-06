@@ -14,6 +14,7 @@ from ssuksak.planning.planner.teacher_memo import (
 )
 from ssuksak.planning.planner.v1_guidance import V1_GUIDANCE
 from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
+from ssuksak.planning.venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG, unrequested_venues
 
 from app.shared.llm import LlmFailed, complete_json, is_mock
 
@@ -34,7 +35,7 @@ class _Draft(BaseModel):
     months: list[_Month] = Field(min_length=12, max_length=12)
 
 
-ANNUAL_SUBTHEMES_PROMPT_VERSION = "annual-subthemes-v3"
+ANNUAL_SUBTHEMES_PROMPT_VERSION = "annual-subthemes-v3" + VENUE_POLICY_TAG
 
 SYSTEM_PROMPT = """어린이집 만3~5세반의 연간계획안 소주제 초안을 쓴다.
 각 달의 주제(theme), 대상 월(month), 반 연령(target_ages) 범위 안에서 소주제를 쓴다.
@@ -132,7 +133,7 @@ def generate_subthemes_with_memo(
         )
     else:
         content = complete_json(
-            SYSTEM_PROMPT + V1_GUIDANCE + (MEMO_PROMPT if memo else ""),
+            SYSTEM_PROMPT + V1_GUIDANCE + VENUE_GUIDANCE + (MEMO_PROMPT if memo else ""),
             json.dumps(payload, ensure_ascii=False),
             transport=transport,
         )
@@ -141,6 +142,8 @@ def generate_subthemes_with_memo(
     except (InvalidDomainValueError, ValueError) as error:
         raise LlmFailed("연간 소주제의 요청 사항 응답 형식이 맞지 않습니다") from error
     result = parse_subthemes(content, months)
+    if any(unrequested_venues(value, memo) for values in result.values() for value in values):
+        raise LlmFailed("교사가 지정하지 않은 지역·시설명이 연간 소주제에 들어 있습니다")
     reject_curriculum_ids(
         (value for values in result.values() for value in values), payload["curriculum_context"]
     )

@@ -28,6 +28,7 @@ from .prompt import (
 
 from .v1_guidance import V1_GUIDANCE
 from .play_description import PLAY_DESCRIPTION_TAG, PLAY_KEYS, with_play_descriptions
+from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG
 
 MONTHLY_CELL_TASK = "monthly_cell_proposal"
 
@@ -149,9 +150,12 @@ def build_monthly_cell_request(
     ) + (TEACHER_MEMO_PROMPT if memo is not None else "")
     if descriptions:
         system_prompt = with_play_descriptions(system_prompt)
+    if contextual:
+        system_prompt += VENUE_GUIDANCE
     return MonthlyCellPlanningRequest(
         task=MONTHLY_CELL_TASK,
         prompt_version=(MONTHLY_CONTEXT_CELL_PROMPT_VERSION if contextual else MONTHLY_CELL_PROMPT_VERSION)
+        + (VENUE_POLICY_TAG if contextual else "")
         + (PLAY_DESCRIPTION_TAG if descriptions else "")
         + (TEACHER_MEMO_PROMPT_TAG if memo is not None else ""),
         system_prompt=system_prompt,

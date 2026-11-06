@@ -84,7 +84,8 @@ def validate_monthly_cell_proposal(
         return MonthlyCellValidationResult(tuple(issues))
 
     for code in visible_text_violations(
-        value.value, evidence_refs=request.valid_grounding_refs | curriculum_source_refs(packet.curriculum)
+        value.value, evidence_refs=request.valid_grounding_refs | curriculum_source_refs(packet.curriculum),
+        teacher_venue_text=packet.teacher_memo
     ):
         fail(CellValidationCode.TEXT_POLICY, "value", code)
     unknown = tuple(

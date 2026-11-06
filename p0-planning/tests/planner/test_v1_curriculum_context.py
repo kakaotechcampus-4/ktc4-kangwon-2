@@ -21,6 +21,7 @@ from ssuksak.planning.planner.v1_guidance import curriculum_context
 from ssuksak.planning.planner.contracts import ProposalRejectedError
 from ssuksak.planning.planner.service import MonthlyPlanner
 from ssuksak.planning.planner.play_description import PLAY_DESCRIPTION_TAG, valid_play_description
+from ssuksak.planning.venue_policy import VENUE_POLICY_TAG
 from ssuksak.planning.planner.weekly import (
     WeeklyTarget,
     build_weekly_request,
@@ -60,7 +61,7 @@ def test_curriculum_is_versioned_context_without_new_allowed_cell_refs(
     assert packet_fingerprint(augmented) != packet_fingerprint(
         replace(augmented, parent_subthemes=("교사 확정값",))
     )
-    assert request.prompt_version == "monthly-planner-v23" + PLAY_DESCRIPTION_TAG
+    assert request.prompt_version == "monthly-planner-v23" + VENUE_POLICY_TAG + PLAY_DESCRIPTION_TAG
     assert "120 to 160" not in request.system_prompt
     assert "설명은 v2 놀이 설명과" in request.system_prompt
     assert "120 to 160" in original.system_prompt and MONTHLY_V1_STYLE not in original.system_prompt
@@ -72,7 +73,7 @@ def test_curriculum_is_versioned_context_without_new_allowed_cell_refs(
         month_snapshot=snapshots(),
     )
     assert json.loads(cell.user_content)["parent_subthemes"] == body["parent_subthemes"]
-    assert cell.prompt_version == "monthly-cell-planner-v15"
+    assert cell.prompt_version == "monthly-cell-planner-v15" + VENUE_POLICY_TAG
     assert MONTHLY_V1_STYLE in cell.system_prompt and MONTHLY_V1_CELL_CONTEXT in cell.system_prompt
     plain_cell = build_monthly_cell_request(
         packet,
@@ -105,7 +106,7 @@ def test_curriculum_ids_cannot_be_visible_or_used_as_grounding(packet, snapshot)
     )
     assert any(i.detail == "SOURCE_IDENTIFIER_LEAKAGE" for i in result.issues)
     repair = build_monthly_repair_request(request, json.dumps(payload), result.issues)
-    assert repair.prompt_version == "monthly-planner-repair-v18" + PLAY_DESCRIPTION_TAG
+    assert repair.prompt_version == "monthly-planner-repair-v18" + VENUE_POLICY_TAG + PLAY_DESCRIPTION_TAG
     assert "120 to 160" not in repair.system_prompt
     assert (
         json.loads(repair.user_content)["original_request"]["curriculum_context"]
@@ -140,8 +141,8 @@ def test_weekly_and_cell_regeneration_keep_curriculum_and_parent_context():
         assert body["parent"]["theme"] == "교사 확정 월간 주제"
         assert "curriculum_context" in r.system_prompt
         assert r.context_source_refs
-    assert request.prompt_version == "weekly-planner-v3"
-    assert cell.prompt_version == "weekly-cell-planner-v2"
+    assert request.prompt_version == "weekly-planner-v3" + VENUE_POLICY_TAG
+    assert cell.prompt_version == "weekly-cell-planner-v2" + VENUE_POLICY_TAG
 
 
 def test_failed_context_repair_is_reported_once(packet, snapshot, caplog):
@@ -152,7 +153,7 @@ def test_failed_context_repair_is_reported_once(packet, snapshot, caplog):
     with caplog.at_level("WARNING"), pytest.raises(ProposalRejectedError):
         MonthlyPlanner(provider).plan(packet, snapshot)
     assert len(provider.monthly_requests) == 2
-    assert provider.monthly_requests[-1].prompt_version == "monthly-planner-repair-v18" + PLAY_DESCRIPTION_TAG
+    assert provider.monthly_requests[-1].prompt_version == "monthly-planner-repair-v18" + VENUE_POLICY_TAG + PLAY_DESCRIPTION_TAG
     warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
     assert len(warnings) == 1
     assert warnings[0].startswith("Monthly LLM repair failed:")

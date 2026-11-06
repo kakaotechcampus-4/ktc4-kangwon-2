@@ -117,6 +117,16 @@ def test_age_match_tiers_are_structural_not_keyword_guesses():
     assert age_match_kind(_record("ev_c"), frozenset({5})) is None
 
 
+def test_contextual_monthly_excludes_other_institutions_destinations():
+    records = (_record("ev_a", text="배산유아숲터 숲체험"),
+               _record("ev_b", text="<현장학습> 공원 가을소풍"),
+               _record("ev_c", text="자연물로 나무 꾸미기"))
+    store = InMemoryInstitutionEvidenceRepository(records).get_store()
+    result = MonthlyEvidenceRetriever(store).retrieve(_request(exclude_venue_bound=True))
+    assert [item.record_id for item in result.block(BlockName.INSTITUTION_MONTHLY_EVIDENCE).items] == ["ev_c"]
+    assert "+teacher-venues-v1" in result.retrieval_version
+
+
 def test_ranking_combines_age_structure_theme_and_keyword_score():
     weak = _record("ev_b", text="공놀이", theme="다른 주제")
     strong = _record("ev_a", text="가을 자연 나들이", theme="가을과 자연")

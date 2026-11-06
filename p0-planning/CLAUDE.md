@@ -36,6 +36,21 @@ reference id, cell, week, age fit, statutory value or pass/fail outside that
 range — out-of-range output fails closed. Yearly narrows the range to one
 Rule-selected theme per month; the LLM writes its text and may not replace it.
 
+## Named venue boundary (2026-11-06 Human Decision)
+
+- A destination in another institution's reference is not a destination available to this classroom.
+  Current contextual Monthly/Weekly retrieval excludes venue-bound records and tagged field trips;
+  it selects other eligible evidence without renaming the excluded activity.
+- Generated Yearly v1/v2, Monthly v1/v2 and Weekly v1 text rejects detected named facilities unless
+  they occur in the current teacher memo. Weekly cell regeneration may also use explicit teacher facts.
+  A clause telling the model to exclude/not visit a facility does not authorize that facility.
+  Reference text, an AI parent and a rejected response never authorize a venue.
+- Keep the existing repair limit where repair exists. Annual paths without repair reject the output;
+  this policy does not add calls. A supplied venue does not establish access, reservation or a schedule.
+- Suffix matching is a conservative guard, not general Korean named-entity recognition. It can miss
+  other spellings or overblock a creative facility name. Existing plans, teacher edits and imported
+  documents are not rewritten; approved references and Template files stay unchanged.
+
 ## Yearly v0 contract
 
 - `YearlyPlan` has `school_year`, `classroom_ref` and exactly 12 ordered

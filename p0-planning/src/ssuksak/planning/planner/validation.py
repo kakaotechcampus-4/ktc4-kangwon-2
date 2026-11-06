@@ -688,7 +688,7 @@ def validate_monthly_proposal_grounding(
             for ref in value.grounding_refs
         )
         for code in visible_text_violations(
-            value.value, evidence_refs=_hidden_ids(request, packet)
+            value.value, evidence_refs=_hidden_ids(request, packet), teacher_venue_text=packet.teacher_memo
         ):
             if code == "SAFETY_CONTENT_LEAKAGE" and safety_grounded:
                 continue
@@ -869,7 +869,7 @@ def _safety_candidate_issues(
             fail(ProposalValidationCode.UNRESOLVED_NOT_ALLOWED)
             continue
         for code in visible_text_violations(
-            value.value, evidence_refs=_hidden_ids(request, packet)
+            value.value, evidence_refs=_hidden_ids(request, packet), teacher_venue_text=packet.teacher_memo
         ):
             if code != "SAFETY_CONTENT_LEAKAGE":
                 fail(ProposalValidationCode.TEXT_POLICY, code, reason=code)
@@ -946,7 +946,7 @@ def _drill_candidate_issues(
         reasons = [
             code
             for code in visible_text_violations(
-                value.value, evidence_refs=_hidden_ids(request, packet)
+                value.value, evidence_refs=_hidden_ids(request, packet), teacher_venue_text=packet.teacher_memo
             )
             if code != "SAFETY_CONTENT_LEAKAGE"
         ]

@@ -14,6 +14,7 @@ from ..evidence.classification import grounding_class_for
 from ..domain.errors import InvalidDomainValueError
 from .indoor_alternative import INDOOR_ADAPTATION_GUIDANCE
 from .play_description import PLAY_DESCRIPTION_TAG, PLAY_KEYS, with_play_descriptions
+from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG
 from .contracts import (
     MONTHLY_CONTEXT_PROMPT_VERSION,
     MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION,
@@ -465,6 +466,7 @@ def build_monthly_planning_request(
     version = MONTHLY_SAFETY_PROMPT_VERSION if safety else MONTHLY_PROMPT_VERSION
     if contextual:
         version = MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION if safety else MONTHLY_CONTEXT_PROMPT_VERSION
+        version += VENUE_POLICY_TAG
     if descriptions:
         version += PLAY_DESCRIPTION_TAG
     if indoor:
@@ -516,7 +518,8 @@ def build_monthly_planning_request(
         memo_addresses=memo,
         safety_request_slots=safety_slots,
     )
-    return replace(request, system_prompt=with_play_descriptions(request.system_prompt)) if descriptions else request
+    system_prompt = with_play_descriptions(request.system_prompt) if descriptions else request.system_prompt
+    return replace(request, system_prompt=system_prompt + (VENUE_GUIDANCE if contextual else ""))
 
 
 def build_monthly_repair_request(
