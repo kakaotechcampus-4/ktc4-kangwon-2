@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { completeOnboarding } from "./onboarding";
 import { execFileSync } from "node:child_process";
 
 /** TASK 2: 실제 Next → FastAPI → PostgreSQL. 응답을 fulfill하거나 MSW로 대체하지 않는다. */
@@ -73,21 +74,12 @@ async function enterHome(page: Page) {
   await page.getByRole("link", { name: "메인화면으로 가기", exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
   await page.goto("/onboarding");
-  await expect(page).toHaveURL(/\/onboarding\/center$/);
-  await page.getByLabel("원명").fill("일과테스트어린이집");
-  await page.getByLabel("원장 이름").fill("테스트원장");
-  await page.getByLabel("시·도", { exact: true }).selectOption("강원특별자치도");
-  await page.getByLabel("시·군·구").selectOption("춘천시");
-  await page.getByRole("button", { name: "다음", exact: true }).click();
-  await page.getByLabel("반 이름").fill("햇살반");
-  await page.getByLabel("만 4세", { exact: true }).check();
-  await page.getByLabel("담임 이름").fill("테스트교사");
-  await page.getByLabel("이 반 모든 아동의 법정대리인 동의를 받았습니다.").check();
-  await page.getByRole("button", { name: "다음", exact: true }).click();
-  await page.getByLabel("아동 추가").fill("가나다");
-  await page.getByRole("button", { name: "+ 추가", exact: true }).click();
-  await page.getByRole("button", { name: "설정 완료", exact: true }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await completeOnboarding(page, {
+    center: "일과테스트어린이집",
+    director: "테스트원장",
+    teacher: "테스트교사",
+    children: ["가나다"],
+  });
   await expect(page.getByRole("link", { name: "일과 작성하기" })).toBeVisible();
   const me = await api(page, "/api/auth/me");
   const classes = await api(page, `/api/centers/${me.center_id}/classes`);

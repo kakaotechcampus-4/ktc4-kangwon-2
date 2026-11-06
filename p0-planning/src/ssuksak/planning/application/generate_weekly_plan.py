@@ -67,7 +67,7 @@ from ..planner.weekly import (
     weekly_memo_address,
 )
 from ..retrieval.models import RetrievedEvidence
-from ..retrieval.weekly import activity_type, indoor_play_type, weekly_section_evidence
+from ..retrieval.weekly import activity_type, candidate_activity_basis, indoor_play_type, weekly_section_evidence
 from ..planner.play_description import PLAY_DESCRIPTION_TAG, valid_play_description
 from ..rules.monthly_activity_selection import (
     ActivitySelection,
@@ -716,8 +716,10 @@ def _weekly_request(
         parent_value = parent_cell.value if parent_cell is not None else ""
         if key == "group_activity" and activity_candidates or key == "indoor_play" and indoor_play_candidates:
             for index, item in enumerate(classified.get(key, ()), 1):
+                basis, name_terms = candidate_activity_basis(item.record)
                 targets.append(WeeklyTarget(f"{key}.candidate.{index}", (item.record_id,),
-                                            activity_type=indoor_play_type(item.record) if key == "indoor_play" else activity_type(item.record)))
+                                            activity_type=indoor_play_type(item.record) if key == "indoor_play" else activity_type(item.record),
+                                            activity_basis=basis, required_name_terms=name_terms))
                 evidence.append((item.record_id, item.record.text, "INDOOR_PLAY" if key == "indoor_play" else "GROUP_ACTIVITY"))
             continue
         if key in PARENT_GROUNDABLE_KEYS:

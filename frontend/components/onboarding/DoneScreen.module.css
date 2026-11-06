@@ -1,0 +1,199 @@
+/* 준비 끝 — 가운데 포스티가 폴짝 뛰고, 뒤에 모인 작은 포스티들이 손으로 꽃가루를 날린다.
+   「동작 줄이기」를 켠 교사에게는 모두 멈춘 채로 서고 꽃가루는 보이지 않는다. */
+.stage {
+  position: relative;
+  display: flex;
+  height: 190px;
+  width: 100%;
+  max-width: 340px;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+/* 가운데 포스티. 웅크림 → 몸이 길어지며 뜀 → 꼭대기에서 잠깐 머묾 → 떨어지며 빨라짐
+   → 착지에서 납작해졌다 → 살짝 튕기며 제자리. 구간마다 가속을 따로 줘야 무게가 느껴진다. */
+.hop {
+  position: relative;
+  z-index: 2;
+  transform-origin: 50% 100%;
+  animation: hop 1.25s infinite;
+}
+
+.shadow {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  z-index: 1;
+  height: 8px;
+  width: 70px;
+  margin-left: -35px;
+  border-radius: 50%;
+  /* 크림 위에서도 칠판 위에서도 그림자는 검다 */
+  background: #000;
+  opacity: 0.18;
+  animation: shadow 1.25s infinite;
+}
+
+/* 뒤에 모인 작은 포스티. 자리는 --bx(가운데에서 떨어진 거리) · --by(바닥에서 높이). */
+.thrower {
+  position: absolute;
+  bottom: var(--by);
+  left: calc(50% + var(--bx));
+  transform: translateX(-50%);
+}
+
+/* 꽃가루를 던질 때 살짝 굽혔다가 뛴다. 포스티마다 박자를 어긋나게 둬서 무리로 보이게 한다. */
+.throwerBody {
+  transform-origin: 50% 100%;
+  animation: toss 2.2s ease-in-out infinite;
+  animation-delay: var(--delay);
+}
+
+/* 꽃가루 한 장. 손끝(--sx, --sy)에서 위로 던져졌다가(--up) 흔들리며 떨어진다(--fall). */
+.petal {
+  position: absolute;
+  bottom: var(--sy);
+  left: calc(50% + var(--sx));
+  z-index: 3;
+  width: 5px;
+  height: 7px;
+  margin-left: -2.5px;
+  border-radius: 60% 60% 45% 45% / 70% 70% 35% 35%;
+  opacity: 0;
+  animation: petal 2.2s infinite;
+  animation-delay: var(--delay);
+}
+
+.dot {
+  width: 4.5px;
+  height: 4.5px;
+  border-radius: 50%;
+}
+
+.strip {
+  width: 3.5px;
+  height: 7px;
+  border-radius: 1.5px;
+}
+
+@keyframes hop {
+  0% {
+    transform: translateY(0) scale(1, 1);
+    animation-timing-function: ease-out;
+  }
+  12% {
+    transform: translateY(0) scale(1.1, 0.88);
+    animation-timing-function: ease-out;
+  }
+  22% {
+    transform: translateY(-12px) scale(0.94, 1.08);
+    animation-timing-function: ease-out;
+  }
+  42% {
+    transform: translateY(-40px) scale(1, 1);
+    animation-timing-function: ease-in;
+  }
+  48% {
+    transform: translateY(-38px) scale(1, 1);
+    animation-timing-function: ease-in;
+  }
+  63% {
+    transform: translateY(-6px) scale(0.96, 1.05);
+    animation-timing-function: ease-out;
+  }
+  68% {
+    transform: translateY(0) scale(1.12, 0.86);
+    animation-timing-function: ease-out;
+  }
+  80% {
+    transform: translateY(0) scale(0.98, 1.02);
+    animation-timing-function: ease-in-out;
+  }
+  90%,
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+}
+
+@keyframes shadow {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.14;
+  }
+  12% {
+    transform: scale(1.1);
+    opacity: 0.16;
+    animation-timing-function: ease-out;
+  }
+  45% {
+    transform: scale(0.55);
+    opacity: 0.05;
+    animation-timing-function: ease-in;
+  }
+  68% {
+    transform: scale(1.14);
+    opacity: 0.17;
+  }
+  90% {
+    transform: scale(1);
+    opacity: 0.14;
+  }
+}
+
+@keyframes toss {
+  0%,
+  30%,
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+  6% {
+    transform: translateY(0) scale(1.06, 0.92);
+  }
+  14% {
+    transform: translateY(-5px) scale(0.96, 1.05);
+  }
+  24% {
+    transform: translateY(0) scale(1.04, 0.96);
+  }
+}
+
+@keyframes petal {
+  0%,
+  10% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(0deg) scale(0.5);
+    animation-timing-function: ease-out;
+  }
+  14% {
+    opacity: 1;
+    animation-timing-function: ease-out;
+  }
+  38% {
+    opacity: 1;
+    transform: translate(calc(var(--dx) * 0.45), var(--up)) rotate(calc(var(--r) * 0.4)) scale(1);
+    animation-timing-function: ease-in;
+  }
+  70% {
+    opacity: 1;
+    transform: translate(calc(var(--dx) * 0.85), calc(var(--up) * 0.3))
+      rotate(calc(var(--r) * 0.75));
+    animation-timing-function: ease-in-out;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--fall)) rotate(var(--r)) scale(0.9);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hop,
+  .shadow,
+  .throwerBody,
+  .petal {
+    animation: none;
+  }
+  .petal {
+    display: none;
+  }
+}

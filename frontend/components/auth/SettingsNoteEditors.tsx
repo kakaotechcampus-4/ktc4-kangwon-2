@@ -1,6 +1,6 @@
 "use client";
 import { useState, type ReactNode } from "react";
-import { uid, useOnboardingFlow } from "@/components/onboarding/OnboardingPage";
+import { uid, useSettingsFlow } from "./useSettingsFlow";
 import { shownPrimaryId } from "@/lib/onboarding/settings";
 import {
   createEmptyClassroom,
@@ -16,10 +16,10 @@ import styles from "./Settings.module.css";
 
 /*
  * 설정에서 떼어 낸 쪽지 안. 원 정보 · 반 · 아동 명단을 고친다.
- * 칸 모양은 쪽지에 맞춰 따로 그리고, 불러오기 · 저장은 첫 설정 화면(`useOnboardingFlow`)과 같은 길을 쓴다.
+ * 칸 모양은 쪽지에 맞춰 따로 그리고, 불러오기 · 저장은 `useSettingsFlow` 가 맡는다.
  */
 
-type Flow = ReturnType<typeof useOnboardingFlow>;
+type Flow = ReturnType<typeof useSettingsFlow>;
 const AGES = [3, 4, 5] as const satisfies readonly SelectedAge[];
 
 /** 떼어 낸 쪽지의 틀 — 안내 한 줄, 길면 안쪽만 스크롤되는 본문, 아래 단추. */
@@ -87,9 +87,9 @@ function SaveActions({
 }
 
 export function OrgEditor({ onDone }: { onDone: () => void }) {
-  const flow = useOnboardingFlow(1, onDone);
+  const flow = useSettingsFlow(1, onDone);
   if (!flow.ready) return <Loading />;
-  const { settings, patch, go, busy } = flow;
+  const { settings, patch, save, busy } = flow;
   const districts = districtsFor(settings.regionProvince);
   const canSave =
     settings.orgName.trim() !== "" &&
@@ -98,9 +98,7 @@ export function OrgEditor({ onDone }: { onDone: () => void }) {
 
   return (
     <NoteSheet
-      actions={
-        <SaveActions onCancel={onDone} onSave={() => go(2, true)} canSave={canSave} busy={busy} />
-      }
+      actions={<SaveActions onCancel={onDone} onSave={save} canSave={canSave} busy={busy} />}
     >
       <label className={styles.field}>
         원명
@@ -161,9 +159,9 @@ export function OrgEditor({ onDone }: { onDone: () => void }) {
 }
 
 export function ClassesEditor({ onDone }: { onDone: () => void }) {
-  const flow = useOnboardingFlow(2, onDone);
+  const flow = useSettingsFlow(2, onDone);
   if (!flow.ready) return <Loading />;
-  const { settings, patch, go, busy } = flow;
+  const { settings, patch, save, busy } = flow;
   const update = (id: string, p: Partial<ClassroomEntry>) =>
     patch({ classes: settings.classes.map((c) => (c.id === id ? { ...c, ...p } : c)) });
   const canSave =
@@ -182,9 +180,7 @@ export function ClassesEditor({ onDone }: { onDone: () => void }) {
           ? "등록한 반의 이름 · 연령 · 담임 · 동의 여부는 아직 수정할 수 없습니다. 반 추가와 담당 반 선택만 할 수 있습니다."
           : undefined
       }
-      actions={
-        <SaveActions onCancel={onDone} onSave={() => go(3, true)} canSave={canSave} busy={busy} />
-      }
+      actions={<SaveActions onCancel={onDone} onSave={save} canSave={canSave} busy={busy} />}
     >
       {settings.classes.map((c, i) => (
         <ClassCard
@@ -355,7 +351,7 @@ function TextRow({
 }
 
 export function KidsEditor({ onDone }: { onDone: () => void }) {
-  const flow = useOnboardingFlow(3, onDone);
+  const flow = useSettingsFlow(3, onDone);
   if (!flow.ready) return <Loading />;
   const { settings, patch, finish, busy } = flow;
 
