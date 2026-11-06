@@ -1213,11 +1213,15 @@ function ClassRail({
               className={styles.classCard}
               data-tone="own"
               aria-pressed={c.id === classId}
+              // 버튼 이름은 반 이름만 — 둘째 줄은 설명으로 읽힌다(이름이 「햇살반만 4세…」가 되지 않게).
+              aria-describedby={`rail-line-${c.id}`}
               onClick={() => onPick(c.id)}
             >
               <span className={styles.grow}>
-                {c.className || "이름 없는 반"}
-                <small className={styles.railTeacher}>{classLine(c)}</small>
+                <span>{c.className || "이름 없는 반"}</span>
+                <small id={`rail-line-${c.id}`} aria-hidden="true" className={styles.railTeacher}>
+                  {classLine(c)}
+                </small>
               </span>
             </button>
           ))}
