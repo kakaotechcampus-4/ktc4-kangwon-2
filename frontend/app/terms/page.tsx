@@ -37,7 +37,6 @@ export default function Page() {
             비밀번호를 정해 주세요
           </li>
           <li>계정은 교사 본인이 씁니다. 비밀번호를 남에게 알려 주지 마세요</li>
-          <li>같은 원의 다른 교사는 초대 코드로 들어옵니다. 코드는 한 번 쓰면 끝입니다</li>
         </ul>
       </LegalSection>
 
