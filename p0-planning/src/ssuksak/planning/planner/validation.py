@@ -38,7 +38,6 @@ from .contracts import (
 )
 from .text_policy import normalize_visible_text, visible_text_violations
 from .indoor_alternative import INDOOR_REQUIRED, INDOOR_ALTERNATIVE_TAG
-from .play_description import PLAY_DESCRIPTION_INVALID, describes_play, valid_play_description
 from .weekly import unsupported_facts
 
 
@@ -54,7 +53,6 @@ class ProposalValidationCode(str, Enum):
     REQUIRED_SECTION_MISSING = "REQUIRED_SECTION_MISSING"
     UNRESOLVED_NOT_ALLOWED = "UNRESOLVED_NOT_ALLOWED"
     INDOOR_ALTERNATIVE_REQUIRED = INDOOR_REQUIRED
-    PLAY_DESCRIPTION_INVALID = PLAY_DESCRIPTION_INVALID
     UNKNOWN_GROUNDING_REF = "UNKNOWN_GROUNDING_REF"
     WRONG_SOURCE_GROUNDING = "WRONG_SOURCE_GROUNDING"
     RESOLVED_REQUIRES_GROUNDING = "RESOLVED_REQUIRES_GROUNDING"
@@ -305,7 +303,6 @@ def _canonical_values(
 _VALUE = frozenset({"value"})
 _VALUE_AND_REFS = frozenset({"value", "grounding_refs"})
 REPAIR_MUTABLE_FIELDS: dict[ProposalValidationCode, frozenset[str]] = {
-    ProposalValidationCode.PLAY_DESCRIPTION_INVALID: _VALUE,
     ProposalValidationCode.INDOOR_ALTERNATIVE_REQUIRED: frozenset({"value", "grounding_refs", "unresolved"}),
     ProposalValidationCode.SOURCE_TEXT_COPY: _VALUE,
     ProposalValidationCode.TEXT_POLICY: _VALUE,
@@ -422,8 +419,6 @@ def hydrate_reference_values(
         else:
             continue
         raw = cell.get("value")
-        if describes_play(request, section_key):
-            continue  # validate the canonical name without discarding the generated explanation
         cell["value"] = canonical
         hydrated.append(
             (week_id, section_key, isinstance(raw, str) and bool(raw.strip())
@@ -675,11 +670,6 @@ def validate_monthly_proposal_grounding(
                 )
             continue
 
-        if describes_play(request, value.section_key) and not valid_play_description(
-            value.value, request.reference_label_map.get(value.reference_id)
-        ):
-            fail(ProposalValidationCode.PLAY_DESCRIPTION_INVALID, value.section_key, week_id=week_id)
-
         safety_grounded = value.section_key == "safety_education" and bool(
             value.grounding_refs
         ) and all(
@@ -777,7 +767,7 @@ def validate_monthly_proposal_grounding(
                     expected="reference_activities",
                     actual=reference_kind(value.reference_id),
                 )
-            elif not describes_play(request, value.section_key) and normalize_visible_text(value.value) != normalize_visible_text(expected):
+            elif normalize_visible_text(value.value) != normalize_visible_text(expected):
                 # detail goes to the repair prompt only (catalog label, never logged).
                 fail(
                     ProposalValidationCode.REFERENCE_VALUE_MISMATCH,

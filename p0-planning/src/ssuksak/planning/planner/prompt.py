@@ -13,7 +13,6 @@ from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
 from ..domain.errors import InvalidDomainValueError
 from .indoor_alternative import INDOOR_ADAPTATION_GUIDANCE
-from .play_description import PLAY_DESCRIPTION_TAG, PLAY_KEYS, with_play_descriptions
 from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG
 from .contracts import (
     MONTHLY_CONTEXT_PROMPT_VERSION,
@@ -461,14 +460,11 @@ def build_monthly_planning_request(
     )
     safety = packet.safety is not None
     contextual = packet.curriculum is not None or bool(packet.parent_subthemes)
-    descriptions = contextual and any(section.section_key in PLAY_KEYS for section, _ in generation_targets(packet, snapshot))
     indoor = any(section.section_key == "indoor_alternative" for section, _ in generation_targets(packet, snapshot))
     version = MONTHLY_SAFETY_PROMPT_VERSION if safety else MONTHLY_PROMPT_VERSION
     if contextual:
         version = MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION if safety else MONTHLY_CONTEXT_PROMPT_VERSION
         version += VENUE_POLICY_TAG
-    if descriptions:
-        version += PLAY_DESCRIPTION_TAG
     if indoor:
         version += MONTHLY_INDOOR_PROMPT_TAG
     if packet.safety_candidates:
@@ -489,7 +485,7 @@ def build_monthly_planning_request(
     if safety_slots is not None:
         body["safety_request_slots"] = list(safety_slots)
         version += SAFETY_REQUESTS_PROMPT_TAG
-    request = MonthlyPlanningRequest(
+    return MonthlyPlanningRequest(
         task=MONTHLY_TASK,
         prompt_version=version,
         system_prompt=(
@@ -502,7 +498,8 @@ def build_monthly_planning_request(
         + (SAFETY_CANDIDATES_PROMPT if packet.safety_candidates else "")
         + (DRILL_CANDIDATES_PROMPT if packet.drill_topics else "")
         + (TEACHER_MEMO_PROMPT if memo is not None else "")
-        + (SAFETY_REQUESTS_PROMPT if safety_slots is not None else ""),
+        + (SAFETY_REQUESTS_PROMPT if safety_slots is not None else "")
+        + (VENUE_GUIDANCE if contextual else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         expected_theme_id=packet.parent_theme_id,
@@ -518,8 +515,6 @@ def build_monthly_planning_request(
         memo_addresses=memo,
         safety_request_slots=safety_slots,
     )
-    system_prompt = with_play_descriptions(request.system_prompt) if descriptions else request.system_prompt
-    return replace(request, system_prompt=system_prompt + (VENUE_GUIDANCE if contextual else ""))
 
 
 def build_monthly_repair_request(

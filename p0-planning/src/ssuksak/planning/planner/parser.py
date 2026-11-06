@@ -11,7 +11,6 @@ from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 from ..domain.monthly_template import RepeatBy
 from .teacher_memo import memo_properties, safety_request_properties
-from .play_description import describes_play
 from .contracts import (
     OUTDOOR_SECTION_KEY,
     CANDIDATE_PREFIXES,
@@ -84,7 +83,6 @@ def _section_branches(
     refs: tuple[str, ...],
     reference_sections: frozenset[str] | None = None,
     reference_pairs: tuple[tuple[str, str], ...] | None = None,
-    described: bool = False,
 ) -> list[dict[str, Any]]:
     """The static Section schema for one section_key and only the refs it may cite.
 
@@ -108,7 +106,7 @@ def _section_branches(
     pairs = [
         _object_schema(dict(
             properties,
-            value=_STRING if described and section_key == "outdoor_play" else {"type": "string", "enum": [label]},
+            value={"type": "string", "enum": [label]},
             unresolved={"type": "boolean", "enum": [False]},
             reference_id={"type": "string", "enum": [reference_id]},
             # A reference cell is grounded by its reference (OD-N13); it cites no refs.
@@ -144,7 +142,6 @@ def _section_schema(
             allowed.get(key, ()),
             reference_sections,
             None if reference_pairs is None else reference_pairs.get(key, ()),
-            described=describes_play(request, key),
         )
     ]
     return branches[0] if len(branches) == 1 else {"anyOf": branches}
