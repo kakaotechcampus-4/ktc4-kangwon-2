@@ -585,3 +585,16 @@ test("zoom steps round fit, move ten percent, and clamp manual zoom to 50–150"
   assert.equal(zoom(32, 1), 50);
   assert.equal(zoom(32, -1), 50);
 });
+
+test("PlayProjectSheet draws 배움 like the hwpx — bold [영역] then 범주 - 내용; cells sit in the middle", () => {
+  const p = fullPlan();
+  p.periods[0].candidates[0].learning.value = "자연탐구 - 탐구과정 즐기기 - 궁금한 것을 탐구한다.";
+  const tree = all(resolve(jsx(Sheet, { plan: p, picks: { period0: FULL }, periods: [0] })));
+  assert.equal(text(tree.find((n) => n.type === "b")), "[자연탐구]");
+  const lines = tree.filter((n) => n.type === "span").map(text);
+  assert.ok(lines.includes("[자연탐구] 탐구과정 즐기기 - 궁금한 것을 탐구한다."));
+  assert.ok(lines.includes("배움 한 줄"), "세 조각이 아닌 줄은 그대로");
+  assert.ok(
+    tree.filter((n) => n.type === "td").every((n) => /align-middle/.test(n.props.className)),
+  );
+});
