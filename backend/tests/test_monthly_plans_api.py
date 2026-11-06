@@ -897,6 +897,35 @@ def _safety_row(response, plan: dict) -> list[str]:
     return [cells[(MONTHLY_WEEK_ROWS["safety_education"], col)] for col in columns]
 
 
+def _head_over_sentence(value: str) -> str:
+    """화면(safetyLines)처럼 「[주제] - 문장」 → 「[주제]」 다음 줄에 문장(2026-11-06)."""
+    head, sep, rest = value.partition("] - ")
+    return f"{head}]\n{rest}" if sep and value.startswith("[") else value
+
+
+def _bold_safety_heads(response) -> list[str]:
+    """안전교육 줄에서 굵은 글자 모양으로 쓴 조각들."""
+    import zipfile
+    from io import BytesIO
+
+    from lxml import etree
+
+    from app.features.plans.export import MONTHLY_WEEK_ROWS
+    from app.shared.hwpx import NS, _cells
+
+    table, _ = _exported_table(response.content)
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        header = etree.fromstring(archive.read("Contents/header.xml"))
+    bold = {e.getparent().get("id") for e in header.iterfind(".//{*}charPr/{*}bold")}
+    return [
+        "".join(run.itertext())
+        for (r, c), tc in _cells(table).items()
+        if r == MONTHLY_WEEK_ROWS["safety_education"] and c > 0  # 줄 이름 칸은 원래 굵다
+        for run in tc.iterfind("hp:subList/hp:p/hp:run", NS)
+        if run.get("charPrIDRef") in bold and "".join(run.itertext())
+    ]
+
+
 @pytest.mark.parametrize("month", [9, 10])  # 2026-09 는 5주, 2026-10 은 4주다
 def test_안전교육_줄은_배치한_주의_표시값이고_안_고른_주는_빈칸이다(world, month):
     _annual(world["class_a"])
@@ -914,10 +943,11 @@ def test_안전교육_줄은_배치한_주의_표시값이고_안_고른_주는_
 
     response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
     assert response.status_code == 200, response.text
-    expected = [display[w] for w in weeks]
+    expected = [_head_over_sentence(display[w]) for w in weeks]
     assert _safety_row(response, plan) == expected
     assert len(weeks) == (5 if month == 9 else 4)
-    assert [v for v in expected if v] == [display[weeks[1]]]  # 나머지 주는 빈칸
+    assert [v for v in expected if v] == [_head_over_sentence(display[weeks[1]])]  # 나머지 빈칸
+    assert _bold_safety_heads(response) == [display[weeks[1]].split(" - ")[0]]  # 「[주제]」 만 굵게
     assert not any(text and "evidence" in text for text in _exported_table(response.content)[1])
 
 
@@ -932,7 +962,7 @@ def test_예전_계획안은_저장된_칸_값을_그대로_안전교육_줄에_
     response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
     assert response.status_code == 200, response.text
     weeks = [w["week_id"] for w in plan["weeks"] if w["active"]]
-    assert _safety_row(response, plan) == [stored[w] for w in weeks]
+    assert _safety_row(response, plan) == [_head_over_sentence(stored[w]) for w in weeks]
 
 
 def test_안전교육_줄을_숨긴_양식이면_배치한_후보가_있어도_그_줄은_빈칸이다(world, monkeypatch):

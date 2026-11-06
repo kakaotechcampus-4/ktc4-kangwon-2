@@ -249,6 +249,18 @@ def test_the_safety_cell_is_its_head_over_the_sentence_centred_like_the_screen(
     for tc in week_row(filled, 10):
         assert tc.find("hp:subList", NS).get("vertAlign") == "CENTER"
         assert {p.get("paraPrIDRef") for p in tc.iterfind("hp:subList/hp:p", NS)} == {expected}
+    # 2026-11-06: 화면처럼 「[..]」 만 굵게 — 안전교육 머리 · 건강 머리.
+    bold = {e.getparent().get("id") for e in etree.fromstring(header).iterfind(".//{*}bold")}
+
+    def runs(tc: etree._Element) -> list[tuple[str, bool]]:
+        return [
+            ("".join(r.itertext()), r.get("charPrIDRef") in bold)
+            for r in tc.iterfind("hp:subList/hp:p/hp:run", NS)
+            if "".join(r.itertext())
+        ]
+
+    assert runs(week_row(filled, 10)[0]) == [("[교통안전]", True), ("안전 1", False)]
+    assert runs(cells(filled)[(12, 3)]) == [("[건강]", True), (" 합성 건강", False)]
 
 
 def test_footer_and_labels_stay_as_the_template(filled: bytes) -> None:

@@ -10,7 +10,8 @@
 - 놀이 목록: 행 수대로 문단을 만든다. 번호 · 글머리는 양식 문단 모양이 단다. 자르지 않는다.
 - 표시(2026-10-28 하민 결정, 3월 검증 사례와 같게): 예상 기간 「2026.03.01 ~ 2026.03.31」,
   기본생활습관은 「[분류]」 문단 + 문장 문단, 건강 · 영양은 「[건강] 」 · 「[영양] 」 + 문장.
-  빈 칸에는 붙이지 않는다.
+  빈 칸에는 붙이지 않는다. 훈련 · 건강 · 영양 · 안전교육의 「[..]」 는 화면 문서처럼 굵게
+  (2026-11-06).
 - 비워 두는 곳: 우리반 안내사항(출력 안 함, 2026-10-28 결정). 하단 고정 문구 두 줄은 손대지 않는다.
 - 제목 · 반 표시 · 예상 기간 · 가운데 「예상되는 놀이 방향」 은 계획의 표시 칸 값을 그대로 쓴다
   (layout v0.2.0, 2026-10-28 D-2 · D-6 — 교사가 지운 빈 값도 빈 채로). 반 표시 = 연령 + 반 이름.
@@ -30,6 +31,7 @@
 
 import copy
 import io
+import re
 import zipfile
 from fractions import Fraction
 from itertools import pairwise
@@ -85,6 +87,69 @@ SPECIAL_HEADER, SPECIAL_FIRST, SPECIAL_ROWS = 19, 20, 2  # 요일 머리 · 칸 
 DAYS = ("월", "화", "수", "목", "금")
 HWPUNIT_PER_MM = 7200 / 25.4
 SNAP = round(0.5 * HWPUNIT_PER_MM)  # 요일 경계가 이만큼 안에 다른 줄 세로선이 있으면 그 선을 쓴다
+HEADER = "Contents/header.xml"
+HH = {"hh": "http://www.hancom.co.kr/hwpml/2011/head"}
+_TAG = re.compile(r"(\[[^\]\n]*\])")  # 화면 문서(`Cell strong`)가 굵게 그리는 「[..]」
+# charPr 자식 순서(OWPML)에서 bold 뒤에 오는 것들 — bold 는 이들 앞에 넣는다.
+_AFTER_BOLD = ("underline", "strikeout", "outline", "shadow", "emboss", "engrave", "supscript")
+
+
+class Styles:
+    """화면 문서와 같게 칸 글을 꾸민다 — 「[..]」 굵게 · 문단 가운데(2026-11-06, 화면 → 한글).
+
+    칸이 쓰던 글자 · 문단 모양을 header.xml 에 복제해 그 한 가지만 바꾼다(크기 · 글꼴은 그대로).
+    """
+
+    def __init__(self, header: etree._Element):
+        self.header = header
+        self.made: dict[tuple[str, str], str] = {}
+
+    def _variant(self, kind: str, source: str, change) -> str:
+        if (kind, source) not in self.made:
+            group = self.header.find(f".//hh:{kind}Properties", HH)
+            items = group.findall(f"hh:{kind}Pr", HH)
+            new = copy.deepcopy(next(e for e in items if e.get("id") == source))
+            new.set("id", str(max(int(e.get("id")) for e in items) + 1))
+            change(new)
+            group.append(new)
+            group.set("itemCnt", str(len(items) + 1))
+            self.made[(kind, source)] = new.get("id")
+        return self.made[(kind, source)]
+
+    def bold_tags(self, tc: etree._Element) -> None:
+        for run in list(tc.iterfind("hp:subList/hp:p/hp:run", NS)):
+            t = run.find("hp:t", NS)
+            if t is None or not _TAG.search(t.text or ""):
+                continue
+            bold = self._variant("char", run.get("charPrIDRef"), _add_bold)
+            p = run.getparent()
+            at = p.index(run)
+            p.remove(run)
+            for i, piece in enumerate(s for s in _TAG.split(t.text) if s):
+                new = copy.deepcopy(run)
+                new.find("hp:t", NS).text = piece
+                if _TAG.fullmatch(piece):
+                    new.set("charPrIDRef", bold)
+                p.insert(at + i, new)
+
+    def center(self, tc: etree._Element) -> None:
+        for p in tc.iterfind("hp:subList/hp:p", NS):
+            p.set("paraPrIDRef", self._variant("para", p.get("paraPrIDRef"), _centered))
+
+
+def _add_bold(char_pr: etree._Element) -> None:
+    if char_pr.find("hh:bold", HH) is not None:
+        return
+    bold = etree.Element(f"{{{HH['hh']}}}bold")
+    later = [e for e in char_pr if etree.QName(e).localname in _AFTER_BOLD]
+    if later:
+        later[0].addprevious(bold)
+    else:
+        char_pr.append(bold)
+
+
+def _centered(para_pr: etree._Element) -> None:
+    para_pr.find("hh:align", HH).set("horizontal", "CENTER")
 
 
 def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument) -> bytes:
@@ -142,6 +207,16 @@ def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument) -> bytes:
         },
     )
     _set_special_activity(table, doc.special_activity, doc.special_activity_size)
+
+    # 화면 문서처럼 훈련 · 건강 · 영양 · 안전교육 칸의 「[..]」 는 굵게(습관 머리는 화면에 없다).
+    # `cells` 는 채우기 전 주소다 — 주차 · 특활 줄이 표 번호를 다시 매긴다.
+    styles = Styles(etree.fromstring(parts[HEADER]))
+    for address in ((11, 3), (12, 3), (12, 11)):
+        styles.bold_tags(cells[address])
+    for tc in table.findall("hp:tr", NS)[WEEK_SAFETY].findall("hp:tc", NS):
+        if _col(tc) >= WEEK_FIRST_COLUMN:
+            styles.bold_tags(tc)
+    parts[HEADER] = _dump(styles.header)
 
     parts[SECTION] = _dump(section)
     parts[PACKAGE] = _package(parts[PACKAGE], doc.title)

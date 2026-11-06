@@ -289,10 +289,11 @@ const Rows = ({
   </>
 );
 
+/** 「[건강] 문장」 — 한글 양식처럼 가운데. */
 const Tagged = ({ tag, children }: { tag: string; children: ReactNode }) => (
-  <div className="flex items-start text-left">
+  <div className="flex items-start justify-center text-center">
     <b className="shrink-0 py-1 pl-1.5">[{tag}]</b>
-    <span className="min-w-0 flex-1">{children}</span>
+    <span className="min-w-0">{children}</span>
   </div>
 );
 
@@ -445,16 +446,17 @@ export default function PlayMonthlySheet({
         </colgroup>
         <tbody>
           <tr>
-            <th scope="row" className={`${LINE} h-7 font-bold`}>
-              놀이 주제
+            {/* 머리칸 글은 한글 양식 그대로(띄어 쓴 「놀 이 주 제」). */}
+            <th scope="row" aria-label="놀이 주제" className={`${LINE} h-7 font-bold`}>
+              놀 이 주 제
             </th>
             <td className={`${LINE} p-0`}>
               <Cell {...at} id={plan.theme.item_id} value={plan.theme.value} />
             </td>
           </tr>
           <tr>
-            <th scope="row" className={`${LINE} h-7 font-bold`}>
-              예상 기간
+            <th scope="row" aria-label="예상 기간" className={`${LINE} h-7 font-bold`}>
+              예 상 기 간
             </th>
             <td className={`${LINE} p-0`}>
               <Cell {...at} id={plan.display.period.item_id} value={plan.display.period.value} />
@@ -490,7 +492,8 @@ export default function PlayMonthlySheet({
             </th>
           </tr>
           <tr>
-            <td className={`${LINE} p-0 align-top`}>
+            {/* 한글 양식처럼 목록은 세로 가운데. */}
+            <td className={`${LINE} p-0 align-middle`}>
               <Rows
                 {...at}
                 rows={plan.together}
@@ -500,7 +503,7 @@ export default function PlayMonthlySheet({
                 onMove={onMoveRow}
               />
             </td>
-            <td className={`${LINE} p-0 align-top`}>
+            <td className={`${LINE} p-0 align-middle`}>
               <Rows
                 {...at}
                 rows={plan.free_play}
@@ -523,9 +526,8 @@ export default function PlayMonthlySheet({
         </colgroup>
         <thead>
           <tr>
-            <th scope="col" className={`${LINE} ${HEAD} h-6`}>
-              구분
-            </th>
+            {/* 한글 양식의 이 칸은 비어 있다. */}
+            <th scope="col" className={`${LINE} ${HEAD} h-6`} />
             {weeks.map((week, i) => (
               <WeekHead key={week.week_id} index={i} week={week} />
             ))}
@@ -576,7 +578,7 @@ export default function PlayMonthlySheet({
             <th scope="row" className={`${LINE} ${HEAD} h-6`}>
               소방대피/재난대비
             </th>
-            <td colSpan={weeks.length} className={`${LINE} p-0 text-left`}>
+            <td colSpan={weeks.length} className={`${LINE} p-0`}>
               {drill && <Cell {...at} id={drill.item_id} value={drill.value} strong />}
             </td>
           </tr>
@@ -752,7 +754,7 @@ function Timetables({
   const tree = (part: Part, day: number): ReactNode => {
     if (part.cell)
       return (
-        <div className="flex h-full min-h-0 min-w-0 overflow-auto [&>span]:h-full [&>span]:w-full [&>span]:text-center">
+        <div className="flex h-full min-h-0 min-w-0 overflow-auto [&>span]:flex [&>span]:min-h-full [&>span]:w-full [&>span]:flex-col [&>span]:justify-center [&>span]:text-center">
           <Cell {...at} hint={TEACHER_HINT} id={part.cell.item_id} value={part.cell.value} />
         </div>
       );

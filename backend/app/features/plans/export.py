@@ -27,7 +27,13 @@ from app.features.plans.monthly_router import _current as _monthly_detail
 from app.features.plans.monthly_router import _monthly_repo
 from app.features.plans.monthly_router import _own_row as _monthly_row
 from app.features.plans.monthly_schemas import SectionOut
-from app.features.plans.play_monthly_hwpx import _set_paragraph, _text, set_split_rows
+from app.features.plans.play_monthly_hwpx import (
+    HEADER,
+    Styles,
+    _set_paragraph,
+    _text,
+    set_split_rows,
+)
 from app.features.plans.play_project import format_of
 from app.features.plans.play_project_hwpx import (
     PlayPeriodRows,
@@ -197,6 +203,9 @@ _UNSUPPORTED_WEEKS = HTTPException(
 )
 
 
+_SAFETY_HEAD = re.compile(r"^(\[[^\]\n]+\]) - ")
+
+
 def _month_value(section: SectionOut) -> str:
     """한 달에 하나인 Section 의 값. 주마다 있는 Section 에는 쓰지 않는다."""
     return "\n".join(cell.value for cell in section.cells if cell.value)
@@ -237,6 +246,9 @@ def export_monthly_plan(
             if section.section_key == "safety_education" and plan.safety_weeks:
                 # 후보 모드는 칸을 비워 두고 표시값을 응답마다 계산한다(ADR-052). 미배치 주는 빈칸.
                 values = {week.week_id: week.display_value for week in plan.safety_weeks}
+            if section.section_key == "safety_education":
+                # 화면(safetyLines)처럼 「[주제]」 다음 줄에 문장(저장값은 그대로).
+                values = {k: _SAFETY_HEAD.sub(r"\1\n", v, count=1) for k, v in values.items()}
             rows[MONTHLY_WEEK_ROWS[section.section_key]] = [
                 values.get(week.week_id, "") for week in weeks
             ]
@@ -253,7 +265,7 @@ def export_monthly_plan(
         (f"{plan.month}월 놀이계획안", f"{_ages_label(ages)} {row.class_name}"),
         texts,
         rows,
-        tables=lambda table: _fill_teacher_tables(table, core.tables),
+        tables=lambda table, styles: _fill_teacher_tables(table, core.tables, styles),
     )
     return download(content, f"monthly-plan-{row.id}", title, format)
 
@@ -269,13 +281,15 @@ def _fill_form(
 ) -> bytes:
     """제목 칸(0,0)의 두 문단, `texts` 의 칸, `rows` 의 주차 줄(주마다 한 칸)을 채운다.
 
-    제목이 표 안에 있어 `fill_grid`(표 밖 「제목」 자리)를 못 쓴다.
+    제목이 표 안에 있어 `fill_grid`(표 밖 「제목」 자리)를 못 쓴다. 주차 칸은 화면 문서처럼 가운데,
+    안전교육 「[주제]」 는 굵게 쓴다(2026-11-06, 화면 → 한글).
     """
     with zipfile.ZipFile(io.BytesIO(template)) as src:
         infos = src.infolist()
         parts = {info.filename: src.read(info.filename) for info in infos}
 
     section = etree.fromstring(parts[SECTION])
+    styles = Styles(etree.fromstring(parts[HEADER]))
     cells = _cells(section.find(".//hp:tbl", NS))
     for address, label in labels.items():
         if address not in cells or _text(cells[address]) != label:
@@ -293,9 +307,13 @@ def _fill_form(
             raise TemplateMismatch(f"양식 주차 칸은 {len(columns)}개인데 {len(values)}주다.")
         for col, text in zip(columns, values, strict=True):
             _set_text(cells[(line, col)], text)
+            styles.center(cells[(line, col)])
+            if line == MONTHLY_WEEK_ROWS["safety_education"]:
+                styles.bold_tags(cells[(line, col)])
     if tables is not None:
-        tables(section.find(".//hp:tbl", NS))
+        tables(section.find(".//hp:tbl", NS), styles)
 
+    parts[HEADER] = _dump(styles.header)
     parts[SECTION] = _dump(section)
     parts[PACKAGE] = _package(parts[PACKAGE], title)
     if PREVIEW in parts:
@@ -307,11 +325,17 @@ def _fill_form(
     return out.getvalue()
 
 
-def _fill_teacher_tables(table, tables) -> None:
-    """교사 표마다 열 제목 · 나눔 트리 · 크기대로 칸 구역을 다시 만든다(놀이 월간과 같은 방식)."""
+def _fill_teacher_tables(table, tables, styles: Styles) -> None:
+    """교사 표마다 열 제목 · 나눔 트리 · 크기대로 칸 구역을 다시 만든다(놀이 월간과 같은 방식).
+
+    칸 글은 화면 문서처럼 가운데 — 다시 만드는 칸이 복제하는 양식 칸을 먼저 가운데로 바꾼다.
+    """
     by_key = {t.table_key: t for t in tables}
     for key, (header, first, first_col) in MONTHLY_TABLE_ROWS.items():
         t = by_key[key]
+        for tc in table.findall("hp:tr", NS)[first].findall("hp:tc", NS):
+            if int(tc.find("hp:cellAddr", NS).get("colAddr")) >= first_col:
+                styles.center(tc)
         if t.titles:
             heads = table.findall("hp:tr", NS)[header].findall("hp:tc", NS)
             if len(heads) != len(t.titles):

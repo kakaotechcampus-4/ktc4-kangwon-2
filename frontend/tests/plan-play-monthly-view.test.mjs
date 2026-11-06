@@ -719,8 +719,8 @@ test("머리표 — 제목 · 만 나이 · 반 이름 · 기간은 문서 머�
   const tree = sheetOf(plan, { onSelect: () => {} });
   const t = text(tree);
   assert.match(t, /11월 놀이계획안/);
-  assert.ok(t.includes("예상 기간2026.11.01 ~ 2026.11.30"));
-  for (const part of ["놀이 주제봄 길을 걸어요", "만 4·5세해님반", "주제선정이유봄에는 바깥에서"])
+  assert.ok(t.includes("예 상 기 간2026.11.01 ~ 2026.11.30")); // 머리칸은 한글 양식 글 그대로
+  for (const part of ["놀 이 주 제봄 길을 걸어요", "만 4·5세해님반", "주제선정이유봄에는 바깥에서"])
     assert.ok(t.includes(part), part);
   assert.equal(text(all(tree).find((n) => n.props?.rowSpan === 2)), "길에서 만난 봄");
   const ids = new Set(

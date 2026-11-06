@@ -70,7 +70,10 @@ function describe(e: unknown, fallback: string): string {
 
 /** 한글 양식(monthly_v1_*weeks.hwpx)처럼 굵은 검정 머리칸. */
 const LABEL = `${LINE} bg-[#e6f3fc] px-1 py-[2px] font-bold`;
-/** 한글 양식(monthly_v1_4weeks · 5weeks) 줄 높이(HWPUNIT). 모르는 칸은 기본생활습관 높이. */
+/**
+ * 한글 양식(monthly_v1_4weeks · 5weeks) 줄 높이(HWPUNIT). 모르는 칸은 기본생활습관 높이.
+ * 적은 순서가 양식의 줄 순서다(서버 MONTHLY_MONTH_CELLS · MONTHLY_WEEK_ROWS).
+ */
 const ROW_HU: Record<string, number> = {
   theme: 2000,
   goals: 4800,
@@ -82,6 +85,25 @@ const ROW_HU: Record<string, number> = {
   safety_education: 5000,
   drill: 2700,
 };
+/** 문서는 Profile 순서가 달라도 양식 줄 순서로 그린다 — 양식에 없는 칸은 맨 뒤(내보내기는 거절한다). */
+const FORM_ORDER = Object.keys(ROW_HU);
+const formRank = (key: string) => {
+  const i = FORM_ORDER.indexOf(key);
+  return i < 0 ? FORM_ORDER.length : i;
+};
+/** 양식 머리칸 글이 화면 칸 이름과 다른 줄 — 문서는 양식 글 그대로. */
+const FORM_LABEL: Record<string, ReactNode> = {
+  goals: "이번 달 목표",
+  drill: (
+    <>
+      소방대피/
+      <br />
+      재난대비
+    </>
+  ),
+};
+const formLabel = (s: { section_key: string; label?: string | null }) =>
+  FORM_LABEL[s.section_key] ?? sectionName(s.section_key, s.label);
 /** 목표 칸은 세로만 가운데(빈 칸 안내도 왼쪽). */
 const GOALS = "align-middle [&_[data-cell]]:justify-start";
 const rowH = (key: string) => ({ height: hu(ROW_HU[key] ?? 3600) });
@@ -147,7 +169,7 @@ export default function MonthlyPlanEditor({
   const weeks = plan.weeks.filter((w) => w.active);
   const sections = plan.sections
     .filter((s) => s.visible && s.role === "CONTENT")
-    .sort((a, b) => a.order - b.order);
+    .sort((a, b) => formRank(a.section_key) - formRank(b.section_key) || a.order - b.order);
   // 후보가 있으면 안전교육은 후보를 주에 두는 방식이다 — 주별 칸은 서버가 편집을 막고 늘 비어 있다.
   const candidateMode = plan.safety_candidates.length > 0;
   const cells = sections.flatMap((s) =>
@@ -594,19 +616,13 @@ export default function MonthlyPlanEditor({
     return (
       <tr key={section.section_key}>
         <th scope="row" className={LABEL} style={rowH(section.section_key)}>
-          {sectionName(section.section_key, section.label)}
+          {formLabel(section)}
         </th>
         {section.repeat_by !== "WEEK" ? (
-          // 목표 · 소방대피/재난대비는 양식 순서상 이 표에 온다 — 세로 가운데(목표 글은 왼쪽).
+          // 소방대피/재난대비는 양식 순서상 이 표에 온다 — 한글 양식처럼 세로 가운데(목표 글은 왼쪽).
           <td
             colSpan={span}
-            className={`${LINE} ${
-              section.section_key === "goals"
-                ? GOALS
-                : section.section_key === "drill"
-                  ? "align-middle"
-                  : "align-top"
-            }`}
+            className={`${LINE} ${section.section_key === "goals" ? GOALS : "align-middle"}`}
           >
             {one(section, at)}
           </td>
@@ -692,9 +708,12 @@ export default function MonthlyPlanEditor({
             section ? (
               <tr key={section.section_key}>
                 <th scope="row" className={LABEL} style={rowH(section.section_key)}>
-                  {sectionName(section.section_key, section.label)}
+                  {formLabel(section)}
                 </th>
-                <td className={`${LINE} ${section.section_key === "goals" ? GOALS : "align-top"}`}>
+                {/* 한글 양식처럼 세로 가운데. */}
+                <td
+                  className={`${LINE} ${section.section_key === "goals" ? GOALS : "align-middle"}`}
+                >
                   {one(section, at)}
                 </td>
               </tr>
@@ -735,9 +754,7 @@ export default function MonthlyPlanEditor({
               {!rest.some((s) => s.section_key === "drill") && (
                 <tr>
                   <th scope="row" className={LABEL} style={rowH("drill")}>
-                    소방대피/
-                    <br />
-                    재난대비
+                    {FORM_LABEL.drill}
                   </th>
                   <td colSpan={span} className={`${LINE} ${HINT}`}>
                     + 채우기

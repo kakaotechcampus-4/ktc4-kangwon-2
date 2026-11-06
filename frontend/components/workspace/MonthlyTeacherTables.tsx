@@ -55,7 +55,7 @@ export function TeacherTables({
   const tree = (part: Part): ReactNode => {
     if (part.cell)
       return (
-        <div className="flex h-full min-h-0 min-w-0 overflow-auto [&>span]:h-full [&>span]:w-full [&>span]:text-center">
+        <div className="flex h-full min-h-0 min-w-0 overflow-auto [&>span]:flex [&>span]:min-h-full [&>span]:w-full [&>span]:flex-col [&>span]:justify-center [&>span]:text-center">
           <Cell {...at} hint={TEACHER_HINT} id={part.cell.item_id} value={shown(part.cell)} />
         </div>
       );
