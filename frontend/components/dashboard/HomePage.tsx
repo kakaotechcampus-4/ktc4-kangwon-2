@@ -20,6 +20,7 @@ import { Icon } from "@/components/app/icons";
 import ChildPicker from "@/components/app/ChildPicker";
 import { SsampleNote } from "@/components/app/SsampleNote";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
+import { DOMAIN_LOOK } from "@/components/workspace/domain-look";
 import { listRecords, addRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import { listRoutines, routineTime, type Routine } from "@/lib/api/routines";
@@ -178,7 +179,8 @@ export default function HomePage() {
   const gapDay =
     routineRows && todayDate
       ? emptyDay(
-          routineRows.map((r) => r.date),
+          // 보육일지는 「실제로 한 것」이 있어야 만들어진다(logReady). 이름 · 시간만 저장한 날도 빈 날이다.
+          routineRows.filter((r) => r.execution.trim()).map((r) => r.date),
           firstWrittenDay(
             routineRows.map((r) => r.date),
             classRecords.map((r) => r.date),
@@ -564,9 +566,11 @@ const TURN_MS = 7000;
  * 한 아이, 조금 더 가까이 — 쪽지를 여러 장 겹쳐 두고 한 장씩 넘긴다.
  *
  * 책장이 넘어가듯 **스스로 넘어간다**(7초). 읽는 중에 넘어가면 방해가 되므로
- * 마우스를 올리거나 안의 것에 초점이 가 있으면 멈춘다. 화살표로 직접 넘기면
- * 그때부터는 자동으로 넘기지 않는다 — 교사가 고른 아이를 화면이 뺏어가면 안 된다.
+ * 마우스를 올리거나 안의 것에 초점이 가 있으면 멈춘다. 쪽지 밑 「‹ 2 / 5 ›」로 앞뒤를
+ * 넘기면 7초를 처음부터 다시 센다 — 놓친 쪽지를 다시 보게 해 달라는 13주차 멘토 리뷰.
+ * 화살표가 마우스를 올려야 보이던 때는 태블릿에서 아예 못 넘겼다.
  *
+ * 저절로 움직이는 것은 멈출 수 있어야 해서(WCAG 2.2.2) 멈춤 버튼을 둔다.
  * 움직임을 줄여 달라고 한 기기(`prefers-reduced-motion`)에서는 처음부터 자동이 없다.
  */
 function ChildSpotlight({
@@ -578,17 +582,21 @@ function ChildSpotlight({
 }) {
   const children = classes.flatMap((c) => c.children);
   const [index, setIndex] = useState(0);
-  // 교사가 직접 넘긴 뒤에는 자동으로 움직이지 않는다.
-  const [held, setHeld] = useState(false);
+  // 교사가 멈춤을 누르면 다시 누를 때까지 안 넘긴다.
+  const [stopped, setStopped] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [still] = useClientState(
+    () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+    true,
+  );
   const count = children.length;
 
+  // 넘어갈 때마다(저절로든 손으로든) 7초를 새로 센다.
   useEffect(() => {
-    if (count < 2 || held || paused) return;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const timer = setInterval(() => setIndex((p) => (p + 1) % count), TURN_MS);
-    return () => clearInterval(timer);
-  }, [count, held, paused]);
+    if (count < 2 || still || stopped || paused) return;
+    const timer = setTimeout(() => setIndex((p) => (p + 1) % count), TURN_MS);
+    return () => clearTimeout(timer);
+  }, [index, count, still, stopped, paused]);
 
   const child = children[index % Math.max(count, 1)];
   const latest = records.find((r) => r.childId === child?.id);
@@ -598,10 +606,8 @@ function ChildSpotlight({
         classes.find((c) => c.children.some((k) => k.id === child.id))?.id ?? "",
       )}&child=${encodeURIComponent(child.id)}`
     : "/records";
-  const turn = (step: number) => {
-    setHeld(true);
-    setIndex((p) => (p + step + count) % count);
-  };
+  const turn = (step: number) => setIndex((p) => (p + step + count) % count);
+  const look = latest ? DOMAIN_LOOK[latest.domain] : undefined;
 
   return (
     <BoardSection title="한 아이, 조금 더 가까이">
@@ -610,7 +616,7 @@ function ChildSpotlight({
       ) : (
         <>
           <div
-            className="group relative mx-3"
+            className="relative mx-3"
             onMouseEnter={() => setPaused(true)}
             onMouseLeave={() => setPaused(false)}
             onFocusCapture={() => setPaused(true)}
@@ -640,10 +646,17 @@ function ChildSpotlight({
                   제목과 같은 말이 한 쪽지에 두 번 나온다. */}
               {/* 이름 · 언제 무슨 영역 · 적힌 글 · 가는 길. 넷이 줄 없이 붙어 있으면
                   글자 크기만으로 갈라야 해서 한 덩어리로 읽힌다. */}
+              {/* 영역은 관찰 기록 배지와 같은 그림 · 색에 손글씨(PM 점검 안 1). 색은 그림에만 칠한다 —
+                  영역 색 글씨는 살구 쪽지에서 대비가 4.5 : 1 아래로 떨어진다. */}
               {latest ? (
-                <div className="mt-3 flex items-baseline justify-between gap-2 border-t border-ink/35 pt-2.5 text-[12.5px] font-semibold text-sun-ink">
-                  <span className="min-w-0 truncate">{latest.domain}</span>
-                  <span className="shrink-0 font-normal">{shortDate(latest.date)}</span>
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-ink/35 pt-2.5">
+                  <span className="flex min-w-0 items-center gap-1.5 font-display text-[18px] font-bold leading-none text-ink">
+                    {look && <Icon name={look.icon} className={`h-4 w-4 shrink-0 ${look.ink}`} />}
+                    <span className="truncate">{latest.domain}</span>
+                  </span>
+                  <span className="shrink-0 text-[12.5px] text-ink-soft">
+                    {shortDate(latest.date)}
+                  </span>
                 </div>
               ) : (
                 <div className="mt-3 border-t border-ink/35 pt-2.5 text-[12.5px] text-sun-ink">
@@ -653,43 +666,81 @@ function ChildSpotlight({
               <p className="mt-2 text-[13.5px] leading-[1.8] text-ink">
                 {latest?.fact || "아직 남긴 관찰 기록이 없어요."}
               </p>
+              {/* 가는 길은 쪽지 오른쪽 아래 끝 — 「다음으로 가는 곳」으로 읽힌다(PM 점검). */}
               <Link
                 href={childHref}
-                className="mt-3 flex min-h-10 items-center gap-1 border-t border-ink/35 pt-2.5 text-[12.5px] font-semibold text-sun-ink"
+                className="mt-3 flex min-h-10 items-center justify-end gap-1 border-t border-ink/35 pt-2.5 text-[12.5px] font-semibold text-ink-soft"
               >
                 이 아이 기록 보기
                 <Icon name="arrow" className="h-3 w-3" />
               </Link>
             </div>
-            {count > 1 && (
-              <>
-                <button
-                  type="button"
-                  aria-label="이전 아이"
-                  onClick={() => turn(-1)}
-                  className="absolute -left-4 top-1/2 flex h-12 w-8 -translate-y-1/2 items-center justify-center text-board-ink-soft opacity-0 transition-opacity hover:text-board-ink focus-visible:opacity-100 group-hover:opacity-100"
-                >
-                  <Icon name="arrow" className="h-3.5 w-3.5 rotate-180" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="다음 아이"
-                  onClick={() => turn(1)}
-                  className="absolute -right-4 top-1/2 flex h-12 w-8 -translate-y-1/2 items-center justify-center text-board-ink-soft opacity-0 transition-opacity hover:text-board-ink focus-visible:opacity-100 group-hover:opacity-100"
-                >
-                  <Icon name="arrow" className="h-3.5 w-3.5" />
-                </button>
-              </>
-            )}
           </div>
           {count > 1 && (
-            <p className="text-center font-display text-[16px] text-board-ink-soft">
-              {count}명 중 {(index % count) + 1}번째
-            </p>
+            <SpotControls
+              at={index % count}
+              count={count}
+              onTurn={turn}
+              stopped={stopped}
+              onToggle={still ? undefined : () => setStopped((s) => !s)}
+            />
           )}
         </>
       )}
     </BoardSection>
+  );
+}
+
+const ROUND =
+  "flex items-center justify-center rounded-full border-[1.5px] bg-white/5 transition-colors hover:bg-white/15";
+
+/** 아이 쪽지 밑 「‹ 2 / 5 › 멈춤」. 칠판 위에 늘 보인다 — 마우스가 없는 태블릿에서도 넘길 수 있게. */
+function SpotControls({
+  at,
+  count,
+  onTurn,
+  stopped,
+  onToggle,
+}: {
+  at: number;
+  count: number;
+  onTurn: (step: number) => void;
+  stopped: boolean;
+  /** 없으면 저절로 안 넘어가는 기기라 멈춤 버튼도 없다. */
+  onToggle?: () => void;
+}) {
+  return (
+    <div className="mt-1 flex items-center justify-center gap-2.5">
+      <button
+        type="button"
+        aria-label="이전 아이"
+        onClick={() => onTurn(-1)}
+        className={`${ROUND} h-9 w-9 border-board-ink text-board-ink`}
+      >
+        <Icon name="chevronLeft" className="h-4 w-4" />
+      </button>
+      <span className="min-w-[58px] text-center font-display text-[20px] font-bold tabular-nums text-board-ink">
+        {at + 1} / {count}
+      </span>
+      <button
+        type="button"
+        aria-label="다음 아이"
+        onClick={() => onTurn(1)}
+        className={`${ROUND} h-9 w-9 border-board-ink text-board-ink`}
+      >
+        <Icon name="chevron" className="h-4 w-4" />
+      </button>
+      {onToggle && (
+        <button
+          type="button"
+          aria-label={stopped ? "다시 넘기기" : "넘기기 멈추기"}
+          onClick={onToggle}
+          className={`${ROUND} h-[30px] w-[30px] border-board-ink-soft text-board-ink-soft`}
+        >
+          <Icon name={stopped ? "play" : "pause"} className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -958,22 +1009,21 @@ function EmptyDayNote({ date, href }: { date: string; href: string | null }) {
           줄지어 떠서 종이가 톱니처럼 보인다. 판에 붙인 쪽지는 네 변이 다 반듯하다. */}
       <div className="relative mt-1 border border-peach-line bg-peach p-5 shadow-pg-hard">
         <Tape className="right-8 rotate-3" />
-        <div className="flex items-baseline gap-3">
-          <span className="font-display text-[40px] font-bold leading-none text-peach-ink">
-            {shortDate(date)}
-          </span>
-          <span className="min-w-0 flex-1 text-[13px] text-ink-soft">
-            기록이 없어
-            <br />
-            일지를 못 만들어요
-          </span>
-        </div>
+        <span className="font-display text-[40px] font-bold leading-none text-peach-ink">
+          {shortDate(date)}
+        </span>
+        {/* 무슨 기록 · 무슨 일지인지 밝힌다(13주차 멘토 리뷰). 날짜 옆에 두면 세 줄로 꺾여 밑으로 내린다. */}
+        <p className="mt-2.5 text-[13.5px] leading-[1.65] text-ink">
+          <b>일과</b>를 적지 않아
+          <br />
+          <b>보육일지</b>를 못 만들어요
+        </p>
         {href && (
           <Link
             href={href}
             className="mt-3 inline-flex min-h-10 items-center rounded-md border border-line bg-ivory px-4 text-xs font-semibold text-ink shadow-pg-card transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
           >
-            작성하기
+            일과 작성하기
           </Link>
         )}
       </div>
