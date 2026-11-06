@@ -8,6 +8,7 @@ import { createClass, getClasses, isMyClass, updateClass } from "./classes";
 import { listAnnualPlans } from "./plans";
 import type { ClassUpdate } from "./types";
 import { createChild, getChildren, deleteChild } from "./children";
+import { finishedSettings } from "../onboarding/flow";
 import { normalizeProvince } from "../onboarding/regions";
 import { loadClassSettings, saveClassSettings } from "../onboarding/settings";
 import { EMPTY_CLASS_SETTINGS } from "../onboarding/types";
@@ -421,11 +422,10 @@ export async function restoreFromServer(centerId: number): Promise<boolean> {
     restored = rows.length > 0;
     // 뺀 것만 있고 들인 반이 없으면 첫 설정을 끝낸 것이 아니다 — completedAt 을 넣지 않는다.
     const classes = [...kept.filter((c) => !dropped.includes(c.id)), ...rows];
-    saveClassSettings({
-      ...base,
-      classes: classes.length ? classes : EMPTY_CLASS_SETTINGS.classes,
-      ...(restored && { completedAt: new Date().toISOString() }),
-    });
+    const next = { ...base, classes: classes.length ? classes : EMPTY_CLASS_SETTINGS.classes };
+    // 되살리기는 첫 설정을 끝낸 것으로 친다. 그러니 마지막 확인과 같은 규칙으로 담당 반도 정한다 —
+    // 반이 둘 이상인데 비워 두면 기록 화면마다 「반을 골라주세요」에 막힌다(13주차 멘토 리뷰).
+    saveClassSettings(restored ? finishedSettings(next) : next);
   });
   return restored;
 }

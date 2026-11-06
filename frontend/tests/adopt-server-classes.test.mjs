@@ -414,3 +414,39 @@ test("★ 한 번 쓴 계정에 새로 생긴 NONE 반도 들이지 않는다", 
 
   assert.deepEqual(await onboarding.adoptServerClasses(known), []);
 });
+
+/**
+ * 새 브라우저에서 로그인하면 서버에서 반을 되살린다. 되살리기는 첫 설정을 끝낸 것으로 치므로
+ * 마지막 확인과 같은 규칙으로 담당 반을 정한다 — 반이 둘인데 비워 두면 기록 화면마다
+ * 「반을 골라주세요」에 막힌다(13주차 멘토 리뷰).
+ */
+const settings = await import("../lib/onboarding/settings.ts");
+const CENTER = {
+  id: 3,
+  name: "테스트원",
+  director_name: "원장",
+  region_sido: "강원특별자치도",
+  region_sigungu: "춘천시",
+};
+
+test("★ 반 둘을 되살리면 보이는 첫 반이 담당 반이 된다", async () => {
+  browser();
+  api({ classes: [CLASS, { ...CLASS, id: 8, name: "달빛반" }] });
+  server.use(http.get("*/api/centers/:id", () => HttpResponse.json(CENTER)));
+
+  assert.equal(await onboarding.restoreFromServer(3), true);
+  const saved = settings.loadClassSettings();
+  assert.equal(saved.classes.length, 2);
+  assert.equal(settings.chosenClassFor(saved)?.className, "햇살반");
+});
+
+test("반 하나를 되살리면 담당 반 칸은 비워 두고 그 반을 본다", async () => {
+  browser();
+  api();
+  server.use(http.get("*/api/centers/:id", () => HttpResponse.json(CENTER)));
+
+  assert.equal(await onboarding.restoreFromServer(3), true);
+  const saved = settings.loadClassSettings();
+  assert.equal(saved.primaryClassId, "");
+  assert.equal(settings.chosenClassFor(saved)?.className, "햇살반");
+});
