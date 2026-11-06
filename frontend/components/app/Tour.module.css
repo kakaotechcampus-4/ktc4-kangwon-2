@@ -66,6 +66,12 @@
   right: -22px;
   transform: rotate(6deg);
 }
+/* 몇 번째 · 점을 카드 맨 위 한 줄에 — 아래 줄은 버튼만 둔다. */
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .count {
   margin: 0;
   font-size: 12px;
@@ -82,11 +88,132 @@
   line-height: 1.2;
   color: var(--pg-ink);
 }
+/* 본문 — 한 줄에 한 문장. 형광펜 · 버튼 모양 · 번호 · 점 · TIP 으로 결을 준다(PM 점검). */
 .body {
-  margin: 0;
   font-size: 14px;
-  line-height: 1.75;
+  line-height: 1.65;
   color: var(--pg-ink);
+}
+.body p {
+  margin: 0;
+}
+.body p + p {
+  margin-top: 2px;
+}
+.body strong {
+  padding: 0 1px;
+  font-weight: 700;
+  color: var(--pg-primary-deep);
+  background: linear-gradient(transparent 58%, rgba(112, 83, 160, 0.2) 58%);
+}
+/* 「버튼 이름」 — 화면의 버튼처럼 그려 무엇을 누르는지 바로 알게 한다. */
+.key {
+  display: inline-block;
+  margin: 0 1px;
+  padding: 0 7px;
+  border: 1px solid var(--pg-line);
+  border-bottom-width: 2px;
+  border-radius: 7px;
+  background: var(--pg-paper);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.55;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+.flow,
+.steps,
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.flow li {
+  position: relative;
+  padding-left: 16px;
+}
+.flow li:nth-child(2) {
+  margin-left: 12px;
+}
+.flow li:nth-child(3) {
+  margin-left: 24px;
+}
+.flow li::before {
+  content: "›";
+  position: absolute;
+  left: 2px;
+  top: -1px;
+  font-weight: 800;
+  color: var(--pg-primary);
+}
+.flow li:first-child::before {
+  content: "•";
+}
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px 2px 3px;
+  border: 1px solid var(--pg-note-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  font-size: 13px;
+  font-weight: 700;
+}
+.steps i {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--pg-primary);
+  color: var(--pg-paper);
+  font-size: 11px;
+  font-style: normal;
+}
+.list {
+  margin-top: 4px;
+}
+.list li {
+  position: relative;
+  padding-left: 14px;
+}
+.list li::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0.62em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pg-primary);
+}
+.body .tip {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--pg-ink-soft);
+}
+.tip > span:first-child {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--pg-sun-ink);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--pg-sun-ink);
+  vertical-align: 1px;
+}
+.tip .key {
+  font-size: 11.5px;
 }
 .foot {
   display: flex;
@@ -99,7 +226,6 @@
 .dots {
   display: flex;
   gap: 5px;
-  margin-right: auto;
 }
 .dots span {
   width: 7px;
@@ -112,7 +238,8 @@
   border-radius: 999px;
   background: var(--pg-primary);
 }
-.ghost,
+/* 이전 · 다음은 같은 크기 · 같은 보라로 붙여 한 쌍으로 읽히게 한다. 이전은 속만 비운다(PM 점검 안 1). */
+.prev,
 .primary {
   min-height: 38px;
   padding: 0 15px;
@@ -122,13 +249,13 @@
   font-weight: 700;
   cursor: pointer;
 }
-.ghost {
-  border: 1px solid var(--pg-note-line);
-  background: transparent;
-  color: var(--pg-ink-soft);
-}
-.ghost:hover {
+.prev {
+  border: 1.5px solid var(--pg-primary);
   background: var(--pg-paper);
+  color: var(--pg-primary);
+}
+.prev:hover {
+  background: var(--pg-primary-tint);
 }
 .primary {
   border: 1px solid var(--pg-primary-line);
@@ -138,8 +265,44 @@
 .primary:hover {
   background: var(--pg-primary-deep);
 }
+/* SKIP — 나가기는 왼쪽 끝으로 뗀다. 진한 글씨에 빨간 매직 밑줄을 살짝 기울여 손으로 그은 느낌을 낸다. */
+.skip {
+  position: relative;
+  margin-right: auto;
+  padding: 4px 2px 8px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--pg-ink);
+  cursor: pointer;
+}
+.skip::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: 0;
+  bottom: 3px;
+  height: 4px;
+  border-radius: 3px 1px 3px 1px;
+  background: var(--pg-alert-strong);
+  transform: rotate(-2.5deg);
+  transition: height 0.12s ease;
+}
+.skip:hover {
+  color: var(--pg-alert-ink);
+}
+.skip:hover::after {
+  height: 6px;
+}
+.grow {
+  margin-right: auto;
+}
 .primary:focus-visible,
-.ghost:focus-visible,
+.prev:focus-visible,
+.skip:focus-visible,
 .off:focus-visible {
   outline: 2px solid var(--pg-primary);
   outline-offset: 3px;
@@ -197,7 +360,7 @@
     max-height: calc(calc(100 * var(--app-vh)) - 300px);
   }
 }
-.slide .ghost,
+.slide .prev,
 .slide .primary {
   white-space: nowrap;
 }

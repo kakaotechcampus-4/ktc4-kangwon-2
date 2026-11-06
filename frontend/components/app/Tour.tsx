@@ -14,7 +14,7 @@
  * farmguardian-FE 의 `Tour.tsx` 를 옮겨 왔다(PM 작업).
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Ref } from "react";
 import { usePathname } from "next/navigation";
 import { appZoom } from "@/lib/appZoom";
 import { Posty } from "./Posty";
@@ -23,11 +23,26 @@ import styles from "./Tour.module.css";
 const OFF = "ssample.tour.off";
 const SEEN = "ssample.tour.seen";
 
-type Step = {
+/**
+ * 카드 본문. **한 줄에 한 문장**, 카드 폭에 한 줄로 들어가게 20자 안팎으로 쓴다(PM 점검 — 긴 글 튜토리얼을 벗어난다).
+ * 글 안의 `**낱말**` 은 형광펜, 「버튼 이름」 은 버튼 모양으로 그린다(`Rich`). 「」 안에는 화면에 실제로 있는 글자만 쓴다.
+ */
+type Body = {
+  /** 계단처럼 이어지는 흐름. 첫 줄 뒤로 › 가 붙는다. */
+  flow?: string[];
+  /** 번호 칩. 화면의 칸 이름 그대로. */
+  steps?: string[];
+  lines?: string[];
+  /** 점 목록. */
+  list?: string[];
+  /** 몰라도 쓰는 데 지장 없는 덧붙임. 작은 글씨로 내린다. */
+  tip?: string;
+};
+
+type Step = Body & {
   /** 비출 자리. `[data-tour="…"]` 의 값이다. */
   at: string;
   title: string;
-  body: string;
   /** 구멍을 자리보다 얼마나 넓게 뚫을지. 기본 8px. */
   pad?: number;
 };
@@ -41,110 +56,135 @@ const TOURS: Record<string, Step[]> = {
   "/": [
     {
       at: "nav",
-      title: "쌤플은 이 순서로 흘러가요",
-      body: "관찰 · 일과를 기록하면 → 보육일지가 되고 → 계획안과 평가 점검에서 꺼내 써요. 메뉴가 그 순서대로 놓여 있어요.",
+      title: "쌤플은 기록에서 시작해요",
+      flow: [
+        "관찰 · 일과를 **기록**하면",
+        "**보육일지**가 되고",
+        "**계획안 · 평가 점검**에서 꺼내 써요",
+      ],
       pad: 0,
     },
     {
       at: "home-compose",
-      title: "본 것을 한 줄로",
-      body: "교실에서 본 장면을 바로 적어요. 누구 이야기인지는 적고 나서 골라요. 쌓인 한 줄이 관찰일지와 보육일지가 돼요.",
+      title: "교실에서 본 것을 기록해요",
+      lines: ["있었던 일을 바로 적어 두면", "**관찰일지 · 보육일지**에 불러와 써요."],
+      tip: "아이는 적은 뒤에 골라도 돼요.",
     },
     {
       at: "home-today",
-      title: "오늘 쪽지",
-      body: "오늘 남긴 기록과 일과가 여기에 모여요. 다 모이면 여기서 오늘 일지로 넘어가요.",
+      title: "오늘 남긴 기록",
+      lines: ["오늘 적은 관찰 · 일과가 여기 모여요.", "다 적었으면 **보육일지**로 넘어가요."],
     },
     {
+      // 칠판 세 칸을 위에서부터 — 기록 안된 아이들 · 비어 있는 날 · 한 아이, 조금 더 가까이.
       at: "home-board",
-      title: "놓친 것을 알려 줘요",
-      body: "오늘 기록이 없는 아이, 기록이 없어 일지를 못 만든 지난 날을 칠판에 붙여 둬요.",
+      title: "칠판이 챙겨 드려요",
+      list: [
+        "일주일 넘게 **관찰 기록이 없는 아이**",
+        "일과를 적지 않아 **보육일지를 못 만든 날**",
+        "아이마다 **가장 최근 관찰**",
+      ],
     },
   ],
   "/records": [
     {
       at: "records-form",
-      title: "오늘 본 것 적기",
-      body: "아이 · 날짜 · 영역을 고르고 본 대로 적어요. 판단보다 본 장면 그대로가 좋아요.",
+      title: "본 장면을 그대로 적어요",
+      lines: ["아이 · 날짜 · 영역을 고르고 적어요.", "판단보다 **아이의 말 · 행동**을 그대로."],
     },
     {
       at: "records-order",
-      title: "이 순서면 일지가 잘 나와요",
-      body: "상황 → 행동 → 반응 → 교사 지원. 다 적지 않아도 저장돼요.",
+      title: "이 순서로 적으면 좋아요",
+      steps: ["상황", "행동", "반응", "교사 지원"],
+      lines: ["순서대로 채우면 **관찰일지가 잘 나와요**."],
+      tip: "다 안 채워도 저장돼요.",
       pad: 6,
     },
     {
       at: "records-list",
-      title: "쌓인 기록",
-      body: "날짜별로 모여요. 이 기록으로 관찰일지를 만들어요. 한 아이만 모아 보려면 위의 「아이별 기록」을 눌러요.",
+      title: "지금까지 남긴 기록",
+      lines: ["이 기록으로 **관찰일지**를 만들어요."],
+      tip: "한 아이 기록만 보려면 「아이별 기록」을 눌러요.",
     },
   ],
   "/routines": [
     {
+      at: "journal-tabs",
+      title: "보육일지는 두 쪽이에요",
+      lines: [
+        "여기서 일과를 적고 **오늘 보육일지**를 만들어요.",
+        "한 주 일지는 「주간 보육일지」에서 만들어요.",
+      ],
+      pad: 6,
+    },
+    {
       at: "routines-calendar",
-      title: "날을 골라요",
-      body: "점이 찍힌 날은 일과를 적은 날이에요. 밀린 날도 눌러서 바로 적어요.",
+      title: "날짜를 골라요",
+      lines: ["점이 찍힌 날은 **이미 적은 날**이에요.", "못 적은 날도 눌러서 적을 수 있어요."],
     },
     {
       at: "routines-board",
-      title: "하루가 미리 깔려 있어요",
-      body: "「실제로 한 것」만 채우면 돼요. 시간은 시계를 눌러 고치고, 시간순으로 저절로 줄을 서요.",
+      title: "일과표가 미리 채워져 있어요",
+      lines: ["「실제로 한 것」만 적으면 돼요.", "시간은 **시계**를 눌러 바꿔요."],
+      tip: "바꾸면 시간 순서대로 다시 놓여요.",
     },
     {
       at: "routines-actions",
-      title: "저장하고 일지로",
-      body: "「오늘 일지 만들기」를 누르면 저장하고, 이 화면에서 일일 보육일지를 만들어요.",
+      title: "저장하고 보육일지로",
+      lines: [
+        "「오늘 일지 만들기」를 누르면 저장돼요.",
+        "보육일지는 **이 화면에서 바로** 만들어요.",
+      ],
       pad: 6,
     },
     {
       at: "routines-journal",
-      title: "오늘 일지는 여기서",
-      body: "초안인지 확정했는지가 보여요. 이어서 쓰면 칠판 밑에 일지가 펼쳐져요.",
+      title: "오늘 보육일지",
+      lines: ["**초안**인지 **확정**됐는지 보여요.", "이어 쓰면 칠판 아래에 보육일지가 열려요."],
     },
   ],
   "/plans": [
     {
       at: "plans-theme",
-      title: "생활주제 따라 — 월별 주제형",
-      body: "연간 → 월간 → 주간으로 차근차근 내려가요. 우리 원 연간계획안이 이미 있으면 「월간부터 시작하기」로 파일을 올려요.",
+      title: "월별 주제형",
+      lines: ["**생활주제**를 따라 만들어요.", "연간 › 월간 › 주간 순서로 이어요."],
+      tip: "연간계획안이 이미 있으면 「월간부터 시작하기」로 올려요.",
     },
     {
       at: "plans-play",
-      title: "아이들 놀이 따라 — 놀이 중심형",
-      body: "계절마다 놀이를 골라 연간을 만들고 월간으로 이어가요. 어느 방식이든 「연간부터 시작하기」를 누르면 만드는 순서를 그림으로 먼저 보여 드려요.",
+      title: "놀이 중심형",
+      lines: ["**아이들 놀이**를 따라 만들어요.", "계절별 놀이로 연간 › 월간을 만들어요."],
+      tip: "「연간부터 시작하기」를 누르면 만드는 순서를 먼저 보여 드려요.",
     },
     {
       at: "plans-continue",
-      title: "쓰다 만 계획안",
-      body: "확정하지 않은 초안은 여기서 이어 써요. 확정한 계획안은 문서 보관함에 모여요.",
+      title: "쓰던 계획안",
+      lines: ["확정 전 초안은 여기서 이어 써요.", "확정한 계획안은 **문서 보관함**에 모여요."],
     },
   ],
+  // 보육일지 메뉴의 주간 탭. 「그날 기록」 칸은 제목을 되풀이하는 한 줄뿐이라 뺐다(PM 점검).
   "/weekly-records": [
     {
       at: "weekly-week",
-      title: "한 주를 펴 봐요",
-      body: "날마다 일과 · 관찰이 몇 건인지 보여요. 점선은 아직 빈 날이에요.",
-    },
-    {
-      at: "weekly-board",
-      title: "그날 기록",
-      body: "고른 날의 일과 쪽지와 관찰 카드가 칠판에 붙어요.",
+      title: "한 주를 골라요",
+      lines: ["요일마다 **일과 · 관찰 건수**가 보여요.", "점선은 아직 기록이 없는 날이에요."],
     },
     {
       at: "weekly-journal",
       title: "주간 보육일지",
-      body: "그 주에 확정한 일일 보육일지로 만들어요. 초안인 일지는 「확정하러 가기」로 데려가 줘요.",
+      lines: ["**확정한 일일 보육일지**로 만들어요."],
+      tip: "초안이 남았으면 「확정하러 가기」부터 눌러요.",
     },
     {
       at: "weekly-make",
       title: "주간 일지 만들기",
-      body: "못 만드는 때면 눌렀을 때 왜 안 되는지 알려 줘요.",
+      lines: ["아직 못 만들 때 누르면", "**무엇이 모자란지** 알려 드려요."],
       pad: 6,
     },
   ],
 };
 
-type Slide = { title: string; body: string };
+type Slide = Body & { title: string };
 
 /**
  * 계획안 만들기 첫 화면에 띄우는 「만드는 순서」. 실제 화면 위를 짚지 않고 미리 찍은 화면을 넘겨 본다 —
@@ -157,31 +197,52 @@ const SLIDES: Record<"MONTHLY_THEME" | "PLAY_PROJECT", { dir: string; slides: Sl
     slides: [
       {
         title: "요청 사항을 적고 만들어요",
-        body: "반 · 연령 · 학년도는 미리 채워져 있어요. 바라는 것을 적거나 아래 단추로 넣고 「연간계획안 만들기」를 눌러요.",
+        lines: [
+          "반 · 연령 · 학년도는 미리 채워져 있어요.",
+          "**바라는 점**을 적거나 버튼으로 넣고",
+          "「연간계획안 만들기」를 눌러요.",
+        ],
       },
       {
         title: "12달 초안이 나와요",
-        body: "3월부터 다음 해 2월까지 달마다 생활주제와 주별 소주제가 채워져요. 아직 초안이라 마음껏 고칠 수 있어요.",
+        lines: ["**3월부터 다음 해 2월까지**", "달마다 생활주제와 주별 소주제가 채워져요."],
       },
       {
         title: "칸을 눌러 고쳐요",
-        body: "문서에서 고칠 칸을 누르면 왼쪽에서 생활주제 · 소주제를 바로 고쳐요. 되돌리기 · 다시 하기도 있어요.",
+        lines: ["문서에서 칸을 누르면", "**왼쪽에서 바로** 생활주제 · 소주제를 고쳐요."],
+        tip: "되돌리기 · 다시 하기도 있어요.",
       },
       {
         title: "다 고쳤으면 확정해요",
-        body: "「확정하기」를 누르고 한 번 더 확정하면 끝나요. 소주제는 그 달 주 수만큼 있어야 확정돼요. 더 고칠 게 있으면 「더 다듬기」를 눌러요.",
+        lines: [
+          "「확정하기」를 누르고",
+          "묻는 창에서 **한 번 더** 확정해요.",
+          "소주제는 그 달 주 수만큼 있어야 확정돼요.",
+        ],
+        tip: "더 고칠 게 있으면 「더 다듬기」를 눌러요.",
       },
       {
         title: "내려받고 월간으로",
-        body: "PDF · 한글 파일로 내려받을 수 있어요. 확정본은 여기서 고칠 수 없어요. 다시 고치려면 문서 보관함의 「수정하기」를 눌러요. 확정한 연간으로 「월간계획안 만들기 →」를 이어가요.",
+        lines: ["**PDF · 한글 파일**로 내려받아요.", "「월간계획안 만들기 →」로 이어 가요."],
+        tip: "확정본은 여기서 못 고쳐요. 문서 보관함의 「수정하기」를 눌러요.",
       },
       {
         title: "월간은 연간에서 이어받아요",
-        body: "달을 고르면 연간의 그 달 생활주제 · 소주제로 주마다 초안이 나와요. 안전교육 빈칸은 「AI 후보」에서 「+ 넣기」로 채워요. 확정할 때 남은 빈칸을 한 번 더 보여 줘요.",
+        lines: [
+          "달을 고르면 **연간의 그 달 주제**로",
+          "주마다 초안이 나와요.",
+          "안전교육 빈칸은 「AI 후보」에서 「+ 넣기」로 채워요.",
+        ],
+        tip: "남은 빈칸은 확정할 때 한 번 더 보여 줘요.",
       },
       {
         title: "주간은 월간에서 이어받아요",
-        body: "주를 고르면 초안이 나와요. 빈칸을 누르면 「AI 후보」가 떠요. 「+ 넣기」를 누르면 채우고 다음 요일로 넘어가요. 끌어다 놓아도 돼요. 글을 고칠 땐 「칸 편집」을 눌러요.",
+        lines: [
+          "주를 고르면 초안이 나와요.",
+          "빈칸을 누르면 「AI 후보」가 떠요.",
+          "「+ 넣기」를 누르면 채우고 **다음 요일**로 넘어가요.",
+        ],
+        tip: "끌어다 놓아도 돼요. 글을 고칠 땐 「칸 편집」을 눌러요.",
       },
     ],
   },
@@ -190,35 +251,173 @@ const SLIDES: Record<"MONTHLY_THEME" | "PLAY_PROJECT", { dir: string; slides: Sl
     slides: [
       {
         title: "요청 사항을 적고 만들어요",
-        body: "바라는 놀이를 적거나 아래 단추로 넣고 「연간계획안 만들기」를 눌러요.",
+        lines: ["**바라는 놀이**를 적거나 버튼으로 넣고", "「연간계획안 만들기」를 눌러요."],
       },
       {
         title: "계절마다 놀이를 골라요",
-        body: "후보를 누르면 가운데에 자세히 보여요. 「이 놀이 고르기」로 봄 · 여름 · 가을 · 겨울마다 5개씩 골라요.",
+        lines: [
+          "후보를 누르면 가운데에 자세히 보여요.",
+          "봄 · 여름 · 가을 · 겨울 **5개씩** 골라요.",
+        ],
+        tip: "고를 때는 「이 놀이 고르기」를 눌러요.",
       },
       {
         title: "문서에서 다듬어요",
-        body: "다 고르면 「문서 만들기 →」. 칸을 눌러 「칸 편집」에서 고치고, 「AI 후보」에서 놀이를 빼거나 다른 후보를 끌어 놓아 바꿔요.",
+        lines: ["다 골랐으면 「문서 만들기 →」를 눌러요.", "칸을 눌러 「칸 편집」에서 고쳐요."],
+        tip: "「AI 후보」에서 놀이를 빼거나, 다른 후보를 끌어 놓아 바꿔요.",
       },
       {
         title: "다 고쳤으면 확정해요",
-        body: "「확정하기」를 누르고 한 번 더 확정하면 끝나요. 계절마다 5개를 다 고르고 빈칸을 채워야 확정돼요.",
+        lines: [
+          "「확정하기」를 누르고",
+          "묻는 창에서 한 번 더 확정해요.",
+          "**계절마다 5개**를 다 고르고 빈칸을 채워야 확정돼요.",
+        ],
       },
       {
         title: "내려받고 월간으로",
-        body: "PDF · 한글 파일로 내려받을 수 있어요. 다시 고치려면 문서 보관함의 「수정하기」를 눌러요. 확정한 연간으로 「월간계획안 만들기 →」를 이어가요.",
+        lines: ["**PDF · 한글 파일**로 내려받아요.", "「월간계획안 만들기 →」로 이어 가요."],
+        tip: "다시 고치려면 문서 보관함의 「수정하기」를 눌러요.",
       },
       {
         title: "월간은 연간에서 이어받아요",
-        body: "달을 고르고, 그 달에 더 집중할 놀이를 골라요(안 골라도 돼요). 놀이 중심형은 주간이 없어요.",
+        lines: ["달을 고르고, 더 집중할 놀이를 골라요.", "놀이 중심형은 **주간계획안이 없어요**."],
+        tip: "놀이는 안 골라도 돼요.",
       },
       {
         title: "활동을 골라 문서로",
-        body: "함께 하는 활동 · 유아 예상 자유놀이를 후보 8개 중 5개씩 골라 「문서 만들기 →」. 안전교육 빈칸은 「AI 후보」에서 「+ 넣기」로 채우고 연간처럼 확정해요.",
+        lines: [
+          "함께 하는 활동 · 유아 예상 자유놀이를",
+          "후보 8개 중 **5개씩** 골라 「문서 만들기 →」를 눌러요.",
+        ],
+        tip: "안전교육 빈칸은 「AI 후보」에서 「+ 넣기」로 채우고 연간처럼 확정해요.",
       },
     ],
   },
 };
+
+/** `**낱말**` → 형광펜, 「버튼 이름」 → 버튼 모양. 그 밖은 글자 그대로. */
+function Rich({ text }: { text: string }) {
+  return text.split(/(\*\*[^*]+\*\*|「[^」]+」)/).map((part, i) =>
+    part.startsWith("**") ? (
+      <strong key={i}>{part.slice(2, -2)}</strong>
+    ) : part.startsWith("「") ? (
+      <span key={i} className={styles.key}>
+        {part.slice(1, -1)}
+      </span>
+    ) : (
+      part
+    ),
+  );
+}
+
+/** 카드 본문 — 흐름 · 번호 · 줄 · 점 목록 · TIP 순서. */
+function CardBody({ body }: { body: Body }) {
+  return (
+    <div className={styles.body}>
+      {body.flow && (
+        <ol className={styles.flow}>
+          {body.flow.map((line) => (
+            <li key={line}>
+              <Rich text={line} />
+            </li>
+          ))}
+        </ol>
+      )}
+      {body.steps && (
+        <ol className={styles.steps}>
+          {body.steps.map((name, n) => (
+            <li key={name}>
+              <i>{n + 1}</i>
+              {name}
+            </li>
+          ))}
+        </ol>
+      )}
+      {body.lines?.map((line) => (
+        <p key={line}>
+          <Rich text={line} />
+        </p>
+      ))}
+      {body.list && (
+        <ul className={styles.list}>
+          {body.list.map((line) => (
+            <li key={line}>
+              <Rich text={line} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {body.tip && (
+        <p className={styles.tip}>
+          <span>TIP</span>
+          <Rich text={body.tip} />
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** 몇 번째인지 · 점. 카드 맨 위 한 줄에 둔다 — 아래 줄은 버튼만 남긴다. */
+function Count({ at, keys }: { at: number; keys: string[] }) {
+  return (
+    <div className={styles.head}>
+      <p className={styles.count}>
+        {at + 1} / {keys.length}
+      </p>
+      <span className={styles.dots} aria-hidden="true">
+        {keys.map((key, n) => (
+          <span key={key} data-on={n === at || undefined} />
+        ))}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * 카드 아래 버튼 줄 — 왼쪽 끝 SKIP, 오른쪽에 ‹ 이전 · 다음 › 한 쌍(PM 점검 안 1).
+ * 이전 · 다음은 같은 크기 · 같은 보라로 붙여 짝으로 읽히게 하고, 나가기(SKIP)는 반대쪽 끝으로 뗀다.
+ * SKIP 은 이 화면 안내만 닫는다. 마지막 장에는 없다.
+ */
+function Foot({
+  at,
+  total,
+  done,
+  onPrev,
+  onNext,
+  onSkip,
+  nextRef,
+}: {
+  at: number;
+  total: number;
+  /** 마지막 장 버튼 글자. */
+  done: string;
+  onPrev: () => void;
+  onNext: () => void;
+  onSkip: () => void;
+  nextRef: Ref<HTMLButtonElement>;
+}) {
+  const last = at === total - 1;
+  return (
+    <div className={styles.foot}>
+      {last ? (
+        <span className={styles.grow} />
+      ) : (
+        <button type="button" className={styles.skip} onClick={onSkip}>
+          SKIP
+        </button>
+      )}
+      {at > 0 && (
+        <button type="button" className={styles.prev} onClick={onPrev}>
+          ‹ 이전
+        </button>
+      )}
+      <button ref={nextRef} type="button" className={styles.primary} onClick={onNext}>
+        {last ? done : "다음 ›"}
+      </button>
+    </div>
+  );
+}
 
 const target = (at: string) => document.querySelector<HTMLElement>(`[data-tour="${at}"]`);
 
@@ -355,13 +554,17 @@ export default function Tour() {
     const before = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     next.current?.focus();
-    const key = (e: KeyboardEvent) => e.key === "Escape" && close();
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+      if (e.key === "ArrowRight") setIndex((i) => Math.min(i + 1, steps.length - 1));
+      if (e.key === "ArrowLeft") setIndex((i) => Math.max(i - 1, 0));
+    };
     window.addEventListener("keydown", key);
     return () => {
       document.body.style.overflow = before;
       window.removeEventListener("keydown", key);
     };
-  }, [step, close]);
+  }, [step, close, steps.length]);
 
   if (!step || !hole) return null;
   const last = index === steps.length - 1;
@@ -396,34 +599,20 @@ export default function Tour() {
           label={null}
           className={styles.posty}
         />
-        <p className={styles.count}>
-          {index + 1} / {steps.length}
-        </p>
+        <Count at={index} keys={steps.map((s) => s.at)} />
         <h2 id="tour-title" className={styles.title}>
           {step.title}
         </h2>
-        <p className={styles.body}>{step.body}</p>
-
-        <div className={styles.foot}>
-          <span className={styles.dots} aria-hidden="true">
-            {steps.map((s, n) => (
-              <span key={s.at} data-on={n === index || undefined} />
-            ))}
-          </span>
-          {!last && (
-            <button type="button" className={styles.ghost} onClick={close}>
-              건너뛰기
-            </button>
-          )}
-          <button
-            ref={next}
-            type="button"
-            className={styles.primary}
-            onClick={() => (last ? close() : setIndex(index + 1))}
-          >
-            {last ? "다 봤어요" : "다음 →"}
-          </button>
-        </div>
+        <CardBody body={step} />
+        <Foot
+          at={index}
+          total={steps.length}
+          done="다 봤어요"
+          onPrev={() => setIndex(index - 1)}
+          onNext={() => (last ? close() : setIndex(index + 1))}
+          onSkip={close}
+          nextRef={next}
+        />
         <button type="button" className={styles.off} onClick={turnOff}>
           다시 보지 않기
         </button>
@@ -509,48 +698,21 @@ export function SlideTour({ format }: { format: keyof typeof SLIDES }) {
             src={`/plan-guide/${dir}/${String(index + 1).padStart(2, "0")}.webp`}
             alt={`${slide.title} — 화면 예시`}
           />
-          <p className={styles.count}>
-            {index + 1} / {slides.length}
-          </p>
+          <Count at={index} keys={slides.map((s, n) => s.title + n)} />
           <h2 id="slide-title" className={styles.title}>
             {slide.title}
           </h2>
-          <p className={styles.body}>{slide.body}</p>
-          <div className={styles.foot}>
-            <span className={styles.dots} aria-hidden="true">
-              {slides.map((s, n) => (
-                <span key={s.title + n} data-on={n === index || undefined} />
-              ))}
-            </span>
-            {index > 0 && (
-              <button type="button" className={styles.ghost} onClick={() => setIndex(index - 1)}>
-                ← 이전
-              </button>
-            )}
-            {!last && (
-              <button type="button" className={styles.ghost} onClick={close}>
-                건너뛰기
-              </button>
-            )}
-            <button
-              ref={next}
-              type="button"
-              className={styles.primary}
-              onClick={() => (last ? close() : setIndex(index + 1))}
-            >
-              {last ? "만들러 가기" : "다음 →"}
-            </button>
-          </div>
-          <button
-            type="button"
-            className={styles.off}
-            onClick={() => {
-              turnOffAll();
-              setOpen(false);
-            }}
-          >
-            다시 보지 않기
-          </button>
+          <CardBody body={slide} />
+          {/* 「다시 보지 않기」는 두지 않는다 — 계획안을 만들 때마다 순서를 다시 볼 수 있어야 한다(13주차 멘토 리뷰). */}
+          <Foot
+            at={index}
+            total={slides.length}
+            done="만들러 가기"
+            onPrev={() => setIndex(index - 1)}
+            onNext={() => (last ? close() : setIndex(index + 1))}
+            onSkip={close}
+            nextRef={next}
+          />
         </div>
       </div>
     </>
