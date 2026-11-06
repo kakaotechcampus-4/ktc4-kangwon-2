@@ -19,7 +19,7 @@ export default function LegalPage({
   children: ReactNode;
 }) {
   return (
-    <div className="min-h-[calc(100*var(--app-vh))] bg-cream px-5 py-6 text-ink sm:px-8">
+    <div className="min-h-[calc(100*var(--app-vh))] px-5 py-6 text-ink sm:px-8">
       <header className="mx-auto flex max-w-[760px] items-center justify-between gap-3">
         <Wordmark href="/welcome" label="쌤플 소개로" size="sm" />
       </header>
