@@ -260,7 +260,10 @@ test("a short plan opens ④ picking; arranging opens ⑤ with AI 후보 · 칸 
   assert.match(text(tree), /3월~5월 0\/5/);
   // ⑤ 에서 ④ 로 돌아가는 길이 있다 — 뒤로 갔다 다시 들어오지 않아도 된다.
   button(tree, "놀이 다시 고르기").props.onClick();
-  assert.ok(all(render()).some((n) => n.type === "picking"), "놀이 고르기로 돌아간다");
+  assert.ok(
+    all(render()).some((n) => n.type === "picking"),
+    "놀이 고르기로 돌아간다",
+  );
 });
 
 test("⑤: a document cell opens 칸 편집 and the editor saves that cell; 빼기 saves four periods", () => {
