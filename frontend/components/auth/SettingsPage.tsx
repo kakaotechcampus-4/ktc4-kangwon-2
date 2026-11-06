@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
-import { EMPTY_CLASS_SETTINGS } from "@/lib/onboarding/types";
+import { EMPTY_CLASS_SETTINGS, type ClassroomEntry } from "@/lib/onboarding/types";
 import { changePassword, getCurrentUser } from "@/lib/api/auth";
 import { invalidFields } from "@/lib/api/client";
 import { getCenterSettings, saveCenterSettings } from "@/lib/api/centers";
@@ -201,7 +201,9 @@ export default function SettingsPage() {
   // 아동은 이름 없이 수만 보인다.
   const chosen = chosenClassFor(settings);
   const region = [settings.regionProvince, settings.regionDistrict].filter(Boolean).join(" ");
-  const children = settings.classes.reduce((sum, c) => sum + c.children.length, 0);
+  // 브라우저에는 아이 이름을 두지 않아(ADR-013) 서버에서 받은 명단은 `childIds` 에만 수가 남는다.
+  const kidsIn = (c: ClassroomEntry) => c.children.length || c.childIds?.length || 0;
+  const children = settings.classes.reduce((sum, c) => sum + kidsIn(c), 0);
   const org = [
     {
       title: "원 정보",
@@ -234,7 +236,7 @@ export default function SettingsPage() {
       tilt: -1,
       Editor: KidsEditor,
       summary: chosen
-        ? `${chosen.className} ${chosen.children.length}명`
+        ? `${chosen.className} ${kidsIn(chosen)}명`
         : settings.classes.length
           ? `전체 ${children}명`
           : "아직 등록한 아동이 없습니다.",
