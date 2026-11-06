@@ -1216,6 +1216,15 @@ def test_요일_양식_주간은_고정_양식의_요일_칸에_채운다(world,
     assert header.find(f".//hh:charPr[@id='{font_id}']", namespaces).get("height") == "900"
 
 
+def test_주간_안전교육은_옛_값의_줄표를_떼고_한_줄이다():
+    from app.features.plans.export import _weekly_text
+
+    old, new = "[교통안전] - 길을 건너요 - 천천히", "[교통안전] 길을 건너요 - 천천히"
+    assert _weekly_text("safety_education", old) == new
+    assert _weekly_text("safety_education", new) == new
+    assert _weekly_text("safety_education", "") == ""
+
+
 def test_indoor_display_keeps_blank_and_untagged_teacher_text():
     from app.features.plans.export import _indoor_play_text
 

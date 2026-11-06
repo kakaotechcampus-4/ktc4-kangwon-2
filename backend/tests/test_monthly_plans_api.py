@@ -899,8 +899,8 @@ def _safety_row(response, plan: dict) -> list[str]:
 
 
 def _head_over_sentence(value: str) -> str:
-    """화면(safetyLines)처럼 「[주제] - 문장」 → 「[주제]」 다음 줄에 문장(2026-11-06)."""
-    head, sep, rest = value.partition("] - ")
+    """화면(safetyLines)처럼 「[주제] 문장」 → 「[주제]」 다음 줄에 문장(2026-11-06)."""
+    head, sep, rest = value.partition("] ")
     return f"{head}]\n{rest}" if sep and value.startswith("[") else value
 
 
@@ -948,7 +948,8 @@ def test_안전교육_줄은_배치한_주의_표시값이고_안_고른_주는_
     assert _safety_row(response, plan) == expected
     assert len(weeks) == (5 if month == 9 else 4)
     assert [v for v in expected if v] == [_head_over_sentence(display[weeks[1]])]  # 나머지 빈칸
-    assert _bold_safety_heads(response) == [display[weeks[1]].split(" - ")[0]]  # 「[주제]」 만 굵게
+    head = display[weeks[1]].split("] ")[0] + "]"
+    assert _bold_safety_heads(response) == [head]  # 「[주제]」 만 굵게
     assert not any(text and "evidence" in text for text in _exported_table(response.content)[1])
 
 

@@ -113,7 +113,7 @@ from .ports import (
 
 SYSTEM_ACTOR = "weekly_application"
 THEME_RULE_ID = "weekly.theme.parent_theme"
-# A placed parent safety Cell already reads as the week's line (「[교통안전] - 내용」 or a
+# A placed parent safety Cell already reads as the week's line (「[교통안전] 내용」 or a
 # supplemental topic), so the week takes it as is (Human Decision 2026-10-22, §8).
 SAFETY_COPY_RULE_ID = "weekly.safety.parent_placement"
 EMPTY_RULE_ID = "weekly.cell.rule_only_empty"

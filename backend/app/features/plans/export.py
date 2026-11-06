@@ -204,7 +204,8 @@ _UNSUPPORTED_WEEKS = HTTPException(
 )
 
 
-_SAFETY_HEAD = re.compile(r"^(\[[^\]\n]+\]) - ")
+# 안전교육 「[주제] 문장」의 머리. 2026-11-06 전에 저장한 값은 「[주제] - 문장」이다.
+_SAFETY_HEAD = re.compile(r"^(\[[^\]\n]+\])(?: - | )")
 
 
 def _dots(day) -> str:
@@ -407,11 +408,7 @@ def export_weekly_plan(
     rows = [
         [
             section.label or section.section_key,
-            "\n".join(
-                _indoor_play_text(c.value) if section.section_key == "indoor_play" else c.value
-                for c in section.cells
-                if c.value
-            ),
+            "\n".join(_weekly_text(section.section_key, c.value) for c in section.cells if c.value),
         ]
         for section in sections
     ]
@@ -472,6 +469,18 @@ WEEKLY_DAY_LABELS = {
 }
 
 
+def _weekly_text(key: str, value: str) -> str:
+    """주간 칸 글을 화면(WeeklySheet)처럼.
+
+    안전교육은 옛 값의 「 - 」를 뗀 「[주제] 문장」 한 줄이다.
+    """
+    if key == "indoor_play":
+        return _indoor_play_text(value)
+    if key == "safety_education":
+        return _SAFETY_HEAD.sub(r"\1 ", value, count=1)
+    return value
+
+
 def _indoor_play_text(value: str) -> str:
     """기존 영역 표기만 정리한다. 교사 입력에 없는 분류는 추측해 붙이지 않는다."""
     return re.sub(
@@ -502,9 +511,7 @@ def _fill_weekly_days(plan: WeeklyPlan, end: date, class_name: str, title: str) 
                 if key == "indoor_play" and plan.indoor_play_selection
                 else plan.cell(key).value
             )
-            texts[WEEKLY_DAY_CELLS[key]] = (
-                _indoor_play_text(value) if key == "indoor_play" else value
-            )
+            texts[WEEKLY_DAY_CELLS[key]] = _weekly_text(key, value)
         else:
             raise TemplateMismatch(f"주간 요일 양식에 {key} 줄이 없다.")
     return _fill_form(

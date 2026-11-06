@@ -556,12 +556,12 @@ export const resizeTable = (
       return true;
     },
   );
-/** 서버 `candidate_display_value` — 「[교통안전] - 문장」 · 「[생활안전] - 문장」, 빈 문장은 "". */
+/** 서버 `candidate_display_value` — 「[교통안전] 문장」 · 「[생활안전] 문장」, 빈 문장은 "". */
 const LABELS = Object.fromEntries(SAFETY.map(([, category_id, , label]) => [category_id, label]));
 const shownSafety = (c: MonthlyPlan["safety_candidates"][number]) =>
   !c.cell.value.trim()
     ? ""
-    : "[" + (c.kind === "STATUTORY" ? LABELS[c.category_id!] : "생활안전") + "] - " + c.cell.value;
+    : "[" + (c.kind === "STATUTORY" ? LABELS[c.category_id!] : "생활안전") + "] " + c.cell.value;
 /** 주별 표시 문장과 빈 주 안내. 서버처럼 저장하지 않고 응답마다 계산한다(확정을 막지 않는다). */
 export const safetyView = (p: MonthlyPlan) => {
   // 후보를 넣기 전에 저장된 옛 목업 계획안에는 두 목록이 없다.

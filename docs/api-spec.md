@@ -1844,7 +1844,7 @@ FE 는 기존 계획안으로 이동한다. 전체 재생성은 P0 에 없다(sc
                 "evidence": [], "generation": { "method": "RULE_LLM", "rule_id": "…", "rule_version": "…" } } }
   ],
   "safety_weeks": [
-    { "week_id": "2026-09-W1", "candidate_item_id": "item_…", "display_value": "[교통안전] - …" }
+    { "week_id": "2026-09-W1", "candidate_item_id": "item_…", "display_value": "[교통안전] …" }
   ],
   "drill_candidates": [
     { "topic_id": "…", "label": "소방대피 훈련",
@@ -1915,7 +1915,8 @@ safety_candidates[].cell          cells[] 와 같은 모양.  week_id 는 null. 
 safety_weeks[]        활성 주마다 하나.  필수(빈 배열 가능).  기존 계획안은 []
 safety_weeks[].week_id          문자열.  필수
 safety_weeks[].candidate_item_id  문자열 | null.  그 주에 배치한 후보의 cell.item_id.  배치 전이면 null
-safety_weeks[].display_value    문자열.  필수.  그 주에 보일 값(예 "[교통안전] - 문장").  읽기 전용 · 응답마다 계산 · 저장 안 함.
+safety_weeks[].display_value    문자열.  필수.  그 주에 보일 값(예 "[교통안전] 문장").  읽기 전용 · 응답마다 계산 · 저장 안 함.
+                                라벨 뒤 「 - 」는 없다(하민 결정 2026-11-06). 그 전에 만든 주간 칸에 복사된 값은 「[교통안전] - 문장」 그대로이고, 화면 · 한글 파일만 「 - 」를 떼고 보인다
                                 배치가 없거나 후보 문장이 비면 ""
 drill_candidates[]    훈련(소방대피 · 재난대비) 후보.  필수(빈 배열 가능).  훈련 칸이 없는 계획안은 []
 drill_candidates[].topic_id   문자열.  그 달에 규칙이 고른 훈련 주제
