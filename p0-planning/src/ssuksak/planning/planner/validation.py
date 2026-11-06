@@ -33,6 +33,8 @@ from .contracts import (
     CANDIDATE_PREFIXES,
     DRILL_CANDIDATE_PREFIX,
     SAFETY_CANDIDATE_PREFIX,
+    MonthlyCellPlanningRequest,
+    MonthlyCellProposal,
     MonthlyPlanProposal,
     MonthlyPlanningRequest,
     ProposedSectionValue,
@@ -955,6 +957,40 @@ def _drill_candidate_issues(
 MAX_ACTIVITY_DETAIL_SENTENCES = 2
 
 
+def _detail_keeper(packet: MonthlyContextPacket, asked, hidden: frozenset[str], facts: str):
+    evidence_texts = {normalize_visible_text(item.text) for item in packet.grounding_items}
+
+    def keep(value: ProposedSectionValue) -> bool:
+        text = value.detail
+        return (
+            value.section_key in asked
+            and not value.unresolved
+            and bool(value.value.strip())
+            and not visible_text_violations(text, evidence_refs=hidden)
+            and sentence_count(text) <= MAX_ACTIVITY_DETAIL_SENTENCES
+            and normalize_visible_text(text) not in evidence_texts
+            and not unsupported_facts(text, facts)
+        )
+
+    return keep
+
+
+def sanitize_cell_activity_detail(
+    proposal: MonthlyCellProposal,
+    packet: MonthlyContextPacket,
+    request: MonthlyCellPlanningRequest,
+) -> MonthlyCellProposal:
+    """ADR-066 (Human Decision 2026-11-06): the regenerated cell's detail, same policy as generation."""
+    value = proposal.section
+    if not value.detail:
+        return proposal
+    asked = (request.target_section_key,) if request.detail_requested else ()
+    if _detail_keeper(packet, asked, _hidden_ids(request, packet), request.user_content)(value):
+        return proposal
+    _log.info("activity_detail_dropped count=1 reason=POLICY")
+    return replace(proposal, section=replace(value, detail=""))
+
+
 def sanitize_activity_details(
     proposal: MonthlyPlanProposal,
     packet: MonthlyContextPacket,
@@ -965,23 +1001,8 @@ def sanitize_activity_details(
     A detail is supplementary: it never becomes a finding, a repair target or a failure.
     Kept only on a resolved cell of an asked section, within the visible-text policy, at most
     two sentences, not a verbatim evidence copy and with no fact the input does not hold."""
-    hidden = _hidden_ids(request, packet)
-    evidence_texts = {normalize_visible_text(item.text) for item in packet.grounding_items}
-    facts = _input_facts(request)
+    keep = _detail_keeper(packet, request.detail_section_keys, _hidden_ids(request, packet), _input_facts(request))
     dropped = 0
-
-    def keep(value: ProposedSectionValue) -> bool:
-        text = value.detail
-        return (
-            value.section_key in request.detail_section_keys
-            and not value.unresolved
-            and bool(value.value.strip())
-            and not visible_text_violations(text, evidence_refs=hidden)
-            and sentence_count(text) <= MAX_ACTIVITY_DETAIL_SENTENCES
-            and normalize_visible_text(text) not in evidence_texts
-            and not unsupported_facts(text, facts)
-        )
-
     weeks = []
     for week in proposal.weeks:
         sections = []

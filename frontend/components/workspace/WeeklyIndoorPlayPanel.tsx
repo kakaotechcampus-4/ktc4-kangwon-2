@@ -40,13 +40,14 @@ export default function WeeklyIndoorPlayPanel({
 }) {
   if (!plan.indoor_play_selection || plan.status === "CONFIRMED") return null;
   const rows = plan.sections.find((s) => s.section_key === "indoor_play")?.cells ?? [];
-  // 넣으면 서버가 「[종류] - 이름」으로 옮겨 쓴다. 그 글이 목록에 있으면 넣은 후보 — 아래 목록에서 뺀다.
-  // 교사가 옮긴 글을 고치면 다시 후보로 보이지만 서버가 같은 후보는 한 번만 넣는다.
+  // 넣으면 서버가 「[종류] 이름」(2026-11-06 전에는 「[종류] - 이름」)으로 옮겨 쓴다. 그 글이 목록에
+  // 있으면 넣은 후보 — 아래 목록에서 뺀다. 교사가 옮긴 글을 고치면 다시 후보로 보이지만 서버가 같은
+  // 후보는 한 번만 넣는다.
   const all = (plan.activity_candidates ?? []).filter((c) => c.section_key === "indoor_play");
-  const candidates = all.filter(
-    (c) =>
-      !(c.name.trim() && rows.some((r) => r.value.trim() === `[${c.activity_type}] - ${c.name}`)),
-  );
+  const candidates = all.filter((c) => {
+    const put = [`[${c.activity_type}] ${c.name}`, `[${c.activity_type}] - ${c.name}`];
+    return !(c.name.trim() && rows.some((r) => put.includes(r.value.trim())));
+  });
   // 「+」로 더한 빈 줄도 목록에 그대로 보인다 — 누르면 「칸 편집」에서 쓴다(PM 2026-11-06).
   const ids = rows.map((c) => c.item_id);
   // 끈 줄을 놓은 줄 자리로 — 나머지 순서는 그대로.
@@ -154,7 +155,7 @@ export default function WeeklyIndoorPlayPanel({
                   {GRIP}
                   <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
                     <strong className="block">
-                      [{c.activity_type}] - {c.name}
+                      [{c.activity_type}] {c.name}
                     </strong>
                     {text || "(빈 후보)"}
                   </div>

@@ -966,10 +966,23 @@ def _activity(activity: PlayActivity) -> s.ActivityOut:
     )
 
 
+def _habit_label(catalog, habit) -> str:
+    """한글 문서(`play_monthly_document`)와 같은 규칙의 「[분류]」.
+
+    판이 없어졌으면 지어내지 않고 "" 다."""
+    if catalog is None or not (habit.entry_id and habit.cell.value.strip()):
+        return ""
+    entry = catalog.get(habit.entry_id)
+    return entry.label if entry is not None else ""
+
+
 def _detail(
     row: Plan, plan: PlayMonthlyPlan, annual_id: int | None, *, parent_changed: bool = False
 ) -> s.PlayMonthlyPlanOut:
     parent = plan.parent
+    habit_entries = JsonDailyLifeReferenceRepository().get_catalog(
+        plan.references.daily_life_catalog_id, plan.references.daily_life_catalog_version
+    )
     return s.PlayMonthlyPlanOut(
         id=row.id,
         memo=plan.teacher_memo,
@@ -1031,7 +1044,12 @@ def _detail(
             period=_cell(plan.display.period),
         ),
         habits=[
-            s.HabitOut(week_id=h.week_id.value, entry_id=h.habit.entry_id, cell=_cell(h.habit.cell))
+            s.HabitOut(
+                week_id=h.week_id.value,
+                entry_id=h.habit.entry_id,
+                label=_habit_label(habit_entries, h.habit),
+                cell=_cell(h.habit.cell),
+            )
             for h in plan.habits
         ],
         safety_candidates=[

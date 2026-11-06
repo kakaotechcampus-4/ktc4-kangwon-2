@@ -218,6 +218,7 @@ export const addPlayMonthly = (
       habits: [1, 2, 3, 4].map((w) => ({
         week_id: ym + "-W" + w,
         entry_id: "h" + w,
+        label: "합성 분류 " + w,
         cell: cell("합성 습관 " + w, curriculum("t.1")),
       })),
       safety_candidates: SAFETY.map(([kind, category_id, topic_group, text, name], i) => ({

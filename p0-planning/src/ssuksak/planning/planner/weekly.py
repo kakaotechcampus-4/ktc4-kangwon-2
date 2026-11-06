@@ -58,7 +58,7 @@ WEEKLY_CONTEXT_CELL_REPAIR_PROMPT_VERSION = "weekly-cell-planner-repair-v2"
 # ADR-051: a request with a repeat_by DAY target appends this to every version it uses, so
 # a v0.1.0 request keeps its prompt, schema and fingerprint unchanged.
 DAY_CELLS_SUFFIX = "+day-cells-v1"
-REFERENCE_WIRING_SUFFIX = "+monthly-linked-v7"
+REFERENCE_WIRING_SUFFIX = "+monthly-linked-v8"
 SAFETY_KEY = "safety_education"
 OUTDOOR_KEY = "outdoor_play"
 THEME_KEY = "theme"
@@ -87,7 +87,7 @@ LINKED_WRITING_GUIDANCE = (
     + CANDIDATE_DESCRIPTION_TONE
     + "근거가 짧은 활동명뿐이면 그 대상과 활동의 뜻을 풀어 쓴다. "
     "설명을 구체화하려고 근거에 없는 새 재료·실험 비교 조건·진행 순서·정해진 결과물을 덧붙이지 않는다. "
-    "실내놀이는 활동마다 줄을 나눠 '[역할놀이] - 활동명: 짧은 설명'처럼 쓴다. "
+    "실내놀이는 활동마다 줄을 나눠 '[역할놀이] 활동명: 짧은 설명'처럼 쓴다. "
     "대괄호에는 근거 본문이나 함께 제공한 원문 영역 이름에서 확인되는 놀이 영역만 쓰고, "
     "영역을 확인할 수 없으면 임의 분류를 붙이지 않는다. 같은 항목의 설명은 간결하게 이어 쓴다. "
     "실내대체는 같은 주 바깥놀이를 실내에서 이어 간다. parent의 같은 주 indoor_alternative가 있고 허용 근거로 이어갈 수 있으면 그 활동을 먼저 구체화한다. "

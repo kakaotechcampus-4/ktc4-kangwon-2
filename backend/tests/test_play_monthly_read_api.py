@@ -193,7 +193,7 @@ def test_단건은_계약_모양이고_싣지_않는_것은_없다(world):
         "activity_id", "name", "description", "content_ids", "parent_item_id"
     }  # fmt: skip
     assert body["together"][0]["activity_id"] == body["together"][0]["name"]["item_id"]
-    assert set(body["habits"][0]) == {"week_id", "entry_id", "cell"}
+    assert set(body["habits"][0]) == {"week_id", "entry_id", "label", "cell"}
     assert set(body["safety_candidates"][0]) == {"kind", "category_id", "topic_group", "cell"}
     assert set(body["safety_weeks"][0]) == {"week_id", "candidate_item_id"}
     assert set(body["health"]) == {"entry_id", "cell"}
@@ -208,6 +208,32 @@ def test_단건은_계약_모양이고_싣지_않는_것은_없다(world):
         c.value for c in display.cells()
     ]
     assert body["display"]["title"]["item_id"] == display.title.item_id.value
+
+
+def test_습관_label_은_한글_문서의_분류와_같다(world, monkeypatch):
+    """화면도 한글 문서처럼 「[분류]」를 쓴다(하민 결정 2026-11-06).
+
+    같은 판 · 같은 규칙에서 읽는다."""
+    from play_monthly_factory import DAILY, _Catalogs
+    from ssuksak.planning.application.play_monthly_document import play_monthly_document
+
+    from app.features.plans import play_monthly_router
+
+    monkeypatch.setattr(
+        play_monthly_router, "JsonDailyLifeReferenceRepository", lambda: _Catalogs(DAILY)
+    )
+
+    def blank_first(plan):
+        first = plan.habits[0]
+        habit = replace(first.habit, cell=replace(first.habit.cell, value=""))
+        return replace(plan, habits=(replace(first, habit=habit), *plan.habits[1:]))
+
+    plan, row = _play(world, edit=blank_first)
+    body = client.get(f"{URL}/{row.id}").json()
+    printed = [week.habit_label for week in play_monthly_document(plan, DAILY).weeks]
+
+    assert [h["label"] for h in body["habits"]] == printed
+    assert printed[0] == "" and all(printed[1:])  # 빈 문장에는 머리를 붙이지 않는다
 
 
 def test_evidence_와_generation_은_세_축_규칙을_따른다(world):

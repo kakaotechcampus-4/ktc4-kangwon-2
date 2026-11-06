@@ -427,6 +427,28 @@ def test_세번째_구간이_거절되면_아무것도_저장하지_않는다(wo
     assert world["session"].scalar(select(Plan.id).where(Plan.kind == "annual")) is None
 
 
+@pytest.mark.parametrize("after", [1, 4])
+def test_생성_멈추기로_끊기면_남은_구간을_부르지_않고_저장하지_않는다(world, monkeypatch, after):
+    """하민 결정 2026-11-06: 구간 사이 · 마지막 구간 뒤에 끊긴 요청을 보고 멈춘다."""
+    provider = _ThirdPeriodInvalidProvider()
+    provider.generate_play_project = lambda request: (
+        provider.calls.append(request.period_key)
+        or play_project.MockPlayProjectProvider().generate_play_project(request)
+    )
+    _approved(monkeypatch, provider)
+    monkeypatch.setattr(
+        plans_router, "_disconnected", lambda request: lambda: len(provider.calls) >= after
+    )
+
+    response = client.post(
+        "/api/plans/annual", json={"class_id": world["play"].id, "format": "PLAY_PROJECT"}
+    )
+
+    assert response.status_code == 499
+    assert len(provider.calls) == after
+    assert world["session"].scalar(select(Plan.id).where(Plan.kind == "annual")) is None
+
+
 def test_이미_연간이_있으면_provider를_부르지_않는다(world, saved, monkeypatch):
     def fail():
         raise AssertionError("중복 반에서 provider를 불렀다")

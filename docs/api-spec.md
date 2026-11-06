@@ -125,6 +125,7 @@ me       GET /api/auth/me                                               → 200 
 | `LLM_BUDGET_EXCEEDED` | 503 | 예산 초과로 키가 삭제돼 호출이 실패. 운영 문의 ↓ |
 | `DEPENDENCY_UNAVAILABLE` | 503 | 서버가 쓰는 변환기·외부 도구를 쓸 수 없음. **재시도해도 같다** ↓ |
 | `GENERATION_FAILED` | 500 | 생성 실패. **부분 결과를 저장하지 않는다** |
+| `GENERATION_STOPPED` | 499 | 브라우저가 생성 요청을 끊었다(「생성 멈추기」). 놀이 중심형 연간 생성만 본다 · 저장하지 않는다 · 받는 쪽이 없는 기록용(§4) |
 | `INTERNAL_ERROR` | 500 | 예상하지 못한 서버 오류. 문구는 「일시적인 문제가 생겼습니다. 잠시 후 다시 시도해 주세요.」 고정이고 원인은 서버 기록에만 남긴다 (ADR-030 「후속 결정」, PM 2026-10-21 · 원 ID U-19) |
 | `TRENDS_DISABLED` | 403 | 그 원이 트렌드봇을 껐다 (§3-1 · FR-808) |
 | `CLASS_ACCESS_REQUIRED` | 403 | 같은 원 다른 반이다. 그 반 주인의 승인이 필요하다(§2-2) |
@@ -998,7 +999,13 @@ DEPENDENCY_UNAVAILABLE  503   누리과정 Reference 가 없다 · 승인 전이
 LLM_BUDGET_EXCEEDED     503   한도·키 삭제(401·403·429)
 GENERATION_FAILED       500   호출이 깨졌다 · 계약 위반 · 시간 초과 · 스트림이 stop 으로 안 끝났다.  재시도 가능
 ALREADY_EXISTS          409   같은 반 두 번째 생성 — 형식과 관계없다
+GENERATION_STOPPED      499   브라우저가 요청을 끊었다(「생성 멈추기」).  받는 쪽이 없어 화면에 나오지 않는다 — 기록용
 ```
+
+**「생성 멈추기」**(하민 결정 2026-11-06) — 서버는 구간을 부르기 전마다, 그리고 마지막 구간 뒤에 한 번 더 브라우저가 연결을 끊었는지 본다.
+끊겼으면 남은 구간을 부르지 않고 **아무것도 저장하지 않는다** — 다시 만들어도 `409 ALREADY_EXISTS` 가 나지 않는다. 이미 부른 구간의 비용은 그대로 남는다.
+Next 프록시는 브라우저가 끊으면 백엔드 연결도 끊는다. 499 는 nginx 의 「Client Closed Request」 관례를 따른 기록용 숫자다.
+월별 주제형 연간 · 월간 · 주간 생성은 끊김을 보지 않는다 — 화면만 멈추고 서버는 끝까지 처리할 수 있다.
 
 **누리과정 Reference `nuri-curriculum-content-v0.1.0` 은 2026-10-29 사람 승인됐다(`HUMAN_APPROVED`).** 판이 없거나 승인이 거둬지면 `LLM_MODE=mock` 을 포함해 놀이 프로젝트형 생성이 모두 503 이다.
 문구는 「지금은 이 반의 연간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.」다.
@@ -1695,7 +1702,7 @@ reportlab 으로 다시 그린다 — 칸 주소 · 병합 · 너비 · 테두�
 
 **월간은 `GET /api/plans/monthly/{id}/export/hwp`로 내보낸다(구현됨).** 같은 형식 선택·확정 게이트·원 격리를 적용한다. **놀이 중심 월간 id 면 확정 여부와 관계없이 409 `GATE_BLOCKED`** 다(「놀이 중심 월간계획안은 /api/plans/monthly/play 경로로 다룹니다.」, §9-7 · 놀이 월간 양식이 없어 한글 내려받기는 후속).
 기본 월간 서식의 본문에는 보이는 `CONTENT` 구역만 순서대로 넣는다. `AXIS` 구역은 주차 머리행에만 표시한다.
-한 쪽 양식 12행 「소방대피/재난대비」는 늘 빈칸이다 — 한글 훈련 줄은 양식 개편 때까지 내보내지 않는다.
+한 쪽 양식 12행 「소방대피/재난대비」에는 훈련 칸 값을 넣는다. 훈련 칸이 없거나 비면 빈칸이다(하민 결정 2026-11-06).
 후보 모드 계획안(§9-1)의 안전교육 줄은 칸 값이 아니라 주마다 `safety_weeks[].display_value` 를 넣는다 — 배치하지 않은 주는 빈칸이고 출처 표시는 섞지 않는다. 예전 계획안은 칸 값 그대로다(ADR-052).
 활성 주차는 최대 5주이며 넘으면 `VALIDATION_FAILED` 422다. 비어 있는 내용은 자동으로 채우지 않는다.
 화면의 「확정하기」 후 「한글 파일로 내려받기」로 받는다. 출처와 생성 이력은 파일에 넣지 않는다.
@@ -1844,7 +1851,7 @@ FE 는 기존 계획안으로 이동한다. 전체 재생성은 P0 에 없다(sc
                 "evidence": [], "generation": { "method": "RULE_LLM", "rule_id": "…", "rule_version": "…" } } }
   ],
   "safety_weeks": [
-    { "week_id": "2026-09-W1", "candidate_item_id": "item_…", "display_value": "[교통안전] - …" }
+    { "week_id": "2026-09-W1", "candidate_item_id": "item_…", "display_value": "[교통안전] …" }
   ],
   "drill_candidates": [
     { "topic_id": "…", "label": "소방대피 훈련",
@@ -1915,7 +1922,8 @@ safety_candidates[].cell          cells[] 와 같은 모양.  week_id 는 null. 
 safety_weeks[]        활성 주마다 하나.  필수(빈 배열 가능).  기존 계획안은 []
 safety_weeks[].week_id          문자열.  필수
 safety_weeks[].candidate_item_id  문자열 | null.  그 주에 배치한 후보의 cell.item_id.  배치 전이면 null
-safety_weeks[].display_value    문자열.  필수.  그 주에 보일 값(예 "[교통안전] - 문장").  읽기 전용 · 응답마다 계산 · 저장 안 함.
+safety_weeks[].display_value    문자열.  필수.  그 주에 보일 값(예 "[교통안전] 문장").  읽기 전용 · 응답마다 계산 · 저장 안 함.
+                                라벨 뒤 「 - 」는 없다(하민 결정 2026-11-06). 그 전에 만든 주간 칸에 복사된 값은 「[교통안전] - 문장」 그대로이고, 화면 · 한글 파일만 「 - 」를 떼고 보인다
                                 배치가 없거나 후보 문장이 비면 ""
 drill_candidates[]    훈련(소방대피 · 재난대비) 후보.  필수(빈 배열 가능).  훈련 칸이 없는 계획안은 []
 drill_candidates[].topic_id   문자열.  그 달에 규칙이 고른 훈련 주제
@@ -2904,7 +2912,7 @@ memo                  문자열.  선택.  요청 사항 0~300자(§4 「요청 
   "direction": { "…": "Cell — 가운데 「예상되는 놀이 방향」. 처음엔 주제를 옮겨 둔다" },
   "display": { "title": { "…": "Cell — 「11월 놀이계획안」" }, "age": { "…": "Cell — 「만 4·5세」" },
                "class_name": { "…": "Cell — 반 이름" }, "period": { "…": "Cell — 「2026.11.01 ~ 2026.11.30」" } },
-  "habits": [ { "week_id": "2026-09-W1", "entry_id": "…", "cell": { "…": "Cell" } } ],
+  "habits": [ { "week_id": "2026-09-W1", "entry_id": "…", "label": "약속·질서", "cell": { "…": "Cell" } } ],
   "safety_candidates": [
     { "kind": "STATUTORY", "category_id": "…", "topic_group": null, "cell": { "…": "Cell" } }
   ],
@@ -2931,6 +2939,7 @@ content_ids           그 놀이에 지금 걸린 누리과정 내용 ID.  **응
 parent_item_id        이 행이 부모 연간의 놀이 하나를 이은 것이면 그 놀이명 칸의 item_id.  아니면 null.  name.evidence 에 PARENT_PLAN 이 있을 때만 값이 있다
 safety_candidates     candidates 의 주소는 cell.item_id 다 (경로의 {item_id} · 본문의 candidate_item_id)
 kind                  STATUTORY (법정 여섯 영역, category_id 만) | SUPPLEMENTAL (생활안전, topic_group 만)
+habits[].label        한글 문서가 「[분류]」로 찍는 일상생활 항목 이름(entry_id 의 label, 계획안이 읽은 판에서).  문장이 비었거나 항목에서 고르지 않았거나 판이 없어졌으면 ""(하민 결정 2026-11-06).  화면은 「[분류]」 다음 줄에 문장을 쓴다
 safety_weeks          주마다 하나.  candidate_item_id 가 null 이면 아직 안 둔 주.  같은 후보를 여러 주에 둘 수 있다
 teacher_inputs[].key  fire_disaster_drill · specialized_timetable · special_activity_timetable · class_notice · class_birthdays · home_connection
 notices[].code        SAFETY_UNPLACED · SAFETY_BLANK · HABIT_BLANK · HEALTH_BLANK · NUTRITION_BLANK.  응답마다 계산하고 저장하지 않는다.  확정을 막지 않는다

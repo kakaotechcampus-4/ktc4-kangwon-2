@@ -39,7 +39,7 @@ import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { playSeason } from "@/components/plan-generator/playProjectPagination";
-import GenerationRing, { ringFinished } from "@/components/plan-ui/GenerationRing";
+import GenerationRing, { ringFinished, STOPPED_NOTE } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { BACK_BUTTON, BACK_ICON } from "@/components/plan-generator/AnnualFrame";
 import { Tape, useClasses } from "./WorkspaceUI";
@@ -168,6 +168,8 @@ export function MonthlyNewView(props: {
   /** 만들 수 없는 까닭(버튼 아래 한 줄). null 이면 만들 수 있다. */
   blocked: ReactNode;
   problem: string;
+  /** [생성 멈추기]로 돌아왔다. */
+  stopped?: boolean;
   /** 요청 사항(ADR-060). 없으면 칸을 그리지 않는다(미리보기). */
   memo?: string;
   memoProblem?: string | null;
@@ -349,6 +351,7 @@ export function MonthlyNewView(props: {
             />
           )}
 
+          {props.stopped && STOPPED_NOTE}
           {props.problem && (
             <p
               role="alert"
@@ -433,6 +436,7 @@ export default function MonthlyNew({
 }) {
   const router = useRouter();
   const [problem, setProblem] = useState("");
+  const [stopped, setStopped] = useState(false);
   const [memo, setMemo] = useState("");
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
   const classes = useClasses(setProblem);
@@ -521,6 +525,7 @@ export default function MonthlyNew({
     setBusy(true);
     setDone(false);
     setProblem("");
+    setStopped(false);
     setMemoProblem(null);
     const note = memo.trim() ? { memo: memo.trim() } : {};
     try {
@@ -614,6 +619,7 @@ export default function MonthlyNew({
           onCancel={() => {
             controller.current?.abort();
             setBusy(false);
+            setStopped(true);
           }}
         />
       </div>
@@ -636,6 +642,7 @@ export default function MonthlyNew({
       onExtras={setExtras}
       blocked={blocked}
       problem={problem}
+      stopped={stopped}
       memo={memo}
       memoProblem={memoProblem}
       onMemo={setMemo}

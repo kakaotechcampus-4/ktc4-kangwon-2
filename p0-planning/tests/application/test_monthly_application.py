@@ -2933,7 +2933,7 @@ def test_safety_candidates_generate_blank_weeks_then_teacher_places_edits_and_co
     assert all(not cell.value for cell in plan.section("safety_education").cells)
     assert plan.safety_weeks == tuple(SafetyWeek(p.week_id) for p in plan.active_week_periods)
     assert {n.code for n in monthly_safety_notices(plan)} == {"SAFETY_UNPLACED"}
-    assert candidate_display_value(statutory).startswith(f"[{STATUTORY_SHORT_LABELS[statutory.category_id]}] - ")
+    assert candidate_display_value(statutory).startswith(f"[{STATUTORY_SHORT_LABELS[statutory.category_id]}] ")
 
     week = plan.safety_weeks[0].week_id
     place = PlaceMonthlySafety(plan_repository=harness.plans, clock=harness.clock)
@@ -2941,7 +2941,7 @@ def test_safety_candidates_generate_blank_weeks_then_teacher_places_edits_and_co
     change = placed.audit.events[-1]
     assert change.event_type is AuditEventType.ARRANGEMENT_CHANGED
     assert (change.arrangement_change.before, change.arrangement_change.after) == ((), (life.cell.item_id.value,))
-    assert candidate_display_value(placed_safety_candidate(placed, week)) == "[생활안전] - " + life.cell.value
+    assert candidate_display_value(placed_safety_candidate(placed, week)) == "[생활안전] " + life.cell.value
     saves = harness.plans.save_count
     place.execute(PlaceMonthlySafetyCommand(plan.plan_id, week, life.cell.item_id, TEACHER))
     assert harness.plans.save_count == saves  # same selection: no save, no event

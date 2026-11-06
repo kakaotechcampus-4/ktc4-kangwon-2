@@ -233,3 +233,51 @@ def test_plan_saved_before_activity_details_still_edits_and_confirms():
     old = harness.edit_monthly(old, item_id=target.item_id, value="교사가 고친 바깥놀이")
     assert old.section("outdoor_play_detail") is None
     assert harness.confirm_monthly(old).status is PlanStatus.CONFIRMED
+
+
+class BadCellDetailProvider(RecordingProvider):
+    """The regenerated cell's detail breaks the 1-2 sentence rule."""
+
+    def generate_cell(self, request):
+        from dataclasses import replace
+
+        raw = super().generate_cell(request)
+        payload = json.loads(raw.content)
+        payload["section"]["detail"] = "친구와 달려요. 나뭇잎을 모아요. 함께 웃어요."
+        return replace(raw, content=json.dumps(payload, ensure_ascii=False))
+
+
+@pytest.mark.parametrize("provider_class", [RecordingProvider, BadCellDetailProvider])
+def test_regenerating_an_activity_cell_regenerates_its_week_detail(provider_class):
+    # Human Decision 2026-11-06 (ADR-066): the detail follows its regenerated activity.
+    from ssuksak.planning.domain.monthly_constraint import CellState
+    from ssuksak.planning.domain.provenance import AuditEventType, GenerationMethod
+
+    harness, provider, plan = _detail_plan(provider_class)
+    parent = plan.section("outdoor_play").cells[0]
+    before = plan.section("outdoor_play_detail").cells
+    regenerate = monthly_composition.monthly_regeneration(
+        plan_repository=harness.monthly_plans, provider=provider, clock=harness.clock
+    )
+    with pytest.raises(MonthlyApplicationError):
+        regenerate.execute(RegenerateMonthlyPlanItemCommand(plan.plan_id, before[0].item_id, ActorId("t")))
+    plan = regenerate.execute(RegenerateMonthlyPlanItemCommand(plan.plan_id, parent.item_id, ActorId("t"))).plan
+    request = provider.requests[-1]
+    assert request.detail_requested and request.prompt_version.endswith("+activity-detail-v1")
+    new_parent = plan.find_cell(parent.item_id)[3]
+    after = plan.section("outdoor_play_detail").cells
+    assert after[1:] == before[1:]
+    detail = after[0]
+    assert detail.item_id == before[0].item_id
+    event = detail.audit.events[-1]
+    assert event.event_type is AuditEventType.REGENERATED and event.actor_id == ActorId("t")
+    assert event.value_change.before == before[0].value and event.value_change.after == detail.value
+    assert event.generation_change.after == detail.generation
+    if provider_class is RecordingProvider:
+        assert detail.value == "친구들과 새로운 방법으로 몸을 움직이며 놀아요."
+        assert detail.generation.method is GenerationMethod.RULE_LLM
+        assert detail.generation.rule_version == new_parent.generation.rule_version == request.prompt_version
+        assert detail.evidence == new_parent.evidence
+    else:
+        assert detail.value == "" and detail.cell_state is CellState.EMPTY_VALID
+        assert detail.generation.method is GenerationMethod.RULE_ONLY and detail.evidence == ()

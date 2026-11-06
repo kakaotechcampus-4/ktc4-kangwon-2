@@ -277,7 +277,7 @@ test("safety placement shows the labelled sentence, same input is a no-op", asyn
   const first = plan.safety_candidates[0].cell;
   const placed = await monthly.placeMonthlySafety(plan.id, w1.week_id, first.item_id, 1);
   assert.equal(placed.revision, 2);
-  assert.equal(placed.safety_weeks[0].display_value, "[성폭력 예방] - " + first.value);
+  assert.equal(placed.safety_weeks[0].display_value, "[성폭력 예방] " + first.value);
   assert.equal(placed.notices.length, plan.notices.length - 1);
   assert.equal(
     (await monthly.placeMonthlySafety(plan.id, w1.week_id, first.item_id, 2)).revision,
@@ -547,7 +547,8 @@ test("검사 결과는 한글 한 줄씩 — 직접 쓴 바깥놀이 안내는 �
   ]);
   assert.equal(lines.length, 1); // 주간 사실 범위 안내도 띄우지 않는다(PM 2026-11-06)
   assert.ok(lines.every((t) => !/[a-z]/.test(t)));
-  assert.equal(safetyLines("[교통안전] - 길을 건너요."), "[교통안전]\n길을 건너요.");
+  assert.equal(safetyLines("[교통안전] 길을 건너요."), "[교통안전]\n길을 건너요.");
+  assert.equal(safetyLines("[교통안전] - 길을 건너요."), "[교통안전]\n길을 건너요."); // 11-06 전 값
   assert.equal(safetyLines("[생활안전] - a - b"), "[생활안전]\na - b");
   assert.equal(safetyLines("그냥 문장"), "그냥 문장");
 });

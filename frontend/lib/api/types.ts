@@ -397,7 +397,8 @@ export interface PlayMonthlyPlan extends PlanMemo {
     class_name: PlayMonthlyCell;
     period: PlayMonthlyCell;
   };
-  habits: { week_id: string; entry_id: string | null; cell: PlayMonthlyCell }[];
+  /** `label` = 한글 문서의 「[분류]」(문장이 비었거나 항목에서 고르지 않았으면 ""). */
+  habits: { week_id: string; entry_id: string | null; label: string; cell: PlayMonthlyCell }[];
   safety_candidates: {
     kind: "STATUTORY" | "SUPPLEMENTAL";
     category_id: string | null;

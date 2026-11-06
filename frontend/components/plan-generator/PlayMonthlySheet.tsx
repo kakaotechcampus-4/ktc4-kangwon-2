@@ -546,7 +546,11 @@ export default function PlayMonthlySheet({
                   row="habit"
                   weekId={week.week_id}
                   cellId={habit.cell.item_id}
-                  value={habit.cell.value}
+                  value={
+                    habit.label && habit.cell.value.trim()
+                      ? `[${habit.label}]\n${habit.cell.value}`
+                      : habit.cell.value
+                  }
                   weekIds={weekIds}
                   onMove={onMoveHabit}
                   {...at}

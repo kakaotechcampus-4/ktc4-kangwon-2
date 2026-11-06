@@ -31,7 +31,6 @@ import PlayMonthlyConfirm, {
   BLANK_LEAD,
   BlankRows,
 } from "@/components/plan-generator/PlayMonthlyConfirm";
-import { CARD, GRIP, PICKED, PUT } from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import AnnualFrame, {
   BACK_BUTTON,
   BACK_ICON,
@@ -46,7 +45,8 @@ import AnnualFrame, {
 import { PAPER_WIDTH, type Pick } from "@/components/plan-generator/PlayMonthlySheet";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { useCellHistory } from "./useCellHistory";
-import WeeklySheet, { WEEKLY_ACTIVITY_DRAG } from "./WeeklySheet";
+import WeeklySheet from "./WeeklySheet";
+import WeeklyGroupActivityPanel from "./WeeklyGroupActivityPanel";
 import WeeklyIndoorPlayPanel from "./WeeklyIndoorPlayPanel";
 import workspace from "./Workspace.module.css";
 import { PlanMemoNote } from "@/components/plan-generator/PlanMemo";
@@ -548,48 +548,16 @@ export default function WeeklyEditor({
       }}
     />
   ) : gridCell && candidates.length ? (
-    <section aria-label="활동 후보" className="flex flex-col gap-4">
-      <h2 className="m-0 text-[18px] font-bold leading-tight">{where} 칸에 넣을 활동</h2>
-      <ul className="m-0 flex list-none flex-col gap-2 p-0">
-        {/* 넣은 후보는 맨 위로 — 안전교육 후보와 같다. 서버는 「[종류] 이름」으로 복사한다(weekly_activities.copy). */}
-        {[...candidates]
-          .map((c) => ({
-            c,
-            here:
-              !!c.cell.value.trim() &&
-              shown(picked.cell).trim() === `[${c.activity_type}] ${c.name}`,
-          }))
-          .sort((a, b) => Number(b.here) - Number(a.here))
-          .map(({ c, here }) => {
-            const text = c.cell.value.trim();
-            return (
-              <li
-                key={c.cell.item_id}
-                // 카드를 끌어 문서의 다른 요일 칸에 놓아도 넣는다(월간 안전교육 후보와 같다).
-                draggable={!locked && !!text}
-                onDragStart={(event) =>
-                  event.dataTransfer.setData("text/plain", WEEKLY_ACTIVITY_DRAG + c.cell.item_id)
-                }
-                className={`${CARD} ${!locked && text ? "cursor-grab active:cursor-grabbing" : ""} ${here ? PICKED : "border-[#e8e2d8]"}`}
-              >
-                {GRIP}
-                <div className="min-w-0 flex-1 whitespace-pre-line text-[14px]">
-                  <strong>[{c.activity_type}]</strong> {text || "(빈 후보)"}
-                </div>
-                <button
-                  type="button"
-                  aria-label={`${where}에 넣기: ${text || "빈 후보"}`}
-                  className={PUT}
-                  disabled={locked || !text || here}
-                  onClick={() => void put(picked.cell.item_id, c.cell.item_id)}
-                >
-                  {here ? "넣음" : "넣기"}
-                </button>
-              </li>
-            );
-          })}
-      </ul>
-    </section>
+    <WeeklyGroupActivityPanel
+      plan={plan}
+      cellId={picked.cell.item_id}
+      shown={shown}
+      disabled={locked}
+      onPut={(cellId, candidateId) => void put(cellId, candidateId)}
+      onDrop={putDropped}
+      onClear={(cellId) => saveCell(cellId, "")}
+      onSelect={select}
+    />
   ) : (
     <p className="m-0 text-sm text-[#5c5243]">
       {grids.length && candidates.length && indoorSelection

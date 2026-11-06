@@ -160,6 +160,9 @@ class PooledActivityOut(ActivityOut):
 class HabitOut(BaseModel):
     week_id: str
     entry_id: str | None
+    # 한글 문서가 「[분류]」로 찍는 일상생활 항목 이름(하민 결정 2026-11-06).
+    # 문장이 비었거나 항목에서 고르지 않았으면 "".
+    label: str = ""
     cell: CellOut
 
 

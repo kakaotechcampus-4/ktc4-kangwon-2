@@ -444,8 +444,16 @@ class MonthlyCellPlanningRequest:
     plan_snapshot_fingerprint: str = ""
     allowed_grounding_refs_by_section: tuple[tuple[str, tuple[str, ...]], ...] = ()
     memo_addresses: tuple[str, ...] | None = None
+    # ADR-066 (Human Decision 2026-11-06): the target weekly activity cell also returns ``detail``.
+    detail_requested: bool = False
 
     def __post_init__(self) -> None:
+        if self.detail_requested is not False and (
+            self.detail_requested is not True or self.target_section_key not in ACTIVITY_DETAIL_SECTION_KEYS
+        ):
+            raise InvalidDomainValueError(
+                "MonthlyCellPlanningRequest.detail_requested belongs to a weekly activity target only"
+            )
         for name in (
             "task",
             "prompt_version",
