@@ -258,6 +258,9 @@ test("a short plan opens ④ picking; arranging opens ⑤ with AI 후보 · 칸 
   assert.ok(selectedTab(tree, "AI 후보"));
   assert.ok(all(tree).some((n) => n.props?.role === "tab" && text(n) === "칸 편집"));
   assert.match(text(tree), /3월~5월 0\/5/);
+  // ⑤ 에서 ④ 로 돌아가는 길이 있다 — 뒤로 갔다 다시 들어오지 않아도 된다.
+  button(tree, "놀이 다시 고르기").props.onClick();
+  assert.ok(all(render()).some((n) => n.type === "picking"), "놀이 고르기로 돌아간다");
 });
 
 test("⑤: a document cell opens 칸 편집 and the editor saves that cell; 빼기 saves four periods", () => {
@@ -292,7 +295,8 @@ test("⑤: a document cell opens 칸 편집 and the editor saves that cell; 빼�
   button(render(), "⤢ 크게 보기").props.onClick();
   // 편집 문서는 그대로 두고, 따로 뜨는 창에 원래 문서처럼 두 구간씩 한 쪽(창은 문서 머리줄에 있어 나무에서 앞).
   assert.deepEqual(pages(render()).sort(), ["3월~5월", "3월~5월 · 6월~8월"]);
-  button(render(), "2쪽").props.onClick();
+  // 쪽 탭은 숫자가 아니라 구간 이름이다 — 둘째 쪽(가을·겨울)이 있는 줄 보이게(멘토 11-05).
+  button(render(), "9월~11월·12월~2월").props.onClick();
   assert.deepEqual(pages(render()).sort(), ["3월~5월", "9월~11월 · 12월~2월"], "쪽을 골라 본다");
   all(render())
     .find((n) => n.type === "dialog")
@@ -396,6 +400,7 @@ test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ wi
     "./AnnualFrame": { AnnualDone: (p) => jsx("done", p) },
     "./AnnualThemeSheet": esModule((p) => jsx("theme-sheet", p)),
     "./PlayProjectSheet": esModule((p) => jsx("play-sheet", p)),
+    "./playProjectPagination": sheetHelpers,
     "./ThemeAnnualResult": esModule((p) => jsx("theme-result", p)),
     "./PlayProjectResult": {
       __esModule: true,
@@ -421,6 +426,7 @@ test("AnnualResult: a draft goes to PlayProjectResult, a confirmed one to ⑥ wi
     ],
   );
   assert.equal(done.props.pages[0].props.className, "햇살반");
+  assert.deepEqual(done.props.pageLabels, ["3월~5월·6월~8월", "9월~11월·12월~2월"], "쪽 탭 이름");
   assert.equal(compact.at(-1), false, "확정본은 펼친다");
   // 확정 취소는 없다(ADR-064) — 확정본 화면은 되돌리는 손잡이를 받지 않는다.
   assert.equal(done.props.onUnconfirmed, undefined);
@@ -495,6 +501,14 @@ test("PlayProjectResult does not use browser storage", () => {
     );
     assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB/i, file);
   }
+});
+
+test("playPageLabels names each two-period page by season — 봄·여름 / 가을·겨울", () => {
+  const periods = ["m03_m05", "m06_m08", "m09_m11", "m12_m02"].map((period_key) => ({
+    period_key,
+    label: period_key,
+  }));
+  assert.deepEqual(sheetHelpers.playPageLabels(periods), ["봄·여름", "가을·겨울"]);
 });
 
 test("paginatePlaySheet starts each template group on a titled page", () => {
