@@ -10,7 +10,7 @@ import pytest
 
 from ssuksak.adapters.deterministic import DeterministicIdGenerator, FixedClock
 from ssuksak.planning.application.generate_play_monthly_plan import (
-    PLAY_MONTHLY_LAYOUT_V0_2,
+    PLAY_MONTHLY_LAYOUT_V0_3,
     SPECIAL_ACTIVITY_START_SIZE,
 )
 from ssuksak.planning.application.play_monthly_document import play_monthly_document
@@ -87,7 +87,7 @@ def test_generation_lays_out_the_template_timetable_blank_and_copies_the_theme_o
     direction = plan.direction
     assert direction.value == plan.theme.value
     assert (direction.generation.method, direction.generation.rule_id) == (GenerationMethod.RULE_ONLY, DIRECTION_COPY_RULE_ID)
-    assert direction.generation.rule_version == PLAY_MONTHLY_LAYOUT_V0_2.layout_version
+    assert direction.generation.rule_version == PLAY_MONTHLY_LAYOUT_V0_3.layout_version
     assert {e.source_type for e in direction.evidence} == {EvidenceSourceType.PARENT_PLAN}
 
     display = plan.display

@@ -118,6 +118,7 @@ me       GET /api/auth/me                                               → 200 
 | `NOT_FOUND` | 404 | 대상 없음 |
 | `GATE_BLOCKED` | 409 | 앞 단계가 안 끝났다 — 층 게이트(연간 확정 전 월간 §9-1 · 월간 확정 전 주간 · §11 주간 보육일지) · 사람 승인 전 Template 으로 Profile 시작(§9-4) · 확정 전 내보내기(놀이 프로젝트형 DRAFT 포함, §9) · `stale` 문서 확정 · 놀이 프로젝트형을 부모로 기존 월간 생성(§9-1) · 연간 형식에 맞지 않는 수정 API 호출(§6 · §6-1) · 기존 월간 경로 ↔ 놀이 중심 월간 경로(§9-7)에 서로의 id · 놀이 중심 월간 아래 주간 생성(§9-6 · §9-7) · 아이 명단이 있는 반의 동의 끄기(§2 반 수정) · 동의 확인 전 반에 아이 추가(§2-1) |
 | `ALREADY_EXISTS` | 409 | 같은 대상에 이미 있음. 조회로 찾는다 |
+| `IN_USE` | 409 | 지우려는 계획안으로 만든 하위 계획안이 있다(연간 → 월간 · 월간 → 주간). 하위를 먼저 지운다(§9 「계획안 삭제」 · ADR-064) |
 | `ALREADY_CONFIRMED` | 409 | 확정된 계획안·문서를 수정하려 함. 문서는 `unconfirm` 으로 되돌린다(§11). **계획안에는 확정 취소가 없다**(ADR-030 PM-03) |
 | `UNSUPPORTED_FILE_TYPE` | 400 | 지원하지 않는 파일 형식 |
 | `NO_ACTIVITIES` | 503 | 활동 풀이 비었음 (운영 오류). **재시도해도 같다** |
@@ -932,7 +933,7 @@ safety_education 값           traffic_safety · missing_and_abduction_preventio
     { "period_key": "m03_m05", "label": "3월~5월", "months": [3, 4, 5],
       "selected": [],
       "candidates": [
-        { "row_key": "cand1",
+        { "row_key": "cand1", "memo_applied": false,
           "play_name": { "item_id": "item_1", "value": "살랑살랑 봄바람을 느껴요",
                          "evidence": [],
                          "generation": { "method": "RULE_LLM", "rule_id": "play_project.generate",
@@ -966,6 +967,8 @@ periods[].selected             row_key 배열.  필수.  문서 배치 순서, D
                                새 계획안은 [].  후보 배열의 생성 순서는 바꾸지 않는다
 periods[].candidates           정확히 10개.  필수
 candidates[].row_key           cand1 … cand10.  생성 순서이고 뒤에 고르거나 순서를 바꿔도 안 바뀐다
+candidates[].memo_applied      불리언.  필수.  이 후보가 요청 사항(memo)을 반영했는가 — 카드 표시용(Human Decision 2026-11-05).
+                               메모가 없으면 항상 false.  고르기 · 배치에 쓰지 않는다.  play_name 칸의 「요청 사항」 근거에서 읽는다
 candidates[].play_name         Cell.  놀이명
 candidates[].materials         Cell.  지원매체
 candidates[].support_direction Cell.  내용 및 지원 방향 예상하기
@@ -1604,7 +1607,19 @@ GET    /api/plans/monthly/{id}/audit      월간 변경 이력 — §9-5 (구현
 POST   /api/plans/weekly                  주간 — §9-6 (생성 · 조회 · 목록 · 삭제 W5a · 편집 · 재생성 · 확정 · 이력 W5b 구현됨)
 POST   /api/plans/monthly/play            놀이 중심 월간 — §9-7 (제안 · 구현 전. 목록 · 단건 · 칸 · 행 · 안전 배치 · 훈련 복사 · 확정 · 이력 모두 §9-7)
 PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location — 계약 안 씀(아래)
+DELETE /api/plans/annual/{id}             연간 삭제 — 초안 · 확정본 모두 204. 그 반 · 학년도 월간이 있으면 409 IN_USE
+DELETE /api/plans/monthly/{id}            월간 삭제 — 초안 · 확정본 모두 204. 이 월간으로 만든 주간이 있으면 409 IN_USE
+DELETE /api/plans/monthly/play/{id}       놀이 중심 월간 삭제 — 초안 · 확정본 모두 204 (§9-7)
+DELETE /api/plans/weekly/{id}             주간 삭제 — 초안 · 확정본 모두 204 (§9-6)
 ```
+
+**계획안 삭제 (ADR-064, Human Decision 2026-11-05 하민).** 계획안 화면의 「확정 취소」를 없앴다 — 확정한 계획안을
+고치려면 문서 보관함 미리보기의 「수정하기」(누르면 확정을 풀고 편집 화면으로 간다)(`unconfirm`, ADR-055 그대로)로 초안으로 되돌리거나,
+지우고 다시 만든다. 그래서 `DELETE` 는 **상태를 보지 않는다**(확정본도 `204`). 막는 것은 하위뿐이다 — 연간은 그 반 · 학년도 월간이, 월간은
+그 월간을 부모(`parent_lineage`)로 든 주간이 있으면 409 `IN_USE`(`fields: []`), 하위를 먼저 지운다.
+부모 DELETE 는 부모 행을 `FOR UPDATE` 로 잠그고 하위를 보며, 하위 생성은 저장 직전에 부모 행을
+`FOR SHARE` 로 다시 본다 — 동시에 와도 부모 없는 하위가 저장되지 않는다(부모가 그 사이 지워졌거나
+확정이 풀렸으면 생성은 409 `GATE_BLOCKED`). 이력 · 근거는 본문 안에 있어 행과 함께 사라진다.
 
 **칸 수를 계약으로 정하지 않는다.** 「43칸」은 우리 기본 서식에서 센 수다. 칸 수는 양식 ·
 활성 주차 · 구역 구조가 정하므로 원이 올린 양식에 따라 달라진다. **화면은 서버가 준 만큼
@@ -1906,6 +1921,16 @@ drill_candidates[]    훈련(소방대피 · 재난대비) 후보.  필수(빈 �
 drill_candidates[].topic_id   문자열.  그 달에 규칙이 고른 훈련 주제
 drill_candidates[].label      문자열.  주제 표시 이름 (화면이 문장 옆에 보인다)
 drill_candidates[].cell       cells[] 와 같은 모양.  week_id 는 null.  후보 문장의 주소는 cell.item_id
+teacher_tables[]      교사가 쓰는 표 셋(ADR-063).  필수.  늘 event_schedule · specialized_timetable ·
+                      special_activity_timetable 순서.  표를 저장하기 전 계획안도 같은 빈 표를 같은 id 로 준다
+teacher_tables[].table_key     event_schedule | specialized_timetable | special_activity_timetable
+teacher_tables[].label         양식 이름(「행사 일정」 · 「특성화 시간표」 · 「특별활동 시간표」).  source_label 이다
+teacher_tables[].titles[]      특성화 열 제목(열마다 하나, 나누지 않는다).  다른 표는 []
+teacher_tables[].columns[]     열마다 나눔 트리 — §9-7 special_activity[] 와 같은 모양(cell | split_id · axis · ratio · children)
+teacher_tables[].column_widths 열마다 표 폭의 %.  정수 · 각 5 이상 · 합 100
+teacher_tables[].height_mm     10~80
+                      표 칸은 { item_id, value, evidence, generation } 이다.  generation 은 처음 쓰기 전 null,
+                      쓰면 MANUAL.  evidence 는 늘 [] — 행사 · 시간표는 만들지 않는다(LLM 이 사실을 지어내지 않는다)
 notices[]             안전 주 안내.  필수(빈 배열 가능).  기존 계획안은 []
 notices[].code        SAFETY_UNPLACED | SAFETY_BLANK.  필수.  배치가 없는 주 | 배치한 후보 문장이 빈 주
 notices[].week_id     문자열.  필수
@@ -2130,7 +2155,8 @@ item_id            문자열.  §9-1 drill_candidates[].cell.item_id.  형식이
 expected_revision  위와 같다
 ```
 
-- 그 훈련 후보의 문장과 근거를 그 시점 그대로 훈련 문서 칸에 복사한다. 칸은 `RULE_ONLY` 가 되고 근거는 후보의 근거가 된다.
+- 그 훈련 후보의 문장과 근거를 그 시점 그대로 훈련 문서 칸에 복사한다. 칸 값은 「[주제 label] 문장」 한 줄이다(Human Decision
+  2026-11-06(하민) — 11-05 의 「다음 줄」을 바꿨다. 이미 복사한 칸은 그대로다). 칸은 `RULE_ONLY` 가 되고 근거는 후보의 근거가 된다.
   복사한 뒤 후보와 칸은 서로 따라가지 않는다. 성공하면 revision +1 · 변경 이력에 `CANDIDATE_COPIED`(§9-5) · §9-1 응답.
 - **같은 복사면 저장하지 않는다.** 칸이 이미 그 후보의 복사본이면 200 · 저장된 그대로(revision · 이력 그대로)다.
 - 복사한 칸은 기존 `PUT .../cells/{훈련 칸 item_id}`(§9-3 칸 편집)로 고칠 수 있다. **빈 훈련 칸에 교사가 처음 쓰면 `MANUAL`** 이다
@@ -2166,6 +2192,38 @@ FE 가 진짜 실패와 구분하지 못한다. **멱등이어도 소유 검사�
 검증기 자체가 돌지 못하면 `GENERATION_FAILED` 500 이다.
 
 **되돌리기는 P1 이다.** 확정 뒤 칸 편집 · 재생성 · 안전 배치 · 훈련 후보 복사는 `ALREADY_CONFIRMED` 409 다.
+
+### 교사 표 — 칸 글 · 나누기 · 빼기 · 크기 (ADR-063, Human Decision 2026-11-05(하민))
+
+칸 글은 위 **칸 편집**(`PUT cells/{item_id}`)으로 쓴다 — `item_id` 는 §9-1 `teacher_tables[]` 의 칸(열 제목 포함)이다.
+처음 쓰면 생성 방식이 `MANUAL` 이 되고 `TEACHER_EDITED` 가 남는다. 검증은 다시 돌지 않는다. 비운 칸을 다시 비우면 422 `["value"]`.
+
+나누기 · 빼기 · 크기는 놀이 월간 시간표(§9-7, ADR-047)와 **같은 경로 · 같은 본문**이다. 표 크기만 `table_key` 를 더 받는다.
+
+```
+POST   /api/plans/monthly/{id}/cells/{item_id}/split            { "axis": "VERTICAL" | "HORIZONTAL", "expected_revision": 3 }
+DELETE /api/plans/monthly/{id}/cells/{item_id}/split?expected_revision=3
+PUT    /api/plans/monthly/{id}/timetable/splits/{split_id}      { "ratio": 30, "expected_revision": 3 }
+PUT    /api/plans/monthly/{id}/timetable/size                   { "table_key": "special_activity_timetable",
+                                                                  "column_widths": [20, 20, 20, 20, 20],
+                                                                  "height_mm": 21, "expected_revision": 3 }
+```
+
+- 나누기: 원래 칸(id · 글 · 이력)은 위 · 왼쪽, 빈 새 칸이 아래 · 오른쪽에 50:50 으로 생긴다. 열 제목은 나누지 않는다(404 `["item_id"]`).
+- 빼기: 형제 칸이 자리를 채운다. 뺀 칸은 이력과 함께 보관된다.
+- 같은 비율 · 같은 크기를 다시 보내면 200 · 무변경(revision 그대로).
+- 바뀔 때마다 계획안 단위 `TIMETABLE_CHANGED` 이벤트가 남는다. §9-5 목록에는 종류만 보이고 바뀐 내용은 싣지 않는다.
+  표 칸의 칸 단위 이력은 아직 §9-5 에 나오지 않는다(후속).
+- 한글 내려받기는 나눈 모양 · 열 폭 · 높이 그대로 양식 행사 일정 · 특성화 · 특별활동 칸을 다시 그린다.
+
+| code | status | 언제 | `fields` |
+|---|---|---|---|
+| `NOT_FOUND` | 404 | 그 표 칸 · 표 · 경계가 없다 | `["item_id"]` · `["table_key"]` · `["split_id"]` |
+| `VALIDATION_FAILED` | 422 | 다섯 번째 나누기 「한 칸은 네 번까지 나눌 수 있습니다.」 | `["item_id"]` |
+| `VALIDATION_FAILED` | 422 | 열의 마지막 칸 빼기 「열의 마지막 칸은 뺄 수 없습니다. 글을 비워 주세요.」 | `["item_id"]` |
+| `VALIDATION_FAILED` | 422 | 칸 폭 3.5% 미만 「칸이 너무 좁아집니다. 조금 덜 줄여 주세요.」 | `[]` |
+| `VALIDATION_FAILED` | 422 | 비율 10~90 · 열 폭(열 수 · 각 5 이상 · 합 100) · 높이 10~80 밖 | `["ratio"]` |
+| `ALREADY_CONFIRMED` · `STALE_WRITE` | 409 | 위 다섯 API 와 같다 | |
 
 ### 오류 — 다섯 API 공통
 
@@ -2579,8 +2637,9 @@ memo       문자열.  선택.  요청 사항 0~300자(§4 「요청 사항」).
 ### 대소집단 활동 후보 · 칸 나누기 (ADR-054)
 
 새 화면은 생성할 때 `activity_candidates: true`를 보낸다. 기존 요청·계획과 전역 양식 기본값은 그대로다.
-월·연령·승인 분류로 고른 대소집단 근거에서 월간 주제를 검색 순위에 반영하고 유형별로 후보를 최대 10개 만든다.
+월·연령·승인 분류로 고른 대소집단 근거에서 월간 주제를 검색 순위에 반영하고 활동 유형을 하나씩 돌아가며 섞어 후보를 **모두 합쳐** 최대 10개 만든다(유형마다 10개가 아니다 — ADR-054, 2026-11-05). 실내놀이 후보도 영역을 섞어 따로 최대 10개다.
 같은 주 소주제와의 일치를 선택 조건으로 삼지 않는다. 주별 회전·중복 배제는 하지 않아 같은 달의 주들이 같은 후보 근거를 받을 수 있다.
+같은 출처 상한(2)은 후보를 자르지 않고 서로 다른 출처를 앞에 두는 순서로만 쓴다 — 남는 자리는 상한에 걸린 근거로 채운다(ADR-054, 2026-11-05).
 근거가 모자라면 적게 만들고, 교사가 고르기 전 요일 칸은 빈칸이다.
 
 상세 응답에는 아래 목록이 추가된다. 구판은 두 목록이 빈 배열이다.
@@ -2646,8 +2705,8 @@ DELETE /api/plans/weekly/{id}/cells/{item_id}/split?expected_revision=3
 
 ### 삭제 — `DELETE /api/plans/weekly/{id}`
 
-`204`. **확정 전(`DRAFT`)만 지운다** — 반 · 주당 하나라, 지우기가 없으면 마음에 안 드는 첫 초안을 다시 만들
-길이 없다(월간 DELETE 와 같은 이유). 확정본은 409 `GATE_BLOCKED`. 전체 재생성은 없다.
+`204`. **초안 · 확정본 모두 지운다**(ADR-064) — 반 · 주당 하나라, 지우기가 없으면 마음에 안 드는 첫 초안을 다시 만들
+길이 없다(월간 DELETE 와 같은 이유). 확정본을 고치려면 지우고 다시 만든다. 전체 재생성은 없다.
 
 ### 칸 편집 · 칸 재생성 · 확정 — 월간 §9-3 과 같다
 
@@ -2758,10 +2817,13 @@ DELETE /api/plans/weekly/{id}/indoor-plays/{item_id}?expected_revision=N
 POST   /api/plans/monthly/play                                              생성 → 201
 GET    /api/plans/monthly/play?class_id=1                                   목록
 GET    /api/plans/monthly/play/{id}                                         단건
-DELETE /api/plans/monthly/play/{id}                                         초안만 → 204 (revision 없음)
+DELETE /api/plans/monthly/play/{id}                                         초안 · 확정본 → 204 (revision 없음)
 PUT    /api/plans/monthly/play/{id}/cells/{item_id}                         칸 글
 PUT    /api/plans/monthly/play/{id}/activities/{item_id}/content-ids        누리과정 연결 바꾸기
 POST   /api/plans/monthly/play/{id}/activities                              행 추가 (together · free_play)
+PUT    /api/plans/monthly/play/{id}/activities/order                        한 목록 안의 행 순서 (2026-11-05)
+POST   /api/plans/monthly/play/{id}/activities/{item_id}/pick               AI 후보를 문서에 넣기 (ADR-065)
+PUT    /api/plans/monthly/play/{id}/habits/order                            기본생활습관 주 옮기기 (ADR-065)
 DELETE /api/plans/monthly/play/{id}/activities/{item_id}?expected_revision= 행 삭제 → 200
 PUT    /api/plans/monthly/play/{id}/safety-weeks/{week_id}                  안전교육 주별 배치
 POST   /api/plans/monthly/play/{id}/drill-candidates/{item_id}/copy         훈련 후보 복사
@@ -2839,6 +2901,9 @@ memo                  문자열.  선택.  요청 사항 0~300자(§4 「요청 
       "parent_item_id": "item_31" }
   ],
   "free_play": [ { "activity_id": "…", "name": { "…": "Cell" }, "description": { "…": "Cell" }, "content_ids": ["nuri2019.1.2.1"], "parent_item_id": null } ],
+  "direction": { "…": "Cell — 가운데 「예상되는 놀이 방향」. 처음엔 주제를 옮겨 둔다" },
+  "display": { "title": { "…": "Cell — 「11월 놀이계획안」" }, "age": { "…": "Cell — 「만 4·5세」" },
+               "class_name": { "…": "Cell — 반 이름" }, "period": { "…": "Cell — 「2026.11.01 ~ 2026.11.30」" } },
   "habits": [ { "week_id": "2026-09-W1", "entry_id": "…", "cell": { "…": "Cell" } } ],
   "safety_candidates": [
     { "kind": "STATUTORY", "category_id": "…", "topic_group": null, "cell": { "…": "Cell" } }
@@ -2858,6 +2923,9 @@ memo                  문자열.  선택.  요청 사항 0~300자(§4 「요청 
 Cell = { item_id, value, evidence, generation }       §6-1 의 Cell 과 같다.  evidence · generation 의 모양은 §4
 generation            한 번도 쓰지 않은 교사 입력 칸은 null (Core: 쓴 적이 없으면 생성 방식이 없다)
 activity_id           그 행 이름 칸의 item_id 와 같다.  행 주소는 이 값이다
+activity_pick         layout v0.3.0 은 5 — 목록마다 문서에 둘 행 수(확정은 정확히 이만큼).  옛 계획안은 null (ADR-065)
+activity_candidates   AI 후보 이름 칸 id 의 생성 순서(두 목록, 각 8개).  옛 계획안은 []
+activity_pool         문서에 넣지 않은 AI 후보 — together · free_play 와 같은 모양에 section.  고치지 않는다.  새 계획안은 처음에 16개 전부
 content_ids           그 놀이에 지금 걸린 누리과정 내용 ID.  **응답은 0~3개** — 생성한 행은 1~3개이고 행 추가 직후의 빈 행은 0개다.  연결 바꾸기 요청과 확정 조건은 1~3개.  공식 문구는 저장하지 않는다(Reference 에서 읽는다)
                       name.evidence 의 CURRICULUM 은 만들 때의 연결이고 바뀌지 않는다
 parent_item_id        이 행이 부모 연간의 놀이 하나를 이은 것이면 그 놀이명 칸의 item_id.  아니면 null.  name.evidence 에 PARENT_PLAN 이 있을 때만 값이 있다
@@ -2877,30 +2945,34 @@ notices[].code        SAFETY_UNPLACED · SAFETY_BLANK · HABIT_BLANK · HEALTH_B
 
 - **목록** `GET /api/plans/monthly/play?class_id=1` → `{ "items": [ { id, class_id, school_year, month, target_month, status, revision, created_at, confirmed_at } ] }`. 대상 달 오름차순. `class_id` 없이 부르면 내 반과 주인 없는 반만 — §2-2.
 - **단건** `GET /api/plans/monthly/play/{id}` → `200`, 위 응답.
-- **삭제** `DELETE /api/plans/monthly/play/{id}` → `204`. **`expected_revision` 을 받지 않는다**(기존 월간 삭제와 같다). 확정 전만 지우며 `status = 'DRAFT'` 조건이 붙은 한 문장의 DELETE 로 보장한다(지운 행이 0이면 다시 읽어 없음 · 남의 원은 404, 확정은 409). 확정본은 409 `GATE_BLOCKED` 「확정된 계획안은 지울 수 없습니다.」(월간과 같은 이유 — 반 · 달당 하나라 지우기가 없으면 다시 만들 길이 없다).
+- **삭제** `DELETE /api/plans/monthly/play/{id}` → `204`. **`expected_revision` 을 받지 않는다**(기존 월간 삭제와 같다). 초안 · 확정본 모두 지운다(ADR-064 — 확정본을 고치려면 지우고 다시 만든다. 반 · 달당 하나라 지우기가 없으면 다시 만들 길이 없다). 지운 행이 0이면(그 사이 사라짐) 404, 남의 원도 404. 놀이 월간 아래에는 주간이 없어 `IN_USE` 가 없다.
 
 ### 변경 API — 모두 `200` 에 단건 응답 전체
 
 | API | 본문 | 한다 |
 |---|---|---|
-| `PUT .../cells/{item_id}` | `{ "value": "…", "expected_revision": 3 }` | 그 칸의 글만 바꾼다. 어느 칸이든 `item_id` 로 고친다(주제 · 선정 이유 · 놀이 이름 · 설명 · 습관 · 안전 후보 · 건강 · 영양 · 훈련 후보 · 교사 입력 칸). `TEACHER_EDITED` |
+| `PUT .../cells/{item_id}` | `{ "value": "…", "expected_revision": 3 }` | 그 칸의 글만 바꾼다. 어느 칸이든 `item_id` 로 고친다(문서 머리 `display.*`(제목 · 「만 n세」 · 반 이름 · 예상 기간) · 가운데 놀이 방향 `direction` · 주제 · 선정 이유 · 놀이 이름 · 설명 · 습관 · 안전 후보 · 건강 · 영양 · 훈련 후보 · 교사 입력 칸). `TEACHER_EDITED` |
 | `PUT .../activities/{item_id}/content-ids` | `{ "content_ids": ["nuri2019.1.1.1"], "expected_revision": 3 }` | 그 놀이의 누리과정 연결을 바꾼다. 1~3개 · 중복 없음 · 그 계획안의 누리과정 판에 있는 ID. 생성 때 `CURRICULUM` 근거는 그대로이고 `TEACHER_EDITED`(`link_change`) 만 남는다 |
 | `POST .../activities` | `{ "section": "together", "expected_revision": 3 }` | 그 구간 맨 끝에 빈 행을 더한다. `section` 은 `together` · `free_play`. 새 칸은 쓰기 전까지 `generation: null`. `ARRANGEMENT_CHANGED` |
-| `DELETE .../activities/{item_id}?expected_revision=3` | 없음 | 행을 문서에서 뺀다. 이력에는 남고 id 는 다시 쓰지 않는다. 되돌리기 · 순서 바꾸기는 없다. `ARRANGEMENT_CHANGED` |
+| `DELETE .../activities/{item_id}?expected_revision=3` | 없음 | 행을 문서에서 뺀다. 이력에는 남고 id 는 다시 쓰지 않는다. 되돌리기는 없다. **AI 후보(layout v0.3.0)는 `activity_pool` 의 생성 순서 자리로 돌아가 다시 넣을 수 있다**(ADR-065). `ARRANGEMENT_CHANGED` |
+| `POST .../activities/{item_id}/pick` | `{ "expected_revision": 3 }` | `activity_pool` 의 AI 후보를 그 목록 끝에 넣는다(ADR-065). 목록이 이미 `activity_pick`(5)행이면 422 「이미 다 골랐어요. 하나를 빼고 넣어 주세요.」 `["item_id"]`, 후보 목록에 없으면 404. 행 더하기(`POST .../activities`)도 같은 한도다. `ARRANGEMENT_CHANGED` |
+| `PUT .../habits/order` | `{ "item_ids": ["item_7", "item_6", …], "expected_revision": 3 }` | 기본생활습관 칸을 주 사이에서 옮긴다(ADR-065). 습관 칸 `item_id` 를 **빠짐없이 한 번씩** 새 주 순서대로 — 아니면 422 `["item_ids"]`. 칸은 id · 근거 · 이력을 가진 채 통째로 옮긴다. 같은 순서면 `200` · 무변경. `ARRANGEMENT_CHANGED`(scope = `habits`) |
+| `PUT .../activities/order` | `{ "section": "together", "item_ids": ["item_5", "item_3"], "expected_revision": 3 }` | 한 목록(`together` · `free_play`) 안의 행 순서를 바꾼다(Human Decision 2026-11-05, 하민 — 문서 보기에서 끌어 옮기기). `item_ids` 는 그 목록 행의 `activity_id` 를 **빠짐없이 한 번씩** 새 순서대로 — 빠짐 · 중복 · 다른 목록의 행이면 422 `["item_ids"]`. 목록을 건너 옮기지 않는다. 같은 순서면 `200` · 무변경. `ARRANGEMENT_CHANGED`(scope = 목록, 앞뒤 id 순서). 주간 `PUT /api/plans/weekly/{id}/indoor-plays/order` 와 같은 모양이다 |
 | `PUT .../safety-weeks/{week_id}` | `{ "candidate_item_id": "item_41", "expected_revision": 3 }` | 그 주에 둘 안전 후보를 정한다. `null` 이면 비운다. **`candidate_item_id` 키는 필수이고 값만 null 일 수 있다** — 키가 없으면 422. `ARRANGEMENT_CHANGED` |
-| `POST .../drill-candidates/{item_id}/copy` | `{ "expected_revision": 3 }` | 그 훈련 후보를 「소방대피/재난대비」 교사 입력 칸에 복사한다(그 시점의 값과 근거). 칸은 `RULE_ONLY`(`play_monthly.drill_copy`). `CANDIDATE_COPIED` |
+| `POST .../drill-candidates/{item_id}/copy` | `{ "expected_revision": 3 }` | 그 훈련 후보를 「소방대피/재난대비」 교사 입력 칸에 복사한다(그 시점의 값과 근거, 값은 「[주제 label] 문장」 한 줄 — 2026-11-06). 칸은 `RULE_ONLY`(`play_monthly.drill_copy`). `CANDIDATE_COPIED` |
 
 ```
 value                 문자열.  필수.  앞뒤 공백을 털고 0~600자.  빈 값을 받는다(칸을 비운다).  600자 근거는 ADR-046 §6
                       현재 값과 같으면(빈 값 → 빈 값 포함) 422 ["value"]  — 아래
 content_ids           문자열 배열.  필수.  1~3개 · 중복 없음 · 빈 문자열 없음 (스키마)
 section               together | free_play 둘뿐.  필수
+item_ids              문자열 배열.  필수.  순서 바꾸기의 새 순서(그 목록의 activity_id 전부).  형식부터 틀린 id 는 422 ["item_ids"]
 week_id               경로.  YYYY-MM-Wn.  응답 weeks[] 의 주
 ```
 
 - **DELETE 의 revision 은 쿼리 `expected_revision` 이다.** 쿼리는 문자열로 오므로 「문자열 `"3"` 은 422」 규칙은 JSON 본문에만 해당한다. 쿼리는 **1 이상 정수로 바뀌는 값만** 받고 아니면(없음 · `0` · `abc` · `3.5`) 422 `["expected_revision"]` 다. DELETE 본문은 의미가 정해져 있지 않다(ADR-046 근거). 행 삭제는 새 revision 이 필요해 `204` 가 아니라 `200` 이다.
 - **칸 편집의 같은 값은 422 `VALIDATION_FAILED` `["value"]` 다**(월간 §9-3 · 연간 §6-1 과 같다). 서버가 Core 앞에서 공백을 턴 값과 현재 값을 비교한다. 빈 값 → 빈 값도 같은 값이다. Core 는 이 경우 무변경으로 돌려주지만(`play_monthly_lifecycle.py:143-144`) 거절은 API 의 몫이다.
-- **누리과정 연결 · 안전 배치 · 훈련 복사는 같은 입력이면 `200` 이고 쓰기 · 이벤트 · revision 증가가 없다**(연간 고르기 저장과 같은 성격). 같은 연결 · 같은 안전 후보 배치 · 이미 복사한 훈련 후보다. Core 가 계획안을 그대로 돌려주는 곳이다(`play_monthly_lifecycle.py:192-193 · 305-306 · 340-343`). 낡은 revision 이면 이 경우에도 먼저 409 `STALE_WRITE` 다.
+- **누리과정 연결 · 안전 배치 · 훈련 복사 · 행 순서는 같은 입력이면 `200` 이고 쓰기 · 이벤트 · revision 증가가 없다**(연간 고르기 저장과 같은 성격). 같은 연결 · 같은 안전 후보 배치 · 이미 복사한 훈련 후보다. Core 가 계획안을 그대로 돌려주는 곳이다(`play_monthly_lifecycle.py:192-193 · 305-306 · 340-343`). 낡은 revision 이면 이 경우에도 먼저 409 `STALE_WRITE` 다.
 - 재생성은 없다(Core 에 없다 — 질문). 칸 값에 AI 문장 정책은 걸지 않는다(교사 글).
 
 ### 확정 — `POST /api/plans/monthly/play/{id}/confirm`
@@ -2915,9 +2987,9 @@ DRAFT · revision 다름      STALE_WRITE 409.  아무것도 바꾸지 않는다
 이미 CONFIRMED             expected_revision 과 상관없이 200 · 저장된 그대로.  Core 를 다시 부르지 않는다
 ```
 
-- **확정 조건**(Core `confirm_problems`): 주제와 선정 이유가 비지 않고, `together` · `free_play` 에 각각 한 행 이상이며, 모든 행에 이름이 있고 누리과정이 1~3개 걸려 있다. **습관 · 안전 배치 · 건강 · 영양 · 교사 입력 칸이 비어도 확정된다**(`notices` 가 알려 줄 뿐).
+- **확정 조건**(Core `confirm_problems`): 주제와 선정 이유가 비지 않고, `together` · `free_play` 에 각각 한 행 이상(layout v0.3.0 은 정확히 `activity_pick` 행 — ADR-065)이며, 모든 행에 이름이 있고 누리과정이 1~3개 걸려 있다. **습관 · 안전 배치 · 건강 · 영양 · 교사 입력 칸이 비어도 확정된다**(`notices` 가 알려 줄 뿐).
 - 서버는 Core 확정을 부르고 **그 결과 본문 전체를 저장한다**(ADR-048 §4 와 같다 — 상태 칸만 바꾸면 계획안 단위 `CONFIRMED` 이벤트가 본문에 없다).
-- 부족하면 422 `VALIDATION_FAILED` 이고 `fields` 는 위치 키다(초안 — 하민 리뷰). Core 는 `theme: blank` · `rationale: blank` · `together: no rows` · `together:<item_id>: blank name` · `together:<item_id>: n content ids` 로 준다.
+- 부족하면 422 `VALIDATION_FAILED` 이고 `fields` 는 위치 키다(초안 — 하민 리뷰). Core 는 `theme: blank` · `rationale: blank` · `together: no rows` · `together: 4 of 5 rows` · `together:<item_id>: blank name` · `together:<item_id>: n content ids` 로 준다.
 
 ```
 theme · rationale            그 칸이 비었다
@@ -3005,7 +3077,6 @@ together.<item_id>.content_ids   그 행의 누리과정이 1~3개가 아니다
 | `VALIDATION_FAILED` | 422 | 확정 조건 미충족(`play_monthly_incomplete`). 위치 키는 확정 절 | 예: `["theme", "together.item_3"]` |
 | `ALREADY_CONFIRMED` | 409 | 확정 뒤 변경(`InvalidStateTransitionError`). 확정 재호출은 예외 — 200 | `[]` |
 | `STALE_WRITE` | 409 | `expected_revision` 이 서버 값과 다르다(삭제는 쿼리) | `["expected_revision"]` |
-| `GATE_BLOCKED` | 409 | 확정된 계획안을 지우려 했다 | `[]` |
 | `INTERNAL_ERROR` | 500 | 서버가 Core 에 타입을 잘못 넘길 때만 나는 내부 오류: `invalid_item_id` · `invalid_plan_id` · `opaque_actor_required` | `[]` |
 
 ### 구현 경계 (문서 결함이 아니라 구현 검증 항목)

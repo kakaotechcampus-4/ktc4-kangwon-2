@@ -54,7 +54,7 @@ export default function AnnualResult({ id }: { id: number }) {
         ),
     );
   }
-  // 확정 · 확정 취소가 끝나면 응답 계획안으로 바꾸고 key 를 올려 ⑥ · ⑤ 로 다시 그린다(안내는 비운다).
+  // 확정이 끝나면 응답 계획안으로 바꾸고 key 를 올려 ⑥ · ⑤ 로 다시 그린다(안내는 비운다).
   const replacePlan = (fresh: AnnualPlanResponse) => {
     ++lastReload.current; // 늦게 온 다시 불러오기 응답이 확정본을 덮지 못하게.
     setLoaded((cur) => ({
@@ -120,6 +120,8 @@ export default function AnnualResult({ id }: { id: number }) {
   const view = key + ":" + (current?.version ?? 0);
   // 놀이형 문서 제목 「- 햇살반」. 월별 주제형은 위 className(생성 때 남긴 문맥)을 그대로 쓴다.
   const playClassName = plan.format === "PLAY_PROJECT" ? settingsClassName(plan.class_id) : "";
+  // 월별 주제형도 문맥이 없으면(보관함에서 열면) 반 설정 이름 — 한글 내려받기 제목은 늘 반 이름을 단다.
+  const themeClassName = className || settingsClassName(plan.class_id);
   // ⑥ 확정 후. 놀이 중심형은 원래 문서처럼 두 구간씩 한 쪽(봄·여름 / 가을·겨울), 월별 주제형은 한 쪽이다.
   if (plan.status === "CONFIRMED")
     return (
@@ -141,13 +143,11 @@ export default function AnnualResult({ id }: { id: number }) {
             : [
                 <AnnualThemeSheet
                   key="annual"
-                  title={`${className ? className + " " : ""}${plan.school_year}학년도 연간 보육계획안`}
+                  title={`${themeClassName ? themeClassName + " " : ""}${plan.school_year}학년도 연간 보육계획안`}
                   months={plan.months}
                 />,
               ]
         }
-        onUnconfirmed={replacePlan}
-        onConflict={reloadAfterConflict}
       />
     );
   return plan.format === "PLAY_PROJECT" ? (
@@ -164,7 +164,7 @@ export default function AnnualResult({ id }: { id: number }) {
     <ThemeAnnualResult
       key={view}
       plan={plan}
-      className={className}
+      className={themeClassName}
       notice={current?.notice}
       onConflict={reloadAfterConflict}
       onConfirmed={replacePlan}

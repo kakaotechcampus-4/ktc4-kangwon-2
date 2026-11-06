@@ -77,6 +77,12 @@ class RequestAwareMonthlyLlm:
             }
 
         def week_value(section_key: str, index: int) -> dict[str, object]:
+            value = _week_value(section_key, index)
+            if section_key in getattr(request, "detail_section_keys", ()):
+                value["detail"] = f"{index}주에는 친구들과 함께 몸을 움직이며 즐겁게 놀아요."  # ADR-066
+            return value
+
+        def _week_value(section_key: str, index: int) -> dict[str, object]:
             if section_key == "safety_education":
                 # No placement plan: leave it unresolved, never invent content.
                 return safety_value(index) or {

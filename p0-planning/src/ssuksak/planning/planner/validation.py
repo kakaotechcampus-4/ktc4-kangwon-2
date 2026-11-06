@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 import json
+import logging
 import re
 from .v1_guidance import curriculum_source_refs
 
@@ -38,6 +39,8 @@ from .contracts import (
 )
 from .text_policy import normalize_visible_text, visible_text_violations
 from .weekly import unsupported_facts
+
+_log = logging.getLogger(__name__)
 
 
 class ProposalValidationCode(str, Enum):
@@ -947,6 +950,50 @@ def _drill_candidate_issues(
         if value.reference_id is not None:
             fail(ProposalValidationCode.UNKNOWN_REFERENCE_ID, "REFERENCE_FORBIDDEN_FOR_SECTION")
     return issues
+
+
+MAX_ACTIVITY_DETAIL_SENTENCES = 2
+
+
+def sanitize_activity_details(
+    proposal: MonthlyPlanProposal,
+    packet: MonthlyContextPacket,
+    request: MonthlyPlanningRequest,
+) -> MonthlyPlanProposal:
+    """ADR-066: drop (to "") every detail the request did not ask for or that breaks text policy.
+
+    A detail is supplementary: it never becomes a finding, a repair target or a failure.
+    Kept only on a resolved cell of an asked section, within the visible-text policy, at most
+    two sentences, not a verbatim evidence copy and with no fact the input does not hold."""
+    hidden = _hidden_ids(request, packet)
+    evidence_texts = {normalize_visible_text(item.text) for item in packet.grounding_items}
+    facts = _input_facts(request)
+    dropped = 0
+
+    def keep(value: ProposedSectionValue) -> bool:
+        text = value.detail
+        return (
+            value.section_key in request.detail_section_keys
+            and not value.unresolved
+            and bool(value.value.strip())
+            and not visible_text_violations(text, evidence_refs=hidden)
+            and sentence_count(text) <= MAX_ACTIVITY_DETAIL_SENTENCES
+            and normalize_visible_text(text) not in evidence_texts
+            and not unsupported_facts(text, facts)
+        )
+
+    weeks = []
+    for week in proposal.weeks:
+        sections = []
+        for value in week.sections:
+            if value.detail and not keep(value):
+                value = replace(value, detail="")
+                dropped += 1
+            sections.append(value)
+        weeks.append(replace(week, sections=tuple(sections)))
+    if dropped:
+        _log.info("activity_detail_dropped count=%d reason=POLICY", dropped)
+    return replace(proposal, weeks=tuple(weeks))
 
 
 def validate_monthly_proposal(

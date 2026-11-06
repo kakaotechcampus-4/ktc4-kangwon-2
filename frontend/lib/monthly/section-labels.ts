@@ -24,6 +24,9 @@ export const SECTION_LABELS: Record<string, string> = {
   emergency_response: "비상대응",
   drill: "소방대피/재난대비",
   indoor_alternative: "실내 대체활동",
+  // 바깥놀이 · 실내 대체활동의 주별 설명(ADR-066). 문서에는 안 나오고 「칸 편집」 · 변경 이력에만 뜬다.
+  outdoor_play_detail: "바깥놀이 설명",
+  indoor_alternative_detail: "실내 대체활동 설명",
   special_program: "특성화 활동",
   event_schedule: "행사 일정",
   daily_routine: "일과",
@@ -39,3 +42,10 @@ export const SECTION_LABELS: Record<string, string> = {
  */
 export const sectionName = (key: string, label?: string | null): string =>
   SECTION_LABELS[key] ?? label ?? key;
+
+/** 안전교육 칸 「[주제] - 내용」을 「[주제]」 아래 줄에 내용으로 — 놀이 월간과 같은 모양. */
+export const safetyLines = (text: string) => text.replace(/^(\[[^\]\n]+\]) - /, "$1\n");
+
+/** 넣은 훈련 칸의 글 — 서버처럼 「[주제] 문장」 한 줄(2026-11-06). */
+export const drillText = (d: { label: string; cell: { value: string } }) =>
+  `[${d.label}] ${d.cell.value}`;

@@ -126,7 +126,6 @@ class StubApiError extends Error {
 }
 const calls = [];
 let getResult;
-let classesResult = async () => ({ items: [{ id: 7, name: "해님반" }] });
 const sheetStub = (props) => jsx("sheet", props);
 const editorStub = (props) => jsx("editor", props);
 const saved = [];
@@ -150,6 +149,8 @@ const saveStub = (...args) => {
       saved.push(["remove", id]),
       onPlan(queueModule.withoutActivity(plan, id))
     ),
+    pickActivity: (id) => (saved.push(["pick", id]), onPlan(queueModule.withPick(plan, id))),
+    orderHabits: (ids) => saved.push(["habits", ids]),
     editCell: (...a) => (saved.push(["edit", ...a]), !refuse),
     splitCell: (...a) => (saved.push(["split", ...a]), !refuse),
     removeCell: (...a) => (saved.push(["removeCell", ...a]), !refuse),
@@ -170,12 +171,22 @@ const frameModule = {
   default: (p) =>
     jsx("frame", {
       ...p,
-      children: [p.lead, p.status, p.actions, p.notice, p.aside, p.docLabel, p.docHint, p.children],
+      children: [
+        p.lead,
+        p.saved,
+        p.status,
+        p.actions,
+        p.notice,
+        p.aside,
+        p.docLabel,
+        p.docHint,
+        p.children,
+      ],
     }),
   AsideStrip: (p) => jsx("strip", p),
   BUTTON: css,
   tabClass: () => "tab",
-  UNCONFIRM: "unconfirm",
+  pageClass: () => "page",
   POPOVER: "popover",
   BigView: (p) => jsx("bigview", p),
   useSheetZoom: () => ({ percent: 100, tools: null }),
@@ -196,7 +207,7 @@ const frameModule = {
           }),
       ],
     }),
-  // 확정 후 틀 대역 — 문서 쪽 · 다음 단계 · 확정 풀기를 한 나무에.
+  // 확정 후 틀 대역 — 문서 쪽 · 다음 단계 · 안내를 한 나무에.
   PlanDone: (p) =>
     jsx("done", {
       ...p,
@@ -204,7 +215,7 @@ const frameModule = {
         p.title,
         ...p.pages,
         jsx("a", { href: p.next.href, children: p.next.label }),
-        p.unconfirm,
+        p.notes,
       ],
     }),
 };
@@ -217,19 +228,26 @@ function load() {
     "@/components/app/AppHeader": esModule(() => null),
     "@/components/workspace/Workspace.module.css": esModule(css),
     "@/lib/api/client": { ApiError: StubApiError },
-    "@/lib/api/auth": { getMe: async () => ({ center_id: 1 }) },
-    "@/lib/api/classes": { getClasses: () => classesResult() },
     "@/lib/api/playMonthly": {
       getPlayMonthly: (id) => (calls.push(id), getResult()),
-      unconfirmPlayMonthly: (...a) => (calls.push(["unconfirm", ...a]), getResult()),
       downloadPlayMonthlyHwpx: async (...a) => calls.push(["export", ...a]),
     },
     "@/lib/hooks/use-play-monthly-save": { usePlayMonthlySave: saveStub },
     "@/lib/plan-generator/playMonthlyQueue": queueModule,
     "@/lib/plan-generator/playMonthlyTimetable": timetableModule,
     "./PlayCellEditor": esModule(editorStub),
+    "./PlayMonthlyActivityPanel": {
+      ...esModule((props) => jsx("activities", props)),
+      SECTION_LABEL: { together: "함께 하는 활동", free_play: "유아 예상 자유놀이" },
+      sectionCandidates: (plan, s) => [
+        ...plan[s].map((row) => ({ row, picked: true })),
+        ...plan.activity_pool.filter((r) => r.section === s).map((row) => ({ row, picked: false })),
+      ],
+    },
+    "@/components/plan-ui/PlayPickBoard": esModule((props) => jsx("pickboard", props)),
     "./PlayMonthlyConfirm": {
       ...esModule((props) => jsx("ask", props)),
+      BLANK_LEAD: "남은 빈칸이 있어요. 비운 채로도 확정할 수 있어요.",
       BlankRows: (p) => jsx("blank-rows", p),
       PanelOverview: (p) => jsx("overview", p),
     },
@@ -242,7 +260,6 @@ function load() {
     "./PlayMonthlyDrillPanel": esModule((props) => jsx("drill", props)),
     "./PlayMonthlyRowRemove": esModule((props) => jsx("remove", props)),
     "./PlayMonthlyConfirmBar": esModule(barStub),
-    "./UnconfirmButton": esModule((props) => jsx("unconfirm", props)),
     "./AnnualFrame": frameModule,
     "next/link": linkStub,
     "@/components/app/compact-shell": shellModule,
@@ -271,39 +288,16 @@ async function open(id, result) {
 }
 
 // ---- 읽기 화면 (View) ----
-test("계획안을 읽어 반 이름과 함께 문서 용지에 넘기고 초안 배지를 보인다", async () => {
+test("계획안을 읽어 문서 용지에 넘기고 초안 배지를 보인다 — 반 이름은 문서 머리 칸(display)에서 온다", async () => {
   const plan = fixture();
   const { View, h } = await open(plan.id, async () => plan);
   assert.deepEqual(calls, [plan.id]);
   const tree = await h.settle(View, { id: plan.id });
   const sheet = all(tree).find((n) => n.type === "sheet");
-  assert.equal(sheet.props.className, "해님반");
+  assert.equal(sheet.props.className, undefined);
   assert.equal(sheet.props.plan.id, plan.id);
   // 초안 표시는 「작성 중」 없이 저장 상태만(11-03 하민).
   assert.doesNotMatch(text(tree), /작성 중|확정됨/);
-});
-
-test("반 이름 조회가 끝나지 않아도 문서는 먼저 보이고, 나중에 오면 채워진다", async () => {
-  const plan = fixture();
-  let arrive;
-  classesResult = () => new Promise((done) => (arrive = done));
-  const { View, h } = await open(plan.id, async () => plan);
-  const props = { id: plan.id };
-  const sheetOf = (tree) => all(tree).find((n) => n.type === "sheet");
-  try {
-    assert.equal(sheetOf(h.render(View, props)).props.plan.id, plan.id);
-    assert.equal(sheetOf(h.render(View, props)).props.className, "");
-    arrive({ items: [{ id: 7, name: "해님반" }] });
-    await new Promise((done) => setTimeout(done, 0));
-    assert.equal(sheetOf(h.render(View, props)).props.className, "해님반");
-  } finally {
-    classesResult = async () => ({ items: [{ id: 7, name: "해님반" }] });
-  }
-  // 실패하면 반 이름 칸만 빈다.
-  classesResult = async () => Promise.reject(new Error("x"));
-  const failed = await open(plan.id, async () => plan);
-  assert.equal(sheetOf(await failed.h.settle(failed.View, props)).props.className, "");
-  classesResult = async () => ({ items: [{ id: 7, name: "해님반" }] });
 });
 
 test("확정본이면 Ⓜ4 — 다음 달 월간으로 가고, 한글 내보내기는 있고 확정 · 이력 · 되돌리기 단추는 없다", async () => {
@@ -325,17 +319,11 @@ test("확정본이면 Ⓜ4 — 다음 달 월간으로 가고, 한글 내보내�
   );
 });
 
-test("확정본의 [확정 취소]는 그 revision 으로 풀고 응답을 넘긴다 · 상위가 바뀌면 한 줄 안내", async () => {
+test("확정본에는 [확정 취소]가 없다(ADR-064) · 상위가 바뀌면 한 줄 안내", async () => {
   const done = fixture(true);
-  const { View, h, tree } = await open(done.id, async () => ({ ...done, parent_changed: true }));
+  const { tree } = await open(done.id, async () => ({ ...done, parent_changed: true }));
   assert.equal(withText(tree, "span", "상위 계획안이 바뀌었어요").length, 1);
-  const button = all(tree).find((n) => n.type === "unconfirm");
-  const draft = { ...done, status: "DRAFT", confirmed_at: null, revision: done.revision + 1 };
-  getResult = async () => draft;
-  button.props.onDone(await button.props.run());
-  assert.deepEqual(calls.at(-1), ["unconfirm", done.id, done.revision]);
-  // 이 대역은 key 로 다시 마운트하지 않으므로 초안 화면은 브라우저 확인 몫이다 — 여기서는 다시 그리기가 터지지 않는지만 본다.
-  assert.ok(h.render(View, { id: done.id }));
+  assert.equal(withText(tree, "button", "확정 취소").length, 0);
 });
 
 test("확정 바는 계획안 id 로 달고 저장 훅의 함수를 그대로 넘긴다 · 변경 이력 버튼은 없다", async () => {
@@ -399,6 +387,89 @@ test("놀이 행을 고르면 이어진 연간 놀이를 보이고 누리과정 
 
 const node = (tree, type) => all(tree).filter((n) => n.type === type);
 
+test("AI 후보에서 고르는 계획안 — 고르기 칸은 「AI 후보」 패널, 넣기 · 목록 바꾸기 · 확정 안내 (ADR-065)", async () => {
+  const plan = fixture(false, () => {
+    resetTestData();
+    const made = addPlayMonthly(7, false, 11, [], true);
+    return findPlayMonthly(made.id);
+  });
+  assert.deepEqual(
+    [plan.together.length, plan.activity_pool.length, plan.activity_pick],
+    [0, 16, 5],
+  );
+  const { tree, View, h } = await open(plan.id, async () => plan);
+  const props = { id: plan.id };
+  saved.length = 0;
+  // 고를 수가 모자라면 연간 「놀이 고르기」처럼 고르기 판부터 — 함께 하는 활동 → 자유놀이 → 문서.
+  let [board] = node(tree, "pickboard");
+  assert.equal(board.props.subject, "함께 하는 활동");
+  assert.equal(board.props.candidates.length, 8);
+  assert.equal(board.props.nextLabel, "유아 예상 자유놀이 고르러 가기 →");
+  const one = board.props.candidates[0].key;
+  board.props.onToggle(one);
+  [board] = node(h.render(View, props), "pickboard");
+  assert.deepEqual(board.props.picked, [one]);
+  globalThis.document ??= { getElementById: () => null }; // 빼고 나면 머리말로 포커스
+  board.props.onRemove(one, 0);
+  assert.deepEqual(saved.splice(0), [
+    ["pick", one],
+    ["remove", one],
+  ]);
+  node(h.render(View, props), "pickboard")[0].props.onNext();
+  [board] = node(h.render(View, props), "pickboard");
+  assert.equal(board.props.subject, "유아 예상 자유놀이");
+  assert.equal(board.props.onFinishEarly, undefined);
+  board.props.onNext();
+  let view = h.render(View, props);
+  assert.equal(node(view, "pickboard").length, 0);
+  tabTo(view, "AI 후보");
+  assert.match(text(h.render(View, props)), /함께 하는 활동 · 자유놀이 · 안전교육/);
+  // 문서의 「AI 후보에서 고르기」 칸도 고르기 판을 그 목록으로 연다.
+  pick(h.render(View, props), "pick:together");
+  [board] = node(h.render(View, props), "pickboard");
+  assert.equal(board.props.subject, "함께 하는 활동");
+  const first = plan.activity_pool[0].activity_id;
+  board.props.onToggle(first);
+  assert.deepEqual(saved.pop(), ["pick", first]);
+  node(h.render(View, props), "pickboard")[0].props.onFinishEarly();
+  // 고른 AI 후보 행을 고르면 「AI 후보」에 같은 목록 패널이 뜨고, 되돌릴 수 없는 「이 활동 빼기」는 없다.
+  pick(h.render(View, props), first);
+  view = h.render(View, props);
+  assert.equal(node(view, "remove").length, 0);
+  assert.match(text(view), /「AI 후보」에서 \[빼기\]/);
+  tabTo(view, "AI 후보");
+  const [panel] = node(h.render(View, props), "activities");
+  assert.equal(panel.props.section, "together");
+  assert.equal(panel.props.plan.together.length, 1);
+  panel.props.onRemove(first);
+  assert.deepEqual(saved.pop(), ["remove", first]);
+  panel.props.onPick(first);
+  assert.deepEqual(saved.pop(), ["pick", first]);
+  // 5개가 안 되면 확정 창이 고르기를 먼저 말하고, 남은 빈칸 목록 맨 앞에 고르기 줄이 있다.
+  view = h.render(View, props);
+  const bar = node(view, "confirmbar")[0];
+  assert.match(bar.props.ask, /5개씩 골라야 확정할 수 있어요/);
+  const rows = bar.props.blanks(() => {}).props.rows;
+  assert.deepEqual(
+    rows.slice(0, 2).map((r) => [r.key, r.count]),
+    [
+      ["pick:together", 4],
+      ["pick:free_play", 5],
+    ],
+  );
+  // 고르기 줄로 가면 고르기 판이 그 목록으로 열린다.
+  rows[1].onJump();
+  assert.equal(node(h.render(View, props), "pickboard")[0].props.subject, "유아 예상 자유놀이");
+  node(h.render(View, props), "pickboard")[0].props.onNext();
+  view = h.render(View, props);
+  // 기본생활습관 끌기 — 두 주의 칸을 맞바꾼 순서로 저장한다.
+  const ids = plan.habits.map((hb) => hb.cell.item_id);
+  const sheet = node(view, "sheet")[0];
+  sheet.props.onMoveHabit(plan.habits[0].week_id, plan.habits[2].week_id);
+  assert.deepEqual(saved.pop(), ["habits", [ids[2], ids[1], ids[0], ids[3]]]);
+  assert.equal(typeof sheet.props.onPlaceSafety, "function");
+});
+
 const drillCell = (plan) => plan.teacher_inputs.find((t) => t.key === "fire_disaster_drill").cell;
 
 test("특별활동 칸을 고르면 나누기 · 빼기 단추가 훅에 잇고, 글이 든 칸은 빼기 전에 묻는다", async () => {
@@ -420,6 +491,14 @@ test("특별활동 칸을 고르면 나누기 · 빼기 단추가 훅에 잇고,
   const filled = plan.special_activity[0].children[0].children[0].cell.item_id;
   pick(view, filled);
   view = h.render(View, props);
+  // 나뉜 칸은 그 칸 몫의 크기를 5씩 바꾼다 — 첫 갈래면 비율이 그대로 는다.
+  const parent = plan.special_activity[0].children[0];
+  const what = parent.axis === "VERTICAL" ? "높이" : "너비";
+  assert.ok(text(view).includes(`이 칸 ${what}−${parent.ratio}%+`));
+  all(view)
+    .find((n) => n.props?.["aria-label"] === `이 칸 ${what} 키우기`)
+    .props.onClick();
+  assert.deepEqual(saved.pop(), ["ratio", parent.split_id, parent.ratio + 5]);
   button(view, "이 칸 빼기").props.onClick();
   view = h.render(View, props);
   const ask = all(view).find((n) => n.type === "ask");
@@ -455,6 +534,10 @@ test("안전교육 칸은 그 주 후보 패널, 소방대피 칸은 훈련 패�
     ["safety", weekId, null],
     ["copy", cand],
   ]);
+  // 저장 상태는 연간 · 월간 · 주간 모두 형식 표시(「놀이 중심형」) 옆(saved)에 — 확정 버튼 옆이 아니다.
+  const frame = all(h.render(View, props)).find((n) => n.type === "frame");
+  assert.ok("saved" in frame.props);
+  assert.ok(!all(frame.props.actions).some((n) => n.props?.role === "status"));
   // 두면 화면 계획안에 입혀진다.
   pick(h.render(View, props), "safety:" + weekId);
   node(h.render(View, props), "safety")[0].props.onPlace(weekId, cand);
@@ -462,6 +545,16 @@ test("안전교육 칸은 그 주 후보 패널, 소방대피 칸은 훈련 패�
     node(h.render(View, props), "safety")[0].props.plan.safety_weeks[0].candidate_item_id,
     cand,
   );
+  // 문서에서 끌어 빈 주로 옮기면 그 주에 두고 원래 주는 비운다(두 주 맞바꾸기).
+  saved.length = 0;
+  const other = plan.safety_weeks[1].week_id;
+  all(h.render(View, props))
+    .find((n) => n.type === "sheet")
+    .props.onMoveSafety(weekId, other);
+  assert.deepEqual(saved, [
+    ["safety", other, cand],
+    ["safety", weekId, null],
+  ]);
   // 행을 고르면 그 행 빼기 하나, 구역 이름이 붙는다.
   const free = plan.free_play.at(-1);
   pick(h.render(View, props), free.name.item_id);
@@ -578,13 +671,24 @@ test("브라우저 저장소를 쓰지 않는다", () => {
 });
 
 // ---- 문서 용지 (Sheet) ----
+// 용지가 쓰는 끌기 도구 · 안전교육 머리 이름(진짜 모듈).
+const sheetMods = {
+  "./rowDrag": compile("../components/plan-generator/rowDrag.ts", {
+    "@/lib/appZoom": { appZoom: () => 1 },
+  }),
+  "./PlayMonthlySafetyPanel": compile(
+    "../components/plan-generator/PlayMonthlySafetyPanel.tsx",
+    {},
+  ),
+};
 function sheetOf(plan, more = {}) {
   const h = harness();
   const { default: Sheet } = compile("../components/plan-generator/PlayMonthlySheet.tsx", {
     react: { ...h.react, useEffect: () => {} },
     "@/lib/plan-generator/playMonthlyTimetable": timetableModule,
+    ...sheetMods,
   });
-  return h.render(Sheet, { plan, className: "해님반", ...more });
+  return h.render(Sheet, { plan, ...more });
 }
 const rowsOf = (tree, tag, th) =>
   all(tree).filter((n) => n.type === "tr" && withText(n, "th", th).length);
@@ -605,13 +709,27 @@ test("칸의 빈 곳(td)을 눌러도 그 칸 하나의 글을 고른다", () =>
   assert.equal(clicks, 1);
 });
 
-test("머리표 — 주제 · 기간 · 만 나이 · 반 이름 · 주제 선정 이유", () => {
-  const plan = fixture();
-  const t = text(sheetOf(plan));
+test("머리표 — 제목 · 만 나이 · 반 이름 · 기간은 문서 머리 칸(display), 가운데는 놀이 방향 칸이고 모두 누르는 칸이다", () => {
+  const plan = fixture(false, (p) => {
+    p.display.class_name.value = "해님반";
+    p.display.period.value = "2026.11.01 ~ 2026.11.30";
+    p.direction.value = "길에서 만난 봄";
+    return p;
+  });
+  const tree = sheetOf(plan, { onSelect: () => {} });
+  const t = text(tree);
   assert.match(t, /11월 놀이계획안/);
-  assert.match(t, /예상 기간\d{4}\.\d{2}\.\d{2} ~ \d{4}\.\d{2}\.\d{2}/);
-  for (const part of ["놀이 주제봄 길을 걸어요", "만 4·5세 해님반", "주제선정이유봄에는 바깥에서"])
+  assert.ok(t.includes("예 상 기 간2026.11.01 ~ 2026.11.30")); // 머리칸은 한글 양식 글 그대로
+  for (const part of ["놀 이 주 제봄 길을 걸어요", "만 4·5세해님반", "주제선정이유봄에는 바깥에서"])
     assert.ok(t.includes(part), part);
+  assert.equal(text(all(tree).find((n) => n.props?.rowSpan === 2)), "길에서 만난 봄");
+  const ids = new Set(
+    all(tree)
+      .filter((n) => n.props?.role === "button")
+      .map((n) => n.props["data-cell"]),
+  );
+  for (const c of [plan.direction, ...Object.values(plan.display)])
+    assert.ok(ids.has(c.item_id), c.value);
 });
 
 test("놀이 방향 — 함께 5행 · 가운데 주제 · 자유놀이 5행", () => {
@@ -624,7 +742,7 @@ test("놀이 방향 — 함께 5행 · 가운데 주제 · 자유놀이 5행", (
   assert.equal(text(all(tree).find((n) => n.props?.rowSpan === 2)), "봄 길을 걸어요");
 });
 
-test("주별 표 — 열은 응답 weeks 4개와 날짜, 습관 칸, 안전교육은 둔 주만 글이 있다", () => {
+test("주별 표 — 열은 응답 weeks 4개와 날짜, 습관 칸, 안전교육은 둔 주만 「[영역]」 다음 줄에 글이 있다", () => {
   const plan = fixture(false, (p) => {
     p.safety_weeks[1].candidate_item_id = p.safety_candidates[0].cell.item_id;
     return p;
@@ -642,7 +760,134 @@ test("주별 표 — 열은 응답 weeks 4개와 날짜, 습관 칸, 안전교�
     ["합성 습관 1", "합성 습관 2", "합성 습관 3", "합성 습관 4"],
   );
   const safety = all(rowsOf(tree, "tr", "안전교육")[0]).filter((n) => n.type === "td");
-  assert.deepEqual(safety.map(text), ["", "성폭력 예방 약속을 함께 알아보아요", "", ""]);
+  assert.deepEqual(safety.map(text), [
+    "",
+    "[성폭력 예방]\n성폭력 예방 약속을 함께 알아보아요",
+    "",
+    "",
+  ]);
+  // 확정본 · 크게 보기(onMoveSafety 없음)에는 끌기 손잡이가 없다.
+  assert.equal(all(tree).filter((n) => n.props?.draggable).length, 0);
+});
+
+test("안전교육 칸 끌기 — 넣은 주에만 손잡이, 다른 주 칸에 놓으면 두 주를 넘긴다", () => {
+  const plan = fixture(false, (p) => {
+    p.safety_weeks[1].candidate_item_id = p.safety_candidates[0].cell.item_id;
+    return p;
+  });
+  const moves = [];
+  const tree = sheetOf(plan, { onSelect: () => {}, onMoveSafety: (...a) => moves.push(a) });
+  const tds = all(tree).filter((n) => n.props?.["data-safety-week"]);
+  assert.equal(all(tree).filter((n) => n.props?.draggable).length, 1);
+  globalThis.CSS ??= { escape: (v) => v };
+  const drop = (td, from) =>
+    td.props.onDrop({
+      preventDefault() {},
+      currentTarget: { dataset: {} },
+      dataTransfer: { getData: () => from },
+    });
+  drop(tds[3], plan.safety_weeks[1].week_id);
+  drop(tds[1], plan.safety_weeks[1].week_id); // 제자리
+  drop(tds[2], "다른 곳에서 끈 글"); // 주가 아니면 무시
+  assert.deepEqual(moves, [[plan.safety_weeks[1].week_id, plan.safety_weeks[3].week_id]]);
+});
+
+test("습관 칸 끌기 · 안전 후보 카드 놓기 · 고르기 칸 — 다른 줄에서 끈 것은 받지 않는다", () => {
+  const plan = fixture();
+  const moves = [];
+  const placed = [];
+  const tree = sheetOf(
+    { ...plan, activity_pick: 5, together: plan.together.slice(0, 2), free_play: [] },
+    {
+      onSelect: () => {},
+      onMoveSafety: (...a) => moves.push(["safety", ...a]),
+      onMoveHabit: (...a) => moves.push(["habit", ...a]),
+      onPlaceSafety: (...a) => placed.push(a),
+    },
+  );
+  globalThis.CSS ??= { escape: (v) => v };
+  const drop = (td, from) =>
+    td.props.onDrop({
+      preventDefault() {},
+      currentTarget: { dataset: {} },
+      dataTransfer: { getData: () => from },
+    });
+  const habits = all(tree).filter((n) => n.props?.["data-habit-week"]);
+  const safety = all(tree).filter((n) => n.props?.["data-safety-week"]);
+  const [w0, w2] = [plan.weeks[0].week_id, plan.weeks[2].week_id];
+  drop(habits[2], "habit:" + w0);
+  drop(habits[2], w0); // 안전교육 칸에서 끈 것
+  drop(safety[2], "habit:" + w0); // 습관 칸에서 끈 것
+  const cand = plan.safety_candidates[1].cell.item_id;
+  drop(safety[2], "safety-candidate:" + cand);
+  drop(habits[1], "safety-candidate:" + cand); // 습관 줄은 후보를 받지 않는다
+  assert.deepEqual(moves, [["habit", w0, w2]]);
+  assert.deepEqual(placed, [[w2, cand]]);
+  // 모자란 목록은 「AI 후보에서 고르기」 칸을 단다(다듬는 동안만).
+  const hints = all(tree)
+    .filter((n) => n.props?.["data-cell"]?.startsWith("pick:"))
+    .map((n) => [n.props["data-cell"], text(n)]);
+  assert.deepEqual(hints, [
+    ["pick:together", "+ AI 후보에서 3개 더 고르기"],
+    ["pick:free_play", "+ AI 후보에서 고르기"],
+  ]);
+});
+
+test("안전 후보 패널 — 카드는 끌 수 있고, 넣은 주 줄을 누르거나 카드를 놓으면 그 주로", () => {
+  const plan = fixture();
+  const Panel = sheetMods["./PlayMonthlySafetyPanel"].default;
+  const weeks = [];
+  const placed = [];
+  const tree = resolve(
+    Panel({
+      plan,
+      weekId: plan.weeks[0].week_id,
+      onPlace: (...a) => placed.push(a),
+      onWeek: (w) => weeks.push(w),
+      disabled: false,
+    }),
+  );
+  const cand = plan.safety_candidates[0].cell.item_id;
+  const card = all(tree).find((n) => n.props?.["data-candidate"] === cand);
+  assert.equal(card.props.draggable, true);
+  let data;
+  card.props.onDragStart({ dataTransfer: { setData: (_, v) => (data = v) } });
+  assert.equal(data, "safety-candidate:" + cand);
+  const rows = all(tree).filter((n) => n.props?.["data-act"] === "week");
+  assert.equal(rows.length, plan.weeks.length);
+  rows[1].props.onClick();
+  assert.deepEqual(weeks, [plan.weeks[1].week_id]);
+  const li = all(tree).filter((n) => n.type === "li" && n.props.onDrop);
+  li[3].props.onDrop({
+    preventDefault() {},
+    currentTarget: { dataset: {} },
+    dataTransfer: { getData: () => data },
+  });
+  assert.deepEqual(placed, [[plan.weeks[3].week_id, cand]]);
+  // [넣기]는 그 주에 두고 다음 주로 넘어간다. 놓기(위)는 주를 바꾸지 않는다.
+  const last = plan.safety_candidates.at(-1).cell.item_id;
+  all(all(tree).find((n) => n.props?.["data-candidate"] === last))
+    .find((n) => n.props?.["data-act"] === "place")
+    .props.onClick();
+  assert.deepEqual(placed.at(-1), [plan.weeks[0].week_id, last]);
+  assert.deepEqual(weeks.at(-1), plan.weeks[1].week_id);
+  // 넣은 후보는 후보 목록에서 숨고(위 주 줄에만 보인다), 남은 후보는 원래 순서.
+  const sorted = {
+    ...plan,
+    safety_weeks: plan.weeks.map((w, i) => ({
+      week_id: w.week_id,
+      candidate_item_id: i === 0 ? last : i === 1 ? cand : null,
+    })),
+  };
+  const order = all(
+    resolve(Panel({ plan: sorted, weekId: plan.weeks[1].week_id, onPlace() {}, disabled: false })),
+  )
+    .filter((n) => n.props?.["data-candidate"])
+    .map((n) => n.props["data-candidate"]);
+  assert.deepEqual(
+    order,
+    plan.safety_candidates.map((c) => c.cell.item_id).filter((id) => id !== cand && id !== last),
+  );
 });
 
 test("소방대피/재난대비는 가로로 합치고, 건강 · 영양 칸이 있다", () => {
@@ -650,6 +895,22 @@ test("소방대피/재난대비는 가로로 합치고, 건강 · 영양 칸이 
   const drill = all(rowsOf(tree, "tr", "소방대피")[0]).find((n) => n.type === "td");
   assert.equal(drill.props.colSpan, 4);
   assert.equal(text(drill), "");
+  // 훈련 글의 [..] 는 건강 · 영양 머리처럼 굵게.
+  const drilled = sheetOf(
+    fixture(false, (p) => {
+      p.teacher_inputs.find((t) => t.key === "fire_disaster_drill").cell.value =
+        "[화재대피] 비상벨 [지진] 책상 밑";
+      return p;
+    }),
+  );
+  const cell = all(rowsOf(drilled, "tr", "소방대피")[0]).find((n) => n.type === "td");
+  assert.deepEqual(
+    all(cell)
+      .filter((n) => n.type === "b")
+      .map(text),
+    ["[화재대피]", "[지진]"],
+  );
+  assert.equal(text(cell), "[화재대피] 비상벨 [지진] 책상 밑");
   const hn = text(rowsOf(tree, "tr", "건강·영양교육")[0]);
   assert.ok(hn.includes("[건강]합성 건강 1") && hn.includes("[영양]합성 영양 1"));
 });
@@ -713,9 +974,11 @@ test("문서의 칸을 누르면 그 칸이 강조되고 옆 패널에 빈 값�
   const props = { id: plan.id };
   const sheet = () => all(h.render(View, props)).find((n) => n.type === "sheet");
   assert.equal(sheet().props.selected, null);
-  // 고르기 전 패널은 채운 정도 · 남은 빈칸 요약이다.
-  const overview = all(h.render(View, props)).find((n) => n.type === "overview");
-  assert.ok(overview.props.total >= overview.props.filled);
+  // 고르기 전 패널은 한 줄 안내뿐 — 채운 칸 수 · 고치는 법은 없다.
+  const first = h.render(View, props);
+  assert.equal(all(first).filter((n) => n.type === "overview").length, 0);
+  assert.match(text(first), /문서에서 고칠 칸을 눌러 주세요/);
+  assert.doesNotMatch(text(first), /고치는 법|개 중/);
   sheet().props.onSelect(plan.theme.item_id);
   const tree = h.render(View, props);
   assert.equal(all(tree).find((n) => n.type === "sheet").props.selected, plan.theme.item_id);
@@ -790,10 +1053,10 @@ test("문서 용지 — onSelect 가 있으면 칸이 누르는 칸이 되고 �
   const { default: Sheet } = compile("../components/plan-generator/PlayMonthlySheet.tsx", {
     react: { ...h.react, useEffect: () => {} },
     "@/lib/plan-generator/playMonthlyTimetable": timetableModule,
+    ...sheetMods,
   });
   const tree = h.render(Sheet, {
     plan,
-    className: "",
     selected: plan.theme.item_id,
     onSelect: (id) => picked.push(id),
   });
@@ -992,9 +1255,28 @@ function openV1Editor(findings = [], setup = (p) => p) {
     safety_candidates: [],
     safety_weeks: [],
     drill_candidates: [],
+    teacher_tables: [
+      {
+        table_key: "event_schedule",
+        label: "행사 일정",
+        titles: [],
+        columns: [
+          {
+            cell: { item_id: "ev1", value: "", evidence: [], generation: null },
+            split_id: null,
+            axis: null,
+            ratio: null,
+            children: [],
+          },
+        ],
+        column_widths: [100],
+        height_mm: 12,
+      },
+    ],
     notices: [],
   });
   const sent = [];
+  const tableCalls = [];
   const edits = [];
   const placed = [];
   const copied = [];
@@ -1081,12 +1363,16 @@ function openV1Editor(findings = [], setup = (p) => p) {
         return server;
       },
       confirmMonthlyPlan: async () => server,
+      splitMonthlyTableCell: async (...a) => (tableCalls.push(["split", ...a]), server),
+      removeMonthlyTableCell: async (...a) => (tableCalls.push(["remove", ...a]), server),
+      resizeMonthlyTable: async (...a) => (tableCalls.push(["size", ...a]), server),
       regenerateMonthlyCell: async () => server,
       getMonthlyPlanAudit: (...a) => audit(...a),
       downloadMonthlyHwpx: () => {},
     },
     "@/lib/api/plans": { isSaveConflict: (e) => e.status === 409 },
-    "@/lib/monthly/section-labels": { sectionName: (key) => key },
+    "@/lib/monthly/section-labels": { sectionName: (key) => key, safetyLines: (t) => t },
+    "@/lib/monthly/findings": compile("../lib/monthly/findings.ts", {}),
     "@/lib/hooks/use-hwpx-download": { useHwpxDownload: () => ({ exporting: false }) },
     "@/components/plan-generator/PlayCellEditor": esModule((p) => {
       const clear = () => {
@@ -1113,9 +1399,12 @@ function openV1Editor(findings = [], setup = (p) => p) {
         },
       });
     }),
-    "@/components/plan-generator/PlayMonthlySafetyPanel": esModule((props) => jsx("safety", props)),
+    "@/components/plan-generator/PlayMonthlySafetyPanel": {
+      ...esModule((props) => jsx("safety", props)),
+      DROP: "drop",
+      dropTo: (onDrop) => ({ onDrop }),
+    },
     "@/components/plan-generator/PlayMonthlyDrillPanel": esModule(DrillPanel),
-    "@/components/plan-generator/UnconfirmButton": esModule((props) => jsx("unconfirm", props)),
     "@/components/plan-generator/PlayMonthlySheet": {
       Cell: (props) => jsx("cell", props),
       Paper: (props) => jsx("paper", props),
@@ -1129,6 +1418,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
     },
     "@/components/plan-generator/PlayMonthlyConfirm": {
       ...esModule((p) => jsx("ask", p)),
+      BLANK_LEAD: "남은 빈칸이 있어요. 비운 채로도 확정할 수 있어요.",
       BlankRows: (p) => jsx("blank-rows", p),
       PanelOverview: (p) => jsx("overview", p),
     },
@@ -1136,6 +1426,19 @@ function openV1Editor(findings = [], setup = (p) => p) {
     "@/components/app/compact-shell": shellModule,
     "./WorkspaceUI": { ws: css },
     "./useCellHistory": compile("../components/workspace/useCellHistory.ts", { react: h.react }),
+    "./MonthlyTeacherTables": compile("../components/workspace/MonthlyTeacherTables.tsx", {
+      "@/lib/plan-generator/playMonthlyTimetable": compile(
+        "../lib/plan-generator/playMonthlyTimetable.ts",
+        {},
+      ),
+      "@/components/plan-generator/PlayMonthlySheet": {
+        Cell: (props) => jsx("cell", props),
+        Band: (props) => jsx("div", props),
+        LINE: "line",
+        hu: (n) => n,
+        TEACHER_HINT: "hint",
+      },
+    }),
   });
   const props = {
     plan: server,
@@ -1152,6 +1455,7 @@ function openV1Editor(findings = [], setup = (p) => p) {
     .props.onSelect("c1");
   return {
     sent,
+    tableCalls,
     edits,
     placed,
     copied,
@@ -1200,12 +1504,44 @@ test("v1 — 되돌리기 · 다시 하기는 칸 글을 다시 저장하고, �
   view.editor().onDraft(" ");
   press("확정하기");
   const [ask] = node(view.render(), "ask");
-  assert.match(ask.props.message, /빈칸이 남아 있어요/);
-  // 근거가 없어 비운 칸도 있어 막지 않는다 — 같은 상자에서 바로 확정한다.
+  assert.equal(ask.props.title, "월간계획안을 확정할까요?");
+  // 근거가 없어 비운 칸도 있어 막지 않는다 — 같은 상자에서 바로 확정한다. 빈칸 안내는 목록 위 한 줄.
   assert.equal(ask.props.yes, "확정하기");
   const [rows] = node(view.render(), "blank-rows");
+  assert.match(rows.props.lead, /비운 채로도 확정할 수 있어요/);
   assert.equal(rows.props.rows.length, 1);
   assert.equal(rows.props.rows[0].count, 1);
+});
+
+test("v1 — 행사 일정 칸을 눌러 쓰면 그 칸을 저장하고, 나누기 · 높이는 표 API 로 보낸다", async () => {
+  const view = openV1Editor();
+  view.pick("ev1");
+  assert.equal(view.editor().label, "행사 일정");
+  view.editor().onSave("운동회");
+  await view.tick();
+  view.waits.shift().ok();
+  await view.tick();
+  assert.deepEqual(view.edits.at(-1), [1, "ev1", "운동회", 1]);
+  const press = (name) => withText(view.render(), "button", name)[0].props.onClick();
+  // 열의 마지막 칸은 뺄 수 없다.
+  assert.ok(withText(view.render(), "button", "이 칸 빼기")[0].props.disabled);
+  press("위아래로 나누기");
+  await view.tick();
+  await view.tick();
+  view.pick("ev1");
+  withText(view.render(), "button", "+")
+    .find((b) => b.props["aria-label"] === "표 높이 키우기")
+    .props.onClick();
+  await view.tick();
+  await view.tick();
+  assert.deepEqual(
+    view.tableCalls.map((c) => c.slice(0, 3)),
+    [
+      ["split", 1, "ev1"],
+      ["size", 1, "event_schedule"],
+    ],
+  );
+  assert.deepEqual(view.tableCalls[1][3], { column_widths: [100], height_mm: 17 });
 });
 
 test("v1 — 안전교육 검증 안내는 영어 서버 문구 대신 한국어로 보인다", () => {
@@ -1356,6 +1692,7 @@ test("v1 — 훈련 칸을 고르면 「AI 후보」에 훈련 후보가 보이�
   const tree = view.render();
   assert.equal(withText(tree, "h2", "넣을 문구 고르기").length, 1);
   assert.equal(drillButtons(tree)[0].props["aria-label"], "소방대피/재난대비 칸에 넣기: 화재");
+  assert.equal(node(tree, "cell").find((c) => c.props.id === "drill_cell").props.strong, true);
   view.props.plan = { ...view.props.plan, drill_candidates: [] };
   view.pick("drill_cell");
   // 넣을 후보가 하나도 없는 양식이면 빈 「AI 후보」 탭 자체를 두지 않는다.
@@ -1493,7 +1830,9 @@ test("v1 — 후보가 있는 계획은 패널 · 안내를 보이고(확정본�
   assert.equal(node(confirmed, "safety").length, 0);
   const [confirmedCell] = node(rowsOf(confirmed, "tr", "safety_education")[0], "cell");
   assert.equal(confirmedCell.props.value, "[교통안전] - 횡단보도 건너기");
+  assert.equal(confirmedCell.props.strong, true, "[주제] 는 굵게 — 놀이 월간과 같다");
   assert.equal(confirmedCell.props.onSelect, undefined);
+  assert.equal(all(confirmed).filter((n) => n.type === "td" && n.props.onDrop).length, 0);
   // Ⓜ4 — 월별 주제형은 한글 내보내기 · 주간 만들기로 간다.
   const done = node(confirmed, "done")[0];
   assert.equal(typeof done.props.download, "function");
@@ -1510,6 +1849,11 @@ test("v1 — 후보 두기는 placeMonthlySafety(id, weekId, 후보 id, 현재 r
   assert.equal(view.props.plan.revision, 2);
   assert.equal(view.props.plan.safety_weeks[1].candidate_item_id, "cand_1");
   assert.match(text(view.render()), /안전교육을 두었어요/);
+  // 「AI 후보」 카드를 문서의 안전교육 칸에 끌어 놓아도 그 주에 둔다(놀이 월간과 같다).
+  const drops = all(view.render()).filter((n) => n.type === "td" && n.props.onDrop);
+  assert.equal(drops.length, 2);
+  await drops[0].props.onDrop("cand_1");
+  assert.deepEqual(view.placed.at(-1), [1, "W1", "cand_1", 2]);
 
   view.setPlace(async () => {
     throw new StubApiError(409, "conflict");
@@ -1632,10 +1976,54 @@ test("v1 — 확정은 페이지 안 확인을 거친 뒤에만 보낸다 · 칸
   const [ask] = asks();
   assert.match(
     ask.props.message,
-    /이 내용으로 주간계획안을 만들게 돼요\. 확인할 것 1개가 남았어요\.$/,
+    /^확인할 것 1개가 남았어요\.\n[^\n]+\n이 내용으로 주간계획안을 만들게 돼요\.$/,
   );
   assert.equal(ask.props.no, "더 다듬기");
   ask.props.onYes();
   await view.tick();
   assert.match(text(view.render()), /확정했어요/);
+});
+
+test("v1 — 바깥놀이 칸은 「칸 편집」에서 이름 · 설명 두 칸을 고치고, 설명 줄은 문서에 안 나온다(ADR-066)", async () => {
+  const withDetail = (p) => ({
+    ...p,
+    sections: [
+      ...p.sections,
+      {
+        section_key: "outdoor_play_detail",
+        label: "",
+        role: "CONTENT",
+        visible: false,
+        order: 9,
+        repeat_by: "WEEK",
+        cells: [
+          {
+            item_id: "d1",
+            week_id: "W1",
+            value: "바람개비를 들고 달려요.",
+            state: "FILLED",
+            evidence: [],
+          },
+        ],
+      },
+    ],
+  });
+  const view = openV1Editor([], withDetail);
+  const editors = node(view.render(), "editor").map((e) => e.props);
+  assert.deepEqual(
+    editors.map((e) => [e.label, e.value]),
+    [
+      ["outdoor_play 이름", "A"],
+      ["outdoor_play 설명", "바람개비를 들고 달려요."],
+    ],
+  );
+  assert.ok(
+    !node(view.render(), "cell").some((c) => c.props.id === "d1"),
+    "설명은 문서 칸이 아니다",
+  );
+  editors[1].onSave("공원에서 바람개비를 돌려요.");
+  await view.tick();
+  assert.deepEqual(view.edits.at(-1), [1, "d1", "공원에서 바람개비를 돌려요.", 1]);
+  // 옛 계획안(설명 줄 없음)은 지금처럼 한 칸이다.
+  assert.equal(node(openV1Editor().render(), "editor").length, 1);
 });

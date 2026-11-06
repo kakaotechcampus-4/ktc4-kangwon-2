@@ -40,6 +40,12 @@ from ssuksak.planning.application.play_monthly_lifecycle import (
     EditPlayMonthlyCellCommand,
     EditPlayMonthlyContentIds,
     EditPlayMonthlyContentIdsCommand,
+    OrderPlayMonthlyActivities,
+    OrderPlayMonthlyActivitiesCommand,
+    OrderPlayMonthlyHabits,
+    OrderPlayMonthlyHabitsCommand,
+    PickPlayMonthlyActivity,
+    PickPlayMonthlyActivityCommand,
     PlacePlayMonthlySafety,
     PlacePlayMonthlySafetyCommand,
     PlayMonthlyLifecycleError,
@@ -80,7 +86,6 @@ from app.features.plans.monthly_router import (
     _ALREADY_CONFIRMED,
     _ALREADY_EXISTS,
     _CELL_NOT_FOUND,
-    _NOT_DELETABLE,
     _NOT_FOUND,
     _STALE_WRITE,
     MONTHLY_UNIQUE,
@@ -90,6 +95,7 @@ from app.features.plans.monthly_router import (
     _gate,
     _generation,
     _is_play_monthly,
+    _lock_parent,
     _parent_changed,
     _target_month,
 )
@@ -243,6 +249,7 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
         raise mapped from error
 
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
+    _lock_parent(session, parent_id, "연간계획안을 먼저 만들어 확정해주세요.")
     if _existing(session, center_id, class_id, month) is not None:
         raise _ALREADY_EXISTS
     try:
@@ -297,22 +304,16 @@ def get_play_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser):
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_play_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
-    """확정 전만 지운다. revision 을 받지 않는다 — 기존 월간 삭제와 같다."""
+    """초안이든 확정본이든 지운다(ADR-064, Human Decision 2026-11-05 하민). revision 을 받지
+    않는다 — 기존 월간 삭제와 같다. 놀이 월간 아래에는 주간을 만들 수 없어 자식 검사가 없다."""
     row = _own_row(session, user, plan_id)
-    if row.status == "CONFIRMED":
-        raise _NOT_DELETABLE
-    # 상태 확인과 삭제를 한 SQL 로 한다 — 읽은 뒤 확정되면 확정본이 사라지지 않게 DRAFT 조건을 건다.
     deleted = session.execute(
         delete(Plan).where(
-            Plan.id == row.id,
-            Plan.center_id == user.center_id,
-            Plan.kind == "monthly",
-            Plan.status == "DRAFT",
+            Plan.id == row.id, Plan.center_id == user.center_id, Plan.kind == "monthly"
         )
     ).rowcount
-    if not deleted:  # 그 사이 바뀌었다 — 없어졌으면 404, 확정됐으면 409
-        _own_row(session, user, plan_id)
-        raise _NOT_DELETABLE
+    if not deleted:  # 그 사이 사라졌다
+        raise _NOT_FOUND
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -346,6 +347,14 @@ _LIFECYCLE_ERRORS = {
     ),
     "play_monthly_safety_candidate_not_found": _invalid("candidate_item_id"),
     "invalid_content_ids": _invalid("content_ids"),
+    "invalid_activity_order": _invalid("item_ids"),
+    "invalid_habit_order": _invalid("item_ids"),
+    "play_monthly_candidate_not_found": _error(
+        404, "NOT_FOUND", "그 후보를 찾을 수 없습니다.", ["item_id"]
+    ),
+    "play_monthly_section_full": _error(
+        422, "VALIDATION_FAILED", "이미 다 골랐어요. 하나를 빼고 넣어 주세요.", ["item_id"]
+    ),
     "play_monthly_drill_candidate_blank": _invalid("item_id"),
     "curriculum_reference_unavailable": _REFERENCE_UNAVAILABLE,
     # 특별활동 시간표(ADR-047). 한도 수치는 Core 가 정하고 문구는 교사가 고칠 방법을 말한다.
@@ -480,6 +489,59 @@ def add_activity(plan_id: int, body: s.AddActivityIn, session: DbSession, user: 
         lambda drafts, plan: AddPlayMonthlyActivity(
             plan_repository=drafts, id_generator=UuidGenerator(), clock=SystemClock()
         ).execute(AddPlayMonthlyActivityCommand(plan.plan_id, _actor(user), body.section)),
+    )
+
+
+@router.put("/{plan_id}/activities/order", response_model=s.PlayMonthlyPlanOut)
+def order_activities(plan_id: int, body: s.ActivityOrderIn, session: DbSession, user: CurrentUser):
+    """한 목록(함께 하는 활동 · 자유놀이) 안의 줄 순서(Human Decision 2026-11-05). 주간
+    `PUT /plans/weekly/{id}/indoor-plays/order` 와 같은 모양이다. 그 목록의 줄을 한 번씩 다 적어야
+    하고, 같은 순서면 200 · 무변경이다."""
+    items = tuple(_item(value, "item_ids") for value in body.item_ids)
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: OrderPlayMonthlyActivities(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(
+            OrderPlayMonthlyActivitiesCommand(plan.plan_id, _actor(user), body.section, items)
+        ),
+    )
+
+
+@router.post("/{plan_id}/activities/{item_id}/pick", response_model=s.PlayMonthlyPlanOut)
+def pick_activity(
+    plan_id: int, item_id: str, body: s.RevisionIn, session: DbSession, user: CurrentUser
+):
+    """AI 후보 하나를 문서 그 목록 끝에 넣는다(layout v0.3.0). 뺄 때는 DELETE 와 같다 — AI 후보는
+    후보 목록으로 돌아간다."""
+    item = _item(item_id)
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: PickPlayMonthlyActivity(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(PickPlayMonthlyActivityCommand(plan.plan_id, _actor(user), item)),
+    )
+
+
+@router.put("/{plan_id}/habits/order", response_model=s.PlayMonthlyPlanOut)
+def order_habits(plan_id: int, body: s.HabitOrderIn, session: DbSession, user: CurrentUser):
+    """기본생활습관 칸을 주 사이에서 옮긴다(2026-11-06). 화면은 두 주를 맞바꾸고, 같은 순서면
+    200 · 무변경이다."""
+    items = tuple(_item(value, "item_ids") for value in body.item_ids)
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: OrderPlayMonthlyHabits(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(OrderPlayMonthlyHabitsCommand(plan.plan_id, _actor(user), items)),
     )
 
 
@@ -749,16 +811,19 @@ def export_play_monthly_plan(
 
 @router.get("/{plan_id}/audit", response_model=s.PlayMonthlyAuditOut)
 def get_play_monthly_audit(plan_id: int, session: DbSession, user: CurrentUser):
-    """저장된 이벤트를 읽기만 한다. 지운 행의 칸 이벤트도 싣는다."""
+    """저장된 이벤트를 읽기만 한다. 지운 행 · 후보 목록에 있는 행(ADR-065)의 칸 이벤트도 싣는다."""
     row = _own_row(session, user, plan_id, read_only=True)
     plan = _plan(_repo(session, user), row)
     removed = [
-        c for r in plan.removed_activities for c in (r.activity.cell, r.activity.description)
+        c
+        for r in (*plan.removed_activities, *plan.activity_pool)
+        for c in (r.activity.cell, r.activity.description)
     ]
     keyed = [
         ((e.occurred_at, 0, 0, i), _audit_event(e, False)) for i, e in enumerate(plan.audit.events)
     ]
-    # 활성 칸(응답 순서) → 지운 행의 칸(쌓인 순서). 한 칸 안에서는 저장 순서다.
+    # 활성 칸(응답 순서) → 지운 행의 칸(쌓인 순서) → 후보 목록의 칸(생성 순서).
+    # 한 칸 안에서는 저장 순서다.
     for position, cell in enumerate((*plan.cells(), *removed)):
         keyed += [
             ((e.occurred_at, 1, position, i), _audit_event(e, True))
@@ -952,6 +1017,19 @@ def _detail(
         rationale=_cell(plan.rationale),
         together=[_activity(a) for a in plan.together],
         free_play=[_activity(a) for a in plan.free_play],
+        activity_pick=plan.layout.activity_pick,
+        activity_candidates=[i.value for i in plan.activity_candidates],
+        activity_pool=[
+            s.PooledActivityOut(**_activity(r.activity).model_dump(), section=r.section)
+            for r in plan.activity_pool
+        ],
+        direction=_cell(plan.direction),
+        display=s.DisplayOut(
+            title=_cell(plan.display.title),
+            age=_cell(plan.display.age),
+            class_name=_cell(plan.display.class_name),
+            period=_cell(plan.display.period),
+        ),
         habits=[
             s.HabitOut(week_id=h.week_id.value, entry_id=h.habit.entry_id, cell=_cell(h.habit.cell))
             for h in plan.habits

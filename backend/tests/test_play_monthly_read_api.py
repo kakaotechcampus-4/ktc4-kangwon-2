@@ -27,9 +27,11 @@ SINGLE_KEYS = {
     "id", "class_id", "school_year", "month", "target_month", "status", "revision", "format",
     "format_version", "created_at", "confirmed_at", "target_ages", "weeks", "parent",
     "parent_changed", "theme",
-    "rationale", "together", "free_play", "habits", "safety_candidates", "safety_weeks", "health",
+    "rationale", "together", "free_play", "direction", "display", "habits",
+    "safety_candidates", "safety_weeks", "health",
     "nutrition", "drill_candidates", "teacher_inputs", "specialized_timetable",
     "special_activity", "special_activity_size", "notices", "memo", "memo_notices",
+    "activity_pick", "activity_candidates", "activity_pool",
 }  # fmt: skip
 
 
@@ -198,6 +200,14 @@ def test_단건은_계약_모양이고_싣지_않는_것은_없다(world):
     assert set(body["drill_candidates"][0]) == {"topic_id", "label", "cell"}
     assert set(body["teacher_inputs"][0]) == {"key", "cell"}
     assert all(set(n) == {"code", "week_id"} for n in body["notices"])
+    # 문서 머리 · 가운데 방향 칸 — 한글 내려받기와 같은 값(Human Decision 2026-11-05)
+    assert set(body["direction"]) == cell and body["direction"]["value"] == plan.direction.value
+    assert set(body["display"]) == {"title", "age", "class_name", "period"}
+    display = plan.display
+    assert [body["display"][k]["value"] for k in ("title", "age", "class_name", "period")] == [
+        c.value for c in display.cells()
+    ]
+    assert body["display"]["title"]["item_id"] == display.title.item_id.value
 
 
 def test_evidence_와_generation_은_세_축_규칙을_따른다(world):
@@ -229,7 +239,9 @@ def test_evidence_와_generation_은_세_축_규칙을_따른다(world):
 
 def test_annual_plan_id_는_연간_행의_정수_id(world):
     _, row = _play(world)
-    annual = world["session"].scalar(select(Plan).where(Plan.kind == "annual"))
+    annual = world["session"].scalar(
+        select(Plan).where(Plan.kind == "annual", Plan.center_id == world["mine"]["center"])
+    )
 
     parent = client.get(f"{URL}/{row.id}").json()["parent"]
 
@@ -326,38 +338,14 @@ def test_초안은_지워지고_204(world):
     assert world["session"].scalar(select(Plan).where(Plan.id == row.id)) is None
 
 
-def test_확정본은_409_이고_행이_남는다(world):
+def test_확정본도_지워지고_204(world):
+    """확정본도 지운다(ADR-064, Human Decision 2026-11-05 하민)."""
     _, row = _play(world, confirmed=True)
 
     response = client.delete(f"{URL}/{row.id}")
 
-    assert _error(response) == (409, "GATE_BLOCKED", [])
-    assert response.json()["error"]["message"] == "확정된 계획안은 지울 수 없습니다."
-    assert world["session"].scalar(select(Plan).where(Plan.id == row.id)) is not None
-
-
-def test_읽은_뒤_확정되어도_DRAFT_조건이_확정본을_지키지_않게_막는다(world, monkeypatch):
-    from types import SimpleNamespace
-
-    from app.features.plans import play_monthly_router as router
-
-    _, row = _play(world, confirmed=True)
-    real, calls = router._own_row, []
-
-    def stale_first(session, user, plan_id):  # 첫 읽기는 아직 DRAFT 로 보였던 때다
-        calls.append(plan_id)
-        return (
-            SimpleNamespace(id=row.id, status="DRAFT")
-            if len(calls) == 1
-            else real(session, user, plan_id)
-        )
-
-    monkeypatch.setattr(router, "_own_row", stale_first)
-
-    response = client.delete(f"{URL}/{row.id}")
-
-    assert _error(response) == (409, "GATE_BLOCKED", [])
-    assert world["session"].scalar(select(Plan).where(Plan.id == row.id)) is not None
+    assert (response.status_code, response.content) == (204, b"")
+    assert world["session"].scalar(select(Plan).where(Plan.id == row.id)) is None
 
 
 def test_삭제_남의_원_없는_id_는_404_기존_월간은_409(world):

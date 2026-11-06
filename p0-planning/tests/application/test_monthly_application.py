@@ -690,6 +690,7 @@ def test_rule_only_generation_assembles_complete_draft_and_saves_once():
         "outdoor_play",
         "safety_education",
         "focus",
+        "outdoor_play_detail",  # ADR-066: hidden, derived by the Core
     )
     assert len(plan.active_week_periods) == 5
     assert {
@@ -863,6 +864,7 @@ def test_llm_mode_uses_the_profile_structure_without_requiring_focus():
         "week_axis",
         "outdoor_play",
         "safety_education",
+        "outdoor_play_detail",
     )
     assert len(provider.monthly_requests) == 1
     assert harness.plans.save_count == 1
@@ -1405,6 +1407,66 @@ def test_confirm_requires_teacher_and_locks_all_later_mutations():
         )
     assert confirm.execute(ConfirmMonthlyPlanCommand(confirmed.plan_id, TEACHER)) is confirmed
     assert harness.plans.save_count == saves_before
+
+
+def test_teacher_tables_are_blank_manual_splittable_and_locked_on_confirm():
+    """Human Decision 2026-11-05: 행사 일정 · 특성화 · 특별활동 are teacher-written split tables."""
+    from ssuksak.planning.application.monthly_teacher_tables import (
+        RemoveMonthlyTableCell,
+        RemoveMonthlyTableCellCommand,
+        ResizeMonthlyTable,
+        ResizeMonthlyTableCommand,
+        SplitMonthlyTableCell,
+        SplitMonthlyTableCellCommand,
+    )
+    from ssuksak.planning.domain.provenance import SplitAxis
+
+    harness = Harness()
+    draft = harness.generate().plan
+    assert draft.teacher_tables == () and draft.tables == harness.plans.get(draft.plan_id).tables
+    event, special = draft.tables[0], draft.tables[2]
+    assert all(c.value == "" and c.generation is None for t in draft.tables for c in t.cells())
+
+    edit = EditMonthlyPlanItem(
+        plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities
+    )
+    cell = event.columns[0].cell
+    edited = edit.execute(EditMonthlyPlanItemCommand(draft.plan_id, cell.item_id, "운동회", TEACHER))
+    written = edited.table_cell(cell.item_id)[1]
+    assert (written.value, written.generation.method) == ("운동회", GenerationMethod.MANUAL)
+    assert [e.event_type for e in written.audit.events] == [AuditEventType.TEACHER_EDITED]
+    assert edited.sections == draft.sections
+
+    target = special.columns[1].cell.item_id
+    split = SplitMonthlyTableCell(plan_repository=harness.plans, id_generator=harness.ids, clock=harness.clock)
+    once = split.execute(SplitMonthlyTableCellCommand(draft.plan_id, TEACHER, target, SplitAxis.VERTICAL))
+    column = once.tables[2].columns[1]
+    assert column.children[0].cell.item_id == target
+    assert column.children[1].cell.semantic_key == "special_activity_timetable.2.2"
+    assert once.audit.events[-1].timetable_change.table_key == "special_activity_timetable"
+
+    resize = ResizeMonthlyTable(plan_repository=harness.plans, clock=harness.clock)
+    sized = resize.execute(ResizeMonthlyTableCommand(draft.plan_id, TEACHER, split_id=column.split_id, ratio=70))
+    assert sized.tables[2].columns[1].ratio == 70
+    again = ResizeMonthlyTableCommand(draft.plan_id, TEACHER, split_id=column.split_id, ratio=70)
+    assert resize.execute(again) is sized
+
+    remove = RemoveMonthlyTableCell(plan_repository=harness.plans, clock=harness.clock)
+    with pytest.raises(MonthlyApplicationError) as last:
+        remove.execute(RemoveMonthlyTableCellCommand(draft.plan_id, TEACHER, cell.item_id))
+    assert last.value.code == "timetable_last_cell"
+    added = column.children[1].cell
+    removed = remove.execute(RemoveMonthlyTableCellCommand(draft.plan_id, TEACHER, added.item_id))
+    assert removed.tables[2].columns[1].cell.item_id == target
+    assert removed.removed_table_cells == (added,)
+
+    confirmed = ConfirmMonthlyPlan(
+        plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities
+    ).execute(ConfirmMonthlyPlanCommand(draft.plan_id, TEACHER))
+    with pytest.raises(InvalidStateTransitionError):
+        split.execute(SplitMonthlyTableCellCommand(confirmed.plan_id, TEACHER, target, SplitAxis.HORIZONTAL))
+    with pytest.raises(InvalidStateTransitionError):
+        edit.execute(EditMonthlyPlanItemCommand(confirmed.plan_id, cell.item_id, "바꿈", TEACHER))
 
 
 class _CountingActivities:
@@ -2269,6 +2331,7 @@ def test_indoor_alternative_is_generated_from_weekly_indoor_evidence(target_mont
     cells = plan.section("indoor_alternative").cells
     request = provider.monthly_requests[0]
     assert len(cells) == len(plan.active_week_periods) == {9: 5, 10: 4}[target_month.calendar_month]
+    assert [c.week_id for c in plan.section("indoor_alternative_detail").cells] == [c.week_id for c in cells]  # ADR-066
     assert request.prompt_version.endswith(MONTHLY_INDOOR_PROMPT_TAG)
     assert request.system_prompt.endswith(INDOOR_ALTERNATIVE_PROMPT)
     assert packets[0].lineage.weekly_classification_version == weekly.classification_version
@@ -2280,7 +2343,8 @@ def test_indoor_alternative_is_generated_from_weekly_indoor_evidence(target_mont
             weekly.class_of(records[source.source_id]) is WeeklySemanticClass.INDOOR_ALTERNATIVE for source in samples
         )
     # Requests without indoor_alternative keep their prompt version and bytes.
-    assert Harness().generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider).plan.section("indoor_alternative") is None
+    off = Harness().generate(MonthlyGenerationMode.LLM_PLANNER, provider=provider).plan
+    assert off.section("indoor_alternative") is None and off.section("indoor_alternative_detail") is None  # ADR-066
     assert provider.monthly_requests[1].prompt_version == MONTHLY_PROMPT_VERSION
 
 
@@ -2809,7 +2873,7 @@ def test_generation_snapshot_comes_from_the_profile_not_the_approved_template():
     assert plan.template_ref == profile.base_template_ref
     assert [section.section_key for section in plan.template_snapshot.sections] == [
         section.section_key for section in profile.ordered_sections
-    ]
+    ] + ["outdoor_play_detail"]  # ADR-066
 
 
 # --- S-1: eight safety candidates, placed by the teacher -------------------------------------
@@ -3051,7 +3115,10 @@ def test_drill_candidates_generate_a_blank_cell_then_teacher_writes_copies_edits
     copy = CopyMonthlyDrillCandidate(plan_repository=harness.plans, clock=harness.clock, activity_repository=harness.activities)
     copied = _cell(copy.execute(CopyMonthlyDrillCandidateCommand(plan.plan_id, first.cell.item_id, TEACHER)), "drill")
     event = copied.audit.events[-1]
-    assert (copied.value, copied.evidence, copied.generation) == (first.cell.value, first.cell.evidence, DRILL_COPY_GENERATION)
+    # Human Decision 2026-11-06: the copy keeps the topic on one line — 「[주제] 문장」.
+    assert (copied.value, copied.evidence, copied.generation) == (
+        f"[{first.label}] {first.cell.value}", first.cell.evidence, DRILL_COPY_GENERATION
+    )
     assert (event.event_type, event.copied_from) == (AuditEventType.CANDIDATE_COPIED, first.cell.item_id)
     assert event.generation_change.before.method is GenerationMethod.MANUAL
     saves = harness.plans.save_count

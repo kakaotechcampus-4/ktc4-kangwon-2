@@ -3,7 +3,7 @@ import { CARD, PICKED, PUT } from "./PlayMonthlySafetyPanel";
 
 /**
  * Ⓜ3 AI 후보 — 소방대피 훈련 후보를 「소방대피/재난대비」 칸에 넣는다(09c). 쓴 글이 있어도 묻지 않고 바꾼다.
- * 칸 글이 후보 글과 같으면 넣은 후보 — 안전교육 후보처럼 칠하고 맨 위로 올린다.
+ * 칸 글이 후보 글(머리 「[주제]」 포함, 그 전에 넣은 칸은 문장만)과 같으면 넣은 후보 — 안전교육 후보처럼 칠하고 맨 위로 올린다.
  */
 export default function PlayMonthlyDrillPanel({
   candidates,
@@ -16,8 +16,12 @@ export default function PlayMonthlyDrillPanel({
   onCopy: (itemId: string) => void;
   disabled: boolean;
 }) {
-  const placed = (d: { cell: { value: string } }) =>
-    !!current.trim() && current.trim() === d.cell.value.trim();
+  // 「[주제] 문장」은 lib/monthly/section-labels 의 drillText 와 같은 모양. 11-06 전에 복사한 칸은 「[주제]」 다음 줄이다.
+  const placed = (d: { label: string; cell: { value: string } }) =>
+    !!current.trim() &&
+    [`[${d.label}] ${d.cell.value}`, `[${d.label}]\n${d.cell.value}`, d.cell.value]
+      .map((s) => s.trim())
+      .includes(current.trim());
   return (
     <section aria-label="소방대피 훈련" className="flex flex-col gap-2">
       <h2 className="m-0 text-[18px] font-bold leading-tight">넣을 문구 고르기</h2>

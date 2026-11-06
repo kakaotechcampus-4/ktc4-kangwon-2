@@ -253,7 +253,15 @@ def test_단건_조회는_구간_넷과_후보_열을_계약_모양으로_준다
     for period in body["periods"]:
         assert [c["row_key"] for c in period["candidates"]] == [f"cand{n}" for n in range(1, 11)]
     first = body["periods"][0]["candidates"][0]
-    assert set(first) == {"row_key", "play_name", "materials", "support_direction", "learning"}
+    assert set(first) == {
+        "row_key",
+        "memo_applied",
+        "play_name",
+        "materials",
+        "support_direction",
+        "learning",
+    }
+    assert first["memo_applied"] is False
     assert first["play_name"] == {
         "item_id": plan.periods[0].candidates[0].play_name.item_id.value,
         "value": "m03_m05 놀이 1",
@@ -353,6 +361,27 @@ def test_생성은_승인된_누리과정으로_네_구간을_저장하고_읽�
                 ]
                 assert created and all(event.plan_id.value == row.plan_ref for event in created)
 
+    assert client.get(f"/api/plans/annual/{body['id']}").json() == body
+
+
+def test_요청을_반영한_후보에만_memo_applied_가_켜진다(world, monkeypatch):
+    """mock 은 구간마다 첫 후보에 반영했다고 답한다. 표시용이라 선택 · 배치는 그대로다."""
+    _approved(monkeypatch)
+
+    response = client.post(
+        "/api/plans/annual",
+        json={
+            "class_id": world["play"].id,
+            "format": "PLAY_PROJECT",
+            "memo": "물놀이를 넣어 주세요",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["memo_notices"] == []
+    for period in body["periods"]:
+        assert [c["memo_applied"] for c in period["candidates"]] == [True] + [False] * 9
     assert client.get(f"/api/plans/annual/{body['id']}").json() == body
 
 

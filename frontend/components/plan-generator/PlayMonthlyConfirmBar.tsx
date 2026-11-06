@@ -144,6 +144,7 @@ export default function PlayMonthlyConfirmBar({
         <div className="absolute right-0 top-full z-20 mt-2 flex w-[380px] flex-col gap-2">
           {asking && ask && (
             <PlayMonthlyConfirm
+              title="월간계획안을 확정할까요?"
               message={ask}
               yes={confirming ? "확정하는 중…" : "확정하기"}
               no="더 다듬기"

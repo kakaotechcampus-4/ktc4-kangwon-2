@@ -7,9 +7,10 @@
  * [특별활동 시간표] 요일별 칸 · 행사 · 가정 연계. 양식에 없는 칸은 맨 아래에 그대로 그린다.
  */
 
-import type { MouseEvent, ReactNode } from "react";
+import type { DragEvent, MouseEvent, ReactNode } from "react";
 import type { WeeklyActivityGrid, WeeklyCell, WeeklyPlan } from "@/lib/api/types";
 import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
+import { DROP } from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import {
   Cell,
   HATCH,
@@ -21,6 +22,9 @@ import {
 } from "@/components/plan-generator/PlayMonthlySheet";
 
 type Section = WeeklyPlan["sections"][number];
+
+/** 「AI 후보」 활동 카드를 끌 때 넘기는 글의 앞부분 — 뒤는 후보 item_id. 대·소집단활동 요일 칸이 받는다. */
+export const WEEKLY_ACTIVITY_DRAG = "weekly-activity:";
 
 const ORDER = [
   "theme",
@@ -113,6 +117,7 @@ export default function WeeklySheet({
   at,
   shown = (cell) => cell.value,
   scale,
+  onPut,
 }: {
   title: string;
   sub: string;
@@ -124,16 +129,46 @@ export default function WeeklySheet({
   at: Pick;
   shown?: (cell: WeeklyCell) => string;
   scale?: number;
+  /** 활동 후보 카드를 대·소집단활동 칸에 놓았을 때(칸 id, 후보 id). 없으면(확정 · 저장 중) 받지 않는다. */
+  onPut?: (cellId: string, candidateItemId: string) => void;
 }) {
   const span = days.length;
-  const cellOf = (cell: WeeklyCell) => (
+  // 안전교육은 「[주제] 문장」 한 줄에 [주제]를 굵게, 넣은 활동은 「[종류]」 밑에 이름(PM 2026-11-06).
+  const cellOf = (cell: WeeklyCell, key = "") => (
     <Cell
       {...at}
       id={cell.item_id}
-      value={shown(cell)}
+      value={
+        key === "safety_education"
+          ? shown(cell).replace(/^(\[[^\]\n]+\]) - /, "$1 ")
+          : key === "group_activity"
+            ? shown(cell).replace(/^(\[[^\]\n]+\]) /, "$1\n")
+            : shown(cell)
+      }
+      strong={key === "safety_education"}
       hint={cell.teacher_input ? TEACHER_HINT : undefined}
     />
   );
+  // 후보 카드를 놓은 곳의 칸(나눈 칸이면 그 조각, 아니면 그날 칸 하나)에 넣는다.
+  const dropOn = (only: string | null) =>
+    onPut
+      ? {
+          onDragOver: (e: DragEvent<HTMLElement>) => {
+            e.preventDefault();
+            e.currentTarget.dataset.drop = "";
+          },
+          onDragLeave: (e: DragEvent<HTMLElement>) => delete e.currentTarget.dataset.drop,
+          onDrop: (e: DragEvent<HTMLElement>) => {
+            e.preventDefault();
+            delete e.currentTarget.dataset.drop;
+            const data = e.dataTransfer.getData("text/plain");
+            const hit = (e.target as HTMLElement).closest<HTMLElement>("[data-cell],[data-area]");
+            const cellId = hit?.dataset.cell ?? hit?.dataset.area ?? only;
+            if (data.startsWith(WEEKLY_ACTIVITY_DRAG) && cellId)
+              onPut(cellId, data.slice(WEEKLY_ACTIVITY_DRAG.length));
+          },
+        }
+      : {};
   // 칸 둘레의 빈 곳을 눌러도 그 칸을 고른다(칸 하나짜리 표 칸 · 나눈 칸). 글 위 클릭은 Cell 이 받는다.
   const area = (id: string | null | undefined) =>
     at.onSelect && id
@@ -147,7 +182,7 @@ export default function WeeklySheet({
   const grid = (node: WeeklyActivityGrid, cells: WeeklyCell[]): ReactNode => {
     if (node.cell_id) {
       const cell = cells.find((c) => c.item_id === node.cell_id);
-      return cell ? cellOf(cell) : null;
+      return cell ? cellOf(cell, "group_activity") : null;
     }
     const vertical = node.axis === "VERTICAL";
     const ratio = node.ratio ?? 50;
@@ -157,7 +192,7 @@ export default function WeeklySheet({
           <div
             key={child.cell_id ?? child.split_id ?? i}
             style={{ flex: i === 0 ? ratio : 100 - ratio, minWidth: 0 }}
-            className={`flex flex-col [&>[data-cell]]:flex-1 ${
+            className={`flex flex-col [&>[data-cell]]:flex [&>[data-cell]]:flex-1 [&>[data-cell]]:flex-col [&>[data-cell]]:justify-center ${
               i ? (vertical ? "border-t border-[#cfe5f4]" : "border-l border-[#cfe5f4]") : ""
             }`}
             {...area(child.cell_id)}
@@ -216,15 +251,17 @@ export default function WeeklySheet({
           </th>
           {days.map((d, i) => {
             const cells = section.cells.filter((c) => c.day === d);
+            const one = tree ? tree[i].cell_id : cells.length === 1 ? cells[0].item_id : null;
             return (
               <td
                 key={d}
-                className={`${LINE} align-top`}
-                {...area(tree ? tree[i].cell_id : cells.length === 1 ? cells[0].item_id : null)}
+                className={`${LINE} align-middle transition-colors ${DROP} ${key === "group_activity" ? "text-center" : ""}`}
+                {...area(one)}
+                {...(key === "group_activity" ? dropOn(one ?? null) : {})}
               >
                 {tree
                   ? grid(tree[i], cells)
-                  : cells.map((c) => <div key={c.item_id}>{cellOf(c)}</div>)}
+                  : cells.map((c) => <div key={c.item_id}>{cellOf(c, key)}</div>)}
               </td>
             );
           })}
@@ -238,12 +275,12 @@ export default function WeeklySheet({
           </th>
           <td
             colSpan={span}
-            className={`${LINE} ${key === "goals" ? "align-middle [&_[data-cell]]:justify-start" : "align-top"}`}
+            className={`${LINE} align-middle ${key === "goals" ? "[&_[data-cell]]:justify-start" : ""}`}
             {...area(section.cells.length === 1 ? section.cells[0].item_id : null)}
           >
             {/* 후보형 실내 자유놀이는 주 전체 목록이 한 칸에 순서대로 들어간다. 나머지는 한 칸. */}
             {section.cells.map((c) => (
-              <div key={c.item_id}>{cellOf(c)}</div>
+              <div key={c.item_id}>{cellOf(c, key)}</div>
             ))}
           </td>
         </tr>,

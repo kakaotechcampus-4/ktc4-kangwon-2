@@ -1,6 +1,7 @@
 import { read, commit, type Database } from "./store";
 import { annualFor, annualChanged, DRILLS, evidence, SAFETY } from "./monthly-plans";
 import { MOCK_USER_ID } from "./template-profiles";
+import { findClass } from "./classes";
 import type {
   PlayMonthlyActivity,
   PlayMonthlyAuditEvent,
@@ -9,6 +10,7 @@ import type {
   PlayMonthlyTimetablePart,
   PlayMonthlyTimetableSize,
 } from "../../lib/api/types";
+import { drillText } from "../../lib/monthly/section-labels";
 import {
   leaf,
   leaves,
@@ -106,12 +108,17 @@ function record(db: Database, id: number, ...inputs: AuditInput[]) {
 export const listPlayMonthlyAudit = (id: number): PlayMonthlyAuditEvent[] =>
   structuredClone(read().playMonthlyAudit[id] ?? []);
 
-/** 새 놀이 월간 하나. `confirmed` 면 같은 데이터의 확정본이다. `month` · 강조 놀이는 생성 요청에서 온다. */
+/**
+ * 새 놀이 월간 하나. `confirmed` 면 같은 데이터의 확정본이다. `month` · 강조 놀이는 생성 요청에서 온다.
+ * `picking` 이면 레이아웃 v0.3.0(ADR-065) — 후보 8개씩이 모두 `activity_pool` 에 있고 문서 목록은 비어 있다.
+ * 아니면 옛 계획안(행 5개씩이 바로 문서 행).
+ */
 export const addPlayMonthly = (
   classId: number,
   confirmed = false,
   month = 11,
   emphasized: string[] = [],
+  picking = false,
 ) =>
   commit((db) => {
     const ym = (month >= 3 ? 2026 : 2027) + "-" + String(month).padStart(2, "0");
@@ -124,7 +131,7 @@ export const addPlayMonthly = (
     });
     const parentEv = evidence("PARENT_PLAN", "parent-1", "m09_m11", "9월~11월");
     const rows = (label: string, ev: string): PlayMonthlyActivity[] =>
-      [1, 2, 3, 4, 5].map((i) => {
+      Array.from({ length: picking ? 8 : 5 }, (_, i) => i + 1).map((i) => {
         const name = cell(label + " " + i, curriculum(ev, ...(ev === "t.1" ? ["t.2"] : [])));
         return {
           activity_id: name.item_id,
@@ -144,7 +151,7 @@ export const addPlayMonthly = (
       status: confirmed ? "CONFIRMED" : "DRAFT",
       revision: 1,
       format: "PLAY_MONTHLY",
-      format_version: "play-monthly-layout-v0.1.0",
+      format_version: picking ? "play-monthly-layout-v0.3.0" : "play-monthly-layout-v0.1.0",
       created_at: now,
       confirmed_at: confirmed ? now : null,
       target_ages: [4, 5],
@@ -174,8 +181,40 @@ export const addPlayMonthly = (
         "봄에는 바깥에서 새싹과 꽃을 만나는 놀이가 이어질 것으로 예상합니다.",
         parentEv,
       ),
-      together: rows("함께 놀이", "t.1"),
-      free_play: rows("자유놀이", "t.3"),
+      // 칸 id 를 만드는 순서는 옛 계획안과 같다(함께 → 자유놀이).
+      ...(() => {
+        const together = rows("함께 놀이", "t.1");
+        const free_play = rows("자유놀이", "t.3");
+        if (!picking)
+          return {
+            together,
+            free_play,
+            activity_pick: null,
+            activity_candidates: [],
+            activity_pool: [],
+          };
+        const pool = [
+          ...together.map((a) => ({ ...a, section: "together" as const })),
+          ...free_play.map((a) => ({ ...a, section: "free_play" as const })),
+        ];
+        return {
+          together: [],
+          free_play: [],
+          activity_pick: 5,
+          activity_candidates: pool.map((a) => a.activity_id),
+          activity_pool: pool,
+        };
+      })(),
+      direction: cell("봄 길을 걸어요", parentEv),
+      display: {
+        title: cell(month + "월 놀이계획안", []),
+        age: cell("만 4·5세", []),
+        class_name: cell(findClass(classId)?.name ?? "", []),
+        period: cell(
+          `${ym.replace("-", ".")}.01 ~ ${ym.replace("-", ".")}.${new Date(+ym.slice(0, 4), month, 0).getDate()}`,
+          [],
+        ),
+      },
       habits: [1, 2, 3, 4].map((w) => ({
         week_id: ym + "-W" + w,
         entry_id: "h" + w,
@@ -304,8 +343,13 @@ export const removePlayMonthly = (id: number) =>
 
 /** 계획안의 모든 칸. 이 목록에 없는 item_id 는 404 다. */
 export const playCells = (p: PlayMonthlyPlan): PlayMonthlyCell[] => [
+  p.display.title,
+  p.display.age,
+  p.display.class_name,
+  p.display.period,
   p.theme,
   p.rationale,
+  p.direction,
   ...[...p.together, ...p.free_play].flatMap((a) => [a.name, a.description]),
   ...p.habits.map((h) => h.cell),
   ...p.safety_candidates.map((c) => c.cell),
@@ -362,6 +406,7 @@ export const placePlayMonthlySafety = (id: number, weekId: string, candidate: st
     log(arranged(weekId, before ? [before] : [], candidate ? [candidate] : []));
     return true;
   });
+/** 행 빼기. AI 후보(ADR-065)는 후보 목록의 생성 순서 자리로 돌아간다. */
 export const removePlayMonthlyActivity = (id: number, itemId: string) =>
   change(id, (p, log) => {
     for (const section of ["together", "free_play"] as const) {
@@ -369,7 +414,12 @@ export const removePlayMonthlyActivity = (id: number, itemId: string) =>
       const at = rows.findIndex((a) => a.activity_id === itemId);
       if (at < 0) continue;
       const before = rows.map((a) => a.activity_id);
-      rows.splice(at, 1);
+      const [row] = rows.splice(at, 1);
+      const order = p.activity_candidates ?? [];
+      if (order.includes(itemId))
+        p.activity_pool = [...(p.activity_pool ?? []), { ...row, section }].sort(
+          (a, b) => order.indexOf(a.activity_id) - order.indexOf(b.activity_id),
+        );
       log(
         arranged(
           section,
@@ -380,12 +430,49 @@ export const removePlayMonthlyActivity = (id: number, itemId: string) =>
     }
     return true;
   });
+/** AI 후보 하나를 그 목록 끝에(ADR-065). 검사(404 · 다 골랐으면 422)는 핸들러가 먼저 한다. */
+export const pickPlayMonthlyActivity = (id: number, itemId: string) =>
+  change(id, (p, log) => {
+    const found = p.activity_pool!.find((a) => a.activity_id === itemId)!;
+    const { section, ...row } = found;
+    const before = p[section].map((a) => a.activity_id);
+    p[section] = [...p[section], row];
+    p.activity_pool = p.activity_pool!.filter((a) => a !== found);
+    log(arranged(section, before, [...before, itemId]));
+    return true;
+  });
+/** 기본생활습관 칸을 새 주 순서로 — 주는 제자리, 칸이 통째로 옮긴다. 같은 순서면 그대로다. */
+export const orderPlayMonthlyHabits = (id: number, itemIds: string[]) =>
+  change(id, (p, log) => {
+    const before = p.habits.map((h) => h.cell.item_id);
+    if (before.join() === itemIds.join()) return false;
+    p.habits = p.habits.map((h, i) => ({
+      ...p.habits.find((x) => x.cell.item_id === itemIds[i])!,
+      week_id: h.week_id,
+    }));
+    log(arranged("habits", before, itemIds));
+    return true;
+  });
+/** 한 목록 안의 행 순서. 같은 순서면 그대로다(서버: 200 · 무변경). 검사는 핸들러가 먼저 한다. */
+export const orderPlayMonthlyActivities = (
+  id: number,
+  section: "together" | "free_play",
+  itemIds: string[],
+) =>
+  change(id, (p, log) => {
+    const before = p[section].map((a) => a.activity_id);
+    if (before.join() === itemIds.join()) return false;
+    p[section] = itemIds.map((itemId) => p[section].find((a) => a.activity_id === itemId)!);
+    log(arranged(section, before, itemIds));
+    return true;
+  });
 export const copyPlayMonthlyDrill = (id: number, itemId: string) =>
   change(id, (p, log) => {
-    const from = p.drill_candidates.find((d) => d.cell.item_id === itemId)!.cell;
+    const drill = p.drill_candidates.find((d) => d.cell.item_id === itemId)!;
+    const from = drill.cell;
     const to = p.teacher_inputs.find((t) => t.key === TEACHER_KEYS[0])!.cell;
     const copied = {
-      value: from.value,
+      value: drillText(drill),
       evidence: from.evidence,
       generation: { method: "RULE_ONLY", rule_id: DRILL_COPY, rule_version: p.format_version },
     };
@@ -512,7 +599,10 @@ export function playConfirmProblems(p: PlayMonthlyPlan): string[] {
     ...(blank(p.theme) ? ["theme"] : []),
     ...(blank(p.rationale) ? ["rationale"] : []),
     ...(["together", "free_play"] as const).flatMap((section) => [
-      ...(p[section].length ? [] : [section]),
+      // 서버: 「no rows」 · 「n of 5 rows」 둘 다 위치 키는 목록 이름이다.
+      ...(p[section].length && (p.activity_pick == null || p[section].length === p.activity_pick)
+        ? []
+        : [section]),
       ...p[section].flatMap((a) => [
         ...(blank(a.name) ? [section + "." + a.activity_id] : []),
         ...(a.content_ids.length >= 1 && a.content_ids.length <= 3

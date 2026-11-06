@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import type { PlayProjectAnnualPlan } from "@/lib/api/types";
 import workspace from "@/components/workspace/Workspace.module.css";
 import PlayProjectPicking from "./PlayProjectPicking";
 import PlayProjectSheet from "./PlayProjectSheet";
+import { MemoMark } from "@/components/plan-ui/PlayPickBoard";
 import PlayCellEditor from "./PlayCellEditor";
 import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
 import Link from "next/link";
@@ -119,10 +120,15 @@ export function togglePlayPick(picks: string[], rowKey: string) {
       : picks;
 }
 
-// 끌어놓기: 고른 놀이를 문서의 다른 줄 자리로 옮긴다. 순서 목록만 바꾼다.
+// 끌어놓기: 끈 놀이가 놓은 줄의 자리로 간다. 고른 놀이면 순서만 바꾸고,
+// 다른 후보면 다 찼을 때는 그 줄과 바꾸고(그 줄은 다른 후보로) 자리가 남으면 그 줄 앞에 넣는다.
 export function placePlayPick(picks: string[], rowKey: string, targetKey: string): string[] {
   const to = picks.indexOf(targetKey);
-  if (!picks.includes(rowKey) || to < 0 || rowKey === targetKey) return picks;
+  if (to < 0 || rowKey === targetKey) return picks;
+  if (!picks.includes(rowKey))
+    return picks.length >= MAX_PICKS
+      ? picks.map((key) => (key === targetKey ? rowKey : key))
+      : [...picks.slice(0, to), rowKey, ...picks.slice(to)];
   const rest = picks.filter((key) => key !== rowKey);
   return [...rest.slice(0, to), rowKey, ...rest.slice(to)];
 }
@@ -167,6 +173,26 @@ const GRIP = (
     {[2, 8, 14].map((y) => [2, 8].map((x) => <circle key={`${x}${y}`} cx={x} cy={y} r="1.5" />))}
   </svg>
 );
+const DROP_ON = "[&[data-drop]]:bg-[#efe7f8]";
+
+// 끌어 온 놀이를 받는 곳. 받을 곳 강조는 data-drop 으로만 — 문서 줄과 같은 방식.
+const DROP_HOVER = {
+  onDragOver: (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.currentTarget.dataset.drop = "";
+  },
+  onDragLeave: (event: DragEvent<HTMLElement>) => {
+    delete event.currentTarget.dataset.drop;
+  },
+};
+
+/** 놓은 놀이의 row_key. 바깥 받는 곳(묶음)이 한 번 더 받지 않게 여기서 멈춘다. */
+function takeDrop(event: DragEvent<HTMLElement>) {
+  event.preventDefault();
+  event.stopPropagation();
+  delete event.currentTarget.dataset.drop;
+  return event.dataTransfer.getData("text/plain");
+}
 
 /**
  * 놀이 중심형 연간: ④ 놀이 고르기 → ⑤ 다듬기(왼쪽 AI 후보 · 칸 편집, 오른쪽 문서). 확정본은 부모가 ⑥ 으로 그린다.
@@ -402,11 +428,29 @@ export default function PlayProjectResult({
     setSelectedCell({ periodKey: plan.periods[periodIndex].period_key, rowKey, field });
   }
 
-  // 목록이나 문서의 놀이를 문서의 다른 줄에 끌어놓았다.
+  // 목록이나 문서의 놀이(고른 것 · 다른 후보)를 고른 놀이 줄에 끌어놓았다.
   function dropPick(rowKey: string, targetKey: string) {
-    if (!periodPicks.includes(rowKey)) return;
-    setMoveNotice(movedNotice(candidateName(period, rowKey), periodPicks.indexOf(targetKey)));
-    applyPicks(period.period_key, (list) => placePlayPick(list, rowKey, targetKey));
+    if (!period.candidates.some((c) => c.row_key === rowKey)) return;
+    const name = candidateName(period, rowKey);
+    const picked = periodPicks.includes(rowKey);
+    const next = applyPicks(period.period_key, (list) => placePlayPick(list, rowKey, targetKey));
+    if (!next) return;
+    if (!next.includes(targetKey) && selectedCell?.rowKey === targetKey) setSelectedCell(null);
+    const index = next.indexOf(rowKey);
+    setMoveNotice(
+      picked ? movedNotice(name, index) : `「${name}」${eulReul(name)} ${index + 1}번째에 넣었어요`,
+    );
+  }
+
+  // 고른 놀이를 「다른 후보」로 끌어 왔다 — 문서에서 뺀다.
+  function dropToRest(rowKey: string) {
+    if (periodPicks.includes(rowKey)) toggleCandidate(rowKey);
+  }
+
+  // 다른 후보를 고른 놀이 묶음(줄 밖)에 끌어 왔다 — 자리가 남으면 맨 아래에 넣는다.
+  function dropToPicked(rowKey: string) {
+    if (!periodPicks.includes(rowKey) && period.candidates.some((c) => c.row_key === rowKey))
+      toggleCandidate(rowKey);
   }
 
   function selectLeftTab(tab: LeftTab) {
@@ -530,13 +574,17 @@ export default function PlayProjectResult({
   }
 
   // AI 후보: 문서에 넣은 놀이(순서 · 빼기)와 넣을 수 있는 나머지 후보(넣기).
-  // 고른 놀이는 번호 붙은 한 묶음(끌어서 순서), 나머지는 테두리 없는 목록 — 카드를 줄줄이 늘어놓지 않는다.
+  // 고른 놀이는 번호 붙은 한 묶음, 나머지는 한 장씩 테두리 카드. 둘 다 끌어서 서로 옮긴다(문서 줄에도 놓을 수 있다).
   function renderCandidates() {
     const rest = period.candidates.filter((c) => !periodPicks.includes(c.row_key));
     const full = periodPicks.length >= MAX_PICKS;
     return (
       <div className="flex flex-col gap-5">
-        <section className="flex flex-col gap-2">
+        <section
+          className="flex flex-col gap-2"
+          {...DROP_HOVER}
+          onDrop={(event) => dropToPicked(takeDrop(event))}
+        >
           <h2
             id={pickedHeadingId}
             tabIndex={-1}
@@ -552,11 +600,13 @@ export default function PlayProjectResult({
               {pickedCandidates.map((candidate, index) => (
                 <li
                   key={candidate.row_key}
-                  className="flex cursor-grab items-center gap-2.5 py-2.5 pl-2 pr-3 hover:bg-[#fbf9f5]"
+                  className={`flex cursor-grab items-center gap-2.5 py-2.5 pl-2 pr-3 hover:bg-[#fbf9f5] ${DROP_ON}`}
                   draggable
                   onDragStart={(event) =>
                     event.dataTransfer.setData("text/plain", candidate.row_key)
                   }
+                  {...DROP_HOVER}
+                  onDrop={(event) => dropPick(takeDrop(event), candidate.row_key)}
                 >
                   {GRIP}
                   <span
@@ -577,6 +627,7 @@ export default function PlayProjectResult({
                       {candidate.materials.value}
                     </span>
                   </button>
+                  {candidate.memo_applied && <MemoMark />}
                   <button
                     type="button"
                     className="min-h-[36px] shrink-0 rounded-md px-2.5 text-[13px] text-ink-soft hover:bg-[#f3efe8] hover:text-ink"
@@ -591,20 +642,29 @@ export default function PlayProjectResult({
           )}
         </section>
         {rest.length > 0 && (
-          <section className="flex flex-col gap-1">
+          <section
+            className={`-m-1.5 flex flex-col gap-1 rounded-md p-1.5 ${DROP_ON}`}
+            {...DROP_HOVER}
+            onDrop={(event) => dropToRest(takeDrop(event))}
+          >
             <h3 className="m-0 text-[15px] font-bold text-ink">다른 후보 {rest.length}개</h3>
             <p className="m-0 mb-1 text-[13px] text-ink-soft">
               {full
-                ? `${MAX_PICKS}개를 다 골랐어요. 다른 후보를 넣으려면 위에서 하나를 빼 주세요.`
-                : "넣으면 고른 놀이 맨 아래에 붙어요."}
+                ? "위 놀이나 문서 줄에 끌어 놓으면 그 놀이와 바뀌어요."
+                : "넣으면 고른 놀이 맨 아래에 붙어요. 끌어 놓으면 그 자리에 들어가요."}
             </p>
-            <ul className="m-0 list-none divide-y divide-[#ece6dc] p-0">
+            <ul className="m-0 flex list-none flex-col gap-2 p-0">
               {rest.map((candidate) => (
                 <li
                   key={candidate.row_key}
-                  className="flex items-center justify-between gap-3 py-2.5"
+                  className="flex cursor-grab items-center gap-2.5 rounded-md border border-line bg-[#faf8f4] py-2.5 pl-2 pr-3 hover:bg-[#f5f1e9]"
+                  draggable
+                  onDragStart={(event) =>
+                    event.dataTransfer.setData("text/plain", candidate.row_key)
+                  }
                 >
-                  <span className="flex min-w-0 flex-col">
+                  {GRIP}
+                  <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-[15px] font-bold">
                       {candidate.play_name.value}
                     </span>
@@ -612,6 +672,7 @@ export default function PlayProjectResult({
                       {candidate.materials.value}
                     </span>
                   </span>
+                  {candidate.memo_applied && <MemoMark />}
                   <button
                     type="button"
                     className={SMALL}
@@ -745,41 +806,8 @@ export default function PlayProjectResult({
               </button>
             )}
           </div>
-          {/* 좁은 화면(< 768px)은 두 열 — 한 줄이면 휴대전화에서 페이지가 가로로 넘친다. */}
-          <div
-            role="tablist"
-            aria-label="놀이 프로젝트 기간"
-            className="grid w-full grid-cols-2 gap-1 rounded-md bg-[#ebe5db] p-1 md:flex md:w-auto"
-          >
-            {plan.periods.map((item, index) => {
-              const count = picks[item.period_key]?.length ?? 0;
-              const on = activePeriod === index;
-              return (
-                <button
-                  key={item.period_key}
-                  id={tabId(index)}
-                  type="button"
-                  role="tab"
-                  aria-selected={on}
-                  aria-controls={panelId}
-                  className={`flex min-h-[44px] items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 text-sm ${on ? "bg-white font-bold shadow-sm" : "text-[#5c5243]"} ${lacking.includes(item.period_key) ? "text-[#b3261e]" : ""}`}
-                  onClick={() => goToPeriod(index)}
-                >
-                  <span className="font-bold">{playSeason(item).name}</span>
-                  {playSeason(item).months && (
-                    <span className="text-xs font-normal text-ink-soft">
-                      {playSeason(item).months}
-                    </span>
-                  )}
-                  <span
-                    className={`text-xs ${count >= MAX_PICKS ? "font-bold text-[#3b5441]" : "text-ink-soft"}`}
-                  >
-                    {count >= MAX_PICKS ? `✓ ${count}/${MAX_PICKS}` : `${count}/${MAX_PICKS}`}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          {/* 계절 탭은 ⑤ 문서 머리줄과 같은 것 — 넘치면 다음 줄로 내려가서 휴대전화에서도 가로로 넘치지 않는다. */}
+          {periodTabs}
         </div>
         {notice && (
           <p role="status" className={workspace.notice}>
@@ -848,9 +876,9 @@ export default function PlayProjectResult({
           {BACK_ICON}
         </Link>
       }
+      saved={SAVE_LABEL[saving.status]}
       status={
         <span className="flex items-center gap-3">
-          {SAVE_LABEL[saving.status]}
           <PlanMemoNote plan={plan} />
         </span>
       }
@@ -916,7 +944,10 @@ export default function PlayProjectResult({
             {asking && (
               <div className={POPOVER}>
                 <PlayMonthlyConfirm
-                  message="확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 월간계획안을 만들게 돼요."
+                  title="연간계획안을 확정할까요?"
+                  message={
+                    "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요.\n이 내용으로 월간계획안을 만들게 돼요."
+                  }
                   yes={confirming ? "확정하는 중…" : "확정하기"}
                   no="더 다듬기"
                   disabled={confirming}
@@ -943,6 +974,7 @@ export default function PlayProjectResult({
           <span>
             <BigView
               pages={Math.ceil(plan.periods.length / 2)}
+              width={SHEET_WIDTH}
               dialog={bigDialog}
               render={(page) => (
                 <PlayProjectSheet

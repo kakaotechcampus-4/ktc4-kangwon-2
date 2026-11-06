@@ -65,6 +65,19 @@ class AddActivityIn(RevisionIn):
     section: Literal["together", "free_play"]
 
 
+class ActivityOrderIn(RevisionIn):
+    """한 목록의 줄(이름 칸 item_id)을 새 순서대로. 그 목록의 줄을 빠짐없이 한 번씩."""
+
+    section: Literal["together", "free_play"]
+    item_ids: list[StrictStr]
+
+
+class HabitOrderIn(RevisionIn):
+    """기본생활습관 칸(item_id)을 새 주 순서대로. 습관 칸을 빠짐없이 한 번씩(2026-11-06)."""
+
+    item_ids: list[StrictStr]
+
+
 class SplitTimetableIn(RevisionIn):
     axis: Literal["VERTICAL", "HORIZONTAL"]
 
@@ -138,6 +151,12 @@ class ActivityOut(BaseModel):
     parent_item_id: str | None
 
 
+class PooledActivityOut(ActivityOut):
+    """문서에 넣지 않은 AI 후보(layout v0.3.0). 고르기 전에는 고칠 수 없다."""
+
+    section: Literal["together", "free_play"]
+
+
 class HabitOut(BaseModel):
     week_id: str
     entry_id: str | None
@@ -195,6 +214,16 @@ class NoticeOut(BaseModel):
     week_id: str | None
 
 
+class DisplayOut(BaseModel):
+    """문서 머리 표시 칸(layout v0.2.0 D-2). 생성 때 한 번 옮겨 적고 그 뒤로는 교사 글이다.
+    빈 값도 된다. 고쳐도 반 · 연령 · 달 · 주는 바뀌지 않는다. 한글 내려받기가 같은 값을 쓴다."""
+
+    title: CellOut  # 「11월 놀이계획안」
+    age: CellOut  # 「만 4·5세」
+    class_name: CellOut
+    period: CellOut  # 「2026.11.01 ~ 2026.11.30」
+
+
 class PlayMonthlyPlanOut(BaseModel):
     id: int
     class_id: int
@@ -217,6 +246,14 @@ class PlayMonthlyPlanOut(BaseModel):
     rationale: CellOut
     together: list[ActivityOut]
     free_play: list[ActivityOut]
+    # layout v0.3.0(2026-11-06): AI 후보 8개씩 중 칸마다 정확히 `activity_pick` 개를 문서에 둔다.
+    # 옛 계획안은 null · 빈 목록이다. `activity_candidates` 는 후보 이름 칸 id 의 생성 순서.
+    activity_pick: int | None = None
+    activity_candidates: list[str] = []
+    activity_pool: list[PooledActivityOut] = []
+    # 가운데 「예상되는 놀이 방향」 — 생성 때 주제를 옮겨 적은 뒤 따로 고친다(D-6).
+    direction: CellOut
+    display: DisplayOut
     habits: list[HabitOut]
     safety_candidates: list[SafetyCandidateOut]
     safety_weeks: list[SafetyWeekOut]

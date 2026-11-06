@@ -2,9 +2,13 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { getAnnualPlan } from "@/lib/api/plans";
-import { getMonthlyPlan } from "@/lib/api/monthly";
-import { getWeeklyPlan } from "@/lib/api/weekly";
+import { useRouter } from "next/navigation";
+import { deleteAnnualPlan, getAnnualPlan, unconfirmAnnualPlan } from "@/lib/api/plans";
+import { deleteMonthlyPlan, getMonthlyPlan, unconfirmMonthlyPlan } from "@/lib/api/monthly";
+import { deletePlayMonthly, getPlayMonthly, unconfirmPlayMonthly } from "@/lib/api/playMonthly";
+import { deleteWeeklyPlan, getWeeklyPlan, unconfirmWeeklyPlan } from "@/lib/api/weekly";
+import { errorCode } from "@/lib/api/client";
+import PlayMonthlyConfirm from "@/components/plan-generator/PlayMonthlyConfirm";
 import { DOCUMENT_KINDS, localDate, type SavedDocument, type Section } from "@/lib/workspace/model";
 import { ws } from "./WorkspaceUI";
 import styles from "./DocumentArchive.module.css";
@@ -171,22 +175,108 @@ export type PlanPreviewTarget = {
   createdAt: string;
   /** 비면 「문서 열기」를 그리지 않는다 — 승인받은 남의 반 계획안은 편집 화면으로 보내지 않는다. */
   href: string;
+  /** 놀이 중심 월간(`kind` 는 monthly). 읽기 · 지우기 경로가 다르다. */
+  play?: boolean;
 };
 
-/** 권한 검사는 기존 GET API가 한다. 이동/해제 뒤 늦은 응답은 버린다. */
-export function PlanArchivePreview({ target }: { target: PlanPreviewTarget }) {
+/** 지운다. 이 계획안으로 만든 하위가 있으면 서버가 409 `IN_USE` 다(ADR-064). */
+function deletePlan(target: PlanPreviewTarget) {
+  if (target.kind === "annual") return deleteAnnualPlan(target.id);
+  if (target.kind === "weekly") return deleteWeeklyPlan(target.id);
+  return target.play ? deletePlayMonthly(target.id) : deleteMonthlyPlan(target.id);
+}
+/** 확정을 풀어 초안으로 되돌린다. 딸린 하위가 있어도 풀린다(하위는 부모 스냅샷을 그대로 가진다). */
+function unconfirmPlan(target: PlanPreviewTarget, revision: number | undefined) {
+  if (target.kind === "annual") return unconfirmAnnualPlan(target.id, revision);
+  if (revision === undefined) throw new Error("계획안 판이 없어요. 다시 열어 주세요.");
+  if (target.kind === "weekly") return unconfirmWeeklyPlan(target.id, revision);
+  return target.play
+    ? unconfirmPlayMonthly(target.id, revision)
+    : unconfirmMonthlyPlan(target.id, revision);
+}
+const IN_USE_MESSAGE: Record<PlanPreviewTarget["kind"], string> = {
+  annual: "이 계획안으로 만든 월간계획안이 있어요. 먼저 지워주세요.",
+  monthly: "이 계획안으로 만든 주간계획안이 있어요. 먼저 지워주세요.",
+  weekly: "계획안을 지우지 못했어요.",
+};
+
+/**
+ * 권한 검사는 기존 GET API가 한다. 이동/해제 뒤 늦은 응답은 버린다.
+ * `onDeleted` 가 있으면 「삭제」를 그린다(상태 무관, 확정본도 — ADR-064). 남의 반은 넘기지 않는다.
+ * 확정본이고 편집 화면이 있으면 「수정하기」(누르면 확정을 풀고 편집 화면으로 간다)도 그린다 — 계획안 화면에는 확정 취소가 없다(ADR-064).
+ */
+export function PlanArchivePreview({
+  target,
+  onDeleted,
+}: {
+  target: PlanPreviewTarget;
+  onDeleted?: () => void;
+}) {
   const key = `${target.kind}:${target.classId}:${target.id}`;
-  const [request, setRequest] = useState<{ key: string; content?: Content; error?: string } | null>(
-    null,
-  );
+  const router = useRouter();
+  const [request, setRequest] = useState<{
+    key: string;
+    content?: Content;
+    revision?: number;
+    error?: string;
+  } | null>(null);
   const [retry, setRetry] = useState(0);
+  const [asking, setAsking] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  async function unconfirm() {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await unconfirmPlan(target, request?.revision);
+      router.push(target.href);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "확정을 풀지 못했어요.");
+      setDeleting(false);
+    }
+  }
+  async function remove() {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await deletePlan(target);
+      setAsking(false);
+      onDeleted?.();
+    } catch (e) {
+      setAsking(false);
+      setDeleteError(
+        errorCode(e) === "IN_USE"
+          ? IN_USE_MESSAGE[target.kind]
+          : e instanceof Error
+            ? e.message
+            : "계획안을 지우지 못했어요.",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
   useEffect(() => {
     let live = true;
     const controller = new AbortController();
     async function load() {
       let plan;
       let sections: Content["sections"];
-      if (target.kind === "annual") {
+      if (target.play) {
+        const play = await getPlayMonthly(target.id, controller.signal);
+        plan = play;
+        sections = [
+          { heading: "주제", body: play.theme.value },
+          { heading: "주제선정이유", body: play.rationale.value },
+          ...play.together.map((a) => ({
+            heading: `함께 하는 활동 · ${a.name.value}`,
+            body: a.description.value,
+          })),
+          ...play.free_play.map((a) => ({
+            heading: `유아 예상 자유놀이 · ${a.name.value}`,
+            body: a.description.value,
+          })),
+        ];
+      } else if (target.kind === "annual") {
         const annual = await getAnnualPlan(target.id, controller.signal);
         plan = annual;
         if (annual.format === "PLAY_PROJECT") {
@@ -230,6 +320,7 @@ export function PlanArchivePreview({ target }: { target: PlanPreviewTarget }) {
       if (live)
         setRequest({
           key,
+          revision: "revision" in plan ? plan.revision : undefined,
           content: {
             title: target.title,
             className: target.className,
@@ -272,6 +363,32 @@ export function PlanArchivePreview({ target }: { target: PlanPreviewTarget }) {
           </Link>
         </div>
       )}
+      {onDeleted && target.href && current.content.status === "confirmed" && (
+        <button type="button" className={ws.secondary} disabled={deleting} onClick={unconfirm}>
+          수정하기
+        </button>
+      )}
+      {onDeleted && (
+        <button
+          type="button"
+          className={ws.secondary}
+          disabled={deleting}
+          onClick={() => setAsking(true)}
+        >
+          삭제
+        </button>
+      )}
+      {asking && (
+        <PlayMonthlyConfirm
+          message="이 계획안을 지울까요? 되돌릴 수 없어요."
+          yes={deleting ? "지우는 중…" : "지우기"}
+          no="그대로 두기"
+          disabled={deleting}
+          onYes={remove}
+          onNo={() => setAsking(false)}
+        />
+      )}
+      {deleteError && <p role="alert">{deleteError}</p>}
     </>
   );
 }

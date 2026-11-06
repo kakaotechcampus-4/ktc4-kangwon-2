@@ -98,9 +98,11 @@ export default function PlanNotebookPage() {
 
   if (importing) return <AnnualImport file={importing.file} onCancel={() => setImporting(null)} />;
 
+  // 화면 높이에 맞춘다 — 페이지는 굴러가지 않고, 초안이 많으면 「이어서 하기」 카드만 안에서 굴린다.
+  // 낮은 화면(높이 800 이하)에서는 여백을 줄여 카드 한 줄이 다 보이게 한다.
   return (
-    <div className="flex w-full flex-col gap-5 px-10 pb-12 pt-[26px] text-[#2b2826]">
-      <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink lg:text-[44px]">
+    <div className="flex w-full flex-col gap-5 px-10 pb-12 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)] lg:pb-6 [@media(max-height:800px)]:gap-4 [@media(max-height:800px)]:pt-4">
+      <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink lg:text-[44px] [@media(max-height:800px)]:lg:text-[36px]">
         어떤 계획안을 만들까요?
       </h1>
       <div
@@ -118,7 +120,7 @@ export default function PlanNotebookPage() {
 
       <section
         data-tour="plans-continue"
-        className="mt-6 flex flex-col gap-[14px] border-t border-[#e3ddd2] pt-6"
+        className="mt-6 flex min-h-0 flex-col gap-[14px] border-t border-[#e3ddd2] pt-6 lg:flex-1 [@media(max-height:800px)]:mt-1 [@media(max-height:800px)]:gap-3 [@media(max-height:800px)]:pt-4"
       >
         <div className="flex items-baseline gap-3">
           <h2 className="m-0 font-display text-[27px] font-bold leading-tight text-ink">
@@ -132,7 +134,7 @@ export default function PlanNotebookPage() {
           </p>
         )}
         <div
-          className="grid gap-4"
+          className="grid content-start gap-4 lg:min-h-0 lg:overflow-y-auto"
           style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 180px), 180px))" }}
         >
           {/* 목록을 받기 전에는 「없어요」라고 말하지 않는다. */}
@@ -166,7 +168,7 @@ export default function PlanNotebookPage() {
 }
 
 /** 이어서 쓰기 카드와 「모두 보기」 카드는 쓰다 만 계획안이 없어도 같은 크기. */
-const CARD_SIZE = "min-h-[156px]";
+const CARD_SIZE = "min-h-[156px] [@media(max-height:800px)]:min-h-[136px]";
 
 const Chevron = () => (
   <svg
@@ -205,7 +207,7 @@ function Panel({
   return (
     <section
       data-tour={v1 ? "plans-theme" : "plans-play"}
-      className="relative flex min-h-[340px] flex-col justify-between gap-5 border border-line bg-paper rounded-md px-8 py-7"
+      className="relative flex min-h-[340px] flex-col justify-between gap-5 border border-line bg-paper rounded-md px-8 py-7 [@media(max-height:800px)]:min-h-0 [@media(max-height:800px)]:gap-4 [@media(max-height:800px)]:py-5"
     >
       <Tape />
       {/* 오른쪽 위 ⓘ — 누르면 어디서 시작하는지 설명이 열린다(다시 누르면 닫힌다). */}

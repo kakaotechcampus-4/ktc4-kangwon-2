@@ -85,14 +85,19 @@ async function seeded(confirmed = false) {
 }
 
 test("single response has the captured key set, in every nested cell too", async () => {
-  const { id } = await seeded();
+  const { id, klass } = await seeded();
   const plan = await pm.getPlayMonthly(id);
   assert.deepEqual(
     Object.keys(plan).sort(),
     [
+      "activity_candidates",
+      "activity_pick",
+      "activity_pool",
       "confirmed_at",
       "class_id",
       "created_at",
+      "direction",
+      "display",
       "drill_candidates",
       "format",
       "format_version",
@@ -123,6 +128,11 @@ test("single response has the captured key set, in every nested cell too", async
     ].sort(),
   );
   assert.deepEqual(Object.keys(plan.theme).sort(), ["evidence", "generation", "item_id", "value"]);
+  // 문서 머리 · 가운데 방향 칸 — 서버처럼 반 이름 · 그 달 1일~말일을 담는다.
+  assert.deepEqual(Object.keys(plan.display), ["title", "age", "class_name", "period"]);
+  assert.equal(plan.display.class_name.value, klass.name);
+  assert.equal(plan.display.period.value, "2026.11.01 ~ 2026.11.30");
+  assert.equal(plan.direction.value, plan.theme.value);
   assert.deepEqual(Object.keys(plan.together[0]).sort(), [
     "activity_id",
     "content_ids",
@@ -399,7 +409,8 @@ test("drill copy fills the fire drill input as RULE_ONLY, the same copy is untou
   const done = await pm.copyPlayMonthlyDrill(id, drill.item_id, rev);
   const cell = done.teacher_inputs[0].cell;
   assert.equal(done.revision, rev + 1);
-  assert.equal(cell.value, drill.value);
+  // 서버처럼 「[주제] 문장」 한 줄(Human Decision 2026-11-06).
+  assert.equal(cell.value, `[${plan.drill_candidates[0].label}] ${drill.value}`);
   assert.deepEqual(cell.evidence, drill.evidence);
   assert.deepEqual(cell.generation, {
     method: "RULE_ONLY",
@@ -431,7 +442,7 @@ test("copying a different candidate with the same sentence is a new copy (revisi
   const edited = await pm.editPlayMonthlyCell(id, b.cell.item_id, a.cell.value, first.revision);
   const second = await pm.copyPlayMonthlyDrill(id, b.cell.item_id, edited.revision);
   assert.deepEqual([first.revision, edited.revision, second.revision], [rev + 1, rev + 2, rev + 3]);
-  assert.equal(second.teacher_inputs[0].cell.value, a.cell.value);
+  assert.equal(second.teacher_inputs[0].cell.value, `[${b.label}] ${a.cell.value}`);
   assert.equal("copied_from" in second, false);
   const again = await pm.copyPlayMonthlyDrill(id, b.cell.item_id, second.revision);
   assert.equal(again.revision, second.revision);
@@ -497,6 +508,81 @@ test("row delete takes the revision from the query and drops the row; a bad quer
     ["expected_revision"],
   );
   assert.equal((await pm.getPlayMonthly(id)).together.length, 5);
+});
+
+test("row order: one list only, every row once; the same order is 200 and untouched", async () => {
+  const { id, rev, plan } = await seeded();
+  const ids = plan.together.map((a) => a.activity_id);
+  const moved = [ids[1], ids[0], ...ids.slice(2)];
+  const done = await pm.orderPlayMonthlyActivities(id, "together", moved, rev);
+  assert.equal(done.revision, rev + 1);
+  assert.deepEqual(
+    done.together.map((a) => a.activity_id),
+    moved,
+  );
+  assert.deepEqual(done.free_play, plan.free_play);
+  const same = await pm.orderPlayMonthlyActivities(id, "together", moved, done.revision);
+  assert.equal(same.revision, done.revision);
+  for (const [section, bad] of [
+    ["together", ids.slice(1)],
+    ["together", [...ids, ids[0]]],
+    ["together", [...ids.slice(1), plan.free_play[0].activity_id]],
+    ["free_play", ids],
+  ])
+    await rejects(
+      pm.orderPlayMonthlyActivities(id, section, bad, done.revision),
+      422,
+      "VALIDATION_FAILED",
+      INVALID,
+      ["item_ids"],
+    );
+});
+
+test("AI candidates (ADR-065): pick to the list end, full is 422, delete goes back to the pool; habits swap", async () => {
+  const klass = await newClass();
+  const plan = addPlayMonthly(klass.id, false, 11, [], true);
+  const { id } = plan;
+  assert.deepEqual([plan.together, plan.free_play, plan.activity_pick], [[], [], 5]);
+  const together = plan.activity_pool.filter((a) => a.section === "together");
+  assert.equal(together.length, 8);
+  let p = plan;
+  for (const a of together.slice(0, 5))
+    p = await pm.pickPlayMonthlyActivity(id, a.activity_id, p.revision);
+  assert.deepEqual(
+    p.together.map((a) => a.activity_id),
+    together.slice(0, 5).map((a) => a.activity_id),
+  );
+  await rejects(
+    pm.pickPlayMonthlyActivity(id, together[5].activity_id, p.revision),
+    422,
+    "VALIDATION_FAILED",
+    "이미 다 골랐어요. 하나를 빼고 넣어 주세요.",
+    ["item_id"],
+  );
+  await rejects(
+    pm.pickPlayMonthlyActivity(id, together[0].activity_id, p.revision),
+    404,
+    "NOT_FOUND",
+    "그 후보를 찾을 수 없습니다.",
+    ["item_id"],
+  );
+  p = await pm.removePlayMonthlyActivity(id, together[1].activity_id, p.revision);
+  assert.equal(p.activity_pool[0].activity_id, together[1].activity_id); // 생성 순서 자리로
+  const ids = p.habits.map((h) => h.cell.item_id);
+  const swapped = [ids[1], ids[0], ...ids.slice(2)];
+  const moved = await pm.orderPlayMonthlyHabits(id, swapped, p.revision);
+  assert.equal(moved.revision, p.revision + 1);
+  assert.deepEqual(
+    moved.habits.map((h) => [h.week_id, h.cell.item_id]),
+    p.habits.map((h, i) => [h.week_id, swapped[i]]),
+  );
+  await rejects(
+    pm.orderPlayMonthlyHabits(id, ids.slice(1), moved.revision),
+    422,
+    "VALIDATION_FAILED",
+    INVALID,
+    ["item_ids"],
+  );
 });
 
 test("missing and foreign ids are 404, a non-integer id is 422 on plan_id", async () => {
@@ -575,7 +661,7 @@ test("the literal play path is never taken as a legacy id", async () => {
   assert.deepEqual(Object.keys(items[0]).includes("profile_ref"), false);
 });
 
-test("a confirmed plan is 409 ALREADY_CONFIRMED on every change, and cannot be deleted", async () => {
+test("a confirmed plan is 409 ALREADY_CONFIRMED on every change, and can be deleted (ADR-064)", async () => {
   const { id, rev, plan } = await seeded(true);
   const confirmed = (p) =>
     rejects(p, 409, "ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.", []);
@@ -583,15 +669,10 @@ test("a confirmed plan is 409 ALREADY_CONFIRMED on every change, and cannot be d
   await confirmed(pm.placePlayMonthlySafety(id, "2026-11-W1", null, rev));
   await confirmed(pm.copyPlayMonthlyDrill(id, plan.drill_candidates[0].cell.item_id, rev));
   await confirmed(pm.removePlayMonthlyActivity(id, plan.together[0].activity_id, rev));
-  await rejects(
-    pm.deletePlayMonthly(id),
-    409,
-    "GATE_BLOCKED",
-    "확정된 계획안은 지울 수 없습니다.",
-    [],
-  );
   assert.equal((await pm.getPlayMonthly(id)).status, "CONFIRMED");
   assert.equal((await pm.listPlayMonthly()).items[0].confirmed_at !== null, true);
+  await pm.deletePlayMonthly(id);
+  assert.equal((await pm.listPlayMonthly()).items.length, 0);
 });
 
 test("timetable: split, remove, ratio and size follow the server limits; export is confirmed-only", async () => {
