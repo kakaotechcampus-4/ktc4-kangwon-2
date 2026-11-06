@@ -125,8 +125,8 @@ test("계획안 3종 생성 카드: 데스크톱 400×245, 새로고침 유지, 
     for (const kind of kinds) {
       const size = await measureCard(page, kind);
       if (width >= 1280) {
-        // 1440 보다 좁은 창은 화면 전체를 창 폭 / 1440 으로 줄인다(globals.css --app-zoom).
-        const zoom = Math.min(1, width / 1440);
+        // 폭 · 높이가 1440 × 800 보다 모자란 창은 화면 전체를 그 비율로 줄인다(globals.css --app-zoom).
+        const zoom = Math.max(0.8, Math.min(1, width / 1440, 941 / 800));
         expect(size.width).toBeCloseTo(400 * zoom, 0);
         expect(size.height).toBeCloseTo(245 * zoom, 0);
       } else {
