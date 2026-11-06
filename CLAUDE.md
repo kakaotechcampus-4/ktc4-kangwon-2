@@ -257,6 +257,23 @@ hwpx       curl 로 받아보고 된다고 했다. 화면 버튼은 txt 를 만�
 - **「오늘」을 만들 때 `toISOString()` 을 쓰지 않는다.** 그건 UTC 날짜라 한국 아침 9시
   전에는 어제가 된다. `lib/workspace/model.ts` 의 `today()` 를 쓴다.
 
+## 화면 비율 — 1440 기준으로 줄인다
+
+창 폭이 1024 이상이면 화면 전체를 **`min(1, 창 폭 / 1440)`** 배로 줄인다(하민 2026-11-05).
+1440 보다 넓으면 그대로, 1280 창이면 0.889 배다. 1024 미만(태블릿 · 폰)은 줄이지 않는다.
+값은 `app/layout.tsx` 의 스크립트가 `--app-zoom` 에 넣고 `app/globals.css` 가 `html` 에 건다.
+
+- 화면 높이 · 폭은 `vh` · `dvh` · `vw` 대신 `--app-vh` · `--app-dvh` · `--app-vw` 를 쓴다.
+  줄어든 `html` 안에서는 `100vh` 도 같이 줄어 화면 아래가 빈다.
+  ```
+  // ✗  h-[calc(100vh-60px)]
+  // ✓  h-[calc(calc(100*var(--app-vh))-60px)]
+  ```
+- `getBoundingClientRect` · `innerWidth` 로 잰 좌표를 CSS 위치로 다시 쓸 때는 `lib/appZoom.ts` 의
+  `appZoom()` 으로 나눈다(투어 강조 상자 · 끌기 복사본이 그렇게 한다).
+- 시안 · 캡처 기준 창은 그대로 1440 × 900 이다([docs/화면-기준.md](docs/화면-기준.md)).
+  더 좁은 창에서 크기를 재는 시험은 기대값에 배율을 곱한다(`e2e/document-archive-card-size.spec.ts`).
+
 ## 입력 검사 — 스키마에서 막는다
 
 라우터에 `if` 를 쓰지 않는다. **타입에 적어두면 라우터에 들어오기 전에 걸린다.**
