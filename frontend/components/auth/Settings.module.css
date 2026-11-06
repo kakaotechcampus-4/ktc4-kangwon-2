@@ -626,3 +626,67 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---------- 내 계정 — 종이 한 장에 줄 넷 ----------
+   이름표 · 설명 · 단추가 줄마다 같은 자리라 훑어 읽힌다. 동그라미 색은 「내 계정」 탭 색이다. */
+.acctSheet {
+  display: grid;
+  max-width: 760px;
+}
+.acctMe {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 22px;
+  border-bottom: 1.5px dashed var(--settings-line);
+}
+.acctAvatar {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 50%;
+  background: rgba(248, 220, 196, 0.95);
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+}
+.acctMe b {
+  display: block;
+  font-size: 18px;
+}
+.acctMe small,
+.acctText small {
+  display: block;
+  font-size: 13.5px;
+  color: var(--pg-ink-soft);
+}
+.acctRow {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 0;
+  border-bottom: 1px dashed var(--settings-line);
+}
+.acctRow:last-of-type {
+  border-bottom: 0;
+}
+.acctLabel {
+  font-family: var(--font-display), sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+}
+.acctText b {
+  font-size: 15.5px;
+}
+.acctRow a.btn {
+  text-decoration: none;
+}
+@media (max-width: 640px) {
+  .acctRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+}

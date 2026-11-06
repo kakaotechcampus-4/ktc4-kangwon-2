@@ -1,9 +1,11 @@
 "use client";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   useEffect,
   useId,
   useLayoutEffect,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -33,6 +35,7 @@ const TABS = [
   { key: "account", label: "내 계정" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
+type Me = { name: string; email: string };
 type Tone = "yellow" | "plum" | "clay" | "sage";
 
 /** 쪽지를 떼어 크게 여는 칸. 여는 단추와 떼어 낸 쪽지 안을 준다. */
@@ -171,6 +174,7 @@ export default function SettingsPage() {
   const [centerId, setCenterId] = useState<number | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
   const [tab, setTab] = useState<Tab>("center");
+  const [me, setMe] = useState<Me | null>(null);
 
   // 관찰 영역 · 트렌드봇은 원 번호로 저장한다.
   useEffect(() => {
@@ -180,6 +184,8 @@ export default function SettingsPage() {
       try {
         const user = await getCurrentUser();
         session.assertCurrent();
+        // 내 계정 탭의 이름 · 메일. 원이 없어도 보인다.
+        if (active) setMe({ name: user.name, email: user.email });
         if (user.center_id === null) throw new Error("원 정보를 먼저 등록해야 합니다.");
         if (active) setCenterId(user.center_id);
       } catch (e) {
@@ -349,23 +355,14 @@ export default function SettingsPage() {
             hidden={tab !== "account"}
             className={styles.panel}
           >
-            <div className={styles.two}>
-              <PasswordCard />
-              <Note title="화면 안내" icon="compass" tone="sage" tilt={1}>
-                <p>화면마다 처음 한 번 뜨는 안내를 다시 볼 수 있습니다.</p>
-                {/* 끈 안내도 본 안내도 되살리고 첫 화면으로 간다 — 홈에서 바로 다시 뜬다. */}
-                <button
-                  type="button"
-                  className={`${ws.secondary} ${styles.action}`}
-                  onClick={() => {
-                    resetTour();
-                    router.push("/");
-                  }}
-                >
-                  화면 안내 다시 보기
-                </button>
-              </Note>
-            </div>
+            <AccountSheet
+              me={me}
+              onTour={() => {
+                // 끈 튜토리얼도 본 튜토리얼도 되살리고 첫 화면으로 간다 — 홈에서 바로 다시 뜬다.
+                resetTour();
+                router.push("/");
+              }}
+            />
           </section>
         </div>
       </div>
@@ -500,44 +497,115 @@ function TrendsCard({ centerId }: { centerId: number }) {
  * **다른 곳에서 쓰던 비밀번호로 가입한 교사에게 바꿀 자리가 있어야 한다.** 크롬은 자기가
  * 저장해 둔 비밀번호가 다른 주소의 입력 칸에 들어가면 피싱으로 의심하고 구글에 알린다.
  */
-function PasswordCard() {
+/**
+ * 내 계정 — 종이 한 장에 줄 넷. 왼쪽 이름표 · 가운데 설명 · 오른쪽 단추가 줄마다 같은 자리다.
+ * 할 일이 단추 몇 개라 쪽지 여러 장으로 나누지 않는다. 맨 위에 누구 계정인지 둔다.
+ */
+function AccountSheet({ me, onTour }: { me: Me | null; onTour: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
+
+  function openPassword() {
+    setDone(false);
+    setOpen(true);
+    // 안이 그려진 다음 연다 — 열리자마자 첫 칸에 포커스가 가야 한다.
+    requestAnimationFrame(() => dialog.current?.showModal());
+  }
+
   return (
-    <Note
-      title="비밀번호 바꾸기"
-      icon="lock"
-      tone="yellow"
-      tilt={-1.5}
-      peel={{
-        trigger: (open) => (
-          <button
-            type="button"
-            className={`${ws.secondary} ${styles.action}`}
-            onClick={() => {
-              setDone(false);
-              open();
-            }}
-          >
-            비밀번호 바꾸기
-          </button>
-        ),
-        content: (close) => (
-          <PasswordForm
-            onCancel={close}
-            onChanged={() => {
-              setDone(true);
-              void close();
-            }}
-          />
-        ),
-      }}
-    >
-      <p>
-        다른 서비스에서 사용하는 비밀번호와 동일하다면 변경하는 것이 좋습니다.
-        <strong> 쌤플에서만 사용하는 비밀번호</strong>를 설정하면 더욱 안전합니다.
-      </p>
-      <p role="status">{done ? "비밀번호를 변경했습니다." : ""}</p>
-    </Note>
+    <section className={styles.acctSheet} aria-label="내 계정">
+      <div className={styles.acctMe}>
+        <span className={styles.acctAvatar} aria-hidden="true">
+          {me?.name.slice(0, 1) ?? ""}
+        </span>
+        <span>
+          <b>{me ? `${me.name} 선생님` : "불러오는 중이에요"}</b>
+          <small>{me ? `${me.email} · 로그인할 때 쓰는 메일` : ""}</small>
+        </span>
+      </div>
+      <AccountRow
+        label="비밀번호"
+        title="비밀번호 바꾸기"
+        live
+        note={
+          done ? "비밀번호를 바꿨어요." : "누르면 지금 비밀번호와 새 비밀번호를 적는 창이 열려요."
+        }
+      >
+        <button type="button" className={styles.btn} onClick={openPassword}>
+          비밀번호 바꾸기
+        </button>
+      </AccountRow>
+      <AccountRow
+        label="튜토리얼"
+        title="튜토리얼 다시 보기"
+        note="화면마다 처음 한 번 뜨는 튜토리얼을 다시 켜요."
+      >
+        <button type="button" className={styles.btn} onClick={onTour}>
+          튜토리얼 다시 보기
+        </button>
+      </AccountRow>
+      <AccountRow label="로그아웃" title="로그아웃" note="이 기기에서 쌤플을 닫아요.">
+        <Link href="/logout" className={styles.btn}>
+          로그아웃
+        </Link>
+      </AccountRow>
+      <dialog
+        ref={dialog}
+        aria-labelledby="password-title"
+        className={`${styles.peeled} ${styles.yellow}`}
+        onClose={() => setOpen(false)}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) dialog.current?.close();
+        }}
+      >
+        {open && (
+          <>
+            <h2 id="password-title" className={`${styles.title} ${styles.peeledHead}`}>
+              <SettingsIcon name="lock" size={22} />
+              비밀번호 바꾸기
+            </h2>
+            <p className={styles.hint}>
+              다른 서비스와 같은 비밀번호라면 <strong>쌤플에서만 쓰는 비밀번호</strong>로 바꿔
+              주세요.
+            </p>
+            <PasswordForm
+              onCancel={() => dialog.current?.close()}
+              onChanged={() => {
+                setDone(true);
+                dialog.current?.close();
+              }}
+            />
+          </>
+        )}
+      </dialog>
+    </section>
+  );
+}
+
+function AccountRow({
+  label,
+  title,
+  note,
+  live,
+  children,
+}: {
+  label: string;
+  title: string;
+  note: string;
+  /** 바뀌면 읽어 주는 줄 — 비밀번호를 바꾼 뒤 알린다. */
+  live?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className={styles.acctRow}>
+      <span className={styles.acctLabel}>{label}</span>
+      <span className={styles.acctText}>
+        <b>{title}</b>
+        <small role={live ? "status" : undefined}>{note}</small>
+      </span>
+      {children}
+    </div>
   );
 }
 
