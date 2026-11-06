@@ -233,19 +233,38 @@ def test_칸을_고치면_그_칸만_바뀌고_revision_이_하나_오른다(wor
     )
 
 
-@pytest.mark.parametrize("evidence", [True, False])
-def test_실내대체_칸을_만들고_고치고_확정하면_한글_문서에서_바깥놀이_아래_행이다(
-    db_session, teacher, monkeypatch, evidence
+def test_실내대체_근거가_없으면_모델을_부르기_전에_멈추고_저장하지_않는다(
+    db_session, teacher, monkeypatch
 ):
-    if not evidence:  # D-5: 근거가 없으면 행은 남고 칸만 비어 교사가 채운다
-        approved = JsonWeeklyEvidenceClassificationRepository().get_classification()
-        no_match = ((SourceSection.THEME, "없는 이름", WeeklySemanticClass.INDOOR_ALTERNATIVE),)
-        nothing = replace(approved, entries=no_match)
-        monkeypatch.setattr(
-            monthly_composition,
-            "JsonWeeklyEvidenceClassificationRepository",
-            lambda: InMemoryWeeklyEvidenceClassificationRepository(nothing),
-        )
+    """ADR-050 2026-11-06 변경: 새 생성은 실내대체를 빈칸으로 두지 않는다.
+
+    D-5 의 새 생성 처리를 대체한다 — 근거가 없으면 모델 호출 전에 멈춘다."""
+    approved = JsonWeeklyEvidenceClassificationRepository().get_classification()
+    no_match = ((SourceSection.THEME, "없는 이름", WeeklySemanticClass.INDOOR_ALTERNATIVE),)
+    nothing = replace(approved, entries=no_match)
+    monkeypatch.setattr(
+        monthly_composition,
+        "JsonWeeklyEvidenceClassificationRepository",
+        lambda: InMemoryWeeklyEvidenceClassificationRepository(nothing),
+    )
+    seed = _seed(db_session, "가원", "a@example.com", indoor=True)
+    teacher.center_id = seed["center"]
+    annual = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": seed["class"], "form_id": None},
+    )
+    assert client.post(f"/api/plans/annual/{annual.json()['id']}/confirm").status_code == 200
+    created = client.post(
+        "/api/plans/monthly",
+        json={"class_id": seed["class"], "month": 9, "profile_ref": seed["profile"]},
+    )
+    assert _error(created) == (500, "GENERATION_FAILED", [])
+    assert db_session.query(Plan).filter(Plan.kind == "monthly").count() == 0
+
+
+def test_실내대체_칸을_만들고_고치고_확정하면_한글_문서에서_바깥놀이_아래_행이다(
+    db_session, teacher
+):
     seed = _seed(db_session, "가원", "a@example.com", indoor=True)
     teacher.center_id = seed["center"]
     plan = _monthly(seed)
@@ -253,7 +272,7 @@ def test_실내대체_칸을_만들고_고치고_확정하면_한글_문서에�
     indoor = next(s for s in plan["sections"] if s["section_key"] == "indoor_alternative")
     assert indoor["label"] == "실내 대체활동"
     assert len(indoor["cells"]) == len([w for w in plan["weeks"] if w["active"]])
-    assert [bool(c["value"]) for c in indoor["cells"]] == [evidence] * len(indoor["cells"])
+    assert all(c["value"] for c in indoor["cells"])
 
     target = indoor["cells"][1]
     edited = _edit(plan["id"], target["item_id"], "교사가 쓴 실내 대체활동", 1)

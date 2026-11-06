@@ -260,6 +260,8 @@ WeeklyPlan.operating_days   (MON, TUE, WED, THU, FRI) 또는 (… , SAT)
 
 ### 7-1. 원칙 `[선례]` 월간 근거 분류 (D2)
 
+> **2026-11-06 실내대체 보완:** ADR-050의 빈칸 없는 새 생성 정책을 연결형 주간에 적용한다. 같은 주 부모의 대상·경험과 승인된 실내대체 원문의 방법을 결합할 수 있으며, 인용은 방법의 출처다. 부모 바깥놀이·실내대체·focus 스냅샷과 기관 근거를 구분한다. 새 실내대체는 `활동명: 합니다체 설명`으로 채우고 빈 응답은 최대 한 번 수리한다. 재차 실패하면 저장하지 않는다. v0.1.0·저장된 구판·교사 직접 편집·다른 칸의 빈칸 계약은 그대로다. 분류·월·연령 필터를 완화하거나 원문에 없는 준비물을 단정하지 않는다.
+
 월간은 기관 자료(Evidence Store)를 **원문 행 이름까지 정확히 맞는 것만** 근거로 쓴다 — 사람이 승인한
 `monthly-evidence-semantic-classification-v0.1.0`(`p0-planning/data/evidence/monthly_evidence_semantic_classification_v0_1_0.json`,
 `evidence/classification.py`)이 `(source_section, source_label)` → 분류를 정하고, 목록에 없으면 제외다. 주간도 이 방식을 따른다.

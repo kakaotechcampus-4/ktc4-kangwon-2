@@ -2366,22 +2366,57 @@ class BlankIndoorLlm(RequestAwareMonthlyLlm):
 
 
 @pytest.mark.parametrize("weeks", (1, 5))
-def test_indoor_alternative_week_may_be_left_unresolved(weeks):
-    """The LLM may leave a week's indoor_alternative blank; nothing checks why (IU-1, IU-2)."""
+def test_indoor_alternative_blanks_are_filled_by_one_scoped_repair(weeks):
+    """New generation fills every week; the old IU-1 blank contract is superseded."""
     harness = Harness()
-    provider = BlankIndoorLlm(weeks)
+    class RepairIndoorLlm(BlankIndoorLlm):
+        def generate_monthly(self, request):
+            if request.repair_targets:
+                return RequestAwareMonthlyLlm.generate_monthly(self, request)
+            return super().generate_monthly(request)
+    provider = RepairIndoorLlm(weeks)
 
-    plan = harness.generate(provider=provider, command=_indoor_command(harness)).plan
+    plan = harness.generate(provider=SchemaObeyingRepair(provider), command=_indoor_command(harness)).plan
 
-    version = provider.monthly_requests[0].prompt_version
     cells = plan.section("indoor_alternative").cells
+    assert len(provider.monthly_requests) == 2
+    repair = provider.monthly_requests[-1]
+    assert len(repair.repair_targets) == weeks
+    assert all(key == "indoor_alternative" and set(fields) == {"value", "grounding_refs", "unresolved"}
+               for _, key, fields in repair.repair_targets)
     for index, cell in enumerate(cells):
-        assert cell.generation.method is GenerationMethod.RULE_LLM and cell.generation.rule_version == version
-        if index < weeks:
-            assert cell.value == "" and cell.cell_state is CellState.EMPTY_UNRESOLVED
-        else:
-            assert cell.value and cell.cell_state is CellState.FILLED
+        assert cell.value and cell.cell_state is CellState.FILLED
+        assert cell.generation.method is GenerationMethod.RULE_LLM
+        expected = repair if index < weeks else provider.monthly_requests[0]
+        assert cell.generation.rule_version == expected.prompt_version
     assert all(cell.value for cell in plan.section("outdoor_play").cells)
+
+
+def test_repeated_blank_indoor_response_never_saves_a_blank_plan():
+    harness = Harness()
+    provider = BlankIndoorLlm(1)
+    with pytest.raises(MonthlyApplicationError) as exc:
+        harness.generate(provider=SchemaObeyingRepair(provider), command=_indoor_command(harness))
+    assert "INDOOR_ALTERNATIVE_REQUIRED" in exc.value.__cause__.validation_codes
+    assert len(provider.monthly_requests) == 2
+    assert harness.plans.save_count == 0
+
+
+def test_missing_indoor_evidence_stops_before_provider_and_save(monkeypatch):
+    harness, provider = Harness(), RequestAwareMonthlyLlm()
+    command = _indoor_command(harness)
+    build = harness.context.build
+
+    def without_indoor(**kwargs):
+        packet = build(**kwargs)
+        return replace(packet, section_evidence=tuple(
+            i for i in packet.section_evidence if i.grounding_class is not SemanticClass.INDOOR_ALTERNATIVE
+        ))
+
+    monkeypatch.setattr(harness.context, "build", without_indoor)
+    with pytest.raises(MonthlyApplicationError):
+        harness.generate(provider=provider, command=command)
+    assert not provider.monthly_requests and harness.plans.save_count == 0
 
 
 def test_filled_indoor_alternative_still_needs_a_ref():

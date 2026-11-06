@@ -22,6 +22,7 @@ from ..domain.provenance import (
 from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class_for
 from ..planner.cell_service import MonthlyCellPlanner
 from ..planner.teacher_memo import with_memo_evidence
+from ..venue_policy import parent_teacher_venues
 from ..planner.contracts import (
     LLM_CELL_SECTION_KEYS,
     OUTDOOR_SECTION_KEY,
@@ -222,8 +223,9 @@ class RegenerateMonthlyPlanItem:
             constraint_assessments=plan.constraint_assessments,
             grounding_classes=snapshot_grounding_classes(plan.template_snapshot),
         )
-        if plan.teacher_memo:
-            packet = replace(packet, teacher_memo=plan.teacher_memo)
+        packet = replace(packet, teacher_memo=plan.teacher_memo, teacher_venues=tuple(sorted(
+            set(plan.parent_teacher_venues) | set(parent_teacher_venues(plan.cells))
+        )))
         grounding_class = grounding_class_for(plan.template_snapshot.section(cell.section_key))
         if cell.section_key in CLASS_SCOPED_SECTION_KEYS and grounding_class not in {
             item.grounding_class for item in packet.section_evidence

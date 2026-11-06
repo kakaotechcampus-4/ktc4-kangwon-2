@@ -66,6 +66,7 @@ def _search(records, **overrides):
         (
             (SourceSection.INDOOR_PLAY, "쌓기", INDOOR),
             (SourceSection.INDOOR_PLAY, "이야기 나누기", WeeklySemanticClass.GROUP_ACTIVITY),
+            (SourceSection.INDOOR_PLAY, "실내대체", WeeklySemanticClass.INDOOR_ALTERNATIVE),
         ),
     )
     arguments = dict(weekly_class=INDOOR, calendar_month=9, ages=frozenset({3}), query_text="가을 열매")
@@ -85,6 +86,29 @@ def test_only_that_class_that_month_valid_and_age_verified_records_are_used():
     )
     assert _search(records) == ["ev_1"]
     assert _search(records, weekly_class=WeeklySemanticClass.GROUP_ACTIVITY) == ["ev_3"]
+
+
+def test_new_generation_excludes_venue_bound_source_without_rewriting_it():
+    records = (_record("ev_1", text="<현장학습> 배산유아숲터 숲체험"),
+               _record("ev_2", text="부산시민공원 가을소풍"),
+               _record("ev_3", text="자연물로 겨울나무 꾸미기"))
+    assert _search(records, exclude_venue_bound=True) == ["ev_3"]
+    assert records[0].text == "<현장학습> 배산유아숲터 숲체험"
+
+
+def test_indoor_methods_are_explicit_without_bypassing_month_age_or_class():
+    records = (
+        _record("ev_1", label="실내대체", text="겨울나무를 표현해요"),
+        _record("ev_2", label="실내대체", text="겨울나무를 몸으로 표현해요"),
+        _record("ev_3", label="실내대체", text="겨울나무를 몸으로 표현해요", age_scope=()),
+        _record("ev_4", label="실내대체", text="겨울나무를 몸으로 표현해요", month=12),
+        _record("ev_5", label="쌓기", text="겨울나무를 몸으로 표현해요"),
+    )
+    assert _search(records, weekly_class=WeeklySemanticClass.INDOOR_ALTERNATIVE,
+                   query_text="겨울나무", explicit_indoor_methods=True) == ["ev_2", "ev_1"]
+    assert _search(records, weekly_class=WeeklySemanticClass.INDOOR_ALTERNATIVE,
+                   query_text="겨울나무") == ["ev_1", "ev_2"]  # legacy requests keep their ranking
+    assert _search(records, query_text="겨울나무") == ["ev_5"]
 
 
 @pytest.mark.parametrize("text,label,expected", [

@@ -401,6 +401,7 @@ class MonthlyContextPipeline:
                     else ()
                 ),
                 subthemes=parent_subthemes,
+                exclude_venue_bound=curriculum is not None or bool(parent_subthemes),
             )
         )
         packet = self._context.build(

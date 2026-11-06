@@ -37,6 +37,7 @@ from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class
 from ..planner.teacher_memo import cell_address, with_memo_evidence
 from ..domain.safety_placement import SafetyKind, SafetyWeek
 from ..domain.teacher_memo import TEACHER_MEMO_EVIDENCE, without_memo_evidence
+from ..venue_policy import authorized_venues, parent_teacher_venues
 from ..rules.safety_requests import SAFETY_REQUEST_RULE_ID, SAFETY_REQUEST_RULE_VERSION
 from ..planner.contracts import DRILL_CANDIDATE_PREFIX, SAFETY_CANDIDATE_PREFIX, MonthlyPlanningOutcome
 from ..planner.service import MonthlyPlanner
@@ -231,6 +232,14 @@ class GenerateMonthlyPlan:
         resolved_sections = resolve_snapshot_sections(template_snapshot)
         week_periods = canonical_week_periods(command.target_month)
         theme = derive_monthly_theme(parent, command.target_month)
+        annual_item = next(p.theme for p in parent.periods if p.period == command.target_month)
+        written = dict(parent.teacher_subthemes).get(command.target_month.calendar_month, ())
+        if annual_item.generation.method in {GenerationMethod.MANUAL, GenerationMethod.IMPORTED}:
+            written = command.parent_subthemes
+        inherited_venues = parent_teacher_venues(
+            (annual_item,), values=command.parent_subthemes, memo=parent.teacher_memo,
+            inherited=authorized_venues("\n".join(value for value in written if value in command.parent_subthemes)),
+        )
         optional_context = optional_context_results(
             command.optional_context_names, self._optional_context
         )
@@ -302,8 +311,7 @@ class GenerateMonthlyPlan:
                 )
             if drill_mode:
                 packet = self._with_drill_topics(packet, command)
-            if command.teacher_memo:
-                packet = replace(packet, teacher_memo=command.teacher_memo)
+            packet = replace(packet, teacher_memo=command.teacher_memo, teacher_venues=inherited_venues)
             available = {item.grounding_class for item in packet.section_evidence}
             missing = sorted(
                 section.section_key
@@ -488,6 +496,7 @@ class GenerateMonthlyPlan:
             ),
             generation_mode=command.generation_mode,
             parent_subthemes=command.parent_subthemes,
+            parent_teacher_venues=inherited_venues,
             safety_candidates=tuple(safety_candidates),
             safety_weeks=safety_weeks,
             drill_candidates=tuple(drill_candidates),

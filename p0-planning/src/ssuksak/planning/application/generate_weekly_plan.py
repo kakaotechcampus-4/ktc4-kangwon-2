@@ -67,6 +67,7 @@ from ..planner.weekly import (
     weekly_memo_address,
 )
 from ..retrieval.models import RetrievedEvidence
+from ..venue_policy import parent_teacher_venues
 from ..retrieval.weekly import activity_type, candidate_activity_basis, indoor_play_type, weekly_section_evidence
 from ..rules.monthly_activity_selection import (
     ActivitySelection,
@@ -538,7 +539,10 @@ def llm_context(
         classified = _classified_evidence(
             store, classification_repository.get_classification(), parent, period.week_id, keys,
             focus_aware=linked, activity_candidates=activity_candidates, indoor_play_candidates=indoor_play_candidates,
+            exclude_venue_bound=packet.curriculum is not None or linked,
         )
+    if linked and any(s.section_key == "indoor_alternative" for s in snapshot.sections) and not classified.get("indoor_alternative"):
+        raise WeeklyApplicationError("weekly_reference_context_unavailable", "Eligible indoor method evidence is unavailable")
     daily_life = None
     if linked and daily_life_loader is not None:
         try:
@@ -576,9 +580,11 @@ def llm_cell_sources(
                 catalog.catalog_version, display_name=proposed.value,
             ),)
     elif key in context.classified:
-        # No parent counterpart (§7): only the chosen institution records.
+        # Indoor adaptations use the parent's experience and the institution's method separately.
         labels = {item.record_id: item.record.source_label for item in context.classified[key]}
-        cited = ()
+        cited = tuple(cell for source_key in (OUTDOOR_KEY, "indoor_alternative", "focus")
+                      if (cell := _parent_cell(parent, source_key, context.request.week_id)) is not None
+                      and cell.value.strip()) if key == "indoor_alternative" and context.request.reference_wiring else ()
         extra = tuple(
             EvidenceSource(
                 EvidenceSourceType.INSTITUTION_SAMPLE, ref, context.store_version, display_name=labels[ref]
@@ -664,7 +670,7 @@ def _parent_cell(parent: MonthlyPlan, key: str, week_id: WeekId) -> MonthlyCell 
     return section.cell_for_week(week_id) or section.cell_for_week(None)
 
 
-def _classified_evidence(store, classification, parent, week_id, keys, *, focus_aware=False, activity_candidates=False, indoor_play_candidates=False) -> dict[str, tuple[RetrievedEvidence, ...]]:
+def _classified_evidence(store, classification, parent, week_id, keys, *, focus_aware=False, activity_candidates=False, indoor_play_candidates=False, exclude_venue_bound=False) -> dict[str, tuple[RetrievedEvidence, ...]]:
     """W3c: evidence per classified Section; a Section with none is left out (not a target)."""
     focus = _parent_cell(parent, "focus", week_id)
     query = " ".join((_only_cell(parent, THEME_KEY).value, focus.value if focus is not None else ""))
@@ -686,6 +692,8 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
                 sibling_focuses=tuple(c.value for c in _section_cells(parent, "focus") if c.value.strip()) if focus_aware else (),
                 by_activity_type=activity_candidates and key == "group_activity" or indoor_play_candidates and key == "indoor_play",
                 preferred_refs=preferred,
+                explicit_indoor_methods=focus_aware and key == "indoor_alternative",
+                exclude_venue_bound=exclude_venue_bound,
             ) if item.record.text
         )
         if items:
@@ -770,6 +778,10 @@ def _weekly_request(
         daily_life=daily_life,
         sibling_focuses=tuple(c.value for c in _section_cells(parent, "focus") if c.value.strip()) if linked else (),
         teacher_memo=teacher_memo,
+        teacher_venues=parent_teacher_venues(
+            (c for c in parent.cells if not c.section_key.endswith("_detail")),
+            memo=parent.teacher_memo, inherited=parent.parent_teacher_venues,
+        ),
     )
 
 

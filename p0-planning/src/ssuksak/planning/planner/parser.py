@@ -91,8 +91,7 @@ def _section_branches(
     is one branch that fixes its reference_id and its canonical value together, so an id
     can only be returned with its own label. Theme has its one locked pair; outdoor_play
     may instead be free text with a null reference_id. A non-safety free-text branch
-    mirrors the validator: it is never unresolved and cites at least one ref, except that
-    indoor_alternative may also return a week blank (unresolved, no refs).
+    mirrors the validator: it is never unresolved and cites at least one ref.
     """
     properties = dict(_SECTION_SCHEMA["properties"])
     properties["section_key"] = {"type": "string", "enum": [section_key]}
@@ -125,14 +124,6 @@ def _section_branches(
         if refs:
             free["grounding_refs"] = dict(properties["grounding_refs"], minItems=1)
     branches = [*pairs, _object_schema(dict(properties, **free))]
-    if section_key == "indoor_alternative":
-        branches.append(_object_schema(dict(
-            properties,
-            value={"type": "string", "enum": [""]},
-            unresolved={"type": "boolean", "enum": [True]},
-            reference_id={"type": "null"},
-            grounding_refs=_refs_schema(()),
-        )))
     return branches
 
 
@@ -170,7 +161,7 @@ def repair_patch_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
     """A repair returns patches for its repair_targets only: one branch per target cell.
 
     Each branch fixes the cell address and allows exactly the fields that target may
-    change, so no other cell, reference_id or unresolved can be expressed at all.
+    change. Only an indoor-required finding may set unresolved to false.
     """
     allowed = dict(request.allowed_grounding_refs_by_section)
     branches = []
@@ -181,6 +172,8 @@ def repair_patch_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
         }
         if "value" in fields:
             properties["value"] = _STRING
+        if "unresolved" in fields:
+            properties["unresolved"] = {"type": "boolean", "enum": [False]}
         if "grounding_refs" in fields:
             properties["grounding_refs"] = _refs_schema(allowed.get(section_key, ()))
         branches.append(_object_schema(properties))

@@ -29,6 +29,7 @@ from .prompt import (
 )
 
 from .v1_guidance import V1_GUIDANCE
+from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG
 
 MONTHLY_CELL_TASK = "monthly_cell_proposal"
 
@@ -161,12 +162,13 @@ def build_monthly_cell_request(
     return MonthlyCellPlanningRequest(
         task=MONTHLY_CELL_TASK,
         prompt_version=(MONTHLY_CONTEXT_CELL_PROMPT_VERSION if contextual else MONTHLY_CELL_PROMPT_VERSION)
+        + (VENUE_POLICY_TAG if contextual else "")
         + (MONTHLY_ACTIVITY_DETAIL_PROMPT_TAG if detail else "")
         + (TEACHER_MEMO_PROMPT_TAG if memo is not None else ""),
         system_prompt=CELL_SYSTEM_PROMPT + (
             V1_GUIDANCE + MONTHLY_V1_STYLE + MONTHLY_V1_CELL_CONTEXT if contextual else ""
         ) + (CELL_DETAIL_NOTE + ACTIVITY_DETAIL_PROMPT if detail else "")
-        + (TEACHER_MEMO_PROMPT if memo is not None else ""),
+        + (TEACHER_MEMO_PROMPT if memo is not None else "") + (VENUE_GUIDANCE if contextual else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         target_week_id=target_week_id,

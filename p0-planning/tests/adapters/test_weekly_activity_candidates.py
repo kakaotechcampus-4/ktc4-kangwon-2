@@ -150,7 +150,9 @@ def test_bad_candidate_format_repairs_once_and_records_the_repair_version(indoor
         assert request.system_prompt.count(CANDIDATE_DESCRIPTION_TONE) == 1
         assert "소리는 듣는 대상이며" not in request.system_prompt
         assert LINKED_OUTDOOR_INSTRUCTION in request.system_prompt
-        assert LINKED_WRITING_GUIDANCE in request.system_prompt
+        assert LINKED_WRITING_GUIDANCE.replace(
+            "허용 근거로 이어갈 수 없으면 빈칸으로 두고 관계없는 놀이로 채우지 않는다. ", ""
+        ) in request.system_prompt
         assert "작품명과 익숙한 놀이명은 유지" in request.system_prompt
         assert "근거에 없는 재료·놀이 방법·절차·결과물을 보태지 않는다" in request.system_prompt
 

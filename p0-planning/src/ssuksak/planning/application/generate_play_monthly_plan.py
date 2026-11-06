@@ -99,6 +99,7 @@ from .safety_candidates import (
 )
 from ..domain.safety_placement import SafetyKind
 from ..domain.teacher_memo import TEACHER_MEMO_EVIDENCE
+from ..venue_policy import parent_teacher_venues, venue_name_only_repair
 from ..rules.safety_requests import SAFETY_REQUEST_RULE_ID, SAFETY_REQUEST_RULE_VERSION
 
 SYSTEM_ACTOR = "play_monthly_application"
@@ -285,6 +286,13 @@ class GeneratePlayMonthlyPlan:
                 command.safety_quality_version,
             ),
             teacher_memo=command.teacher_memo,
+            teacher_venues=parent_teacher_venues(
+                (getattr(row, field) for period in parent.periods
+                 if command.target_month.calendar_month in period.period.months
+                 for row in period.candidates if row.row_key in period.selected
+                 for field in ("play_name", "materials", "support_direction")),
+                memo=parent.teacher_memo,
+            ),
         )
 
         response = self._provider.generate_play_monthly(request)
@@ -296,6 +304,8 @@ class GeneratePlayMonthlyPlan:
         if issues:
             repair = build_repair_request(request, content, issues)
             repaired = parse_play_monthly_proposal(self._provider.generate_play_monthly(repair).content)
+            if any(issue.code == "UNREQUESTED_VENUE" for issue in issues) and venue_name_only_repair(proposal, repaired):
+                raise ProposalRejectedError(("VENUE_NAME_ONLY_REMOVAL",))
             changed = changed_locations(proposal, repaired)
             remaining = validate_play_monthly(repaired, request) + repair_scope_issues(changed, issues)
             if remaining:

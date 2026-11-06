@@ -24,6 +24,7 @@ from ssuksak.adapters.weekly_composition import WEEKLY_TEMPLATE_PATH
 from ssuksak.planning import MonthlyApplicationError, WeeklyPlan
 from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
 from ssuksak.planning.planner.weekly import WEEKLY_CONTEXT_CELL_PROMPT_VERSION
+from ssuksak.planning.venue_policy import VENUE_POLICY_TAG
 
 from app.config import settings
 from app.features.auth.models import User
@@ -665,7 +666,7 @@ def test_칸을_다시_만들면_그_칸만_바뀐다(world):
     assert audit[-1]["type"] == "REGENERATED"
     assert (
         audit[-1]["generation_change"]["after"]["rule_version"]
-        == WEEKLY_CONTEXT_CELL_PROMPT_VERSION
+        == WEEKLY_CONTEXT_CELL_PROMPT_VERSION + VENUE_POLICY_TAG
     )
 
 

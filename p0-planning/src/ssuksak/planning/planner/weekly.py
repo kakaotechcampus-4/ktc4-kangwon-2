@@ -30,6 +30,7 @@ from .contracts import (
     is_compatible_monthly_model,
 )
 from .parser import _STRING, _object_schema, _refs_schema
+from .indoor_alternative import INDOOR_ADAPTATION_GUIDANCE, INDOOR_ALTERNATIVE_TAG, INDOOR_REQUIRED
 from .teacher_memo import (
     TEACHER_MEMO_PROMPT,
     TEACHER_MEMO_PROMPT_TAG,
@@ -37,6 +38,7 @@ from .teacher_memo import (
     split_memo_applied,
 )
 from .text_policy import normalize_visible_text, visible_text_violations
+from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG, venue_name_only_repair
 from .v1_guidance import (
     NATURAL_PLAY_GUIDANCE,
     V1_GUIDANCE,
@@ -132,6 +134,7 @@ class WeeklyIssueCode(str, Enum):
     UNKNOWN_GROUNDING_REF = "UNKNOWN_GROUNDING_REF"
     WRONG_SOURCE_GROUNDING = "WRONG_SOURCE_GROUNDING"
     RESOLVED_REQUIRES_GROUNDING = "RESOLVED_REQUIRES_GROUNDING"
+    INDOOR_ALTERNATIVE_REQUIRED = INDOOR_REQUIRED
     REFERENCE_FORBIDDEN = "REFERENCE_FORBIDDEN"
     UNKNOWN_REFERENCE_ID = "UNKNOWN_REFERENCE_ID"
     REFERENCE_REQUIRED = "REFERENCE_REQUIRED"
@@ -150,6 +153,7 @@ REPAIRABLE = frozenset({
     WeeklyIssueCode.WRONG_SOURCE_GROUNDING,
     WeeklyIssueCode.UNSUPPORTED_FACT,
     WeeklyIssueCode.DAY_VALUE_REPEATED,
+    WeeklyIssueCode.INDOOR_ALTERNATIVE_REQUIRED,
 })
 
 
@@ -205,6 +209,7 @@ class WeeklyPlanningRequest:
     reference_examples: tuple[str, ...] = ()
     # ADR-060: the cell addresses memo_applied may name; None = no teacher memo.
     memo_addresses: tuple[str, ...] | None = None
+    teacher_venue_text: str = ""
 
     def __post_init__(self) -> None:
         if not isinstance(self.week_id, WeekId):
@@ -316,6 +321,7 @@ def build_weekly_request(
     daily_life: DailyLifeCatalog | None = None,
     sibling_focuses: tuple[str, ...] = (),
     teacher_memo: str = "",
+    teacher_venues: tuple[str, ...] = (),
 ) -> WeeklyPlanningRequest:
     body = {
         "task": "weekly_plan",
@@ -343,6 +349,8 @@ def build_weekly_request(
     }
     if curriculum is not None:
         body["curriculum_context"] = curriculum_context(curriculum)
+    if teacher_venues:
+        body["teacher_venues"] = list(teacher_venues)
     examples: tuple[str, ...] = ()
     source_refs = curriculum_source_refs(curriculum)
     if reference_wiring:
@@ -372,14 +380,30 @@ def build_weekly_request(
         body["teacher_memo"] = {"text": teacher_memo, "addresses": list(memo)}
         allowed += " " + teacher_memo  # the teacher's own facts (Q2), like teacher_facts
     linked = (REFERENCE_WIRING_SUFFIX if reference_wiring else "") + candidates
+    indoor = reference_wiring and any(t.section_key == "indoor_alternative" for t in targets)
+    if indoor:
+        linked += INDOOR_ALTERNATIVE_TAG
+        body["indoor_adaptation_policy"] = INDOOR_ALTERNATIVE_TAG.lstrip("+")
     if memo is not None:
         linked += TEACHER_MEMO_PROMPT_TAG
+    contextual = curriculum is not None or reference_wiring
+    if contextual:
+        linked += VENUE_POLICY_TAG
     system_prompt = SYSTEM_PROMPT
     if reference_wiring:
         system_prompt = system_prompt.replace(OUTDOOR_REFERENCE_INSTRUCTION, LINKED_OUTDOOR_INSTRUCTION)
         system_prompt += NATURAL_PLAY_GUIDANCE + LINKED_WRITING_GUIDANCE
     elif candidates:
         system_prompt += NATURAL_PLAY_GUIDANCE + CANDIDATE_DESCRIPTION_TONE
+    if indoor:
+        system_prompt = system_prompt.replace(
+            "허용 근거로 이어갈 수 없으면 빈칸으로 두고 관계없는 놀이로 채우지 않는다. ", ""
+        )
+        system_prompt += INDOOR_ADAPTATION_GUIDANCE + (
+            " 실내대체 value는 '활동명: 설명'으로 쓴다. 설명은 합니다체 한 문장으로 "
+            "실내에서 무엇을 어떻게 하는지 밝히며 실제 근거에 있는 방법을 보존한다. "
+            "parent의 같은 주 indoor_alternative를 우선하되 모호한 '표현하기'만 반복하지 않는다. "
+        )
     if candidates:
         system_prompt += (
             " activity_type가 있는 target은 교사가 고를 한 주 활동 후보이며 요일에 배치하지 않는다. "
@@ -400,7 +424,7 @@ def build_weekly_request(
     return WeeklyPlanningRequest(
         prompt_version=(WEEKLY_CONTEXT_PROMPT_VERSION if curriculum is not None else WEEKLY_PROMPT_VERSION) + linked + suffix,
         system_prompt=system_prompt + (DAY_PROMPT if suffix else "") + (V1_GUIDANCE if curriculum is not None else "")
-        + (TEACHER_MEMO_PROMPT if memo is not None else ""),
+        + (TEACHER_MEMO_PROMPT if memo is not None else "") + (VENUE_GUIDANCE if contextual else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True),
         week_id=week_id,
         targets=targets,
@@ -416,6 +440,7 @@ def build_weekly_request(
         reference_wiring=reference_wiring,
         reference_examples=examples,
         memo_addresses=memo,
+        teacher_venue_text="\n".join((teacher_memo, *teacher_venues)),
     )
 
 
@@ -425,6 +450,7 @@ def cell_request(
     *,
     current_values: tuple[tuple[str, str], ...],
     teacher_facts: tuple[str, ...],
+    teacher_venues: tuple[str, ...] = (),
     day: str | None = None,
 ) -> WeeklyPlanningRequest:
     """The document request narrowed to one Section (W4b, plan §4).
@@ -449,14 +475,20 @@ def cell_request(
     ]
     body["evidence"] = [e for e in body["evidence"] if e["grounding_ref"] in target.allowed_grounding_refs]
     body["current_plan"] = dict(current_values)
+    if teacher_venues:
+        body["teacher_venues"] = sorted(set(body.get("teacher_venues", ())) | set(teacher_venues))
     contextual = "curriculum_context" in body
     suffix = DAY_CELLS_SUFFIX if request.prompt_version.endswith(DAY_CELLS_SUFFIX) else ""
     linked = REFERENCE_WIRING_SUFFIX if request.reference_wiring else ""
+    if INDOOR_ALTERNATIVE_TAG in request.prompt_version:
+        linked += INDOOR_ALTERNATIVE_TAG
     memo = None
     if request.memo_addresses is not None:
         memo = (weekly_memo_address(section_key, day),)
         body["teacher_memo"]["addresses"] = list(memo)
         linked += TEACHER_MEMO_PROMPT_TAG
+    if VENUE_POLICY_TAG in request.prompt_version:
+        linked += VENUE_POLICY_TAG
     return replace(
         request,
         prompt_version=(WEEKLY_CONTEXT_CELL_PROMPT_VERSION if contextual else WEEKLY_CELL_PROMPT_VERSION) + linked + suffix,
@@ -471,6 +503,7 @@ def cell_request(
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True),
         targets=(target,),
         allowed_fact_text=" ".join((request.allowed_fact_text, *teacher_facts)),
+        teacher_venue_text="\n".join((request.teacher_venue_text, *teacher_venues)),
         cell_key=section_key,
         memo_addresses=memo,
         # The caller labels the Section's other day cells "section_key:DAY".
@@ -531,7 +564,9 @@ def weekly_response_schema(request: WeeklyPlanningRequest) -> dict:
         branches.append(_object_schema({
             **fixed,
             "value": _STRING,
-            "unresolved": {"type": "boolean", "enum": [False]} if key == THEME_KEY else {"type": "boolean"},
+            "unresolved": {"type": "boolean", "enum": [False]}
+            if key == THEME_KEY or (key == "indoor_alternative" and INDOOR_ALTERNATIVE_TAG in request.prompt_version)
+            else {"type": "boolean"},
             "grounding_refs": refs,
             "reference_id": {"type": "null"},
         }))
@@ -732,6 +767,10 @@ def _value_issues(
 ) -> list[WeeklyIssue]:
     key = v.section_key
     issues: list[WeeklyIssue] = []
+    if key == "indoor_alternative" and INDOOR_ALTERNATIVE_TAG in request.prompt_version:
+        name, separator, description = v.value.partition(":")
+        if v.unresolved or not name.strip() or not separator or not description.strip():
+            return [WeeklyIssue(WeeklyIssueCode.INDOOR_ALTERNATIVE_REQUIRED, key)]
     if v.unresolved:
         if key == THEME_KEY:
             issues.append(WeeklyIssue(WeeklyIssueCode.THEME_REQUIRED, key))
@@ -766,7 +805,8 @@ def _value_issues(
     ):
         issues.append(WeeklyIssue(WeeklyIssueCode.RESOLVED_REQUIRES_GROUNDING, key, day=day))
     policy = [
-        code for code in visible_text_violations(v.value, evidence_refs=request.context_source_refs)
+        code for code in visible_text_violations(v.value, evidence_refs=request.context_source_refs,
+                                                 teacher_venue_text=request.teacher_venue_text if VENUE_POLICY_TAG in request.prompt_version else None)
         if not (key == SAFETY_KEY and code == "SAFETY_CONTENT_LEAKAGE")
     ]
     if policy:
@@ -833,7 +873,8 @@ class WeeklyPlanner:
                     "original_request": json.loads(request.user_content),
                     "previous_answer": json.loads(content),
                     "fix_sections": [
-                        {"section_key": i.section_key, "issue": i.code.value, **({"day": i.day} if i.day else {})}
+                        {"section_key": i.section_key, "issue": i.code.value, **({"day": i.day} if i.day else {}),
+                         **({"reason": "UNREQUESTED_VENUE"} if "UNREQUESTED_VENUE" in i.detail else {})}
                         for i in issues
                     ],
                 }, ensure_ascii=False, sort_keys=True),
@@ -866,7 +907,10 @@ class WeeklyPlanner:
                 raise ProposalRejectedError(_codes(stray_issues), stray_issues)
             patched = {v.section_key: v for v in repaired_values}
             # Only the flagged Sections may change; every other value stays as first written.
+            previous_values = values
             values = tuple(patched.get(v.section_key, v) if v.section_key in flagged else v for v in values)
+            if any("UNREQUESTED_VENUE" in issue.detail for issue in issues) and venue_name_only_repair(previous_values, values):
+                raise ProposalRejectedError(("VENUE_NAME_ONLY_REMOVAL",))
             issues = validate_weekly(values, request)
             repaired, prompt_version = frozenset(flagged), request.repair_prompt_version
         if issues:

@@ -21,6 +21,7 @@ from ..domain.monthly_template_snapshot import ACTIVITY_DETAIL_SECTION_KEYS, Tem
 from ..domain.teacher_memo import MemoNotice, SafetyRequest
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
+from .indoor_alternative import INDOOR_ALTERNATIVE_TAG
 
 MONTHLY_PROMPT_VERSION = "monthly-planner-v18"
 MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v10"
@@ -37,7 +38,7 @@ MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v21"
 MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v21"
 # Appended to any version above when indoor_alternative is an LLM target; requests
 # without it keep their version and prompt bytes.
-MONTHLY_INDOOR_PROMPT_TAG = "+indoor-alternative-v2"  # v2: a week may be unresolved
+MONTHLY_INDOOR_PROMPT_TAG = INDOOR_ALTERNATIVE_TAG
 # ADR-066: appended when a v1 (curriculum / subtheme) request asks outdoor_play or
 # indoor_alternative week cells for their hidden detail sentence.
 MONTHLY_ACTIVITY_DETAIL_PROMPT_TAG = "+activity-detail-v1"

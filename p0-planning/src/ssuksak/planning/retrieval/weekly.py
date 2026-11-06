@@ -10,6 +10,8 @@ from __future__ import annotations
 import collections
 import re
 
+from ..venue_policy import venue_bound_evidence
+
 from ..evidence.store import InstitutionEvidenceStore
 from ..evidence.weekly_classification import (
     WeeklyEvidenceClassification,
@@ -22,6 +24,7 @@ from .ranking import (
     balance_by_age,
     ngrams,
     rank_records,
+    prefer_explicit_indoor_methods,
 )
 
 WEEKLY_SECTION_TOP_K = 10  # the Monthly section block default
@@ -108,12 +111,15 @@ def weekly_section_evidence(
     sibling_focuses: tuple[str, ...] = (),
     by_activity_type: bool = False,
     preferred_refs: tuple[str, ...] = (),
+    explicit_indoor_methods: bool = False,
+    exclude_venue_bound: bool = False,
 ) -> tuple[RetrievedEvidence, ...]:
     """query_text: the parent theme and this week's focus, for the Korean 2-gram score."""
     classification.require_bound_to(store.content_sha256)
     records = [
         record for record in store.by_month(calendar_month)
         if record.general_grounding_eligible and classification.class_of(record) is weekly_class
+        and (not exclude_venue_bound or not venue_bound_evidence(record.text))
     ]
     if by_activity_type and weekly_class in {WeeklySemanticClass.INDOOR_PLAY, WeeklySemanticClass.GROUP_ACTIVITY}:
         records = [record for record in records
@@ -127,6 +133,8 @@ def weekly_section_evidence(
     ranked = rank_records(
         records, requested_ages=ages, query_grams=grams, allowed_tiers=AGE_VERIFIABLE_TIERS
     )
+    if explicit_indoor_methods and weekly_class is WeeklySemanticClass.INDOOR_ALTERNATIVE:
+        ranked = prefer_explicit_indoor_methods(ranked)
     ordered = balance_by_age(ranked, ages)
     # Keep a valid parent citation ahead of the top-k cutoff; never bypass the filters above.
     if preferred_refs:

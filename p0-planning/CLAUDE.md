@@ -38,6 +38,31 @@ reference id, cell, week, age fit, statutory value or pass/fail outside that
 range — out-of-range output fails closed. Yearly narrows the range to one
 Rule-selected theme per month; the LLM writes its text and may not replace it.
 
+## Named venue boundary (2026-11-06 Human Decision)
+
+- A destination in another institution's reference is not a destination available to this classroom.
+  Current contextual Monthly/Weekly retrieval excludes reviewed named venues and explicit field-trip
+  markers (현장체험학습 / 현장학습 / 현장체험 / 견학), including spacing/bracket variants;
+  it selects other eligible evidence without renaming the excluded activity.
+- Generated Yearly v1/v2, Monthly v1/v2 and contextual Weekly v1 text rejects reviewed named venues unless
+  they occur in a positive current teacher memo or a confirmed parent's demonstrably teacher-written
+  current values. Weekly cell regeneration may also use explicit teacher facts.
+  A clause telling the model to exclude/not visit a facility does not authorize that facility.
+  Reference text, unchanged AI values (even after confirmation/no-op saves) and a rejected response
+  never authorize a venue. Parent memo exclusions override inherited permission.
+- Teacher-edited cell values use the existing audit. Annual sidecar subthemes retain only newly
+  written/changed text in `YearlyPlan.teacher_subthemes`; no-op saves/reordering do not confer authorship.
+  `MonthlyPlan.parent_teacher_venues` retains the annual snapshot for regeneration and child creation.
+  Both are internal JSON fields with empty defaults; old unknown subtheme authorship is not inferred.
+- Keep the existing repair limit where repair exists. Annual paths without repair reject the output;
+  this policy does not add calls. Repairs that only remove a rejected venue name or replace it with
+  the facility kind are rejected. A supplied venue does not establish access, reservation or a schedule.
+- Only `venue_policy.REVIEWED_VENUES` names are detected, with whitespace ignored. Unknown names may
+  pass; generic/creative facility names are not inferred. Community visits without a reviewed name
+  or explicit field-trip marker are not excluded by this guard. The v2 tag versions contextual rules;
+  legacy non-contextual requests retain their previous validation. Existing plans, teacher edits,
+  imported documents, approved references and Template files are not rewritten.
+
 ## Yearly v0 contract
 
 - `YearlyPlan` has `school_year`, `classroom_ref` and exactly 12 ordered
