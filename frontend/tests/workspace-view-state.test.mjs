@@ -557,7 +557,10 @@ test("보관함은 놀이 프로젝트형 연간계획안의 둘째 줄에만 �
     "@/lib/workspace/model": { ...workspaceModel, today: () => "2026-10-28" },
     "@/lib/workspace/document-archive": archiveNavigation,
     "@/lib/api/onboarding": { classServerId: () => 3 },
-    "@/lib/onboarding/types": {},
+    "@/lib/onboarding/types": {
+      selectedAgesFor: () => [4],
+      ageSelectionLabel: () => "만 4세",
+    },
     "@/lib/api/monthly": {},
     "@/lib/api/playMonthly": {},
     "@/lib/api/weekly": {},
