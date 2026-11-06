@@ -102,7 +102,9 @@ async function api(page: Page, path: string) {
   return response.json();
 }
 
-test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연속 입력·저장", async ({ page }, info) => {
+test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연속 입력·저장, 주간 생성·수정·확정·한글 다운로드", async ({
+  page,
+}, info) => {
   await enterPilot(page);
   await page.getByRole("link", { name: "계획안", exact: true }).click();
   // 첫 화면의 첫 칸이 월별 주제형이다.
@@ -222,16 +224,44 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
     .toBeLessThanOrEqual(0);
   await page.screenshot({ path: info.outputPath("monthly-mobile.png"), fullPage: true });
   await page.setViewportSize({ width: 1440, height: 1000 });
+
+  // 확정 화면 → 주간 만들기 → 칸 고치기 → 확정 → 한글 다운로드. 주간도 API 로 건너뛰지 않는다.
+  // 주 이름 표기 · 확정 창 문구는 자주 바뀌어서 끝말 「주간계획안 만들기」 · 「확정하면」 으로만 찾는다.
+  await page.getByRole("link", { name: "주간계획안 만들기 →", exact: true }).click();
+  await page.getByRole("button", { name: /주간계획안 만들기$/ }).click();
+  await expect(page).toHaveURL(/\/plans\/weekly\?plan_id=\d+/);
+  const weeklyText = "낙엽을 모아 우리 반 길을 꾸민다.";
+  const weekOutdoor = page
+    .getByRole("region", { name: "주간계획안 미리보기", exact: true })
+    .getByRole("row")
+    .filter({ has: page.getByRole("rowheader", { name: "바깥놀이", exact: true }) })
+    .locator("[data-cell]");
+  const weekField = page.getByRole("textbox", { name: "바깥놀이", exact: true });
+  await weekOutdoor.click();
+  await weekField.fill(weeklyText);
+  await weekField.blur();
+  await expect(page.getByRole("status").filter({ hasText: /^저장됨$/ })).toBeVisible();
+  // 화면에만 남은 글자가 아니라 서버에 저장된 글자인지 다시 읽어 본다.
+  await page.reload();
+  await expect(weekOutdoor).toHaveText(weeklyText);
+  await page.getByRole("button", { name: "확정하기", exact: true }).click();
+  await page
+    .getByRole("group", { name: /확정하면/ })
+    .getByRole("button", { name: "확정하기", exact: true })
+    .click();
+  await expect(page.getByRole("heading", { name: /주간계획안을 확정했어요$/ })).toBeVisible();
+  const weeklyDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "한글 파일(hwpx)로 내려받기", exact: true }).click();
+  await verifyHwpx(await weeklyDownload, info.outputPath("pilot-weekly.hwpx"), [weeklyText]);
+  await page.screenshot({ path: info.outputPath("weekly-confirmed.png"), fullPage: true });
+  const weekPlan = await api(
+    page,
+    `/api/plans/weekly/${new URL(page.url()).searchParams.get("plan_id")}`,
+  );
+  expect(weekPlan.status).toBe("CONFIRMED");
+
   const monthlyList = await api(page, `/api/plans/monthly?class_id=${generated.class_id}`);
   const monthPlan = await api(page, `/api/plans/monthly/${monthlyList.items[0].id}`);
-  const week = monthPlan.weeks.find((w: { active: boolean }) => w.active);
-  const auth = await page.evaluate(() => sessionStorage.getItem("saessak.authToken"));
-  const weeklyResponse = await page.request.post("/api/plans/weekly", {
-    headers: { Authorization: `Bearer ${auth}` },
-    data: { class_id: generated.class_id, week_id: week.week_id },
-  });
-  expect(weeklyResponse.status()).toBe(201);
-  const weekPlan = await weeklyResponse.json();
   for (const kind of ["annual", "monthly", "weekly"] as const) {
     await page.goto("/documents");
     await page.getByRole("complementary", { name: "반 선택" }).getByText("햇살반").click();
@@ -257,6 +287,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
     if (kind === "annual") await expect(preview).toContainText("우리 반과 새로운 친구");
     if (kind === "monthly")
       await expect(preview).toContainText("친구와 함께 만드는 새로운 우리 반 놀이");
+    if (kind === "weekly") await expect(preview).toContainText(weeklyText);
     await expect(preview.locator("input,textarea,select")).toHaveCount(0);
     const link = preview.getByRole("link", { name: "문서 열기", exact: true });
     await expect(link).toHaveAttribute(
@@ -274,17 +305,12 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
       await expect(page.getByRole("textbox")).toHaveCount(0);
     }
     if (kind === "weekly") {
-      // 보관함 링크로 그 주 계획안의 다듬기 화면이 열린다.
+      // 보관함 링크로 그 주의 확정본이 열린다. 고칠 수 없다.
       await expect(
-        page.getByRole("heading", {
-          name: `${monthPlan.month}월 ${week.label} 주간계획안`,
-          exact: true,
-          level: 1,
-        }),
+        page.getByRole("heading", { name: /주간계획안을 확정했어요$/, level: 1 }),
       ).toBeVisible();
-      await expect(
-        page.getByRole("region", { name: "주간계획안 미리보기", exact: true }),
-      ).toBeVisible();
+      await expect(weekOutdoor).toHaveText(weeklyText);
+      await expect(page.getByRole("textbox")).toHaveCount(0);
     }
   }
 });
