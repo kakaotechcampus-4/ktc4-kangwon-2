@@ -175,7 +175,8 @@ def create_center(
 
     - `registry_key` 가 있으면 정부 목록에 있어야 한다. 이름 · 지역은 **목록 값으로** 저장한다 —
       그래야 다음 교사가 같은 원을 찾는다. 같은 열쇠의 원이 있으면 그리로 들어가고(200,
-      `joined`), 보낸 원장 이름은 쓰지 않는다. 합류 승인은 없다(PM 결정).
+      `joined`), 원장 이름은 받지 않아도 되고 보내도 쓰지 않는다. 합류 승인은 없다(PM 결정).
+    - 새로 만드는 원이면 원장 이름이 있어야 한다 — 없으면 422.
     - 없으면 직접 적은 원이다. 이름 중복을 막지 않는다 — 다른 지역에 같은 이름의 원이 있다.
     - **한 계정은 원 하나다** — 원이 있는 교사의 두 번째 요청은 409 다.
     """
@@ -195,6 +196,15 @@ def create_center(
         existing = session.scalar(select(Center).where(Center.registry_key == picked.key))
         if existing is not None:
             return _join(session, user, existing, response)
+    if body.director_name is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "VALIDATION_FAILED",
+                "message": "원장 이름을 적어 주세요.",
+                "fields": ["director_name"],
+            },
+        )
     center = Center(
         name=picked.name if picked else body.name,
         director_name=body.director_name,

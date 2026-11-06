@@ -39,7 +39,9 @@ class CenterCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: Name
-    director_name: PersonName
+    # 새로 만드는 원에만 필요하다 — 이미 있는 원으로 들어가는 교사에게는 묻지 않는다(ADR-068).
+    # 필요한지는 원이 있는지를 봐야 알아서 라우터가 본다.
+    director_name: PersonName | None = None
     region_sido: RegionPart
     region_sigungu: RegionPart
     # 정부 어린이집 목록에서 고른 원의 열쇠(ADR-068). 같은 열쇠의 원이 있으면 그 원으로 들어간다.

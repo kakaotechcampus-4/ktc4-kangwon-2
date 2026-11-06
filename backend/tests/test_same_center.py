@@ -49,11 +49,12 @@ def _join(daycare, director="김원장"):
     body = {
         # 이름 · 지역은 목록 값으로 바뀐다. 다르게 보내도 목록 값이 남는지 본다.
         "name": "아무 이름",
-        "director_name": director,
         "region_sido": "서울특별시",
         "region_sigungu": "중구",
         "registry_key": daycare.key,
     }
+    if director is not None:
+        body["director_name"] = director
     return client.post("/api/centers", json=body)
 
 
@@ -111,6 +112,23 @@ def test_같은_원을_고른_두_번째_교사는_그_원으로_들어간다(db
     ).json()["items"][0]
     assert found["teacher_count"] == 2
     assert client.get(f"/api/centers/{center_id}").json()["teacher_count"] == 2
+
+
+def test_합류는_원장_이름_없이_되고_새_원은_원장_이름이_있어야_한다(db_session, teachers):
+    first, second = teachers
+    daycare = _daycare()
+    as_(first)
+    missing = _join(daycare, director=None)
+    assert missing.status_code == 422
+    assert missing.json()["error"]["fields"] == ["director_name"]
+    center_id = _join(daycare).json()["id"]
+
+    # 화면의 합류 단계는 원장 이름을 묻지 않는다 — 칸 없이 와도 들어간다.
+    as_(second)
+    response = _join(daycare, director=None)
+
+    assert response.status_code == 200, response.text
+    assert (response.json()["id"], response.json()["director_name"]) == (center_id, "김원장")
 
 
 def test_목록에_없는_열쇠는_422(teachers):

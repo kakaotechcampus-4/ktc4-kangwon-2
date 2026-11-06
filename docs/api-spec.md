@@ -174,8 +174,9 @@ me       GET /api/auth/me                                               → 200 
 
 - `registry_key` 가 있으면 목록에 있어야 한다 — 없으면 `VALIDATION_FAILED` 422 (`fields: ["registry_key"]`).
   이름 · 지역은 **목록 값으로** 저장한다(보낸 값은 쓰지 않는다).
-- 같은 `registry_key` 의 원이 이미 있으면 **그 원으로 들어간다** — `200`, `joined: true`. 보낸 원장 이름은 쓰지 않는다.
-  합류 승인은 없다.
+- 같은 `registry_key` 의 원이 이미 있으면 **그 원으로 들어간다** — `200`, `joined: true`. 합류 승인은 없다.
+  `director_name` 은 빼도 되고 보내도 쓰지 않는다(화면의 합류 단계는 원장 이름을 묻지 않는다).
+- 새로 만드는 원이면 `director_name` 이 있어야 한다 — 없으면 `VALIDATION_FAILED` 422 (`fields: ["director_name"]`).
 - `registry_key` 가 없으면 「목록에 없어요」로 직접 적은 원이다. 지금처럼 새로 만들고 다른 교사가 찾을 수 없다.
 - `kind` · `address` 는 목록에서 읽어 붙인다(직접 적은 원은 `null`). `teacher_count` 는 그 원에 가입한 교사 수다.
 
