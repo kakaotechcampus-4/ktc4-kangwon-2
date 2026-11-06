@@ -742,9 +742,10 @@ test("놀이 방향 — 함께 5행 · 가운데 주제 · 자유놀이 5행", (
   assert.equal(text(all(tree).find((n) => n.props?.rowSpan === 2)), "봄 길을 걸어요");
 });
 
-test("주별 표 — 열은 응답 weeks 4개와 날짜, 습관 칸, 안전교육은 둔 주만 「[영역]」 다음 줄에 글이 있다", () => {
+test("주별 표 — 열은 응답 weeks 4개와 날짜, 습관은 「[분류]」 다음 줄에 문장, 안전교육은 둔 주만 「[영역]」 다음 줄에 글이 있다", () => {
   const plan = fixture(false, (p) => {
     p.safety_weeks[1].candidate_item_id = p.safety_candidates[0].cell.item_id;
+    p.habits[3].label = ""; // 항목에서 고르지 않은 습관 — 한글 문서처럼 머리 없이 문장만
     return p;
   });
   const tree = sheetOf(plan);
@@ -757,7 +758,12 @@ test("주별 표 — 열은 응답 weeks 4개와 날짜, 습관 칸, 안전교�
     all(habit)
       .filter((n) => n.type === "td")
       .map(text),
-    ["합성 습관 1", "합성 습관 2", "합성 습관 3", "합성 습관 4"],
+    [
+      "[합성 분류 1]\n합성 습관 1",
+      "[합성 분류 2]\n합성 습관 2",
+      "[합성 분류 3]\n합성 습관 3",
+      "합성 습관 4",
+    ],
   );
   const safety = all(rowsOf(tree, "tr", "안전교육")[0]).filter((n) => n.type === "td");
   assert.deepEqual(safety.map(text), [

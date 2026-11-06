@@ -1695,7 +1695,7 @@ reportlab 으로 다시 그린다 — 칸 주소 · 병합 · 너비 · 테두�
 
 **월간은 `GET /api/plans/monthly/{id}/export/hwp`로 내보낸다(구현됨).** 같은 형식 선택·확정 게이트·원 격리를 적용한다. **놀이 중심 월간 id 면 확정 여부와 관계없이 409 `GATE_BLOCKED`** 다(「놀이 중심 월간계획안은 /api/plans/monthly/play 경로로 다룹니다.」, §9-7 · 놀이 월간 양식이 없어 한글 내려받기는 후속).
 기본 월간 서식의 본문에는 보이는 `CONTENT` 구역만 순서대로 넣는다. `AXIS` 구역은 주차 머리행에만 표시한다.
-한 쪽 양식 12행 「소방대피/재난대비」는 늘 빈칸이다 — 한글 훈련 줄은 양식 개편 때까지 내보내지 않는다.
+한 쪽 양식 12행 「소방대피/재난대비」에는 훈련 칸 값을 넣는다. 훈련 칸이 없거나 비면 빈칸이다(하민 결정 2026-11-06).
 후보 모드 계획안(§9-1)의 안전교육 줄은 칸 값이 아니라 주마다 `safety_weeks[].display_value` 를 넣는다 — 배치하지 않은 주는 빈칸이고 출처 표시는 섞지 않는다. 예전 계획안은 칸 값 그대로다(ADR-052).
 활성 주차는 최대 5주이며 넘으면 `VALIDATION_FAILED` 422다. 비어 있는 내용은 자동으로 채우지 않는다.
 화면의 「확정하기」 후 「한글 파일로 내려받기」로 받는다. 출처와 생성 이력은 파일에 넣지 않는다.
@@ -2904,7 +2904,7 @@ memo                  문자열.  선택.  요청 사항 0~300자(§4 「요청 
   "direction": { "…": "Cell — 가운데 「예상되는 놀이 방향」. 처음엔 주제를 옮겨 둔다" },
   "display": { "title": { "…": "Cell — 「11월 놀이계획안」" }, "age": { "…": "Cell — 「만 4·5세」" },
                "class_name": { "…": "Cell — 반 이름" }, "period": { "…": "Cell — 「2026.11.01 ~ 2026.11.30」" } },
-  "habits": [ { "week_id": "2026-09-W1", "entry_id": "…", "cell": { "…": "Cell" } } ],
+  "habits": [ { "week_id": "2026-09-W1", "entry_id": "…", "label": "약속·질서", "cell": { "…": "Cell" } } ],
   "safety_candidates": [
     { "kind": "STATUTORY", "category_id": "…", "topic_group": null, "cell": { "…": "Cell" } }
   ],
@@ -2931,6 +2931,7 @@ content_ids           그 놀이에 지금 걸린 누리과정 내용 ID.  **응
 parent_item_id        이 행이 부모 연간의 놀이 하나를 이은 것이면 그 놀이명 칸의 item_id.  아니면 null.  name.evidence 에 PARENT_PLAN 이 있을 때만 값이 있다
 safety_candidates     candidates 의 주소는 cell.item_id 다 (경로의 {item_id} · 본문의 candidate_item_id)
 kind                  STATUTORY (법정 여섯 영역, category_id 만) | SUPPLEMENTAL (생활안전, topic_group 만)
+habits[].label        한글 문서가 「[분류]」로 찍는 일상생활 항목 이름(entry_id 의 label, 계획안이 읽은 판에서).  문장이 비었거나 항목에서 고르지 않았거나 판이 없어졌으면 ""(하민 결정 2026-11-06).  화면은 「[분류]」 다음 줄에 문장을 쓴다
 safety_weeks          주마다 하나.  candidate_item_id 가 null 이면 아직 안 둔 주.  같은 후보를 여러 주에 둘 수 있다
 teacher_inputs[].key  fire_disaster_drill · specialized_timetable · special_activity_timetable · class_notice · class_birthdays · home_connection
 notices[].code        SAFETY_UNPLACED · SAFETY_BLANK · HABIT_BLANK · HEALTH_BLANK · NUTRITION_BLANK.  응답마다 계산하고 저장하지 않는다.  확정을 막지 않는다

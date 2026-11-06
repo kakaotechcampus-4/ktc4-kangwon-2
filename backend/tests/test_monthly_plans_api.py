@@ -835,7 +835,8 @@ def test_확정된_월간을_hwpx_로_내려준다(world):
     title, mark = cells[(0, 0)].split("\n")
     assert title == f"{plan['month']}월 놀이계획안"
     assert mark.startswith("만 ") and mark.endswith("세 햇살반")
-    assert cells[(2, 1)] == f"{weeks[0]['start_date']} ~ {weeks[-1]['end_date']}"
+    dots = lambda day: day.replace("-", ".")  # noqa: E731 — 한글 문서는 「2026.11.02」(하민 결정 2026-11-06)
+    assert cells[(2, 1)] == f"{dots(weeks[0]['start_date'])} ~ {dots(weeks[-1]['end_date'])}"
     shown = [s for s in plan["sections"] if s["visible"] and s["role"] == "CONTENT"]
     assert {s["section_key"] for s in shown} & MONTHLY_WEEK_ROWS.keys()
     for section in shown:

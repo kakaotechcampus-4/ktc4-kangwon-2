@@ -169,7 +169,7 @@ test("single response has the captured key set, in every nested cell too", async
     "topic_group",
   ]);
   assert.deepEqual(Object.keys(plan.drill_candidates[0]).sort(), ["cell", "label", "topic_id"]);
-  assert.deepEqual(Object.keys(plan.habits[0]).sort(), ["cell", "entry_id", "week_id"]);
+  assert.deepEqual(Object.keys(plan.habits[0]).sort(), ["cell", "entry_id", "label", "week_id"]);
   assert.deepEqual(Object.keys(plan.health).sort(), ["cell", "entry_id"]);
   assert.deepEqual(Object.keys(plan.teacher_inputs[0]).sort(), ["cell", "key"]);
   assert.deepEqual(Object.keys(plan.notices[0]).sort(), ["code", "week_id"]);

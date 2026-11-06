@@ -160,7 +160,8 @@ MONTHLY_TEMPLATES = {4: "monthly_v1_4weeks.hwpx", 5: "monthly_v1_5weeks.hwpx"}
 MONTHLY_PERIOD_CELL = (2, 1)
 # 한 달에 하나인 Section → 칸, 주마다 있는 Section → 줄. 주차 칸의 열은 주차 머리 줄에서 읽는다 —
 # 4주 · 5주 양식의 열 주소가 다르다.
-MONTHLY_MONTH_CELLS = {"theme": (1, 1), "goals": (3, 1)}
+# 소방대피/재난대비는 주 칸 없이 한 칸(12행, 12열 합침)이다.
+MONTHLY_MONTH_CELLS = {"theme": (1, 1), "goals": (3, 1), "drill": (12, 1)}
 MONTHLY_WEEK_ROWS = {
     "focus": 7,
     "outdoor_play": 8,
@@ -206,6 +207,11 @@ _UNSUPPORTED_WEEKS = HTTPException(
 _SAFETY_HEAD = re.compile(r"^(\[[^\]\n]+\]) - ")
 
 
+def _dots(day) -> str:
+    """한글 문서의 날짜 「2026.11.02」 — 화면 · 놀이 월간 문서와 같은 모양(하민 결정 2026-11-06)."""
+    return str(day).replace("-", ".")
+
+
 def _month_value(section: SectionOut) -> str:
     """한 달에 하나인 Section 의 값. 주마다 있는 Section 에는 쓰지 않는다."""
     return "\n".join(cell.value for cell in section.cells if cell.value)
@@ -219,7 +225,7 @@ def export_monthly_plan(
 
     줄은 양식에 박혀 있다. 원이 켜지 않은 Section(목표 · 기본생활습관 · 실내 대체활동)은
     빈칸이다. 행사 일정 · 특성화 · 특별활동 표는 교사가 쓰고 나눈 그대로 다시 그린다.
-    소방대피/재난대비 줄은 양식 개편 때까지 빈칸이다.
+    소방대피/재난대비 줄은 훈련 칸이 있는 계획만 채운다(없으면 빈칸, 하민 결정 2026-11-06).
     양식에 자리가 없는 Section 이 오면 버리지 않고 멈춘다.
     """
     row = _monthly_row(session, user, plan_id, read_only=True)
@@ -231,13 +237,10 @@ def export_monthly_plan(
     weeks = [week for week in plan.weeks if week.active]
     if len(weeks) not in MONTHLY_TEMPLATES:
         raise _UNSUPPORTED_WEEKS
-    texts = {MONTHLY_PERIOD_CELL: f"{weeks[0].start_date} ~ {weeks[-1].end_date}"}
+    texts = {MONTHLY_PERIOD_CELL: f"{_dots(weeks[0].start_date)} ~ {_dots(weeks[-1].end_date)}"}
     rows: dict[int, list[str]] = {}
     for section in plan.sections:
         if not section.visible or section.role != "CONTENT":
-            continue
-        # 한글 훈련 줄은 양식 개편 때까지 내보내지 않는다(12행은 빈칸).
-        if section.section_key == "drill":
             continue
         if section.section_key in MONTHLY_MONTH_CELLS:
             texts[MONTHLY_MONTH_CELLS[section.section_key]] = _month_value(section)
@@ -266,6 +269,7 @@ def export_monthly_plan(
         texts,
         rows,
         tables=lambda table, styles: _fill_teacher_tables(table, core.tables, styles),
+        bold_cells=(MONTHLY_MONTH_CELLS["drill"],),
     )
     return download(content, f"monthly-plan-{row.id}", title, format)
 
@@ -278,11 +282,13 @@ def _fill_form(
     rows: dict[int, list[str]],
     labels: dict[tuple[int, int], str] = MONTHLY_LABELS,
     tables=None,
+    bold_cells: tuple[tuple[int, int], ...] = (),
 ) -> bytes:
     """제목 칸(0,0)의 두 문단, `texts` 의 칸, `rows` 의 주차 줄(주마다 한 칸)을 채운다.
 
     제목이 표 안에 있어 `fill_grid`(표 밖 「제목」 자리)를 못 쓴다. 주차 칸은 화면 문서처럼 가운데,
-    안전교육 「[주제]」 는 굵게 쓴다(2026-11-06, 화면 → 한글).
+    안전교육 · `bold_cells`(월간 소방대피/재난대비) 의 「[주제]」 는 굵게 쓴다
+    (2026-11-06, 화면 → 한글).
     """
     with zipfile.ZipFile(io.BytesIO(template)) as src:
         infos = src.infolist()
@@ -301,6 +307,8 @@ def _fill_form(
         _set_paragraph(p, text)
     for address, text in texts.items():
         _set_text(cells[address], text)
+        if address in bold_cells:
+            styles.bold_tags(cells[address])
     columns = sorted(col for row, col in cells if row == MONTHLY_WEEK_HEADER and col > 0)
     for line, values in rows.items():
         if len(values) != len(columns):
@@ -410,7 +418,9 @@ def export_weekly_plan(
     period = plan.week_period
     header = {
         WEEKLY_CLASS_CELL: f"{row.class_name} ({_ages_label(ages)})",
-        WEEKLY_PERIOD_CELL: f"{period.label} · {period.start_date} ~ {plan.display_end_date}",
+        WEEKLY_PERIOD_CELL: (
+            f"{period.label} · {_dots(period.start_date)} ~ {_dots(plan.display_end_date)}"
+        ),
     }
     title = f"{row.class_name} {period.label} 주간계획안"
     content = fill_grid(
@@ -476,7 +486,7 @@ def _fill_weekly_days(plan: WeeklyPlan, end: date, class_name: str, title: str) 
     days = plan.operating_days
     period = plan.week_period
     labels = dict(WEEKLY_DAY_LABELS)
-    texts = {WEEKLY_DAY_PERIOD_CELL: f"{period.start_date} ~ {end}"}
+    texts = {WEEKLY_DAY_PERIOD_CELL: f"{_dots(period.start_date)} ~ {_dots(end)}"}
     for section in plan.template_snapshot.sections:
         key = section.section_key
         if not section.visible:
@@ -504,4 +514,5 @@ def _fill_weekly_days(plan: WeeklyPlan, end: date, class_name: str, title: str) 
         texts,
         {},
         labels,
+        bold_cells=(WEEKLY_DAY_CELLS["safety_education"],),
     )
