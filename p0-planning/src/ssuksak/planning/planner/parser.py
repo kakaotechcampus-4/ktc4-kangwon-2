@@ -281,9 +281,9 @@ def cell_response_schema(request: MonthlyCellPlanningRequest) -> dict[str, Any]:
             "target_week_id": {"type": "null"}
             if week is None
             else {"type": "string", "enum": [week.value]},
-            "section": _section_schema(
+            "section": _with_detail(_section_schema(
                 {request.target_section_key}, request, request.reference_section_keys, pairs
-            ),
+            ), (request.target_section_key,) if request.detail_requested else ()),
         }
     ), request.memo_addresses)
 
@@ -506,5 +506,5 @@ def parse_monthly_cell_proposal(content: str) -> MonthlyCellProposal:
             if root["target_week_id"] is None
             else _week_id(root["target_week_id"], path="target_week_id")
         ),
-        section=_section_value(root["section"], path="section"),
+        section=_section_value(root["section"], path="section", detail=True),
     )

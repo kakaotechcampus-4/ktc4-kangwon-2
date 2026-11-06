@@ -188,6 +188,8 @@ class RequestAwareMonthlyLlm:
                 grounding_ref_for(request, request.target_section_key),
             ),
         }
+        if getattr(request, "detail_requested", False):  # ADR-066
+            payload["section"]["detail"] = "친구들과 새로운 방법으로 몸을 움직이며 놀아요."
         if getattr(request, "memo_addresses", None) is not None:
             payload["memo_applied"] = list(request.memo_addresses)
             payload["memo_skipped"] = []
