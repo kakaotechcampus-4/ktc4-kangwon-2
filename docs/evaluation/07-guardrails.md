@@ -72,7 +72,7 @@
   # ✓  text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
   ```
 - 서버 인증과 센터 범위 — ADR-017 · `test_auth.py` · `features/auth/`
-- 비밀번호 scrypt · 원 초대 코드 — ADR-029
+- 비밀번호 scrypt — ADR-029 · 같은 원은 정부 어린이집 목록으로 묶고 다른 반은 담임 승인 뒤 보기만 — ADR-068 · ADR-059
 
 - 생성에 쓰는 기관 근거 자료에서 사람이 개인정보로 판정한 기록 42개를 통째 제외하고 분류 4종을 같은 SHA에 연결했다 — [검토·승인 기록](../evidence-store-v0-2-human-review.md) · `p0-planning/tests/evidence/test_evidence_store.py` · `p0-planning/tests/finalization/test_freeze.py`
 - 그 42개가 남아 있던 옛 근거 본체 v0.1.0 을 저장소에서 지웠다(git 이력에는 남는다) — `p0-planning/data/evidence/` · `p0-planning/tests/unit/test_safety_evidence_classification.py`

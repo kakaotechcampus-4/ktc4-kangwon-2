@@ -1,20 +1,19 @@
 """원 API. 계약은 docs/api-spec.md §1 · §2 다."""
 
-import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select, update
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.features.auth.models import User
+from app.features.centers import registry
 from app.features.centers.greetings import default_greetings
 from app.features.centers.models import (
     Center,
-    CenterInvite,
     Child,
     Class,
     ClassAccessRequest,
@@ -22,17 +21,17 @@ from app.features.centers.models import (
 )
 from app.features.centers.schemas import (
     CenterCreate,
+    CenterCreated,
     CenterResponse,
     CenterSettings,
     CenterSettingsUpdate,
-    CenterUpdate,
     ClassCreate,
     ClassListResponse,
     ClassResponse,
     ClassUpdate,
+    DaycareItem,
+    DaycareList,
     GreetingsSettings,
-    InviteResponse,
-    JoinRequest,
 )
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_center, require_own_class
@@ -41,6 +40,8 @@ from app.shared.school_year import school_year_of
 router = APIRouter(prefix="/centers", tags=["centers"])
 # 반 하나를 가리키는 경로. 원 아래가 아니라서 prefix 가 다르다 (main.py 가 `/api` 를 붙인다).
 classes_router = APIRouter(prefix="/classes", tags=["classes"])
+# 정부 어린이집 목록 찾기 (ADR-068). 원이 생기기 전 첫 설정에서 부른다.
+daycares_router = APIRouter(prefix="/daycares", tags=["daycares"])
 
 # Annotated 로 주입한다. 기본값 자리에서 Depends() 를 호출하면 ruff 의 B008 에 걸린다.
 DbSession = Annotated[Session, Depends(get_session)]
@@ -100,141 +101,130 @@ def _commit_class(session: Session) -> None:
         ) from error
 
 
-@router.post("", response_model=CenterResponse, status_code=status.HTTP_201_CREATED)
-def create_center(
-    body: CenterCreate,
-    session: DbSession,
-    user: CurrentUser,
-) -> Center:
-    """원을 만들고 이 교사의 원으로 등록한다.
-
-    **중복을 막지 않는다** — 이름만으로 UNIQUE 를 걸면 다른 지역의 같은 이름 원이 막힌다
-    (docs/api-spec.md §1). 대신 **한 계정은 원 하나다** — 두 번째 요청은 409 다.
-    바꾸려면 기존 원을 정리해야 하는데 그 규칙(반·아동·계획안 처리)이 아직 없다.
-    """
-    if user.center_id is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "ALREADY_EXISTS",
-                "message": "이미 등록한 원이 있습니다.",
-                "fields": [],
-            },
-        )
-    center = Center(
-        name=body.name,
-        director_name=body.director_name,
-        region_sido=body.region_sido,
-        region_sigungu=body.region_sigungu,
+def _teachers(session: Session, center_ids: list[int]) -> dict[int, int]:
+    """원마다 가입한 교사 수. 이름은 세지 않는다."""
+    if not center_ids:
+        return {}
+    rows = session.execute(
+        select(User.center_id, func.count())
+        .where(User.center_id.in_(center_ids))
+        .group_by(User.center_id)
     )
-    session.add(center)
-    session.flush()
-    # 같은 트랜잭션에서 주인을 붙인다. 나눠 커밋하면 원은 생겼는데 주인이 없는 행이 남는다.
-    user.center_id = center.id
-    session.commit()
-    session.refresh(center)
-    return center
+    return dict(rows.all())
 
 
-# 헷갈리는 글자(0·O·1·I·L)를 뺐다. 교사가 단톡방에서 보고 옮겨 적는다.
-INVITE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
-INVITE_LENGTH = 10  # 31^10 ≈ 8×10^14. 7일 · 1회용이라 맞혀 볼 수 없다
-INVITE_TTL = timedelta(days=7)
+def _center_out(session: Session, center: Center) -> dict:
+    """원 응답 — 정부 목록의 유형 · 주소와 교사 수를 붙인다."""
+    found = registry.find(center.registry_key) if center.registry_key else None
+    return {
+        **CenterResponse.model_validate(center).model_dump(),
+        "kind": found.kind if found else None,
+        "address": found.address if found else None,
+        "teacher_count": _teachers(session, [center.id]).get(center.id, 0),
+    }
 
 
-@router.get("/{center_id}", response_model=CenterResponse)
-def get_center(center_id: int, session: DbSession, user: CurrentUser) -> Center:
-    """내 원 정보 (§1). 초대로 들어온 교사는 브라우저에 원 정보가 없어 여기서 읽는다.
-
-    남의 원과 없는 원은 같은 404 다 (shared/auth/ownership.py).
-    """
-    require_own_center(user, center_id)
-    return session.get(Center, center_id)
-
-
-@router.patch("/{center_id}", response_model=CenterResponse)
-def patch_center(
-    center_id: int, body: CenterUpdate, session: DbSession, user: CurrentUser
-) -> Center:
-    """원명 · 원장 이름 · 지역을 고친다 (§1). **보낸 칸만 바꾼다.**
-
-    원장이 바뀌거나 원 이름이 바뀌는 일은 실제로 일어나는데 고칠 길이 없었다.
-    `POST /api/centers` 를 다시 부르면 「이미 등록한 원이 있습니다」 409 가 난다.
-
-    원장 이름은 계획안 결재란에 인쇄된다 (docs/PRD.md S1). 바꾸면 **다음에 내보내는
-    문서부터** 새 이름이 찍힌다 — 이미 확정해 내려받은 파일은 그대로다.
-    """
-    require_own_center(user, center_id)
-    center = _center(session, center_id, lock=True)
-    if body.name is not None:
-        center.name = body.name
-    if body.director_name is not None:
-        center.director_name = body.director_name
-    if body.region_sido is not None and body.region_sigungu is not None:
-        center.region_sido = body.region_sido
-        center.region_sigungu = body.region_sigungu
-    session.commit()
-    session.refresh(center)
-    return center
-
-
-@router.post(
-    "/{center_id}/invites", response_model=InviteResponse, status_code=status.HTTP_201_CREATED
-)
-def create_invite(center_id: int, session: DbSession, user: CurrentUser) -> CenterInvite:
-    """같은 원 교사를 들이는 1회용 코드를 만든다 (§1-1). 자기 원에만 만들 수 있다."""
-    require_own_center(user, center_id)
-    invite = CenterInvite(
-        center_id=center_id,
-        code="".join(secrets.choice(INVITE_ALPHABET) for _ in range(INVITE_LENGTH)),
-        created_by=user.id,
-        expires_at=datetime.now(UTC) + INVITE_TTL,
+@daycares_router.get("", response_model=DaycareList)
+def search_daycares(sido: str, sigungu: str, session: DbSession, q: str = "") -> DaycareList:
+    """그 시군구 정부 어린이집 목록에서 이름으로 찾는다. 쌤플에 있는 원이면 교사 수를 붙인다."""
+    hits = registry.search(sido, sigungu, q)
+    centers = dict(
+        session.execute(
+            select(Center.registry_key, Center.id).where(
+                Center.registry_key.in_([d.key for d in hits])
+            )
+        ).all()
     )
-    session.add(invite)
-    session.commit()
-    return invite
+    counts = _teachers(session, list(centers.values()))
+    return DaycareList(
+        items=[
+            DaycareItem(
+                key=d.key,
+                name=d.name,
+                kind=d.kind,
+                status=d.status,
+                address=d.address,
+                teacher_count=counts.get(centers.get(d.key, -1), 0),
+            )
+            for d in hits
+        ]
+    )
 
 
-_ALREADY_JOINED = HTTPException(
+_ALREADY_EXISTS = HTTPException(
     status_code=status.HTTP_409_CONFLICT,
     detail={"code": "ALREADY_EXISTS", "message": "이미 등록한 원이 있습니다.", "fields": []},
 )
 
 
-@router.post("/join", response_model=CenterResponse)
-def join_center(body: JoinRequest, session: DbSession, user: CurrentUser) -> Center:
-    """초대 코드로 원에 들어간다 (§1-1). 이미 원이 있으면 `create_center` 와 같은 409 다."""
+def _join(session: Session, user: User, center: Center, response: Response) -> dict:
+    user.center_id = center.id
+    session.commit()
+    response.status_code = status.HTTP_200_OK
+    return {**_center_out(session, center), "joined": True}
+
+
+@router.post("", response_model=CenterCreated, status_code=status.HTTP_201_CREATED)
+def create_center(
+    body: CenterCreate,
+    response: Response,
+    session: DbSession,
+    user: CurrentUser,
+) -> dict:
+    """원을 만들거나, 정부 목록에서 고른 원이 이미 있으면 그 원으로 들어간다 (ADR-068).
+
+    - `registry_key` 가 있으면 정부 목록에 있어야 한다. 이름 · 지역은 **목록 값으로** 저장한다 —
+      그래야 다음 교사가 같은 원을 찾는다. 같은 열쇠의 원이 있으면 그리로 들어가고(200,
+      `joined`), 보낸 원장 이름은 쓰지 않는다. 합류 승인은 없다(PM 결정).
+    - 없으면 직접 적은 원이다. 이름 중복을 막지 않는다 — 다른 지역에 같은 이름의 원이 있다.
+    - **한 계정은 원 하나다** — 원이 있는 교사의 두 번째 요청은 409 다.
+    """
     if user.center_id is not None:
-        raise _ALREADY_JOINED
-    now = datetime.now(UTC)
-    # 행을 잠근다. 두 교사가 같은 코드를 동시에 내면 한 명만 들어간다.
-    invite = session.scalar(
-        select(CenterInvite).where(CenterInvite.code == body.code.upper()).with_for_update()
-    )
-    # 없는 코드 · 쓴 코드 · 만료된 코드를 구분하지 않는다. 구분해 주면 맞혀 보는 쪽에 힌트다.
-    if invite is None or invite.used_at is not None or invite.expires_at <= now:
+        raise _ALREADY_EXISTS
+    picked = registry.find(body.registry_key) if body.registry_key else None
+    if body.registry_key and picked is None:
         raise HTTPException(
-            status.HTTP_404_NOT_FOUND,
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
-                "code": "NOT_FOUND",
-                "message": "초대 코드가 없거나 만료됐습니다.",
-                "fields": ["code"],
+                "code": "VALIDATION_FAILED",
+                "message": "어린이집 목록에 없는 원입니다. 다시 찾아 주세요.",
+                "fields": ["registry_key"],
             },
         )
-    # 원이 비어 있을 때만 넣는다. 같은 교사가 코드 두 개를 동시에 내면 위 검사는 둘 다
-    # 통과하지만, 이 UPDATE 는 먼저 커밋한 쪽만 행을 바꾼다 — 늦은 쪽 코드는 쓰이지 않는다.
-    joined = session.execute(
-        update(User)
-        .where(User.id == user.id, User.center_id.is_(None))
-        .values(center_id=invite.center_id)
-    ).rowcount
-    if not joined:
+    if picked is not None:
+        existing = session.scalar(select(Center).where(Center.registry_key == picked.key))
+        if existing is not None:
+            return _join(session, user, existing, response)
+    center = Center(
+        name=picked.name if picked else body.name,
+        director_name=body.director_name,
+        region_sido=picked.sido if picked else body.region_sido,
+        region_sigungu=picked.sigungu if picked else body.region_sigungu,
+        registry_key=picked.key if picked else None,
+    )
+    session.add(center)
+    try:
+        session.flush()
+    except IntegrityError:
+        # 두 교사가 같은 원을 동시에 처음 골랐다. UNIQUE 가 한 줄만 남겼다 — 늦은 쪽은 그리로.
         session.rollback()
-        raise _ALREADY_JOINED
-    invite.used_by = user.id
-    invite.used_at = now
+        existing = session.scalar(select(Center).where(Center.registry_key == picked.key))
+        return _join(session, session.merge(user), existing, response)
+    # 같은 트랜잭션에서 주인을 붙인다. 나눠 커밋하면 원은 생겼는데 주인이 없는 행이 남는다.
+    user.center_id = center.id
     session.commit()
-    return session.get(Center, invite.center_id)
+    session.refresh(center)
+    return {**_center_out(session, center), "joined": False}
+
+
+@router.get("/{center_id}", response_model=CenterResponse)
+def get_center(center_id: int, session: DbSession, user: CurrentUser) -> dict:
+    """내 원 정보 (§1). 초대로 들어온 교사는 브라우저에 원 정보가 없어 여기서 읽는다.
+
+    남의 원과 없는 원은 같은 404 다 (shared/auth/ownership.py).
+    """
+    require_own_center(user, center_id)
+    return _center_out(session, session.get(Center, center_id))
 
 
 @router.post(
