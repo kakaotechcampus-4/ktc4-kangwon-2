@@ -32,6 +32,7 @@
 - 월간 v1 실내대체는 LLM이 빈칸으로 응답한 경우 빈 값·unresolved=true·근거 없음 조합을 검사하며, 채워진 문장에 근거가 없으면 거절한다 — `p0-planning/src/ssuksak/planning/planner/parser.py` · `p0-planning/src/ssuksak/planning/planner/validation.py` · `p0-planning/tests/application/test_monthly_application.py`
 - 교사 「요청 사항」이 안전교육 횟수 · 주차를 말해도 LLM 은 정해진 모양으로 뽑기만 하고 배치는 Rule 이 한다. 반영 못한 요청은 `memo_notices` 로 보인다 — PR #378 · ADR-060 · `p0-planning/src/ssuksak/planning/rules/safety_requests.py`
 - 요청 사항에 반 아이 이름이 있으면 메모 글만 가명으로 바꿔 보내고, 못 바꾸면 LLM 을 부르지 않고 422 — PR #378 · `backend/app/features/plans/memo_privacy.py`
+- 칸 재생성(월간 · 주간)도 저장된 요청 사항을 가리고, 가리는 이름은 그 원 아이 전부다. 연간 가져오기 원문도 같다 — 멘토 리뷰 #380 · `backend/app/shared/childCode/allocation.py` `table_for_text` · `backend/tests/test_plans_memo_privacy.py`
 
 ## 소방대피 · 재난대비 훈련 칸
 

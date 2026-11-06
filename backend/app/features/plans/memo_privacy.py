@@ -16,8 +16,15 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.features.centers.models import Child
-from app.shared.childCode import NameTable, SubstitutionError, mask, name_variants, unmask
+from app.features.centers.models import Child, Class
+from app.shared.childCode import (
+    NameTable,
+    SubstitutionError,
+    load_pool,
+    mask,
+    table_for_text,
+    unmask,
+)
 
 MASK_FAILED = HTTPException(
     status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -32,21 +39,32 @@ MASK_FAILED = HTTPException(
 )
 
 
+def center_name_table(session: Session, class_id: int, text: str) -> NameTable | None:
+    """그 반이 속한 원의 아이 전부(다른 반 포함)를 보고, 글에 나온 아이로 표를 만든다.
+
+    교사는 옆 반 아이 이름도 적을 수 있다(멘토 리뷰 #380). 원 하나는 300명을 넘지 않는다.
+    바꾸지 못하면 SubstitutionError — 부르는 쪽이 LLM 을 부르지 않고 에러로 바꾼다.
+    """
+    if not text:
+        return None
+    center_id = select(Class.center_id).where(Class.id == class_id).scalar_subquery()
+    rows = session.execute(
+        select(Child.class_id, Child.name, Child.code)
+        .join(Class, Class.id == Child.class_id)
+        .where(Class.center_id == center_id)
+        .order_by(Child.id)
+    ).all()
+    own = [(name, code) for owner, name, code in rows if owner == class_id]
+    others = [(name, code) for owner, name, code in rows if owner != class_id]
+    return table_for_text(load_pool(), own, others, text)
+
+
 def memo_name_table(session: Session, class_id: int, memo: str) -> NameTable | None:
-    """메모에 반 아이 이름이 있을 때만 표를 만든다. 바꾸지 못하면 LLM 을 부르기 전에 422."""
-    if not memo:
-        return None
-    children = {
-        c.name: c.code for c in session.scalars(select(Child).where(Child.class_id == class_id))
-    }
-    if not any(variant in memo for name in children for variant in name_variants(name)):
-        return None
+    """메모에 원 아이 이름이 있을 때만 표를 만든다. 바꾸지 못하면 LLM 을 부르기 전에 422."""
     try:
-        table = NameTable(children)
-        mask(memo, table)
+        return center_name_table(session, class_id, memo)
     except SubstitutionError as error:
         raise MASK_FAILED from error
-    return table
 
 
 def mask_memo(memo: str, table: NameTable | None) -> str:
