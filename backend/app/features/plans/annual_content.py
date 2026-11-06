@@ -1,6 +1,7 @@
 """연간 소주제 초안. 승인된 주제를 입력으로 받고 12개월을 한 번에 생성한다."""
 
 import json
+from dataclasses import replace
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
@@ -85,6 +86,17 @@ def subthemes_for_month(stored, month: int) -> tuple[str, ...]:
     if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
         raise ValueError("Invalid annual subtheme snapshot")
     return tuple(values)
+
+
+def with_teacher_subthemes(plan: YearlyPlan, month: int, before, after) -> YearlyPlan:
+    """A no-op save/reorder does not relabel AI subthemes as teacher-written."""
+    trusted = dict(plan.teacher_subthemes)
+    retained = set(trusted.get(month, ())) & set(after)
+    written = set(after) - set(before)
+    trusted[month] = tuple(
+        value for value in after if value.strip() and value in retained | written
+    )
+    return replace(plan, teacher_subthemes=tuple(sorted(trusted.items())))
 
 
 def generate_subthemes(plan: YearlyPlan, *, transport=None) -> dict[str, list[str]]:

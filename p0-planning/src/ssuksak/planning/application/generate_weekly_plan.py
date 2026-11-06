@@ -67,6 +67,7 @@ from ..planner.weekly import (
     weekly_memo_address,
 )
 from ..retrieval.models import RetrievedEvidence
+from ..venue_policy import parent_teacher_venues
 from ..retrieval.weekly import activity_type, candidate_activity_basis, indoor_play_type, weekly_section_evidence
 from ..rules.monthly_activity_selection import (
     ActivitySelection,
@@ -777,6 +778,10 @@ def _weekly_request(
         daily_life=daily_life,
         sibling_focuses=tuple(c.value for c in _section_cells(parent, "focus") if c.value.strip()) if linked else (),
         teacher_memo=teacher_memo,
+        teacher_venues=parent_teacher_venues(
+            (c for c in parent.cells if not c.section_key.endswith("_detail")),
+            memo=parent.teacher_memo, inherited=parent.parent_teacher_venues,
+        ),
     )
 
 

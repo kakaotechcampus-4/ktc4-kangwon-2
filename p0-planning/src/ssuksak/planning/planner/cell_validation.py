@@ -13,6 +13,7 @@ from .contracts import (
     MonthlyCellProposal,
 )
 from .text_policy import normalize_visible_text, visible_text_violations
+from ..venue_policy import VENUE_POLICY_TAG, venue_memo
 from .validation import outdoor_age_unverifiable_refs, wrong_source_refs
 
 
@@ -83,7 +84,7 @@ def validate_monthly_cell_proposal(
 
     for code in visible_text_violations(
         value.value, evidence_refs=request.valid_grounding_refs | curriculum_source_refs(packet.curriculum),
-        teacher_venue_text=packet.teacher_memo
+        teacher_venue_text=venue_memo(request.user_content) if VENUE_POLICY_TAG in request.prompt_version else None
     ):
         fail(CellValidationCode.TEXT_POLICY, "value", code)
     unknown = tuple(

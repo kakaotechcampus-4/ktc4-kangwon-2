@@ -71,6 +71,7 @@ from app.features.plans.annual_content import (
     generate_subthemes,
     generate_subthemes_with_memo,
     subthemes_for_month,
+    with_teacher_subthemes,
 )
 from app.features.plans.codec import to_jsonable
 from app.features.plans.llm import theme_text_generator
@@ -719,6 +720,10 @@ def update_month(
         )
     except (YearlyApplicationError, InvalidStateTransitionError, InvalidDomainValueError) as error:
         raise _domain_error(error) from error
+    updated = with_teacher_subthemes(
+        updated, month, subthemes_for_month(row.sub_themes, month), body.sub_themes
+    )
+    row.body = {**row.body, "teacher_subthemes": to_jsonable(updated.teacher_subthemes)}
     # 소주제는 도메인 밖이라 따로 넣는다. dict 를 통째로 갈아끼워야 SQLAlchemy 가
     # 바뀐 걸 알아챈다 — 안쪽만 고치면 JSONB 가 그대로 남는다.
     row.sub_themes = {**row.sub_themes, str(month): body.sub_themes}

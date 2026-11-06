@@ -6,6 +6,7 @@ import logging
 
 from ..context.models import MonthlyContextPacket
 from ..domain.monthly_template_snapshot import TemplateSnapshot
+from ..venue_policy import venue_name_only_repair
 from .contracts import (
     is_compatible_monthly_model,
     MonthlyPlanningOutcome,
@@ -117,6 +118,8 @@ class MonthlyPlanner:
                 validate_monthly_proposal(proposal, packet, request).issues
                 + changed_reference_ids(rejected, proposal, found)
             )
+            if any(issue.detail == "UNREQUESTED_VENUE" for issue in found) and venue_name_only_repair(rejected, proposal):
+                raise ProposalRejectedError(("VENUE_NAME_ONLY_REMOVAL",))
             if validation.is_valid:
                 _log.info("Monthly LLM repair succeeded")
             else:

@@ -124,7 +124,7 @@ def test_contextual_monthly_excludes_other_institutions_destinations():
     store = InMemoryInstitutionEvidenceRepository(records).get_store()
     result = MonthlyEvidenceRetriever(store).retrieve(_request(exclude_venue_bound=True))
     assert [item.record_id for item in result.block(BlockName.INSTITUTION_MONTHLY_EVIDENCE).items] == ["ev_c"]
-    assert "+teacher-venues-v1" in result.retrieval_version
+    assert "+teacher-venues-v2" in result.retrieval_version
 
 
 def test_ranking_combines_age_structure_theme_and_keyword_score():

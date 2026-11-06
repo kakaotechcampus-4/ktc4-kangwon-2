@@ -387,6 +387,8 @@ def _base_payload(packet: MonthlyContextPacket) -> dict[str, object]:
         payload["curriculum_context"] = curriculum_context(packet.curriculum)
     if packet.parent_subthemes:
         payload["parent_subthemes"] = list(packet.parent_subthemes)
+    if packet.teacher_venues:
+        payload["teacher_venues"] = list(packet.teacher_venues)
     return payload
 
 

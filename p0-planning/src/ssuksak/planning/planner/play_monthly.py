@@ -237,6 +237,7 @@ def build_play_monthly_request(
     drill_topics: tuple[tuple[str, str, str], ...],  # (topic_id, label, situation)
     reference_versions: tuple[str, ...],
     teacher_memo: str = "",
+    teacher_venues: tuple[str, ...] = (),
 ) -> PlayMonthlyRequest:
     def entries(values: tuple[DailyLifeEntry, ...]) -> list[dict]:
         return [{"entry_id": e.entry_id, "label": e.label, "text": e.text} for e in values]
@@ -265,6 +266,8 @@ def build_play_monthly_request(
         ],
     }
     drill_topic_ids = tuple(t for t, _, _ in drill_topics)
+    if teacher_venues:
+        payload["teacher_venues"] = list(teacher_venues)
     memo = play_monthly_memo_addresses(counts, safety_slots, drill_topic_ids) if teacher_memo else None
     prompt_version, system_prompt = PLAY_MONTHLY_PROMPT_VERSION, SYSTEM_PROMPT + VENUE_GUIDANCE
     if memo is not None:

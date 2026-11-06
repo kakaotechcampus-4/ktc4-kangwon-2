@@ -127,6 +127,27 @@ def test_칸을_고치면_그_달만_돌아오고_근거는_그대로다(db_sess
     assert any(e["type"] == "TEACHER_EDITED" and e["month"] == 3 for e in events)
 
 
+def test_subtheme_teacher_provenance_is_saved_and_survives_reload(db_session, mine):
+    from ssuksak.planning.domain.yearly_plan import YearlyPlan
+
+    from app.features.plans.codec import from_jsonable
+
+    created = _create(mine)
+    before = created["months"][0]
+    url = f"/api/plans/annual/{created['id']}/months/3"
+    response = client.put(url, json={"theme": before["theme"], "sub_themes": before["sub_themes"]})
+    assert response.status_code == 200, response.text
+    db_session.expire_all()
+    row = db_session.get(Plan, created["id"])
+    assert dict(from_jsonable(YearlyPlan, row.body).teacher_subthemes)[3] == ()
+    response = client.put(url, json={"theme": before["theme"], "sub_themes": ["한강공원 산책"]})
+    assert response.status_code == 200, response.text
+    db_session.expire_all()
+    row = db_session.get(Plan, created["id"])
+    assert dict(from_jsonable(YearlyPlan, row.body).teacher_subthemes)[3] == ("한강공원 산책",)
+    assert client.get(f"/api/plans/annual/{created['id']}").status_code == 200
+
+
 def test_소주제를_빼고_보내면_422_이고_아무것도_저장되지_않는다(db_session, mine):
     created = _create(mine)
 

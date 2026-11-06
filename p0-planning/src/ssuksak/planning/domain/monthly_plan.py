@@ -295,6 +295,7 @@ class MonthlyPlan:
     verification_report: VerificationReport | None = None
     # The confirmed annual sidecar, preserved for later single-cell regeneration.
     parent_subthemes: tuple[str, ...] = ()
+    parent_teacher_venues: tuple[str, ...] = ()
     # Candidate mode (S-1): the weekly safety_education Cells stay blank and a week reads
     # its placed candidate's current value instead. Both empty = an older Plan.
     safety_candidates: tuple[MonthlySafetyCandidate, ...] = ()
@@ -310,6 +311,10 @@ class MonthlyPlan:
         if not isinstance(self.plan_id, PlanId):
             raise InvalidDomainValueError("MonthlyPlan.plan_id must be PlanId")
         require_memo_fields("MonthlyPlan", self.teacher_memo, self.memo_notices)
+        if not isinstance(self.parent_teacher_venues, tuple) or any(
+            not isinstance(name, str) or not name.strip() for name in self.parent_teacher_venues
+        ):
+            raise InvalidDomainValueError("parent_teacher_venues must contain non-blank strings")
         if not isinstance(self.parent_subthemes, tuple) or any(
             not isinstance(value, str) for value in self.parent_subthemes
         ):

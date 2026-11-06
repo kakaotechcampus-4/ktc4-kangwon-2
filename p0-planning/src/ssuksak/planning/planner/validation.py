@@ -39,6 +39,7 @@ from .contracts import (
 from .text_policy import normalize_visible_text, visible_text_violations
 from .indoor_alternative import INDOOR_REQUIRED, INDOOR_ALTERNATIVE_TAG
 from .weekly import unsupported_facts
+from ..venue_policy import VENUE_POLICY_TAG, venue_memo
 
 
 class ProposalValidationCode(str, Enum):
@@ -678,7 +679,8 @@ def validate_monthly_proposal_grounding(
             for ref in value.grounding_refs
         )
         for code in visible_text_violations(
-            value.value, evidence_refs=_hidden_ids(request, packet), teacher_venue_text=packet.teacher_memo
+            value.value, evidence_refs=_hidden_ids(request, packet),
+            teacher_venue_text=venue_memo(_input_facts(request)) if VENUE_POLICY_TAG in request.prompt_version else None
         ):
             if code == "SAFETY_CONTENT_LEAKAGE" and safety_grounded:
                 continue
@@ -859,7 +861,8 @@ def _safety_candidate_issues(
             fail(ProposalValidationCode.UNRESOLVED_NOT_ALLOWED)
             continue
         for code in visible_text_violations(
-            value.value, evidence_refs=_hidden_ids(request, packet), teacher_venue_text=packet.teacher_memo
+            value.value, evidence_refs=_hidden_ids(request, packet),
+            teacher_venue_text=venue_memo(_input_facts(request)) if VENUE_POLICY_TAG in request.prompt_version else None
         ):
             if code != "SAFETY_CONTENT_LEAKAGE":
                 fail(ProposalValidationCode.TEXT_POLICY, code, reason=code)
@@ -936,7 +939,8 @@ def _drill_candidate_issues(
         reasons = [
             code
             for code in visible_text_violations(
-                value.value, evidence_refs=_hidden_ids(request, packet), teacher_venue_text=packet.teacher_memo
+                value.value, evidence_refs=_hidden_ids(request, packet),
+                teacher_venue_text=venue_memo(_input_facts(request)) if VENUE_POLICY_TAG in request.prompt_version else None
             )
             if code != "SAFETY_CONTENT_LEAKAGE"
         ]

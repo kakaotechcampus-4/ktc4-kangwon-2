@@ -38,7 +38,7 @@ from .teacher_memo import (
     split_memo_applied,
 )
 from .text_policy import normalize_visible_text, visible_text_violations
-from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG
+from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG, venue_name_only_repair
 from .v1_guidance import (
     NATURAL_PLAY_GUIDANCE,
     V1_GUIDANCE,
@@ -321,6 +321,7 @@ def build_weekly_request(
     daily_life: DailyLifeCatalog | None = None,
     sibling_focuses: tuple[str, ...] = (),
     teacher_memo: str = "",
+    teacher_venues: tuple[str, ...] = (),
 ) -> WeeklyPlanningRequest:
     body = {
         "task": "weekly_plan",
@@ -348,6 +349,8 @@ def build_weekly_request(
     }
     if curriculum is not None:
         body["curriculum_context"] = curriculum_context(curriculum)
+    if teacher_venues:
+        body["teacher_venues"] = list(teacher_venues)
     examples: tuple[str, ...] = ()
     source_refs = curriculum_source_refs(curriculum)
     if reference_wiring:
@@ -437,7 +440,7 @@ def build_weekly_request(
         reference_wiring=reference_wiring,
         reference_examples=examples,
         memo_addresses=memo,
-        teacher_venue_text=teacher_memo,
+        teacher_venue_text="\n".join((teacher_memo, *teacher_venues)),
     )
 
 
@@ -447,6 +450,7 @@ def cell_request(
     *,
     current_values: tuple[tuple[str, str], ...],
     teacher_facts: tuple[str, ...],
+    teacher_venues: tuple[str, ...] = (),
     day: str | None = None,
 ) -> WeeklyPlanningRequest:
     """The document request narrowed to one Section (W4b, plan §4).
@@ -471,6 +475,8 @@ def cell_request(
     ]
     body["evidence"] = [e for e in body["evidence"] if e["grounding_ref"] in target.allowed_grounding_refs]
     body["current_plan"] = dict(current_values)
+    if teacher_venues:
+        body["teacher_venues"] = sorted(set(body.get("teacher_venues", ())) | set(teacher_venues))
     contextual = "curriculum_context" in body
     suffix = DAY_CELLS_SUFFIX if request.prompt_version.endswith(DAY_CELLS_SUFFIX) else ""
     linked = REFERENCE_WIRING_SUFFIX if request.reference_wiring else ""
@@ -497,7 +503,7 @@ def cell_request(
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True),
         targets=(target,),
         allowed_fact_text=" ".join((request.allowed_fact_text, *teacher_facts)),
-        teacher_venue_text=" ".join((request.teacher_venue_text, *teacher_facts)),
+        teacher_venue_text="\n".join((request.teacher_venue_text, *teacher_venues)),
         cell_key=section_key,
         memo_addresses=memo,
         # The caller labels the Section's other day cells "section_key:DAY".
@@ -800,7 +806,7 @@ def _value_issues(
         issues.append(WeeklyIssue(WeeklyIssueCode.RESOLVED_REQUIRES_GROUNDING, key, day=day))
     policy = [
         code for code in visible_text_violations(v.value, evidence_refs=request.context_source_refs,
-                                                 teacher_venue_text=request.teacher_venue_text)
+                                                 teacher_venue_text=request.teacher_venue_text if VENUE_POLICY_TAG in request.prompt_version else None)
         if not (key == SAFETY_KEY and code == "SAFETY_CONTENT_LEAKAGE")
     ]
     if policy:
@@ -867,7 +873,8 @@ class WeeklyPlanner:
                     "original_request": json.loads(request.user_content),
                     "previous_answer": json.loads(content),
                     "fix_sections": [
-                        {"section_key": i.section_key, "issue": i.code.value, **({"day": i.day} if i.day else {})}
+                        {"section_key": i.section_key, "issue": i.code.value, **({"day": i.day} if i.day else {}),
+                         **({"reason": "UNREQUESTED_VENUE"} if "UNREQUESTED_VENUE" in i.detail else {})}
                         for i in issues
                     ],
                 }, ensure_ascii=False, sort_keys=True),
@@ -900,7 +907,10 @@ class WeeklyPlanner:
                 raise ProposalRejectedError(_codes(stray_issues), stray_issues)
             patched = {v.section_key: v for v in repaired_values}
             # Only the flagged Sections may change; every other value stays as first written.
+            previous_values = values
             values = tuple(patched.get(v.section_key, v) if v.section_key in flagged else v for v in values)
+            if any("UNREQUESTED_VENUE" in issue.detail for issue in issues) and venue_name_only_repair(previous_values, values):
+                raise ProposalRejectedError(("VENUE_NAME_ONLY_REMOVAL",))
             issues = validate_weekly(values, request)
             repaired, prompt_version = frozenset(flagged), request.repair_prompt_version
         if issues:
