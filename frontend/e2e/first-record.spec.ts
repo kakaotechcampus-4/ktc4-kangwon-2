@@ -31,19 +31,16 @@ test("가입부터 관찰 기록까지", async ({ page }) => {
   const roomSetup = page.getByRole("heading", { name: "선생님, 우리 반부터 알려 주세요!" });
   await expect(roomSetup).toBeVisible();
 
-  // 문서 보관함도 원·반 없이 열린다 — 안내 카드 대신 보관함이 그려진다.
+  // 메인 말고는 원·반이 있어야 열린다 — 문서 보관함도 보관함 대신 안내 카드를 보인다.
   const roomGate = page.getByRole("heading", { name: "원·반을 먼저 등록해 주세요" });
   await page
     .getByRole("complementary", { name: "주 메뉴" })
     .getByRole("link", { name: "문서 보관함", exact: true })
     .click();
   await expect(page).toHaveURL(/\/documents$/);
-  await expect(
-    page.getByRole("heading", { name: "반을 선택해 주세요", exact: true }),
-  ).toBeVisible();
-  await expect(roomGate).toHaveCount(0);
+  await expect(roomGate).toBeVisible();
 
-  // 그 밖의 메뉴는 원·반이 있어야 열린다 — 안내 카드에서 온보딩으로 간다.
+  // 다른 메뉴도 같은 안내 카드다 — 카드에서 온보딩으로 간다.
   await page
     .getByRole("complementary", { name: "주 메뉴" })
     .getByRole("link", { name: "계획안", exact: true })

@@ -9,9 +9,9 @@ import { Icon } from "@/components/app/icons";
 import { roomReady } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
 
-const OPEN_PATHS = ["/", "/documents"];
+const OPEN_PATHS = ["/"];
 
-// 메인(/)과 문서 보관함(/documents)은 원 · 반이 없어도 열린다(보관함은 원·반 없이도 둘러볼 수 있게). 그 밖의 화면은 원 · 반이 있어야 돌아서 안내 카드를 보인다.
+// 메인(/)만 원 · 반이 없어도 열린다. 그 밖의 화면(문서 보관함 포함)은 원 · 반이 있어야 돌아서 안내 카드를 보인다.
 // 브라우저 저장소는 hydration 뒤에만 읽는다(useClientState — 하이드레이션 불일치 방지).
 // 화면을 옮길 때마다 다시 읽도록 pathname 을 key 로 건다.
 export default function RoomSetupGate({ children }: { children: ReactNode }) {
