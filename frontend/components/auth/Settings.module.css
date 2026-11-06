@@ -257,7 +257,7 @@
    머리띠 · 테이프 · 안내 · 스크롤되는 본문 · 아래 단추 순서. */
 .peeled {
   width: min(560px, calc(100% - 32px));
-  max-height: calc(100dvh - 52px);
+  max-height: calc(calc(100 * var(--app-dvh)) - 52px);
   padding: 40px 36px 28px;
   /* 모달 기본값은 overflow: auto 라 위로 튀어나온 테이프가 잘린다. 스크롤은 .body 가 한다. */
   overflow: visible;

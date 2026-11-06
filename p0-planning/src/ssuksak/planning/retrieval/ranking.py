@@ -115,20 +115,29 @@ def prefer_explicit_indoor_methods(ranked: Sequence[RetrievedEvidence]) -> list[
 
 
 def apply_source_diversity(
-    ranked: Sequence[RetrievedEvidence], *, top_k: int, institution_cap: int = DEFAULT_INSTITUTION_CAP
+    ranked: Sequence[RetrievedEvidence],
+    *,
+    top_k: int,
+    institution_cap: int = DEFAULT_INSTITUTION_CAP,
+    fill: bool = False,
 ) -> tuple[RetrievedEvidence, ...]:
+    """fill=True makes the cap an order preference: capped items fill leftover slots in ranked order."""
     if top_k < 1:
         return ()
     used: collections.Counter[str] = collections.Counter()
     selected = []
+    capped = []
     for item in ranked:
         group = item.trace.diversity_group
         if used[group] >= institution_cap:
+            capped.append(item)
             continue
         used[group] += 1
         selected.append(item)
         if len(selected) == top_k:
             break
+    if fill:
+        selected.extend(capped[: top_k - len(selected)])
     return tuple(selected)
 
 

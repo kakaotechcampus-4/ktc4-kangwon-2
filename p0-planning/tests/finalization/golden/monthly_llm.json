@@ -157,6 +157,41 @@
         }
       ],
       "repeat_by": "WEEK", "key": "focus", "role": "CONTENT"
+    },
+    {
+      "cells": [
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.template.section_resolution", "rule_version": "v1"},
+          "state": "EMPTY_VALID", "value": "", "week_id": "2026-09-W1"
+        },
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.template.section_resolution", "rule_version": "v1"},
+          "state": "EMPTY_VALID", "value": "", "week_id": "2026-09-W2"
+        },
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.template.section_resolution", "rule_version": "v1"},
+          "state": "EMPTY_VALID", "value": "", "week_id": "2026-09-W3"
+        },
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.template.section_resolution", "rule_version": "v1"},
+          "state": "EMPTY_VALID", "value": "", "week_id": "2026-09-W4"
+        },
+        {
+          "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
+          "evidence": [],
+          "generation": {"method": "RULE_ONLY", "rule_id": "monthly.template.section_resolution", "rule_version": "v1"},
+          "state": "EMPTY_VALID", "value": "", "week_id": "2026-09-W5"
+        }
+      ],
+      "repeat_by": "WEEK", "key": "outdoor_play_detail", "role": "CONTENT"
     }
   ],
   "status": "DRAFT",

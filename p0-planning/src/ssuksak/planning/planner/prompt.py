@@ -8,7 +8,7 @@ import json
 from ..context.models import MonthlyContextPacket
 from ..context.serialization import packet_fingerprint
 from ..domain.monthly_template import RepeatBy, TemplateSection
-from ..domain.monthly_template_snapshot import TemplateSnapshot
+from ..domain.monthly_template_snapshot import ACTIVITY_DETAIL_SECTION_KEYS, TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
 from ..domain.errors import InvalidDomainValueError
@@ -20,6 +20,7 @@ from .contracts import (
     MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION,
     MONTHLY_DRILL_CANDIDATES_PROMPT_TAG,
     MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION,
+    MONTHLY_ACTIVITY_DETAIL_PROMPT_TAG,
     MONTHLY_INDOOR_PROMPT_TAG,
     MONTHLY_PROMPT_VERSION,
     MONTHLY_REPAIR_PROMPT_VERSION,
@@ -117,6 +118,17 @@ invent weather or claim that the activity was carried out.
 Write a short activity name, not a lesson script. Return unresolved=false and
 cite the supplied indoor evidence for the method used, including adaptations.
 """ + INDOOR_ADAPTATION_GUIDANCE
+
+# ADR-066: appended only to v1 requests whose outdoor_play / indoor_alternative have a detail
+# Section (MONTHLY_ACTIVITY_DETAIL_PROMPT_TAG). The detail is never printed in the document.
+ACTIVITY_DETAIL_PROMPT = """
+- detail: outdoor_play · indoor_alternative의 주 칸마다 detail 문자열을 함께 쓴다. 문서에는 나오지 않고 교사가 칸 편집에서 보는 활동 설명이다.
+  그 칸 value의 활동에서 유아가 무엇을 어떻게 하며 노는지를 1~2문장의 자연스러운 한국어로 구체적으로 쓴다. 쓰는 재료는 문장 안에 자연스럽게 담고 준비물 목록으로 늘어놓지 않는다.
+  유아가 주어가 되게 쓴다. 교사 발문·단계별 진행 순서·시간·인원·장소 사정은 쓰지 않는다.
+  value의 활동명·대상·경험을 바꾸거나 다른 활동을 덧붙이지 않는다. value는 detail 때문에 고치지 않는다.
+  supplied evidence · reference_activities · curriculum_context에 없는 사실(행사·날짜·사람·기관)을 더하지 않고, 근거 문장을 그대로 옮기지 않는다.
+  안전교육 내용이나 법적·공식 표현은 쓰지 않는다. unresolved인 칸의 detail은 ""이고, 확실히 쓸 내용이 없으면 ""로 둔다.
+"""
 
 # Appended only when the Context Packet carries safety_candidates (MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG).
 SAFETY_CANDIDATES_PROMPT = """safety_candidates lists this month's safety education candidates; a teacher
@@ -469,6 +481,19 @@ def build_monthly_planning_request(
         version += VENUE_POLICY_TAG
     if indoor:
         version += MONTHLY_INDOOR_PROMPT_TAG
+    # ADR-066: v1 requests only; others keep their prompt bytes and leave details blank.
+    detail_keys = tuple(
+        section.section_key
+        for section, _ in generation_targets(packet, snapshot)
+        if section.section_key in ACTIVITY_DETAIL_SECTION_KEYS
+        and snapshot.section(ACTIVITY_DETAIL_SECTION_KEYS[section.section_key]) is not None
+    ) if contextual else ()
+    if detail_keys:
+        version += MONTHLY_ACTIVITY_DETAIL_PROMPT_TAG
+        week = body["response_contract"]["weeks"][0]
+        week["sections"] = [
+            dict(week["sections"][0], detail="string; only in " + " and ".join(detail_keys) + ' cells, "" when unresolved')
+        ]
     if packet.safety_candidates:
         version += MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG
     if packet.drill_topics:
@@ -497,6 +522,7 @@ def build_monthly_planning_request(
             + MONTHLY_V1_STYLE
             if contextual else (SAFETY_SYSTEM_PROMPT if safety else SYSTEM_PROMPT)
         ) + (INDOOR_ALTERNATIVE_PROMPT if indoor else "")
+        + (ACTIVITY_DETAIL_PROMPT if detail_keys else "")
         + (SAFETY_CANDIDATES_PROMPT if packet.safety_candidates else "")
         + (DRILL_CANDIDATES_PROMPT if packet.drill_topics else "")
         + (TEACHER_MEMO_PROMPT if memo is not None else "")
@@ -516,6 +542,7 @@ def build_monthly_planning_request(
         allowed_grounding_refs_by_section=allowed_grounding_refs_by_section(packet, snapshot),
         memo_addresses=memo,
         safety_request_slots=safety_slots,
+        detail_section_keys=detail_keys,
     )
 
 

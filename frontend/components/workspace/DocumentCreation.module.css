@@ -2,7 +2,7 @@
 .page {
   container: document-creation / inline-size;
   max-width: none;
-  min-height: calc(100dvh - 60px);
+  min-height: calc(calc(100 * var(--app-dvh)) - 60px);
   padding: 24px 40px 48px;
   background: radial-gradient(ellipse at 75% 18%, #fffaf2 0, transparent 65%), #fcf7ef;
 }

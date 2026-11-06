@@ -212,7 +212,7 @@ function ImportShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-[calc(100vh-60px)] w-full flex-col gap-4 px-7 pb-6 pt-6 text-[#2b2826]">
+    <div className="flex h-[calc(calc(100*var(--app-vh))-60px)] w-full flex-col gap-4 px-7 pb-6 pt-6 text-[#2b2826]">
       <div className="flex flex-col gap-1">
         <button
           type="button"

@@ -36,8 +36,11 @@ permissions:
 env:
   INSTANCE_ID: i-041ebb00937bd371f # ktc4-team-server
   AWS_REGION: ap-northeast-2
-  # push 로 들어오면 그 브랜치(main · develop)를 올린다. 손으로 돌릴 때만 입력값을 쓴다.
-  DEPLOY_REF: ${{ inputs.ref || github.ref_name }}
+  # 올릴 것. push 면 이 run 을 부른 커밋, 손으로 돌리면 입력값(브랜치 · SHA)이다.
+  # 브랜치 이름을 서버에 그대로 넘기면 서버가 도는 순간의 브랜치 끝을 올려서, 앞 배포가
+  # 서버에 닿기 전에 머지가 또 들어오면 앞 run 이 뒤 커밋을 자기 이름으로 올렸다(2026-11-04, 4번).
+  # 그래서 「올릴 커밋 고정」 스텝이 이 값을 전체 SHA 하나로 바꾸고, 그 뒤로는 그 값만 쓴다.
+  DEPLOY_REF: ${{ inputs.ref || github.sha }}
 
 jobs:
   deploy:
@@ -45,6 +48,15 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+
+      - name: 올릴 커밋 고정
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$DEPLOY_REF" --jq .sha)
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "그런 브랜치도 커밋도 없다: $DEPLOY_REF"; exit 1; }
+          echo "올릴 커밋 $sha"
+          echo "DEPLOY_SHA=$sha" >> "$GITHUB_ENV"
 
       - name: AWS 자격증명 설정
         uses: aws-actions/configure-aws-credentials@v4
@@ -60,8 +72,8 @@ jobs:
           command_id=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript \
-            --comment "deploy $DEPLOY_REF ${GITHUB_SHA:0:7}" \
-            --parameters "$(jq -n --rawfile script scripts/deploy.sh --arg ref "$DEPLOY_REF" \
+            --comment "deploy $DEPLOY_SHA" \
+            --parameters "$(jq -n --rawfile script scripts/deploy.sh --arg ref "$DEPLOY_SHA" \
               '{commands: ["#!/usr/bin/env bash", "export DEPLOY_REF=\($ref)", $script],
                 executionTimeout: ["1800"]}')" \
             --query Command.CommandId --output text)
@@ -130,5 +142,5 @@ jobs:
           test -n "$WEBHOOK" || exit 0
           curl -fsS -X POST "$WEBHOOK" \
             -H 'Content-Type: application/json' \
-            -d "$(printf '{"content":"🔴 배포 실패 — %s\\n%s"}' "${GITHUB_SHA:0:7}" "$RUN_URL")" \
+            -d "$(printf '{"content":"🔴 배포 실패 — %s\\n%s"}' "${DEPLOY_SHA:-올릴 커밋을 못 정함}" "$RUN_URL")" \
             || echo "알림 전송 실패. 배포 결과는 위 스텝들을 본다"

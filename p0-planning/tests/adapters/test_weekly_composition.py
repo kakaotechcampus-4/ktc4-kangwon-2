@@ -195,7 +195,7 @@ def test_day_composition_links_approved_context_and_parent_play_through_regenera
         provider=provider, clock=harness.clock,
     ).execute(RegenerateWeeklyPlanCellCommand(before.plan_id, outdoor.item_id, ActorId("test_reviewer")))
     assert after.cell("outdoor_play").item_id == outdoor.item_id
-    assert after.cell("outdoor_play").generation.rule_version == "weekly-cell-planner-v2+monthly-linked-v7+indoor-alternative-v3+teacher-venues-v2+day-cells-v1"
+    assert after.cell("outdoor_play").generation.rule_version == "weekly-cell-planner-v2+monthly-linked-v8+indoor-alternative-v3+teacher-venues-v2+day-cells-v1"
     assert LINKED_OUTDOOR_INSTRUCTION in provider.requests[-1].system_prompt
     assert LINKED_WRITING_GUIDANCE.replace(
         "허용 근거로 이어갈 수 없으면 빈칸으로 두고 관계없는 놀이로 채우지 않는다. ", ""

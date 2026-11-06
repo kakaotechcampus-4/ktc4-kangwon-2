@@ -1,4 +1,4 @@
-// usePlayMonthlySave: 화면에 바로 입히기 · 되돌리기(칸 글 · 안전 배치만) · 행 삭제 · 복사 뒤 목록 비움 · 422 되돌림.
+// usePlayMonthlySave: 화면에 바로 입히기 · 되돌리기(AI 후보 넣기 · 빼기 · 훈련 복사 포함) · 교사 행 삭제 뒤 목록 비움 · 422 되돌림.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire, registerHooks } from "node:module";
@@ -15,6 +15,7 @@ registerHooks({
 });
 const queueModule = await import("../lib/plan-generator/playMonthlyQueue.ts");
 const timetable = await import("../lib/plan-generator/playMonthlyTimetable.ts");
+const sectionLabels = await import("../lib/monthly/section-labels.ts");
 // 서버처럼 겹치지 않는 32자 id.
 let nextId = 0;
 const newId = () => "item_" + String(++nextId).padStart(32, "0");
@@ -63,9 +64,11 @@ function mount({
   drafting = false,
   failCopy = null,
   failCell = null,
+  freePlay = [],
+  extra = {},
 } = {}) {
   const gates = [];
-  let server = base();
+  let server = { ...base(), free_play: freePlay, ...extra };
   const sent = [];
   const slots = [];
   let cursor = 0;
@@ -123,10 +126,18 @@ function mount({
       sent.push(["ratio", splitId, ratio, rev]);
       return bump(queueModule.withTimetableRatio(server, splitId, ratio));
     },
+    orderPlayMonthlyActivities: async (id, section, itemIds, rev) => {
+      sent.push(["order", section, itemIds, rev]);
+      return bump(queueModule.withOrder(server, section, itemIds));
+    },
+    pickPlayMonthlyActivity: async (id, itemId, rev) => {
+      sent.push(["pick", itemId, rev]);
+      return bump(queueModule.withPick(server, itemId));
+    },
     copyPlayMonthlyDrill: async (id, itemId, rev) => {
       sent.push(["copy", itemId, rev]);
       if (failCopy) throw failCopy;
-      return bump(queueModule.overlayCells(server, { f: "후보 글" }));
+      return bump(queueModule.overlayCells(server, { f: "[화재] 후보 글" }));
     },
   };
   const modules = {
@@ -138,6 +149,7 @@ function mount({
     },
     "@/lib/plan-generator/playMonthlyQueue": queueModule,
     "@/lib/plan-generator/playMonthlyTimetable": timetable,
+    "@/lib/monthly/section-labels": sectionLabels,
   };
   const compiled = { exports: {} };
   new Function("require", "module", "exports", code)((n) => modules[n], compiled, compiled.exports);
@@ -281,7 +293,31 @@ test("same value as shown is not a step; blank is a value", async () => {
   assert.equal(m.render().canUndo, true);
 });
 
-test("row removal and drill copy are not undoable and empty the undo list", async () => {
+test("row order shows at once and undo/redo send the order before and after", async () => {
+  const row = (id) => ({ activity_id: id, name: { item_id: id, value: id }, description: {} });
+  const m = mount({ freePlay: [row("a"), row("b"), row("c")] });
+  const order = () => m.shown.plan.free_play.map((r) => r.activity_id);
+  m.get().orderActivities("free_play", ["b", "a", "c"]);
+  assert.deepEqual(order(), ["b", "a", "c"]);
+  m.get().orderActivities("free_play", ["b", "a", "c"]); // 같은 순서는 걸음이 아니다
+  await tick();
+  m.render().undo();
+  assert.deepEqual(order(), ["a", "b", "c"]);
+  await tick();
+  m.render().redo();
+  await tick();
+  assert.deepEqual(
+    m.sent.map((s) => s.slice(0, 3)),
+    [
+      ["order", "free_play", ["b", "a", "c"]],
+      ["order", "free_play", ["a", "b", "c"]],
+      ["order", "free_play", ["b", "a", "c"]],
+    ],
+  );
+  assert.deepEqual(order(), ["b", "a", "c"]);
+});
+
+test("a teacher row removal is not undoable and empties the undo list", async () => {
   const m = mount();
   m.get().editCell("t", "A");
   await tick();
@@ -290,13 +326,74 @@ test("row removal and drill copy are not undoable and empty the undo list", asyn
   assert.equal(m.shown.plan.together.length, 0);
   await tick();
   assert.equal(m.render().canUndo, false);
-  m.get().editCell("t", "B");
-  await tick();
-  assert.equal(m.render().canUndo, true);
+  assert.equal(m.get().canRedo, false);
+});
+
+test("drill copy undoes to the old text and redoes as a copy", async () => {
+  const m = mount();
   m.get().copyDrill("x");
   await tick();
-  assert.equal(m.render().canUndo, false);
-  assert.equal(m.get().canRedo, false);
+  assert.equal(m.render().canUndo, true);
+  m.get().undo();
+  assert.equal(m.shown.plan.teacher_inputs[0].cell.value, "옛 글");
+  await tick();
+  m.render().redo();
+  await tick();
+  assert.deepEqual(
+    m.sent.map((s) => s.slice(0, 3)),
+    [
+      ["copy", "x", 1],
+      ["cell", "f", "옛 글"],
+      ["copy", "x", 3],
+    ],
+  );
+  assert.equal(m.shown.plan.teacher_inputs[0].cell.value, "[화재] 후보 글");
+});
+
+test("AI candidate pick and removal undo and redo, back to the old place", async () => {
+  const row = (id) => ({
+    activity_id: id,
+    name: { item_id: id, value: id },
+    description: { item_id: id + "d", value: "" },
+  });
+  const m = mount({
+    extra: {
+      together: [row("a"), row("b")],
+      activity_pick: 5,
+      activity_candidates: ["a", "b", "c"],
+      activity_pool: [{ ...row("c"), section: "together" }],
+    },
+  });
+  const ids = () => m.shown.plan.together.map((r) => r.activity_id);
+  m.get().pickActivity("c");
+  await tick();
+  m.render().removeActivity("a");
+  await tick();
+  assert.deepEqual(ids(), ["b", "c"]);
+  m.render().undo(); // 뺀 a 를 다시 넣고 맨 앞으로
+  await tick();
+  assert.deepEqual(ids(), ["a", "b", "c"]);
+  m.render().undo(); // 넣은 c 를 후보로
+  await tick();
+  assert.deepEqual(ids(), ["a", "b"]);
+  assert.deepEqual(
+    m.shown.plan.activity_pool.map((r) => r.activity_id),
+    ["c"],
+  );
+  m.render().redo();
+  await tick();
+  assert.deepEqual(ids(), ["a", "b", "c"]);
+  assert.deepEqual(
+    m.sent.map((s) => s.slice(0, 2)),
+    [
+      ["pick", "c"],
+      ["remove", "a"],
+      ["pick", "a"],
+      ["order", "together"],
+      ["remove", "c"],
+      ["pick", "c"],
+    ],
+  );
 });
 
 test("a 422 puts the server value back, clears history and reports", async () => {
@@ -363,7 +460,7 @@ test("typed-but-unsaved text (drafting) turns on the leave warning even when the
 test("drill copy shows the candidate text at once and says the queue took it", async () => {
   const m = mount();
   assert.equal(m.get().copyDrill("x"), true);
-  assert.equal(m.shown.plan.teacher_inputs[0].cell.value, "후보 글");
+  assert.equal(m.shown.plan.teacher_inputs[0].cell.value, "[화재] 후보 글");
   await tick();
   assert.deepEqual(m.sent.at(-1).slice(0, 2), ["copy", "x"]);
 });

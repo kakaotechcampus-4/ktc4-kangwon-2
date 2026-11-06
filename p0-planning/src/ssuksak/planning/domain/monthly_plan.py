@@ -18,8 +18,10 @@ from .monthly_template import (
 )
 from .monthly_template_profile import DRILL_SECTION_KEY
 from .monthly_template_snapshot import TemplateSnapshot
+from .monthly_teacher_table import TEACHER_TABLE_KEYS, MonthlyTeacherTable, blank_teacher_tables
 from .monthly_verification import VerificationReport
 from .plan import PlanStatus
+from .play_monthly_plan import PlayMonthlyCell
 from .teacher_memo import MemoNotice, require_memo_fields, without_memo_evidence
 from .safety_placement import STATUTORY_SHORT_LABELS, SafetyKind, SafetyPlacement, SafetyWeek
 from .provenance import (
@@ -31,6 +33,7 @@ from .provenance import (
     EvidenceSourceType,
     GenerationMethod,
     GenerationMethodDetail,
+    TimetableChange,
 )
 from .week_period import WeekId, WeekPeriod
 from .year_month import YearMonth
@@ -306,10 +309,15 @@ class MonthlyPlan:
     # requests generation could not apply (shown to the teacher, never blocking).
     teacher_memo: str = ""
     memo_notices: tuple[MemoNotice, ...] = ()
+    # Human Decision 2026-11-05: the form's teacher tables (행사 일정 · 특성화 · 특별활동).
+    # Empty = never written; read ``tables``. A removed table cell stays whole, never printed.
+    teacher_tables: tuple[MonthlyTeacherTable, ...] = ()
+    removed_table_cells: tuple[PlayMonthlyCell, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
             raise InvalidDomainValueError("MonthlyPlan.plan_id must be PlanId")
+        self._check_teacher_tables()
         require_memo_fields("MonthlyPlan", self.teacher_memo, self.memo_notices)
         if not isinstance(self.parent_teacher_venues, tuple) or any(
             not isinstance(name, str) or not name.strip() for name in self.parent_teacher_venues
@@ -494,6 +502,66 @@ class MonthlyPlan:
             raise InvalidDomainValueError("A candidate-mode Plan needs one safety placement per active week")
         if any(s.candidate_item_id is not None and s.candidate_item_id not in ids for s in weeks):
             raise InvalidDomainValueError("A safety placement must name a kept candidate")
+
+    def _check_teacher_tables(self) -> None:
+        tables, removed = self.teacher_tables, self.removed_table_cells
+        if not isinstance(tables, tuple) or not all(isinstance(t, MonthlyTeacherTable) for t in tables):
+            raise InvalidDomainValueError("MonthlyPlan.teacher_tables are invalid")
+        if tables and tuple(t.table_key for t in tables) != TEACHER_TABLE_KEYS:
+            raise InvalidDomainValueError("MonthlyPlan.teacher_tables follow the form's three tables")
+        if not isinstance(removed, tuple) or not all(isinstance(c, PlayMonthlyCell) for c in removed):
+            raise InvalidDomainValueError("MonthlyPlan.removed_table_cells are invalid")
+        cells = (*(c for t in tables for c in t.cells()), *removed)
+        ids = [c.item_id for c in cells] + [b.split_id for t in tables for b in t.boundaries()]
+        keys = [c.semantic_key for c in cells]
+        if len(set(ids)) != len(ids) or len(set(keys)) != len(keys):
+            raise InvalidDomainValueError("Teacher table cells need unique ItemIds and semantic keys")
+
+    @property
+    def tables(self) -> tuple[MonthlyTeacherTable, ...]:
+        """The teacher tables as stored, or the blank form tables (same ids every read)."""
+        return self.teacher_tables or blank_teacher_tables(self.plan_id)
+
+    def table_cell(self, item_id: ItemId) -> tuple[int, PlayMonthlyCell] | None:
+        """(table index, cell) of a title or content cell of a teacher table."""
+        return next(
+            ((i, c) for i, t in enumerate(self.tables) for c in t.cells() if c.item_id == item_id),
+            None,
+        )
+
+    def with_table(
+        self,
+        index: int,
+        table: MonthlyTeacherTable,
+        *,
+        change: TimetableChange | None = None,
+        actor_id: ActorId | None = None,
+        occurred_at: datetime | None = None,
+        removed: PlayMonthlyCell | None = None,
+    ) -> MonthlyPlan:
+        """Swap one teacher table. A structure or size change is a plan-level TIMETABLE_CHANGED."""
+        self.ensure_mutable("change_teacher_table")
+        tables = list(self.tables)
+        if tables[index].table_key != table.table_key:
+            raise InvalidDomainValueError("A teacher table keeps its place")
+        tables[index] = table
+        audit = self.audit
+        if change is not None:
+            audit = audit.append(
+                AuditEvent(
+                    event_type=AuditEventType.TIMETABLE_CHANGED,
+                    occurred_at=occurred_at,
+                    plan_id=self.plan_id,
+                    actor_id=actor_id,
+                    timetable_change=change,
+                )
+            )
+        return replace(
+            self,
+            teacher_tables=tuple(tables),
+            removed_table_cells=self.removed_table_cells + ((removed,) if removed is not None else ()),
+            audit=audit,
+        )
 
     def _check_drill_candidates(self) -> None:
         candidates = self.drill_candidates

@@ -11,7 +11,7 @@
   gap: 0 24px;
   min-width: 0;
   /* 상단바가 60px 이다 (AppLayout 의 Suspense fallback 과 WorkspaceTopBar 가 같은 값). */
-  min-height: calc(100dvh - 60px);
+  min-height: calc(calc(100 * var(--app-dvh)) - 60px);
   padding: 24px 32px 36px;
   background: radial-gradient(ellipse at 70% 0, #fffaf0 0, transparent 48%), #faf7f1;
 }
@@ -47,7 +47,7 @@
   padding: 16px 14px 0;
   /* 상단바(60) · 위 여백(24) · 제목(122 + 간격 22) · 아래 여백(36)을 뺀 높이 —
      첫 화면에서 스크롤 없이 패널 끝(아래 그림)까지 보인다. 아주 낮은 화면에서는 360px 을 지킨다. */
-  height: calc(100dvh - 264px);
+  height: calc(calc(100 * var(--app-dvh)) - 264px);
   min-height: 360px;
   display: flex;
   flex-direction: column;
@@ -1377,7 +1377,7 @@
     position: sticky;
     align-self: start;
     top: 80px;
-    max-height: calc(100vh - 100px);
+    max-height: calc(calc(100 * var(--app-vh)) - 100px);
     padding: 0 0 0 20px;
     border-top: 0;
     border-left: 1px solid var(--pg-line);
@@ -1411,10 +1411,10 @@
 /* 태블릿·모바일의 기존 하단 메뉴 높이를 빼고 남은 공간만 채운다. */
 @media (max-width: 1023px) {
   .archive {
-    min-height: calc(100dvh - 60px - 84px);
+    min-height: calc(calc(100 * var(--app-dvh)) - 60px - 84px);
   }
   .classRail {
-    height: calc(100dvh - 264px - 84px);
+    height: calc(calc(100 * var(--app-dvh)) - 264px - 84px);
   }
 }
 @media (max-width: 760px) {

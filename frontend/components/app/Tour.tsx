@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { appZoom } from "@/lib/appZoom";
 import { Posty } from "./Posty";
 import styles from "./Tour.module.css";
 
@@ -164,23 +165,23 @@ const SLIDES: Record<"MONTHLY_THEME" | "PLAY_PROJECT", { dir: string; slides: Sl
       },
       {
         title: "칸을 눌러 고쳐요",
-        body: "문서에서 고칠 칸을 누르면 왼쪽에서 바로 고쳐요. 되돌리기 · 다시 하기도 있어요.",
+        body: "문서에서 고칠 칸을 누르면 왼쪽에서 생활주제 · 소주제를 바로 고쳐요. 되돌리기 · 다시 하기도 있어요.",
       },
       {
         title: "다 고쳤으면 확정해요",
-        body: "「확정하기」를 누르고 한 번 더 확정하면 끝나요. 더 고칠 게 있으면 「더 다듬기」를 눌러요.",
+        body: "「확정하기」를 누르고 한 번 더 확정하면 끝나요. 소주제는 그 달 주 수만큼 있어야 확정돼요. 더 고칠 게 있으면 「더 다듬기」를 눌러요.",
       },
       {
         title: "내려받고 월간으로",
-        body: "PDF · 한글 파일로 내려받을 수 있어요. 확정한 연간으로 「월간계획안 만들기 →」를 이어가요. 다시 고치려면 「확정 취소」를 눌러요.",
+        body: "PDF · 한글 파일로 내려받을 수 있어요. 확정본은 여기서 고칠 수 없어요. 다시 고치려면 문서 보관함의 「수정하기」를 눌러요. 확정한 연간으로 「월간계획안 만들기 →」를 이어가요.",
       },
       {
         title: "월간은 연간에서 이어받아요",
-        body: "달을 고르면 연간의 그 달 주제로 주마다 초안이 나와요. 고치고 확정하는 방법은 연간과 같아요.",
+        body: "달을 고르면 연간의 그 달 생활주제 · 소주제로 주마다 초안이 나와요. 안전교육 빈칸은 「AI 후보」에서 「+ 넣기」로 채워요. 확정할 때 남은 빈칸을 한 번 더 보여 줘요.",
       },
       {
         title: "주간은 월간에서 이어받아요",
-        body: "주를 고르면 초안이 나와요. 빈칸을 누르면 AI 후보가 뜨고, 「넣기」로 채워요.",
+        body: "주를 고르면 초안이 나와요. 빈칸을 누르면 「AI 후보」가 떠요. 「+ 넣기」를 누르면 채우고 다음 요일로 넘어가요. 끌어다 놓아도 돼요. 글을 고칠 땐 「칸 편집」을 눌러요.",
       },
     ],
   },
@@ -197,23 +198,23 @@ const SLIDES: Record<"MONTHLY_THEME" | "PLAY_PROJECT", { dir: string; slides: Sl
       },
       {
         title: "문서에서 다듬어요",
-        body: "다 고르면 「문서 만들기 →」. 문서의 칸을 고치거나 AI 후보에서 놀이를 빼고 넣어요.",
+        body: "다 고르면 「문서 만들기 →」. 칸을 눌러 「칸 편집」에서 고치고, 「AI 후보」에서 놀이를 빼거나 다른 후보를 끌어 놓아 바꿔요.",
       },
       {
         title: "다 고쳤으면 확정해요",
-        body: "「확정하기」를 누르고 한 번 더 확정하면 끝나요. 계절마다 5개를 다 골라야 확정돼요.",
+        body: "「확정하기」를 누르고 한 번 더 확정하면 끝나요. 계절마다 5개를 다 고르고 빈칸을 채워야 확정돼요.",
       },
       {
         title: "내려받고 월간으로",
-        body: "PDF · 한글 파일로 내려받을 수 있어요. 확정한 연간으로 「월간계획안 만들기 →」를 이어가요.",
+        body: "PDF · 한글 파일로 내려받을 수 있어요. 다시 고치려면 문서 보관함의 「수정하기」를 눌러요. 확정한 연간으로 「월간계획안 만들기 →」를 이어가요.",
       },
       {
         title: "월간은 연간에서 이어받아요",
         body: "달을 고르고, 그 달에 더 집중할 놀이를 골라요(안 골라도 돼요). 놀이 중심형은 주간이 없어요.",
       },
       {
-        title: "빈칸은 후보로 채워요",
-        body: "안전교육처럼 빈칸을 누르면 후보가 떠요. 「넣기」로 채우고 연간처럼 확정해요.",
+        title: "활동을 골라 문서로",
+        body: "함께 하는 활동 · 유아 예상 자유놀이를 후보 8개 중 5개씩 골라 「문서 만들기 →」. 안전교육 빈칸은 「AI 후보」에서 「+ 넣기」로 채우고 연간처럼 확정해요.",
       },
     ],
   },
@@ -330,11 +331,12 @@ export default function Tour() {
     const pad = step.pad ?? 8;
     const measure = () => {
       const box = el.getBoundingClientRect();
+      const z = appZoom();
       setHole({
-        top: box.top - pad,
-        left: box.left - pad,
-        width: box.width + pad * 2,
-        height: box.height + pad * 2,
+        top: box.top / z - pad,
+        left: box.left / z - pad,
+        width: box.width / z + pad * 2,
+        height: box.height / z + pad * 2,
       });
     };
     measure();
@@ -365,8 +367,8 @@ export default function Tour() {
   const last = index === steps.length - 1;
 
   // 칸을 가리지 않는 쪽에 둔다 — 아래 → 위 → 오른쪽 순. 다 좁으면(큰 칸) 화면 아래에 붙인다.
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vw = window.innerWidth / appZoom();
+  const vh = window.innerHeight / appZoom();
   const left = Math.min(Math.max(16, hole.left), vw - CARD - 16);
   const place =
     vh - (hole.top + hole.height) > 260

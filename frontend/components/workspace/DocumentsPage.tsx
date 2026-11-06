@@ -724,6 +724,7 @@ export default function DocumentsPage() {
         }}
         documents={archiveDocs}
         annual={plans?.items ?? null}
+        onAnnualChanged={reloadPlans}
         activeId={active}
         editingId={editingId}
         onBackToPreview={() => setEditingId("")}

@@ -122,7 +122,7 @@ export const addWeekly = (
         ? [{ parent_item_id: parent.item_id, snapshot_value: parent.value }]
         : [];
     };
-    // 서버 Core(S-1)처럼 월간에서 이 주에 놓은 안전교육 후보를 「[분류] - 문장」 그대로 복사한다.
+    // 서버 Core(S-1)처럼 월간에서 이 주에 놓은 안전교육 후보를 「[분류] 문장」 그대로 복사한다.
     const placed = safetyView(monthly).safety_weeks.find((w) => w.week_id === weekId);
     const source = placed?.display_value
       ? monthly.safety_candidates.find((c) => c.cell.item_id === placed.candidate_item_id)?.cell
@@ -417,7 +417,7 @@ export const changeWeeklyIndoor = (
       if (!candidate && empty) return plan;
       const cell = empty ?? blank();
       if (candidate) {
-        cell.value = `[${candidate.activity_type}] - ${candidate.name}`;
+        cell.value = `[${candidate.activity_type}] ${candidate.name}`;
         cell.state = "FILLED";
         cell.evidence = candidate.cell.evidence;
         cell.generation = {

@@ -9,7 +9,8 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Response, status
+import anyio
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -137,6 +138,9 @@ _ALREADY_EXISTS = HTTPException(
         "fields": ["class_id"],
     },
 )
+# 「생성 멈추기」로 끊긴 요청 — 받는 브라우저가 없어 화면에 나오지 않는다
+# (499 는 nginx 관례, 기록용).
+_STOPPED = {"code": "GENERATION_STOPPED", "message": "생성을 멈췄습니다.", "fields": []}
 
 
 def _repo(session: Session, user: User) -> PostgresPlanRepository[YearlyPlan]:
@@ -355,7 +359,16 @@ def _play_project_generation_error(error: Exception) -> HTTPException:
     )
 
 
-def _play_project_plan(session: Session, user: User, klass, memo: str, names):
+def _disconnected(request: Request):
+    """동기 핸들러(스레드)에서 「브라우저가 요청을 끊었나」를 묻는다.
+
+    「생성 멈추기」(하민 결정 2026-11-06).
+
+    Next 프록시는 브라우저가 끊으면 이 서버 연결도 끊는다(proxy-request.js `res.on('close')`)."""
+    return lambda: anyio.from_thread.run(request.is_disconnected)
+
+
+def _play_project_plan(session: Session, user: User, klass, memo: str, names, stopped):
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     session.commit()
 
@@ -367,7 +380,12 @@ def _play_project_plan(session: Session, user: User, klass, memo: str, names):
             frozenset(range(klass.age_min, klass.age_max + 1)),
             memo,
             names,
+            stopped,
         )
+    except play_project.GenerationStopped as stop:
+        # 받는 쪽이 없다. 남은 구간의 Sol 을 부르지 않고 저장하지 않는다(다시 만들어도 409 가 없다).
+        _log.info("annual play-project generation stopped before=%s", stop)
+        raise HTTPException(499, detail=_STOPPED) from None
     except Exception as error:
         raise_if_mask_failed(error)
         raise _play_project_generation_error(error) from error
@@ -432,7 +450,9 @@ def _domain_error(error: Exception) -> HTTPException:
     response_model=Annotated[AnnualPlanOut | PlayProjectPlanOut, Field(discriminator="format")],
     status_code=status.HTTP_201_CREATED,
 )
-def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: CurrentUser):
+def create_annual_plan(
+    body: CreateAnnualPlan, request: Request, session: DbSession, user: CurrentUser
+):
     """12개월치를 만들어 DRAFT 로 저장한다.
 
     **학년도를 받지 않는다.** `class_id` 가 정한다 — `classes` 행이 학년도마다 새로
@@ -454,7 +474,7 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     if duplicate is not None:
         raise _ALREADY_EXISTS
     if body.format == "PLAY_PROJECT":
-        return _play_project_plan(session, user, klass, body.memo, names)
+        return _play_project_plan(session, user, klass, body.memo, names, _disconnected(request))
     if body.form_id is not None and find_own_form(session, user.center_id, body.form_id) is None:
         # 남의 원 양식 번호를 넣어도 통과하면 안 된다. 없는 것과 남의 것을 가르지 않는다(ADR-017).
         # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
@@ -595,14 +615,15 @@ def get_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
-    """확정 전 연간계획안을 지운다.
+    """연간계획안을 지운다. 초안이든 확정본이든 지운다(ADR-064).
 
     **지울 길이 있어야 다시 만들 수 있다.** 반 하나에 연간은 하나고(models.py 부분 유니크
     인덱스), 만들기는 409 로 막는다. 지우기가 없으면 교사가 첫 초안이 마음에 안 들어도
     영영 다시 못 만든다.
 
-    **확정본은 안 지운다.** 제출 문서다. 다시 만들어야 하면 사람이 판단할 일이지
-    버튼 한 번으로 사라지면 안 된다.
+    **확정본도 지운다**(Human Decision 2026-11-05 하민, ADR-064). 화면에서 확정 취소를 없앴다 —
+    확정본을 고치려면 문서 보관함에서 지우고 다시 만든다. 이력 · 근거는 본문(`body`) 안에
+    있어 행과 함께 사라지고, `plans` 를 가리키는 FK 는 없어 고아가 남지 않는다.
 
     **월간이 딸려 있으면 안 지운다.** 월간은 이 계획안을 부모로 들고 있어서(§9-1
     `parent`), 부모가 사라지면 조회가 깨진다. 월간을 먼저 지워야 한다.
@@ -610,19 +631,11 @@ def delete_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> R
     부모는 `body` 안에만 있어서 열로는 못 찾는다. 같은 반 · 같은 학년도의 월간을 본다 —
     연간이 반마다 하나뿐이라 그 월간의 부모는 이것뿐이다.
 
-    **잠그고 읽는다.** 안 잠그면 확정과 겹쳤을 때 DRAFT 를 보고 지나간 DELETE 가 확정의
-    commit 뒤에 실행돼 확정본을 지운다.
+    **잠그고 읽는다**(`FOR UPDATE`). 월간 생성은 저장 직전에 이 행을 공유 잠금(`FOR SHARE`)으로
+    다시 본다. 그래서 「월간 없음」을 본 DELETE 와 같은 순간에 월간이 저장되지 않는다 — 한쪽이
+    끝날 때까지 다른 쪽이 기다리고, 늦은 쪽이 상대 결과(월간 있음 · 연간 없음)를 본다.
     """
     row = _row(session, user, plan_id, lock=True)
-    if row.status == "CONFIRMED":
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail={
-                "code": "GATE_BLOCKED",
-                "message": "확정된 계획안은 지울 수 없습니다.",
-                "fields": [],
-            },
-        )
     child = session.scalar(
         select(Plan.id).where(
             Plan.center_id == user.center_id,
@@ -652,10 +665,10 @@ def test_reset_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) 
     **파일럿 시작 전에 끈다.** `ALLOW_TEST_RESET` 가 꺼져 있으면 이 경로는 404 다 —
     있는지조차 알리지 않는다. 기본은 꺼짐이다(`config.py`).
 
-    **왜 필요한가** — `DELETE` 는 확정본과 딸린 월간을 막는다. 확정 취소(ADR-055)로 풀어도
-    딸린 월간이 있으면 지울 수 없다. 시험하는 동안 처음부터 다시 시작하는 길을 열어 둔다.
+    **왜 필요한가** — `DELETE` 는 딸린 월간이 있으면 막는다(확정본은 ADR-064 부터 지운다).
+    시험하는 동안 아래부터 하나씩 지우지 않고 처음부터 다시 시작하는 길을 열어 둔다.
 
-    **진짜 지우기는 따로 둔다.** 위 `DELETE /{plan_id}` 는 그대로 확정본과 딸린 월간을
+    **진짜 지우기는 따로 둔다.** 위 `DELETE /{plan_id}` 는 그대로 딸린 월간을
     막는다. 그쪽이 교사가 쓰는 길이고, 이건 우리가 시험할 때만 쓰는 길이다. 한 경로에
     「가끔 다르게 도는 조건」을 넣으면 어느 쪽이 도는지 아무도 모르게 된다.
     """

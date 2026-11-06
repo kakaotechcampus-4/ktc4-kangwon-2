@@ -369,6 +369,6 @@ def test_safety_copies_the_candidate_the_teacher_placed_in_a_candidate_mode_pare
 
     safety = harness.generate_weekly(parent).plan.cell("safety_education")
 
-    assert safety.value == "[생활안전] - 안전 문장 8"
+    assert safety.value == "[생활안전] 안전 문장 8"
     assert safety.generation.rule_id == weekly.SAFETY_COPY_RULE_ID
     assert [s.parent_item_id for s in safety.parent_snapshots] == [candidates[-1].cell.item_id]

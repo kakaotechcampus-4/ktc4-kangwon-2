@@ -25,6 +25,8 @@ from ..domain.safety_placement import SafetyKind
 from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
 from .teacher_memo import (
+    CANDIDATE_MEMO_PROMPT,
+    CANDIDATE_MEMO_PROMPT_TAG,
     SAFETY_REQUESTS_PROMPT,
     SAFETY_REQUESTS_PROMPT_TAG,
     TEACHER_MEMO_PROMPT,
@@ -272,8 +274,8 @@ def build_play_monthly_request(
     prompt_version, system_prompt = PLAY_MONTHLY_PROMPT_VERSION, SYSTEM_PROMPT + VENUE_GUIDANCE
     if memo is not None:
         payload["teacher_memo"] = {"text": teacher_memo, "addresses": list(memo)}
-        prompt_version += TEACHER_MEMO_PROMPT_TAG
-        system_prompt += TEACHER_MEMO_PROMPT
+        prompt_version += TEACHER_MEMO_PROMPT_TAG + CANDIDATE_MEMO_PROMPT_TAG
+        system_prompt += TEACHER_MEMO_PROMPT + CANDIDATE_MEMO_PROMPT
     # 2층: 법정 안전교육 횟수 · 주 요청은 뽑기만 하고 Rule 이 둔다.
     safety_request_slots = (
         tuple(s.slot for s in safety_slots if s.category_id is not None) if memo is not None else ()

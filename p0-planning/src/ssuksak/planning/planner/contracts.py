@@ -17,7 +17,7 @@ from ..domain.monthly_template_profile import (
     INSTITUTION_INPUT_SECTION_KEYS,
     TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS,
 )
-from ..domain.monthly_template_snapshot import TemplateSnapshot
+from ..domain.monthly_template_snapshot import ACTIVITY_DETAIL_SECTION_KEYS, TemplateSnapshot
 from ..domain.teacher_memo import MemoNotice, SafetyRequest
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
@@ -39,6 +39,9 @@ MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v2
 # Appended to any version above when indoor_alternative is an LLM target; requests
 # without it keep their version and prompt bytes.
 MONTHLY_INDOOR_PROMPT_TAG = INDOOR_ALTERNATIVE_TAG
+# ADR-066: appended when a v1 (curriculum / subtheme) request asks outdoor_play or
+# indoor_alternative week cells for their hidden detail sentence.
+MONTHLY_ACTIVITY_DETAIL_PROMPT_TAG = "+activity-detail-v1"
 # Appended when the Context Packet carries the eight safety candidates (S-1).
 MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG = "+safety-candidates-v4"
 # A candidate is a month_sections entry keyed safety_education.<slot>; Template
@@ -84,7 +87,13 @@ def generation_target_sections(snapshot: TemplateSnapshot) -> tuple[TemplateSect
     never invented, and Template-specific Sections have no approved generation
     policy. They all stay in the Snapshot; they are just not generation targets.
     """
-    excluded = INSTITUTION_INPUT_SECTION_KEYS | TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS | {DRILL_SECTION_KEY}
+    # A detail Section is written through its parent cell's ``detail`` field (ADR-066).
+    excluded = (
+        INSTITUTION_INPUT_SECTION_KEYS
+        | TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS
+        | {DRILL_SECTION_KEY}
+        | set(ACTIVITY_DETAIL_SECTION_KEYS.values())
+    )
     return tuple(
         section
         for section in snapshot.sections
@@ -174,9 +183,17 @@ class ProposedSectionValue:
     unresolved: bool
     grounding_refs: tuple[str, ...] = ()
     reference_id: str | None = None
+    # ADR-066: an outdoor_play / indoor_alternative week cell's hidden description; "" = none.
+    detail: str = ""
 
     def __post_init__(self) -> None:
         _require_text("ProposedSectionValue.section_key", self.section_key)
+        if not isinstance(self.detail, str) or (
+            self.detail and (self.unresolved or self.section_key not in ACTIVITY_DETAIL_SECTION_KEYS)
+        ):
+            raise InvalidDomainValueError(
+                "ProposedSectionValue.detail belongs to a resolved weekly activity cell only"
+            )
         if self.section_key == "habits":
             raise InvalidDomainValueError(
                 "ProposedSectionValue requires canonical section keys"
@@ -303,8 +320,16 @@ class MonthlyPlanningRequest:
     memo_addresses: tuple[str, ...] | None = None
     # ADR-060 2층: statutory categories safety_requests may name; None = not asked.
     safety_request_slots: tuple[str, ...] | None = None
+    # ADR-066: parent section keys whose week cells also return ``detail``; () = not asked.
+    detail_section_keys: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        if not isinstance(self.detail_section_keys, tuple) or not set(self.detail_section_keys) <= set(
+            ACTIVITY_DETAIL_SECTION_KEYS
+        ):
+            raise InvalidDomainValueError(
+                "MonthlyPlanningRequest.detail_section_keys must name weekly activity sections"
+            )
         for name in (
             "task",
             "prompt_version",
@@ -420,8 +445,16 @@ class MonthlyCellPlanningRequest:
     plan_snapshot_fingerprint: str = ""
     allowed_grounding_refs_by_section: tuple[tuple[str, tuple[str, ...]], ...] = ()
     memo_addresses: tuple[str, ...] | None = None
+    # ADR-066 (Human Decision 2026-11-06): the target weekly activity cell also returns ``detail``.
+    detail_requested: bool = False
 
     def __post_init__(self) -> None:
+        if self.detail_requested is not False and (
+            self.detail_requested is not True or self.target_section_key not in ACTIVITY_DETAIL_SECTION_KEYS
+        ):
+            raise InvalidDomainValueError(
+                "MonthlyCellPlanningRequest.detail_requested belongs to a weekly activity target only"
+            )
         for name in (
             "task",
             "prompt_version",

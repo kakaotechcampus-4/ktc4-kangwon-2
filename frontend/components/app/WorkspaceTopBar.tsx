@@ -70,7 +70,7 @@ export default function WorkspaceTopBar() {
         <Wordmark size="xs" label="쌤플 홈으로" className="hidden lg:inline-flex" />
         <span aria-hidden="true" className="hidden h-6 border-l border-line lg:inline" />
         {/* 휴대폰에서도 보인다 — 사이드바 반 카드가 없는 폭에서 지금 반을 알려 주는 곳은 여기뿐이다 */}
-        <span aria-label="상단 현재 반" className="max-w-[40vw] truncate">
+        <span aria-label="상단 현재 반" className="max-w-[calc(40*var(--app-vw))] truncate">
           {className}
         </span>
       </div>

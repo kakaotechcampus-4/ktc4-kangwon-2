@@ -46,6 +46,9 @@ import {
   placePlayMonthlySafety,
   playCells,
   removePlayMonthly,
+  orderPlayMonthlyActivities,
+  orderPlayMonthlyHabits,
+  pickPlayMonthlyActivity,
   removePlayMonthlyActivity,
   removePlayMonthlyTimetable,
   resizePlayMonthlySplit,
@@ -73,16 +76,24 @@ import {
   confirmMonthly,
   copyMonthlyDrill,
   editCell,
+  editTableCell,
   findCell,
   findMonthly,
   findMonthlyFor,
+  findTableCell,
   listAudit,
   listMonthly,
   placeMonthlySafety,
   regenerateCell,
+  removeTableCell,
+  resizeTable,
+  resizeTableSplit,
   safetyView,
+  splitTableCell,
+  tablesOf,
   targetMonthOf,
   unconfirmMonthly,
+  removeMonthly,
 } from "./data/monthly-plans";
 import {
   REGENERATABLE as WEEKLY_REGENERATABLE,
@@ -597,14 +608,8 @@ export const handlers = [
   http.delete("*/api/plans/annual/:id", ({ params }) => {
     const id = Number(params.id);
     if (!findPlan(id)) return annualMissing();
-    const blocked = removePlan(id);
-    if (blocked === "CONFIRMED")
-      return failure("GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.");
-    if (blocked === "IN_USE")
-      return failure(
-        "GATE_BLOCKED",
-        "이 연간계획안으로 만든 월간계획안이 있습니다. 먼저 지워주세요.",
-      );
+    if (removePlan(id) === "IN_USE")
+      return failure("IN_USE", "이 연간계획안으로 만든 월간계획안이 있습니다. 먼저 지워주세요.");
     return new HttpResponse(null, { status: 204 });
   }),
   // 시험용 — 서버처럼 꺼져 있으면 없는 경로(404)다. 켜기: .env.local NEXT_PUBLIC_ALLOW_TEST_RESET=1
@@ -830,7 +835,7 @@ export const handlers = [
           : null;
     if (gate) return failure("GATE_BLOCKED", gate, "class_id");
     // 서버는 생성한 초안을 201 로 준다. 목업은 고정 합성 데이터에 달 · 강조 놀이만 바꾼다.
-    return HttpResponse.json(addPlayMonthly(klass.id, false, Number(b.month), trimmed), {
+    return HttpResponse.json(addPlayMonthly(klass.id, false, Number(b.month), trimmed, true), {
       status: 201,
     });
   }),
@@ -858,9 +863,7 @@ export const handlers = [
     if (s) return s;
     const plan = playOwn(String(params.id));
     if (plan instanceof Response) return plan;
-    if (plan.status === "CONFIRMED")
-      return failure("GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.");
-    removePlayMonthly(plan.id);
+    removePlayMonthly(plan.id); // 확정본도 지운다(ADR-064)
     return new HttpResponse(null, { status: 204 });
   }),
   http.put("*/api/plans/monthly/play/:id/cells/:itemId", async ({ request, params }) => {
@@ -880,6 +883,71 @@ export const handlers = [
     // 같은 값은 422 — 빈 값 → 빈 값(공백만 든 칸 포함)도 같다.
     if (value === cell.value || !(value || cell.value.trim())) return invalid(["value"]);
     return HttpResponse.json(editPlayMonthlyCell(plan.id, itemId, value));
+  }),
+  http.put("*/api/plans/monthly/play/:id/activities/order", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-activity");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      b.section !== "together" && b.section !== "free_play"
+        ? ["section"]
+        : Array.isArray(b.item_ids) &&
+            b.item_ids.every((i: unknown) => typeof i === "string" && i.trim())
+          ? []
+          : ["item_ids"],
+    );
+    if (b instanceof Response) return b;
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const section = b.section as "together" | "free_play";
+    const ids = b.item_ids as string[];
+    const rows = plan[section].map((a) => a.activity_id);
+    // 그 목록의 행을 빠짐없이 한 번씩.
+    if (
+      ids.length !== rows.length ||
+      new Set(ids).size !== ids.length ||
+      ids.some((i) => !rows.includes(i))
+    )
+      return invalid(["item_ids"]);
+    return HttpResponse.json(orderPlayMonthlyActivities(plan.id, section, ids));
+  }),
+  // ADR-065 — AI 후보 하나를 그 목록 끝에. 후보 목록에 없으면 404, 그 목록이 이미 다 찼으면 422.
+  http.post("*/api/plans/monthly/play/:id/activities/:itemId/pick", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-activity");
+    if (s) return s;
+    const b = await playInput(request, params.id, () => []);
+    if (b instanceof Response) return b;
+    const itemId = decodeURIComponent(String(params.itemId));
+    if (!itemId.trim()) return invalid(["item_id"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const found = plan.activity_pool?.find((a) => a.activity_id === itemId);
+    if (!found) return failure("NOT_FOUND", "그 후보를 찾을 수 없습니다.", "item_id");
+    if (plan[found.section].length >= (plan.activity_pick ?? 0))
+      return failure("VALIDATION_FAILED", "이미 다 골랐어요. 하나를 빼고 넣어 주세요.", "item_id");
+    return HttpResponse.json(pickPlayMonthlyActivity(plan.id, itemId));
+  }),
+  http.put("*/api/plans/monthly/play/:id/habits/order", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-activity");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      Array.isArray(b.item_ids) &&
+      b.item_ids.every((i: unknown) => typeof i === "string" && i.trim())
+        ? []
+        : ["item_ids"],
+    );
+    if (b instanceof Response) return b;
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const ids = b.item_ids as string[];
+    const cells = plan.habits.map((h) => h.cell.item_id);
+    // 습관 칸을 빠짐없이 한 번씩.
+    if (
+      ids.length !== cells.length ||
+      new Set(ids).size !== ids.length ||
+      ids.some((i) => !cells.includes(i))
+    )
+      return invalid(["item_ids"]);
+    return HttpResponse.json(orderPlayMonthlyHabits(plan.id, ids));
   }),
   http.delete("*/api/plans/monthly/play/:id/activities/:itemId", async ({ request, params }) => {
     const s = await scenario(request, "play-monthly-activity");
@@ -1154,6 +1222,16 @@ export const handlers = [
     const plan = myMonthly(Number(params.id));
     return plan ? HttpResponse.json(monthlyOut(plan)) : planMissing(Number(params.id));
   }),
+  // 확정본도 지운다(ADR-064). 이 월간으로 만든 주간이 있으면 409 IN_USE.
+  http.delete("*/api/plans/monthly/:id", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-delete");
+    if (s) return s;
+    const plan = myMonthly(Number(params.id));
+    if (!plan) return planMissing(Number(params.id));
+    if (removeMonthly(plan.id) === "IN_USE")
+      return failure("IN_USE", "이 월간계획안으로 만든 주간계획안이 있습니다. 먼저 지워주세요.");
+    return new HttpResponse(null, { status: 204 });
+  }),
   // 변경 이력 (§9-5). 소유를 먼저 본다 — 남의 계획안이면 item_id 를 보기 전에 404 ["id"].
   http.get("*/api/plans/monthly/:id/audit", async ({ request, params }) => {
     const s = await scenario(request, "monthly-audit");
@@ -1168,6 +1246,24 @@ export const handlers = [
   http.put("*/api/plans/monthly/:id/cells/:itemId", async ({ request, params }) => {
     const s = await scenario(request, "monthly-cell");
     if (s) return s;
+    // 교사 표 칸(Human Decision 2026-11-05) — 생성 방식은 처음 쓸 때 MANUAL, 검사는 다시 돌지 않는다.
+    const own = myMonthly(Number(params.id));
+    const itemId = decodeURIComponent(String(params.itemId));
+    if (own && findTableCell(own, itemId)) {
+      const b = await playInput(request, params.id, (b) =>
+        typeof b.value === "string" ? [] : ["value"],
+      );
+      if (b instanceof Response) return b;
+      const plan = monthlyGate(params.id, b);
+      if (plan instanceof Response) return plan;
+      if (findTableCell(plan, itemId)!.cell.value === b.value)
+        return failure(
+          "VALIDATION_FAILED",
+          "칸의 값이 바뀌지 않았거나 쓸 수 없는 값입니다.",
+          "value",
+        );
+      return HttpResponse.json(monthlyOut(editTableCell(plan.id, itemId, String(b.value))));
+    }
     const w = await cellWrite(request, String(params.id), String(params.itemId), true);
     if (w instanceof Response) return w;
     // 후보 모드의 주별 안전교육 칸은 배치가 정한다 — 서버 Core 가 막는다(monthly_safety_cell_not_editable).
@@ -1185,6 +1281,96 @@ export const handlers = [
       );
     return HttpResponse.json(
       monthlyOut(editCell(w.plan.id, w.cell.item_id, String(w.b.value), w.section.section_key)),
+    );
+  }),
+  // 교사 표 나누기 · 빼기 · 크기 — 놀이 월간 시간표와 같은 경로 · 본문 · 한도(서버 monthly_router).
+  http.post("*/api/plans/monthly/:id/cells/:itemId/split", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-split");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      b.axis === "VERTICAL" || b.axis === "HORIZONTAL" ? [] : ["axis"],
+    );
+    if (b instanceof Response) return b;
+    const plan = monthlyGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const itemId = decodeURIComponent(String(params.itemId));
+    const table = tablesOf(plan).find((t) => locate(t.columns, itemId));
+    if (!table) return tableCellMissing();
+    const found = locate(table.columns, itemId)!;
+    if (found.path.length - 1 >= MAX_DEPTH)
+      return failure("VALIDATION_FAILED", "한 칸은 네 번까지 나눌 수 있습니다.", "item_id");
+    const axis = b.axis as "VERTICAL" | "HORIZONTAL";
+    const probe = splitLeaf(table.columns[found.day], itemId, axis, "probe", {
+      ...found.path.at(-1)!.cell!,
+    });
+    if (narrowest(probe, table.column_widths[found.day]) < CELL_MIN_WIDTH)
+      return tooNarrowFailure();
+    return HttpResponse.json(monthlyOut(splitTableCell(plan.id, itemId, axis)));
+  }),
+  http.delete("*/api/plans/monthly/:id/cells/:itemId/split", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-split-remove");
+    if (s) return s;
+    const b = await playInput(request, params.id, () => [], true);
+    if (b instanceof Response) return b;
+    const plan = monthlyGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const itemId = decodeURIComponent(String(params.itemId));
+    const table = tablesOf(plan).find((t) => locate(t.columns, itemId));
+    if (!table) return tableCellMissing();
+    if (locate(table.columns, itemId)!.path.length === 1)
+      return failure(
+        "VALIDATION_FAILED",
+        "열의 마지막 칸은 뺄 수 없습니다. 글을 비워 주세요.",
+        "item_id",
+      );
+    return HttpResponse.json(monthlyOut(removeTableCell(plan.id, itemId)));
+  }),
+  http.put("*/api/plans/monthly/:id/timetable/splits/:splitId", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-split-ratio");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) => (integer(b.ratio) ? [] : ["ratio"]));
+    if (b instanceof Response) return b;
+    const plan = monthlyGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const splitId = decodeURIComponent(String(params.splitId));
+    const table = tablesOf(plan).find((t) =>
+      t.columns.some((c) => boundaries(c).some((x) => x.split_id === splitId)),
+    );
+    if (!table) return failure("NOT_FOUND", "그 표 경계를 찾을 수 없습니다.", "split_id");
+    const ratio = Number(b.ratio);
+    if (ratio < RATIO_RANGE[0] || ratio > RATIO_RANGE[1]) return invalid(["ratio"]);
+    const columns = table.columns.map((c) => withRatio(c, splitId, ratio));
+    if (tooNarrow(columns, table.column_widths)) return tooNarrowFailure();
+    return HttpResponse.json(monthlyOut(resizeTableSplit(plan.id, splitId, ratio)));
+  }),
+  http.put("*/api/plans/monthly/:id/timetable/size", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-size");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      Array.isArray(b.column_widths) && b.column_widths.every(integer) && integer(b.height_mm)
+        ? []
+        : ["column_widths", "height_mm"],
+    );
+    if (b instanceof Response) return b;
+    const plan = monthlyGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const table = tablesOf(plan).find((t) => t.table_key === b.table_key);
+    if (!table) return failure("NOT_FOUND", "그 표를 찾을 수 없습니다.", "table_key");
+    const widths = b.column_widths as number[];
+    const height = Number(b.height_mm);
+    if (
+      widths.length !== table.columns.length ||
+      widths.some((w) => w < 5) ||
+      widths.reduce((x, y) => x + y, 0) !== 100 ||
+      height < 10 ||
+      height > 80
+    )
+      return invalid(["ratio"]);
+    if (tooNarrow(table.columns, widths)) return tooNarrowFailure();
+    return HttpResponse.json(
+      monthlyOut(
+        resizeTable(plan.id, table.table_key, { column_widths: widths, height_mm: height }),
+      ),
     );
   }),
   // 안전교육 놓기 · 훈련 후보 복사 — 서버 monthly_router 와 같은 순서 · 같은 오류다.
@@ -1413,9 +1599,7 @@ export const handlers = [
     if (s) return s;
     const plan = myWeekly(Number(params.id));
     if (!plan) return weeklyMissing();
-    if (plan.status === "CONFIRMED")
-      return failure("GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.");
-    removeWeekly(plan.id);
+    removeWeekly(plan.id); // 확정본도 지운다(ADR-064)
     return new HttpResponse(null, { status: 204 });
   }),
   // 월간 양식 설정 조회 (§9-2).
@@ -1561,6 +1745,7 @@ const monthlyOut = (p: MonthlyPlan) => ({
   ...p,
   parent_changed: annualChanged(p.parent.annual_plan_id, p.parent.confirmed_at),
   drill_candidates: p.drill_candidates ?? [],
+  teacher_tables: tablesOf(p),
   ...safetyView(p),
 });
 const weeklyOut = (p: WeeklyPlan) => ({ ...p, parent_changed: monthlyChanged(p) });
@@ -1632,6 +1817,15 @@ const timetableCellMissing = () =>
   failure("NOT_FOUND", "그 시간표 칸을 찾을 수 없습니다.", "item_id");
 const tooNarrowFailure = () =>
   failure("VALIDATION_FAILED", "칸이 너무 좁아집니다. 조금 덜 줄여 주세요.");
+const tableCellMissing = () => failure("NOT_FOUND", "그 표 칸을 찾을 수 없습니다.", "item_id");
+/** 주제형 월간 교사 표 — 소유 → 확정 → revision (서버 `_read_draft`). */
+function monthlyGate(rawId: unknown, b: Record<string, unknown>) {
+  const plan = myMonthly(Number(rawId));
+  if (!plan) return planMissing(Number(rawId));
+  if (plan.status === "CONFIRMED")
+    return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+  return plan.revision === b.expected_revision ? plan : stale();
+}
 /** 소유 → 형식 → 확정 → revision. 통과하면 계획안을 준다. */
 function playGate(rawId: unknown, b: Record<string, unknown>) {
   const plan = playOwn(rawId);

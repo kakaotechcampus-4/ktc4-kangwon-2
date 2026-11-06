@@ -2,8 +2,12 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import styles from "./PlayMonthlyStructure.module.css";
 
-/** 페이지 안 확인 상자(window.confirm 대신). 닫기는 부른 쪽이 정한다. `yes` 가 없으면 단추 하나(알림), `shake` 면 열릴 때 살짝 흔든다. */
+/**
+ * 페이지 안 확인 상자(window.confirm 대신). 닫기는 부른 쪽이 정한다. `yes` 가 없으면 단추 하나(알림), `shake` 면 열릴 때 살짝 흔든다.
+ * `title` 이 있으면 제목 → 덧붙일 것(남은 빈칸) → 작은 안내 글(`message`, 줄바꿈 그대로) → 단추 순으로 놓는다(PM 2026-11-06).
+ */
 export default function PlayMonthlyConfirm({
+  title,
   message,
   yes,
   no = "아니요",
@@ -13,6 +17,8 @@ export default function PlayMonthlyConfirm({
   onNo,
   children,
 }: {
+  /** 묻는 말 한 줄(예: 「주간계획안을 확정할까요?」). */
+  title?: string;
   message: string;
   /** 글 아래 · 단추 위에 덧붙일 것(남은 빈칸 목록 등). */
   children?: ReactNode;
@@ -34,12 +40,14 @@ export default function PlayMonthlyConfirm({
   return (
     <div
       role="group"
-      aria-label={message}
+      aria-label={title ? `${title} ${message}` : message}
       className={`${styles.confirm} ${shake ? styles.shake : ""}`}
       onKeyDown={(e) => e.key === "Escape" && onNo()}
     >
-      <p>{message}</p>
+      {title && <p className={styles.title}>{title}</p>}
+      {!title && <p>{message}</p>}
       {children && <div className="basis-full">{children}</div>}
+      {title && <p className={styles.note}>{message}</p>}
       <button type="button" data-act="no" ref={noButton} onClick={onNo}>
         {no}
       </button>
@@ -52,15 +60,21 @@ export default function PlayMonthlyConfirm({
   );
 }
 
+/** 확정 상자에서 남은 빈칸 목록 위에 쓰는 한 줄 — 연간 · 월간 · 주간이 같다. */
+export const BLANK_LEAD = "남은 빈칸이 있어요. 비운 채로도 확정할 수 있어요.";
+
 /** 확정 확인 상자 안 「남은 빈칸」 목록. 줄마다 빈칸 수, 누르면 그 줄 첫 빈칸으로 간다. 법정 안전교육 줄은 맨 위 · 붉은 글. */
 export function BlankRows({
   rows,
+  lead,
 }: {
   rows: { key: string; label: string; count: number; safety?: boolean; onJump: () => void }[];
+  /** 목록 위 한 줄 — 확정 상자에서 남은 빈칸을 알린다. */
+  lead?: string;
 }) {
   if (!rows.length) return null;
   const sorted = [...rows].sort((a, b) => Number(!!b.safety) - Number(!!a.safety));
-  return (
+  const list = (
     <ul
       className="m-0 flex list-none flex-col gap-1 rounded-md bg-[#f7f4ee] p-2"
       aria-label="남은 빈칸"
@@ -82,11 +96,18 @@ export function BlankRows({
       ))}
     </ul>
   );
+  if (!lead) return list;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="block text-[13px] font-bold text-ink">{lead}</span>
+      {list}
+    </div>
+  );
 }
 
 /**
- * 칸을 고르기 전 왼쪽 패널 — 얼마나 채웠는지 · 남은 빈칸(누르면 그 칸으로) · 고치는 법.
- * 월간(주제형 · 놀이형) · 주간이 같이 쓴다.
+ * 칸을 고르기 전 왼쪽 패널 — 얼마나 채웠는지(막대) · 남은 빈칸(누르면 그 칸으로).
+ * 월간(주제형) · 주간이 같이 쓴다. 놀이 월간은 쓰지 않는다.
  */
 export function PanelOverview({
   filled,
@@ -100,10 +121,7 @@ export function PanelOverview({
   const done = total > 0 && filled >= total;
   return (
     <div className="flex flex-col gap-6">
-      <section aria-labelledby="overview-progress" className="flex flex-col gap-2.5">
-        <h2 id="overview-progress" className="m-0 text-[18px] font-bold leading-tight text-ink">
-          {done ? "빈칸을 다 채웠어요" : `칸 ${total}개 중 ${filled}개를 채웠어요`}
-        </h2>
+      <section aria-label="채운 정도" className="flex flex-col gap-2.5">
         <div
           role="progressbar"
           aria-label="채운 칸"
@@ -131,28 +149,6 @@ export function PanelOverview({
           <BlankRows rows={rows} />
         </section>
       )}
-      <section aria-labelledby="overview-howto" className="flex flex-col gap-2">
-        <h3 id="overview-howto" className="m-0 text-[15px] font-bold text-ink">
-          고치는 법
-        </h3>
-        <ol className="m-0 flex list-none flex-col gap-2 p-0 text-sm text-ink-soft">
-          {[
-            "오른쪽 문서에서 고칠 칸을 눌러요.",
-            "여기에 열린 글상자에서 고치면 바로 저장돼요.",
-            "잘못 고쳤으면 문서 위 되돌리기로 돌아가요.",
-          ].map((text, i) => (
-            <li key={i} className="flex gap-2.5">
-              <span
-                aria-hidden="true"
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#efe8f7] text-[11px] font-bold text-primary-ink"
-              >
-                {i + 1}
-              </span>
-              {text}
-            </li>
-          ))}
-        </ol>
-      </section>
     </div>
   );
 }

@@ -1,8 +1,10 @@
 import type { DragEvent } from "react";
+import { appZoom } from "@/lib/appZoom";
 
 /**
  * 계획안 문서 안에서 끌어 순서 바꾸기(놀이 중심형 ⑤ · 월별 주제형 연간 공통).
- * 브라우저 기본 끌기 그림은 가장자리가 흐려져서, 빈 그림을 쓰고 끄는 칸을 또렷하게 복사해 마우스를 따라 위아래로 옮긴다.
+ * 브라우저 기본 끌기 그림은 가장자리가 흐려져서, 빈 그림을 쓰고 끄는 칸을 또렷하게 복사해 마우스를 따라 옮긴다
+ * — 줄은 위아래(`y`), 월간 안전교육 칸처럼 한 줄 안에서 옮기는 칸은 좌우(`x`).
  */
 const BLANK =
   typeof window === "undefined"
@@ -14,15 +16,23 @@ const BLANK =
 let active: { stop: () => void; cells: HTMLElement[] } | null = null;
 
 /** 끌기 시작 — `cells`(한 줄의 칸들)를 복사해 띄우고 원래 칸에는 `data-dragging` 을 붙인다. */
-export function liftCells(event: DragEvent<HTMLElement>, cells: HTMLElement[], key: string) {
+export function liftCells(
+  event: DragEvent<HTMLElement>,
+  cells: HTMLElement[],
+  key: string,
+  axis: "x" | "y" = "y",
+) {
   event.dataTransfer.setData("text/plain", key);
   event.dataTransfer.effectAllowed = "move";
   if (BLANK) event.dataTransfer.setDragImage(BLANK, 0, 0);
   dropCells();
   const rects = cells.map((cell) => cell.getBoundingClientRect());
   // 문서 배율(zoom)을 복사본에도 준다 — 글자 크기가 같아 보이게.
-  const zoom = Number(cells[0].closest<HTMLElement>('[style*="zoom"]')?.style.zoom) || 1;
-  const offset = event.clientY - rects[0].top;
+  // 복사본은 body 에 붙어 화면 전체 배율(app)도 받으므로, 화면 좌표 · 크기를 그만큼 나눠 넣는다.
+  const app = appZoom();
+  const docZoom = Number(cells[0].closest<HTMLElement>('[style*="zoom"]')?.style.zoom) || 1;
+  const zoom = docZoom * app;
+  const offset = axis === "y" ? event.clientY - rects[0].top : event.clientX - rects[0].left;
   const table = document.createElement("table");
   table.className = cells[0].closest("table")?.className ?? "";
   const row = document.createElement("tr");
@@ -36,7 +46,7 @@ export function liftCells(event: DragEvent<HTMLElement>, cells: HTMLElement[], k
   });
   table.append(row);
   Object.assign(table.style, {
-    zoom: String(zoom),
+    zoom: String(docZoom),
     width: `${rects.reduce((w, r) => w + r.width, 0) / zoom}px`,
     background: "#fff",
   });
@@ -44,8 +54,8 @@ export function liftCells(event: DragEvent<HTMLElement>, cells: HTMLElement[], k
   box.append(table);
   Object.assign(box.style, {
     position: "fixed",
-    left: `${rects[0].left}px`,
-    top: `${rects[0].top}px`,
+    left: `${rects[0].left / app}px`,
+    top: `${rects[0].top / app}px`,
     boxShadow: "0 12px 28px rgba(60,40,100,.28)",
     outline: "2px solid #7053a0",
     pointerEvents: "none",
@@ -54,7 +64,8 @@ export function liftCells(event: DragEvent<HTMLElement>, cells: HTMLElement[], k
   });
   document.body.append(box);
   const move = (e: globalThis.DragEvent) => {
-    if (e.clientY) box.style.top = `${e.clientY - offset}px`;
+    if (axis === "y" && e.clientY) box.style.top = `${(e.clientY - offset) / app}px`;
+    if (axis === "x" && e.clientX) box.style.left = `${(e.clientX - offset) / app}px`;
   };
   document.addEventListener("dragover", move);
   cells.forEach((cell) => (cell.dataset.dragging = ""));

@@ -76,6 +76,7 @@ from app.features.plans.monthly_router import (
     _generation,
     _is_play_monthly,
     _item_id,
+    _lock_parent,
     _parent_changed,
     _target_month,
 )
@@ -276,6 +277,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
         raise _generation_error(error) from error
 
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
+    _lock_parent(session, parent_id, "월간계획안을 먼저 만들어 확정해주세요.")
     if _existing(session, center_id, class_id, week) is not None:
         raise _ALREADY_EXISTS
     try:
@@ -354,32 +356,22 @@ def _current(session: Session, user, plan_id: int) -> WeeklyPlanOut:
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_weekly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
-    """확정 전 주간계획안을 지운다(결정 ③). 월간과 같은 이유다 — 반 · 주당 하나라 만들기가
+    """주간계획안을 지운다(결정 ③). 월간과 같은 이유다 — 반 · 주당 하나라 만들기가
     409 로 막히므로, 지우기가 없으면 첫 초안이 마음에 안 들어도 그 주는 다시 못 만든다.
 
-    **확정본은 안 지운다.** 제출 문서다.
+    **확정본도 지운다**(ADR-064, Human Decision 2026-11-05 하민). 화면의 확정 취소를 없앴다 —
+    고치려면 문서 보관함에서 지우고 다시 만든다. 이력 · 근거는 본문 안에 있어 행과 함께 사라진다.
     """
     row = _own_row(session, user, plan_id)
-    if row.status == "CONFIRMED":
-        raise _CONFIRMED_NOT_DELETABLE
-    # **상태 확인과 삭제를 한 SQL 로 한다**(Codex W5b-01). 읽은 뒤 다른 요청이 확정했으면
-    # 읽은 값으로 지우는 순간 확정본이 사라진다 — DRAFT 일 때만 지워지게 조건을 건다.
     deleted = session.execute(
         delete(Plan).where(
-            Plan.id == row.id,
-            Plan.center_id == user.center_id,
-            Plan.kind == "weekly",
-            Plan.status == "DRAFT",
+            Plan.id == row.id, Plan.center_id == user.center_id, Plan.kind == "weekly"
         )
     ).rowcount
-    if not deleted:  # 0건이면 이 transaction 에서 바뀐 것이 없다 — 되돌릴 것도 없다
-        _own_row(session, user, plan_id)  # 그 사이 사라졌으면 404
-        raise _CONFIRMED_NOT_DELETABLE
+    if not deleted:  # 그 사이 사라졌다
+        raise _NOT_FOUND
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-_CONFIRMED_NOT_DELETABLE = _error(409, "GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.", [])
 
 
 def _own_row(session: Session, user, plan_id: int, *, read_only: bool = False) -> Plan:

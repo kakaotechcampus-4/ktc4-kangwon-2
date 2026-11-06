@@ -269,7 +269,7 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1   
 | 파일 | 무엇을 하는가 |
 |---|---|
 | `.github/workflows/ci.yml` | PR 마다 Ruff · pytest · alembic check · backend 이미지 빌드 · ESLint · Prettier · `next build` · E2E |
-| `.github/workflows/deploy.yml` | `main` push 시 배포. 아직 골격만 |
+| `.github/workflows/deploy.yml` | 배포 브랜치(`on.push.branches`)에 push 되면 그 커밋을 SSM 으로 서버에 올린다 · 손 배포 · 롤백 |
 | `.github/pull_request_template.md` | PR 템플릿 |
 
 이 세 파일과 새로 추가하는 워크플로는 팀이 자유롭게 고쳐도 된다.
