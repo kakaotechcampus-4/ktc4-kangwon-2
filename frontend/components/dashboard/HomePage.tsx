@@ -998,7 +998,7 @@ function LastWeekNote({ look }: { look: LastWeek }) {
           href="/weekly-records"
           className="shrink-0 text-xs font-semibold text-primary-ink underline"
         >
-          주간 기록 보기 →
+          주간 보육일지 보기 →
         </Link>
       </div>
       <p className="mt-3 max-w-[60ch] text-sm leading-[1.85] text-ink">

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { loadClassSettings, saveClassSettings } from "@/lib/onboarding/settings";
 import { adoptServerClasses, hydrateClassChildren } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -34,6 +35,31 @@ export function WorkspacePage({
     </main>
   );
 }
+/**
+ * 보육일지 메뉴 안의 두 화면 — 일일(일과를 적고 그날 일지)과 주간(한 주 일지).
+ * 주간 기록이 메뉴 하나를 따로 차지했는데 일과 목록을 다시 보여 줄 뿐이라 합쳤다(13주차 멘토 리뷰).
+ */
+export function JournalTabs({
+  at,
+  daily,
+  weekly,
+}: {
+  at: "daily" | "weekly";
+  daily: string;
+  weekly: string;
+}) {
+  return (
+    <nav aria-label="보육일지 종류" className={styles.journalTabs}>
+      <Link href={daily} aria-current={at === "daily" ? "page" : undefined}>
+        일일 보육일지
+      </Link>
+      <Link href={weekly} aria-current={at === "weekly" ? "page" : undefined}>
+        주간 보육일지
+      </Link>
+    </nav>
+  );
+}
+
 /** 종이를 붙여 둔 테이프 한 조각. 기록 · 계획안 화면의 첫 판에 붙인다. 부모는 relative 여야 한다. */
 export function Tape() {
   return <span aria-hidden="true" className={styles.tape} />;

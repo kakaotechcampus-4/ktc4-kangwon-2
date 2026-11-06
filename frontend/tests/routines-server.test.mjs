@@ -684,6 +684,7 @@ function page(
         return jsx("page", { children: [action, children] });
       },
       Empty: "empty",
+      JournalTabs: "journal-tabs",
       Message: "message",
       Notice: "notice",
       ws: {},
@@ -1996,6 +1997,7 @@ function quickRecordsPage(
     "next/link": { default: "link" },
     "./WorkspaceUI": {
       WorkspacePage: "page",
+      JournalTabs: "journal-tabs",
       Message: "message",
       Notice: "notice",
       useClasses: () => rooms,

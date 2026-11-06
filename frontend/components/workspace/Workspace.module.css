@@ -49,6 +49,33 @@
     font-size: 44px;
   }
 }
+/* 보육일지 일일 · 주간 — 수첩에 붙인 색인 탭. 지금 보는 쪽이 종이색으로 앞에 나온다. */
+.journalTabs {
+  display: flex;
+  gap: 6px;
+  margin: -12px 0 22px;
+  border-bottom: 1px solid var(--pg-line);
+}
+.journalTabs a {
+  margin-bottom: -1px;
+  padding: 9px 16px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px 8px 0 0;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--pg-ink-soft);
+  text-decoration: none;
+}
+.journalTabs a:hover {
+  color: var(--pg-ink);
+}
+.journalTabs a[aria-current="page"] {
+  border-color: var(--pg-line);
+  border-bottom-color: var(--pg-paper);
+  background: var(--pg-paper);
+  font-weight: 700;
+  color: var(--pg-ink);
+}
 .badge {
   display: inline-flex;
   align-items: center;
