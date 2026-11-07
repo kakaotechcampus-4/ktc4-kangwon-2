@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import AppLayout from "@/components/app/AppLayout";
+import PlanSidebarReset from "@/components/app/PlanSidebarReset";
 import DemoSessionGate from "@/components/auth/DemoSessionGate";
 import RoomSetupGate from "@/components/auth/RoomSetupGate";
 
@@ -8,6 +9,7 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
   return (
     <DemoSessionGate>
       <AppLayout>
+        <PlanSidebarReset />
         <RoomSetupGate>{children}</RoomSetupGate>
       </AppLayout>
     </DemoSessionGate>
