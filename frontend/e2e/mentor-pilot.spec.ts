@@ -376,9 +376,11 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   expect(generated.status()).toBe(201);
   const created = await generated.json();
   // 새 관찰일지 화면은 원문을 「사실」 칸 대신 칠판의 쪽지(근거 기록)로 보인다 — 고칠 수 없다.
-  await expect(page.getByRole("list", { name: "근거 기록", exact: true })).toBeVisible();
+  const notes = page.getByRole("list", { name: "근거 기록", exact: true });
+  await expect(notes).toBeVisible();
   await expect(page.getByRole("textbox", { name: "사실 내용", exact: true })).toHaveCount(0);
-  await expect(page.getByText(fact, { exact: true }).first()).toBeVisible();
+  // 쪽지 한 장에 날짜 · 영역과 원문이 같이 있다 — 쪽지 안에서 원문을 찾는다.
+  await expect(notes.getByText(fact)).toBeVisible();
   // 만든 일지는 보관함에도 쌓인다. 거기서 다시 열어 마저 쓴다.
   await page.getByRole("link", { name: "문서 보관함", exact: true }).click();
   await openObservation(page, created);
@@ -403,7 +405,7 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   const saved = documents.items.find(
     (document: { kind: string }) => document.kind === "observation",
   );
-  await page.getByRole("button", { name: "보관함 보기", exact: true }).click();
+  // 보관함엔 사이드바로 들어와 눌러서 열었다 — 새로고침하면 보관함 첫 화면이라 다시 연다.
   await openObservation(page, saved);
   await expect(page.getByText("교사 확정", { exact: true }).first()).toBeVisible();
   await page.screenshot({ path: info.outputPath("observation-confirmed.png"), fullPage: true });
