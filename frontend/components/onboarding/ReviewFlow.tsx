@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import OnboardingLayout from "./OnboardingLayout";
 import DoneScreen from "./DoneScreen";
 import ReviewClassEdit from "./ReviewClassEdit";
-import { Chevron, CtaButton, ErrorLine, LoadingLine, Question } from "./FlowParts";
+import { CtaButton, EditIcon, ErrorLine, LoadingLine, Question } from "./FlowParts";
 import { useOnboardingData } from "./useOnboardingData";
 import { Notice } from "@/components/workspace/WorkspaceUI";
 import { completeAccountOnboarding } from "@/lib/auth/local-account";
@@ -110,45 +110,26 @@ export default function ReviewFlow() {
       </div>
       <Question
         title={"입력한 정보를\n확인해주세요"}
-        hint="반은 누르면 그 칸만 바로 고칠 수 있어요. 원 정보는 바꿀 수 없어요."
+        hint="반은 연필을 누르면 고칠 수 있어요. 원 정보는 바꿀 수 없어요."
       />
 
-      <section aria-label="원 정보" className="mb-6">
+      {/* 칠판 높이를 다른 화면(760px)과 같게 두려고 원 · 반을 한 줄씩 요약한다. 반이 많으면 반 목록만 상자 안에서 스크롤. */}
+      <section aria-label="원 정보" className="mb-5">
         <SectionTitle>원 정보</SectionTitle>
-        <div className="divide-y divide-shell overflow-hidden squircle [--r:16px] border border-line">
-          {/* 원 정보는 고치지 않는다 — 같은 원 선생님 모두의 정보다(ADR-068). 누를 수 없는 줄이다. */}
-          <Row label="원 이름" value={settings.orgName} />
-          <Row label="원장" value={settings.directorName} />
-          <Row label="지역" value={region} />
-        </div>
+        <CenterRow name={settings.orgName} director={settings.directorName} region={region} />
       </section>
 
-      <SectionTitle>반</SectionTitle>
-      {settings.classes.length === 0 && (
-        <p role="status" className="mb-3 text-[15px] text-ink-soft">
-          아직 등록한 반이 없어요.
-        </p>
-      )}
-      {settings.classes.map((c) => (
-        <ClassCard
-          key={c.id}
-          classroom={c}
-          onEdit={() => setView({ kind: "class", id: c.id })}
-          onChildren={() => router.push(childrenPath(c.id))}
-        />
-      ))}
-
-      {showsPrimarySelect(settings) && (
-        <PrimaryPicker
-          classes={settings.classes}
-          selected={shownPrimaryId(settings)}
-          onPick={changePrimary}
-        />
-      )}
+      <ClassList
+        classes={settings.classes}
+        primaryId={showsPrimarySelect(settings) ? shownPrimaryId(settings) : null}
+        onPrimary={changePrimary}
+        onEdit={(id) => setView({ kind: "class", id })}
+        onChildren={(id) => router.push(childrenPath(id))}
+      />
       <button
         type="button"
         onClick={() => router.push(addPath)}
-        className="mt-1 min-h-11 self-start px-1 text-[15px] font-bold text-primary-ink hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+        className="-mt-1.5 min-h-11 self-start px-1 text-[15px] font-bold text-primary-ink hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
       >
         + 반 더 등록하기
       </button>
@@ -157,149 +138,224 @@ export default function ReviewFlow() {
   );
 }
 
-function SectionTitle({ children }: { children: string }) {
+function SectionTitle({ id, children }: { id?: string; children: string }) {
   return (
-    <h2 className="mb-2 text-[15px] font-bold leading-tight tracking-[0.02em] text-ink-soft">
+    <h2
+      id={id}
+      className="mb-2 text-[15px] font-bold leading-tight tracking-[0.02em] text-ink-soft"
+    >
       {children}
     </h2>
   );
 }
 
-const rowClass =
-  "flex min-h-14 w-full items-center gap-3 bg-paper py-3 pl-[18px] pr-4 text-left text-ink hover:bg-ivory focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary";
+/** 원 · 반 요약 줄을 담는 상자. */
+const boxClass = "overflow-hidden squircle [--r:16px] border border-line";
 
-/** 반 카드 · 원 정보 줄의 칸 이름 — 답한 값을 요약하는 줄이라 작은 기본 글씨(온보딩 「앞에서 답했어요」와 같다). */
-const dtClass = "text-[13.5px] font-medium leading-tight text-ink-soft";
+/**
+ * 반이 이만큼을 넘으면 반 목록만 상자 안에서 스크롤한다. 한 줄은 64px(min-h) · 줄 사이 1px.
+ * 2줄(128 + 1) + 3번째 줄 윗부분 26 + 줄 사이 1 + 테두리 2 = 158px — 3번째 줄이 걸쳐 보여 아래에 더 있다는 게 보인다.
+ */
+const SCROLL_FROM = 3;
+const SCROLL_BOX = "h-[158px] overflow-y-auto";
 
-function Row({ label, value }: { label: string; value: string }) {
+/** 원 정보 한 줄 — 이름 / 원장 · 지역. 같은 원 선생님 모두의 정보라 고치지 않는다(ADR-068). */
+function CenterRow({ name, director, region }: { name: string; director: string; region: string }) {
   return (
-    <div className="flex min-h-14 w-full items-center gap-3 bg-paper py-3 pl-[18px] pr-4 text-left text-ink">
-      <span className={`w-[112px] flex-none ${dtClass}`}>{label}</span>
-      <span className="flex-1 text-[18px] font-semibold">{value || "-"}</span>
+    <div className={`${boxClass} flex min-h-16 items-center gap-2.5 py-2 pl-[18px] pr-2`}>
+      <span className="min-w-0 flex-1">
+        <b className="block text-[17px] leading-6 text-ink">{name || "-"}</b>
+        <span className="block text-[13.5px] leading-5 text-ink-soft">
+          원장 {director || "-"} · {region || "-"}
+        </span>
+      </span>
+      <span
+        role="img"
+        aria-label="원 정보는 바꿀 수 없어요"
+        className="inline-flex h-11 w-11 flex-none items-center justify-center text-ink-hint"
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="5" y="11" width="14" height="10" rx="2" />
+          <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+        </svg>
+      </span>
     </div>
   );
 }
 
-function ClassCard({
-  classroom,
+/**
+ * 반 목록 — 반 하나가 한 줄. 반이 둘 이상이면 줄 왼쪽 동그라미로 메인에서 먼저 볼 반을 고른다(누르면 바로 저장).
+ * 반이 SCROLL_FROM 개 이상이면 목록만 상자 안에서 스크롤해 칠판 높이가 늘지 않는다.
+ */
+function ClassList({
+  classes,
+  primaryId,
+  onPrimary,
+  onEdit,
+  onChildren,
+}: {
+  classes: ClassroomEntry[];
+  /** 「주로 보는 반」을 고를 수 있을 때(반 2개 이상)만 값이 있다. */
+  primaryId: string | null;
+  onPrimary: (id: string) => void;
+  onEdit: (id: string) => void;
+  onChildren: (id: string) => void;
+}) {
+  const headingId = useId();
+  const many = classes.length >= SCROLL_FROM;
+  return (
+    <section aria-labelledby={headingId} className="mb-5">
+      <div className="flex items-baseline justify-between gap-3">
+        <SectionTitle id={headingId}>{many ? `반 ${classes.length}개` : "반"}</SectionTitle>
+        {primaryId !== null && (
+          <span className="text-[13px] text-ink-soft">고른 반을 메인에서 먼저 보여요</span>
+        )}
+      </div>
+      {classes.length === 0 && (
+        <p role="status" className="text-[15px] text-ink-soft">
+          아직 등록한 반이 없어요.
+        </p>
+      )}
+      {classes.length > 0 && (
+        <div className={boxClass}>
+          <ul className={`divide-y divide-shell ${many ? SCROLL_BOX : ""}`}>
+            {classes.map((c) => (
+              <ClassRow
+                key={c.id}
+                classroom={c}
+                primary={primaryId === null ? null : primaryId === c.id}
+                onPrimary={() => onPrimary(c.id)}
+                onEdit={() => onEdit(c.id)}
+                onChildren={() => onChildren(c.id)}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** 반 한 줄 — (동그라미) · 반 이름 / 연령 · 담임 · 동의 · 「아이 n명」 · 연필. 단추 이름은 e2e 가 찾는 그대로. */
+function ClassRow({
+  classroom: c,
+  primary,
+  onPrimary,
   onEdit,
   onChildren,
 }: {
   classroom: ClassroomEntry;
+  /** null 이면 고를 수 없다(반 하나). */
+  primary: boolean | null;
+  onPrimary: () => void;
   onEdit: () => void;
   onChildren: () => void;
 }) {
-  const consent = classroom.guardianConsent ? "받았어요" : "확인 안 함";
-  const detailId = useId();
+  const consent = c.guardianConsent ? "동의 받았어요" : "동의 확인 안 함";
   return (
-    <section
-      aria-label={`${classroom.className} 정보`}
-      className="mb-3 overflow-hidden squircle [--r:16px] border border-line"
+    <li
+      className={`flex min-h-16 items-center gap-1.5 py-2 pr-2 ${primary === null ? "pl-[18px]" : "pl-1.5"} ${primary ? "bg-primary-tint" : ""}`}
     >
-      {/* 원 정보 줄과 같은 모양 — 줄 전체가 단추이고 오른쪽 꺾쇠가 「누르면 고친다」를 알린다.
-          단추 이름은 「{반} 고치기」 그대로 두고(e2e 가 이 이름으로 찾는다), 연령 · 담임 · 동의는
-          aria-describedby 로 읽히게 한다. */}
+      {primary !== null && (
+        <PrimaryRadio name={c.className} checked={primary} onClick={onPrimary} />
+      )}
+      <span className="min-w-0 flex-1">
+        <b className="block text-[17px] leading-6 text-ink">
+          {c.className}
+          {primary && <span className="ml-2 font-display text-[19px] text-primary">주로 봐요</span>}
+        </b>
+        <span className="block text-[13.5px] leading-5 text-ink-soft">
+          {ageSelectionLabel(selectedAgesFor(c))} · 담임 {c.teacherName} · {consent}
+        </span>
+      </span>
+      {c.guardianConsent ? (
+        <ChildrenLink name={c.className} count={c.children.length} onClick={onChildren} />
+      ) : (
+        <span className="flex-none px-2 text-[13px] text-ink-hint">명단은 동의 뒤에</span>
+      )}
       <button
         type="button"
         onClick={onEdit}
-        aria-label={`${classroom.className} 고치기`}
-        aria-describedby={detailId}
-        className={rowClass}
+        aria-label={`${c.className} 고치기`}
+        title={`${c.className} 고치기`}
+        className="inline-flex h-11 w-11 flex-none items-center justify-center squircle [--r:12px] text-ink-soft hover:bg-primary-tint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
       >
-        <span className="flex-1">
-          <span className="block text-[20px] font-bold">{classroom.className}</span>
-          <span
-            id={detailId}
-            className="mt-2 grid grid-cols-[160px_minmax(0,1fr)] items-baseline gap-y-1.5 text-[17px]"
-          >
-            <span className={dtClass}>연령</span>
-            <span>{ageSelectionLabel(selectedAgesFor(classroom))}</span>
-            <span className={dtClass}>담임</span>
-            <span>{classroom.teacherName}</span>
-            <span className={dtClass}>법정대리인 동의</span>
-            <span>{consent}</span>
-          </span>
-        </span>
-        <Chevron />
+        <EditIcon />
       </button>
-      {classroom.guardianConsent && (
-        <button
-          type="button"
-          onClick={onChildren}
-          aria-label={`${classroom.className} 아이 명단`}
-          className={`${rowClass} border-t border-shell`}
-        >
-          {/* 위 표(160px 칸)와 값의 시작을 맞춘다 — 줄 사이 간격(gap-3, 12px)만큼 뺀다. */}
-          <span className={`w-[148px] flex-none ${dtClass}`}>아이 명단</span>
-          <span className="flex-1 text-[18px] font-semibold">{classroom.children.length}명</span>
-          <Chevron />
-        </button>
-      )}
-      {!classroom.guardianConsent && (
-        <p className="m-0 flex gap-3 border-t border-shell px-[18px] py-3.5 text-[17px] text-ink-soft">
-          <span className={`w-[148px] flex-none ${dtClass}`}>아이 명단</span>
-          <span>동의를 체크하면 넣을 수 있어요</span>
-        </p>
-      )}
-    </section>
+    </li>
   );
 }
 
-/** 반이 둘 이상일 때만 — 메인에서 먼저 보여 줄 반. 누르면 바로 저장된다. */
-function PrimaryPicker({
-  classes,
-  selected,
-  onPick,
+/** 「주로 보는 반」 동그라미. 둘 중 하나만 고르니 라디오 모양이다. */
+function PrimaryRadio({
+  name,
+  checked,
+  onClick,
 }: {
-  classes: ClassroomEntry[];
-  selected: string;
-  onPick: (id: string) => void;
+  name: string;
+  checked: boolean;
+  onClick: () => void;
 }) {
   return (
-    <section aria-label="주로 보는 반" className="mb-3 mt-3">
-      <SectionTitle>주로 보는 반</SectionTitle>
-      <p className="mb-2 text-[13.5px] text-ink-soft">메인 화면에서 이 반을 먼저 보여드려요.</p>
-      <div className="divide-y divide-shell overflow-hidden squircle [--r:16px] border border-line">
-        {classes.map((c, i) => {
-          const on = c.id === selected;
-          return (
-            <button
-              key={c.id}
-              type="button"
-              aria-pressed={on}
-              onClick={() => onPick(c.id)}
-              className={`${rowClass} ${on ? "bg-primary-tint hover:bg-primary-tint" : ""}`}
-            >
-              <span className="flex flex-1 flex-col gap-0.5">
-                <span className="text-[16px] font-bold">{c.className || `반 ${i + 1}`}</span>
-                <span className="text-[14px] text-ink-soft">
-                  {ageSelectionLabel(selectedAgesFor(c))}
-                </span>
-              </span>
-              {on && <CheckMark />}
-            </button>
-          );
-        })}
-      </div>
-    </section>
+    <button
+      type="button"
+      aria-pressed={checked}
+      aria-label={`${name} 주로 보기`}
+      onClick={onClick}
+      className="inline-flex h-11 w-10 flex-none items-center justify-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+    >
+      <span
+        aria-hidden="true"
+        className={`inline-flex h-5 w-5 items-center justify-center rounded-full border-2 ${checked ? "border-primary" : "border-ink-hint"}`}
+      >
+        {checked && <span className="h-2.5 w-2.5 rounded-full bg-primary" />}
+      </span>
+    </button>
   );
 }
 
-function CheckMark() {
+/** 「아이 n명 ›」 — 그 반 아이 명단으로. */
+function ChildrenLink({
+  name,
+  count,
+  onClick,
+}: {
+  name: string;
+  count: number;
+  onClick: () => void;
+}) {
   return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className="shrink-0 text-primary"
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`${name} 아이 명단`}
+      className="inline-flex min-h-11 flex-none items-center gap-0.5 pl-2.5 pr-1.5 text-[14px] font-semibold text-ink hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
     >
-      <path d="M5 12l5 5 9-10" />
-    </svg>
+      <span className="underline decoration-primary underline-offset-4">아이 {count}명</span>
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className="text-primary"
+      >
+        <path d="M9 6l6 6-6 6" />
+      </svg>
+    </button>
   );
 }

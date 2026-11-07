@@ -250,8 +250,8 @@ function AnsweredRow({ item }: { item: Answered }) {
   );
 }
 
-/** 고치기 — 귀퉁이가 열린 네모 위에 연필. */
-function EditIcon() {
+/** 고치기 — 귀퉁이가 열린 네모 위에 연필. 마지막 확인의 반 줄도 같이 쓴다. */
+export function EditIcon() {
   return (
     <svg
       width="20"
