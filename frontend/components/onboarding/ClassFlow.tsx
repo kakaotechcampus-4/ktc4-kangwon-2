@@ -143,7 +143,7 @@ export default function ClassFlow() {
       active={q === 0}
       value={draft.className}
       autoFocus={q === 0}
-      placeholder="예: 햇살반"
+      placeholder="예: 쌤플반"
       error={nameError}
       onChange={(e) => {
         patch({ className: e.target.value });

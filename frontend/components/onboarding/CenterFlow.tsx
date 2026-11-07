@@ -210,7 +210,7 @@ export default function CenterFlow() {
         readOnly={step !== "manual"}
         value={settings.orgName}
         autoFocus={step === "manual"}
-        placeholder="예: 햇살어린이집"
+        placeholder="예: 쌤플어린이집"
         onChange={(e) => edit({ orgName: e.target.value })}
         onKeyDown={(e) => onEnter(e, advance)}
       />
@@ -225,7 +225,7 @@ export default function CenterFlow() {
         active={step === "director"}
         value={settings.directorName}
         autoFocus={step === "director"}
-        placeholder="예: 박미소"
+        placeholder="예: 포스티"
         onChange={(e) => edit({ directorName: e.target.value })}
         onKeyDown={(e) => onEnter(e, advance)}
       />
