@@ -362,32 +362,34 @@ jobs:
           done
           cat /tmp/e2e-next.log
           exit 1
-      # 시험용 — 머지 전에 지운다. 러너에 이미 있는 것과 Playwright 가 요구하는 시스템 부품을 견준다.
-      - name: (시험) 러너 상태
-        working-directory: frontend
-        run: |
-          echo "--- 한글 글꼴(설치 전)"; fc-list :lang=ko family || true
-          echo "--- Playwright 가 요구하는데 러너에 없는 패키지"
-          npx playwright install-deps --dry-run chromium | tee /tmp/deps.txt
-          for p in $(grep -o 'no-install-recommends .*' /tmp/deps.txt | sed 's/no-install-recommends //; s/"//g'); do
-            dpkg -s "$p" > /dev/null 2>&1 || echo "없음: $p"
-          done
-          echo "--- 끝"
-      # 브라우저만 받는다(Playwright 서버, 버전 고정). `--with-deps` 의 apt 는 뺀다 — 러너에 브라우저
-      # 부품이 이미 다 있고 새로 깔던 건 글꼴 9개뿐이었는데, 그 apt 가 가끔 5~13분 걸렸다(2026-11).
+      # 브라우저만 받는다(Playwright 서버, 버전 고정). `--with-deps` 의 apt 는 쓰지 않는다 — 러너에
+      # 브라우저 부품이 이미 다 있고 없는 건 글꼴 9개뿐인데, 그 apt 가 가끔 5~13분 걸렸다(2026-11).
       - name: Install chromium
         working-directory: frontend
         run: npx playwright install chromium
-      # 구글 폰트를 막는 e2e(routines · home-record)는 한글을 시스템 글꼴로 그린다. 러너에는 한글
-      # 글꼴이 없어서, 화면 본문 글꼴과 같은 Noto Sans KR 을 커밋으로 고정한 주소에서 받는다.
-      - name: Korean font
+      # 글꼴은 `--with-deps` 가 깔던 9개를 그대로 깐다. 구글 폰트를 막는 e2e(routines · home-record)가
+      # 한글을 이 시스템 글꼴로 그려서, 다른 글꼴로 바꾸면 화면 폭이 달라져 결과가 바뀐다(#433).
+      # .deb 를 캐시해 apt 미러는 캐시가 빌 때만 탄다. GitHub 은 7일 동안 안 쓴 캐시를 지운다.
+      - name: e2e 글꼴 캐시
+        uses: actions/cache@v4
+        with:
+          path: ~/e2e-fonts
+          key: e2e-fonts-ubuntu-24.04-v1
+      - name: e2e 글꼴
+        working-directory: frontend
         run: |
-          font=~/.local/share/fonts/NotoSansKR.ttf
-          mkdir -p "$(dirname "$font")"
-          curl -fsSL --retry 3 -o "$font" "https://raw.githubusercontent.com/google/fonts/b38c5c93af322c45f633e17ac440ec1e6c94d489/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf"
-          echo "194018e6b2b293a7964f037b25c0249ce1418bc9ab3c971060a03aa57861e252  $font" | sha256sum -c -
-          fc-cache -f > /dev/null
-          fc-list :lang=ko family
+          if ! ls ~/e2e-fonts/*.deb > /dev/null 2>&1; then
+            mkdir -p ~/e2e-fonts
+            sudo apt-get update
+            (cd ~/e2e-fonts && apt-get download fonts-freefont-ttf fonts-ipafont-gothic fonts-tlwg-loma-otf \
+              fonts-unifont fonts-wqy-zenhei xfonts-cyrillic xfonts-encodings xfonts-scalable xfonts-utils)
+          fi
+          sudo dpkg -i ~/e2e-fonts/*.deb > /dev/null
+          # Playwright 가 새로 요구하는 부품이 생기면 여기서 멈춘다 — 목록과 캐시 key 를 같이 바꾼다.
+          if npx playwright install-deps --dry-run chromium | grep -q 'Missing system dependencies'; then
+            npx playwright install-deps --dry-run chromium
+            exit 1
+          fi
       - name: playwright
         working-directory: frontend
         run: npm run e2e
