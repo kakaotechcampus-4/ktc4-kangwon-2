@@ -262,36 +262,42 @@ function ClassRow({
   onChildren: () => void;
 }) {
   const consent = c.guardianConsent ? "동의 받았어요" : "동의 확인 안 함";
+  // 반마다 「{반} 정보」 영역 — 예전 반 카드와 같은 이름이라 화면 읽기와 e2e 가 그대로 찾는다.
   return (
-    <li
-      className={`flex min-h-16 items-center gap-1.5 py-2 pr-2 ${primary === null ? "pl-[18px]" : "pl-1.5"} ${primary ? "bg-primary-tint" : ""}`}
-    >
-      {primary !== null && (
-        <PrimaryRadio name={c.className} checked={primary} onClick={onPrimary} />
-      )}
-      <span className="min-w-0 flex-1">
-        <b className="block text-[17px] leading-6 text-ink">
-          {c.className}
-          {primary && <span className="ml-2 font-display text-[19px] text-primary">주로 봐요</span>}
-        </b>
-        <span className="block text-[13.5px] leading-5 text-ink-soft">
-          {ageSelectionLabel(selectedAgesFor(c))} · 담임 {c.teacherName} · {consent}
-        </span>
-      </span>
-      {c.guardianConsent ? (
-        <ChildrenLink name={c.className} count={c.children.length} onClick={onChildren} />
-      ) : (
-        <span className="flex-none px-2 text-[13px] text-ink-hint">명단은 동의 뒤에</span>
-      )}
-      <button
-        type="button"
-        onClick={onEdit}
-        aria-label={`${c.className} 고치기`}
-        title={`${c.className} 고치기`}
-        className="inline-flex h-11 w-11 flex-none items-center justify-center squircle [--r:12px] text-ink-soft hover:bg-primary-tint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+    <li>
+      <section
+        aria-label={`${c.className} 정보`}
+        className={`flex min-h-16 items-center gap-1.5 py-2 pr-2 ${primary === null ? "pl-[18px]" : "pl-1.5"} ${primary ? "bg-primary-tint" : ""}`}
       >
-        <EditIcon />
-      </button>
+        {primary !== null && (
+          <PrimaryRadio name={c.className} checked={primary} onClick={onPrimary} />
+        )}
+        <span className="min-w-0 flex-1">
+          <b className="block text-[17px] leading-6 text-ink">
+            {c.className}
+            {primary && (
+              <span className="ml-2 font-display text-[19px] text-primary">주로 봐요</span>
+            )}
+          </b>
+          <span className="block text-[13.5px] leading-5 text-ink-soft">
+            {ageSelectionLabel(selectedAgesFor(c))} · 담임 {c.teacherName} · {consent}
+          </span>
+        </span>
+        {c.guardianConsent ? (
+          <ChildrenLink name={c.className} count={c.children.length} onClick={onChildren} />
+        ) : (
+          <span className="flex-none px-2 text-[13px] text-ink-hint">명단은 동의 뒤에</span>
+        )}
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label={`${c.className} 고치기`}
+          title={`${c.className} 고치기`}
+          className="inline-flex h-11 w-11 flex-none items-center justify-center squircle [--r:12px] text-ink-soft hover:bg-primary-tint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+        >
+          <EditIcon />
+        </button>
+      </section>
     </li>
   );
 }
