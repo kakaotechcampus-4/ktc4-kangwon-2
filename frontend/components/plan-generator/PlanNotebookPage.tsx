@@ -3,10 +3,17 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { listAnnualPlans } from "@/lib/api/plans";
-import { listMonthlyPlans } from "@/lib/api/monthly";
-import { listPlayMonthly } from "@/lib/api/playMonthly";
-import { listWeeklyPlans } from "@/lib/api/weekly";
+import { getAnnualPlan, listAnnualPlans } from "@/lib/api/plans";
+import { getMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
+import { getPlayMonthly, listPlayMonthly } from "@/lib/api/playMonthly";
+import { getWeeklyPlan, listWeeklyPlans } from "@/lib/api/weekly";
+import {
+  annualChecklist,
+  monthlyChecklist,
+  playMonthlyChecklist,
+  weeklyChecklist,
+  type CheckItem,
+} from "@/lib/plan-generator/draftChecklist";
 import type {
   AnnualPlanSummary,
   MonthlyPlanSummary,
@@ -32,6 +39,8 @@ export type DraftCard = {
   step: "연간" | "월간" | "주간";
   title: string;
   href: string;
+  /** 메모지 체크 줄(AI 후보로 채우는 줄)을 그 초안 상세에서 읽는다. AI 후보가 없는 초안은 없다. */
+  checks?: (signal: AbortSignal) => Promise<CheckItem[]>;
 };
 
 /** 「이어서 하기」 카드. 확정 안 한 연간 · 월간 · 주간 초안만, 최근 만든 것부터. */
@@ -51,6 +60,10 @@ export function draftCards(
         step: "연간" as const,
         title: `${p.school_year} 연간계획안`,
         href: `/plans/annual/${p.id}`,
+        checks:
+          p.format === "PLAY_PROJECT"
+            ? (s: AbortSignal) => getAnnualPlan(p.id, s).then(annualChecklist)
+            : undefined,
       })),
     ...monthly
       .filter((p) => p.status === "DRAFT")
@@ -61,6 +74,7 @@ export function draftCards(
         step: "월간" as const,
         title: `${p.month}월 월간계획안`,
         href: `/plans/monthly?plan_id=${p.id}&class_id=${p.class_id}&month=${p.month}`,
+        checks: (s: AbortSignal) => getMonthlyPlan(p.id, s).then(monthlyChecklist),
       })),
     ...play
       .filter((p) => p.status === "DRAFT")
@@ -71,6 +85,7 @@ export function draftCards(
         step: "월간" as const,
         title: `${p.month}월 월간계획안`,
         href: `/plans/monthly/play/${p.id}`,
+        checks: (s: AbortSignal) => getPlayMonthly(p.id, s).then(playMonthlyChecklist),
       })),
     ...weekly
       .filter((p) => p.status === "DRAFT")
@@ -81,6 +96,7 @@ export function draftCards(
         step: "주간" as const,
         title: `${weekTitle(p.week_id)} 주간계획안`,
         href: `/plans/weekly?plan_id=${p.id}&class_id=${p.class_id}&week_id=${p.week_id}`,
+        checks: (s: AbortSignal) => getWeeklyPlan(p.id, s).then(weeklyChecklist),
       })),
   ];
   return cards
@@ -137,6 +153,7 @@ export default function PlanNotebookPage() {
   const [ready, setReady] = useState<AnnualPlanSummary | null>(null);
   const [weekly, setWeekly] = useState<MonthlyPlanSummary | null>(null);
   const [error, setError] = useState("");
+  const [checks, setChecks] = useState<Record<string, CheckItem[]>>({});
 
   useEffect(() => {
     const abort = new AbortController();
@@ -162,6 +179,20 @@ export default function PlanNotebookPage() {
     return () => abort.abort();
   }, []);
 
+  // 메모지 체크 줄은 초안마다 상세를 한 번 더 읽어 채운다. 못 읽으면 그 메모지만 체크 줄 없이 둔다.
+  useEffect(() => {
+    if (!drafts) return;
+    const abort = new AbortController();
+    for (const card of drafts)
+      card
+        .checks?.(abort.signal)
+        .then((items) => {
+          if (!abort.signal.aborted) setChecks((all) => ({ ...all, [card.key]: items }));
+        })
+        .catch(() => {});
+    return () => abort.abort();
+  }, [drafts]);
+
   // 메모지 줄은 마우스 휠(위아래)로도 옆으로 넘긴다. 줄 끝에 닿으면 휠은 다시 페이지 몫.
   const row = useRef<HTMLUListElement>(null);
   useEffect(() => {
@@ -180,10 +211,12 @@ export default function PlanNotebookPage() {
 
   if (importing) return <AnnualImport file={importing.file} onCancel={() => setImporting(null)} />;
 
-  // 화면 높이에 맞춘다 — 페이지는 굴러가지 않고, 초안이 많으면 「이어서 하기」 카드만 안에서 굴린다.
+  // 화면 높이를 채운다(min-h) — 초안이 많으면 「이어서 하기」 메모지 줄만 가로로 굴린다. 높이를 못 박으면(h) 화면이
+  // 모자랄 때 메모지 줄이 눌려 아래가 잘린다 — 그때는 자르지 않고 페이지가 조금 내려간다.
   // 낮은 화면(높이 800 이하)에서는 여백을 줄여 카드 한 줄이 다 보이게 한다.
+  // 「이어서 하기」는 맨 아래에 붙여(mt-auto) 메모지 아랫단이 사이드바 「로그아웃」 줄과 나란하게 한다 — 그 높이가 아래 여백(lg:pb).
   return (
-    <div className="flex w-full flex-col gap-5 px-10 pb-12 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)] lg:pb-6 [@media(max-height:800px)]:gap-4 [@media(max-height:800px)]:pt-4">
+    <div className="flex w-full flex-col gap-5 px-10 pb-12 pt-[26px] text-[#2b2826] lg:min-h-[calc(calc(100*var(--app-vh))-60px)] lg:pb-[68px] [@media(max-height:800px)]:gap-4 [@media(max-height:800px)]:lg:pb-[76px] [@media(max-height:800px)]:pt-4">
       <h1 className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink lg:text-[44px] [@media(max-height:800px)]:lg:text-[36px]">
         어떤 계획안을 만들까요?
       </h1>
@@ -210,7 +243,7 @@ export default function PlanNotebookPage() {
 
       {/* 이어서 하기 — 초안 하나가 메모지 한 장(홈 칠판 쪽지와 같은 종이 · 테이프 · 기울기).
           한 줄로 늘어놓고 넘치면 가로로 넘긴다 — 페이지는 화면 높이에 맞춘 채 그대로. */}
-      <section data-tour="plans-continue" className="mt-4 flex min-h-0 flex-col gap-3">
+      <section data-tour="plans-continue" className="mt-auto flex min-h-0 flex-col gap-3">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="m-0 min-w-0 font-display text-[28px] font-bold leading-tight text-ink">
             <CrayonMark>이어서 하기</CrayonMark>
@@ -238,11 +271,12 @@ export default function PlanNotebookPage() {
             {drafts.map((card, i) => (
               <li key={card.key} className="relative w-[240px] shrink-0 pt-5">
                 <Cord i={i} />
-                <DraftNote card={card} tilt={TILT[i % TILT.length]} />
+                <DraftNote card={card} checks={checks[card.key]} tilt={TILT[i % TILT.length]} />
               </li>
             ))}
             <li aria-hidden="true" className="relative w-[240px] shrink-0 pt-5">
               <Cord i={drafts.length} />
+              <HangingSsample i={drafts.length} />
               <span className={`block ${NOTE_H} border-2 border-dashed border-[#cfc6b9]`} />
             </li>
           </ul>
@@ -320,6 +354,44 @@ function CrayonMark({ children }: { children: ReactNode }) {
   );
 }
 
+/** 빈자리 노끈에 두 손으로 매달린 쌤플 쪽지(`SsampleNote` 와 같은 종이 · 얼굴, 팔다리만 더했다).
+ *  빈칸 가운데 조금 오른쪽, 노끈이 가장 처진 자리라 그 칸 처짐(SAG)만큼 내려 손을 끈에 얹는다. 장식이라 읽어 주지 않는다. */
+function HangingSsample({ i }: { i: number }) {
+  const paper = { fill: "var(--pg-note)", stroke: "var(--pg-note-line)" };
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 48 60"
+      width={56}
+      height={70}
+      style={{ top: 4 + SAG[i % SAG.length][0] }}
+      className="pointer-events-none absolute left-[112px] z-10 rotate-[3deg] overflow-visible"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <g stroke="var(--pg-ink)" strokeWidth={2.2} fill="none">
+        <path d="M13 16L12 4M35 16L36 4M18 49L17 56M27 49L28 56" />
+      </g>
+      <g fill="var(--pg-ink)">
+        <circle cx="12" cy="3.5" r="2.8" />
+        <circle cx="36" cy="3.5" r="2.8" />
+        <ellipse cx="15.5" cy="57" rx="3.4" ry="2" />
+        <ellipse cx="29.5" cy="57" rx="3.4" ry="2" />
+      </g>
+      <g strokeWidth={1.8}>
+        <path d="M8 14H40V40L31 49H8Z" style={paper} />
+        <path
+          d="M40 40H31V49Z"
+          style={{ fill: "var(--pg-note-fold)", stroke: "var(--pg-note-line)" }}
+        />
+      </g>
+      <circle cx="19.4" cy="26" r="2" fill="var(--pg-ink)" />
+      <circle cx="28.6" cy="26" r="2" fill="var(--pg-ink)" />
+      <path d="M19.2 31.4q4.8 3 9.6 0" fill="none" stroke="var(--pg-ink)" strokeWidth={1.8} />
+    </svg>
+  );
+}
+
 /** 노끈이 처지는 깊이 · 가장 처진 자리(구간 260 기준) — 칸마다 조금씩 달라 손으로 건 끈처럼. */
 const SAG = [
   [3, 122],
@@ -377,7 +449,21 @@ const Made = ({ card }: { card: DraftCard }) => (
 /** 이어 쓸 초안 메모지 한 장(단계 색종이 · 「지금, 한 줄」 줄 종이, 노끈에 나무 집게로 걸림) — 메모지 전체가 그 초안으로 가는 길.
  *  집게에 매달렸으니 위 가운데를 축으로 기울고, 마우스를 올리면 똑바로 선다.
  *  `ruledPaper` 는 34px 마다 줄 — 글 줄도 34px 칸이라 글자가 줄 위에 앉는다. 방식 꼬리표 · 날짜 / 제목 / 화살표. */
-function DraftNote({ card, tilt }: { card: DraftCard; tilt: string }) {
+function DraftNote({
+  card,
+  checks = [],
+  tilt,
+}: {
+  card: DraftCard;
+  checks?: CheckItem[];
+  tilt: string;
+}) {
+  const left = checks.filter((c) => !c.done).map((c) => c.label);
+  const todo = !checks.length
+    ? ""
+    : left.length
+      ? `, AI 후보 남은 줄 ${left.join(" · ")}`
+      : ", AI 후보 다 채움";
   const router = useRouter();
   // 누르면 집게가 튕겨 빠지고 메모지가 아래로 떨어진 뒤 그 초안으로 간다.
   // 굴림 칸(overflow)에 잘리지 않게 메모지를 화면 위 고정 층에 복제해 떨어뜨린다.
@@ -433,7 +519,7 @@ function DraftNote({ card, tilt }: { card: DraftCard; tilt: string }) {
     <Link
       href={card.href}
       onClick={drop}
-      aria-label={`${card.title} 이어서 쓰기 (${card.mode}, ${card.date} 시작)`}
+      aria-label={`${card.title} 이어서 쓰기 (${card.mode}, ${card.date} 시작${todo})`}
       className={`ruledPaper group relative flex ${NOTE_H} origin-top flex-col border px-5 pb-5 text-ink no-underline shadow-pg-card transition-transform hover:rotate-0 motion-reduce:transition-none ${NOTE[card.step]} ${tilt}`}
     >
       {/* 나무 빨래집게 — 가운데 쇠 용수철 한 줄. */}
@@ -452,13 +538,55 @@ function DraftNote({ card, tilt }: { card: DraftCard; tilt: string }) {
         {/* 손글씨체는 글자가 줄보다 떠 보여 살짝 내려 앉힌다. */}
         <span className="translate-y-[6px] truncate">{card.title}</span>
       </span>
-      {/* 메모지 전체가 링크라 화살표만 둔다 — 이름은 aria-label 이 읽어 준다. */}
-      <span className={`${LINE} mt-auto self-end text-primary`}>
-        <Arrow />
+      {/* 아래쪽: AI 후보로 채우는 줄 이름 + 오른쪽 체크(두 칸씩, 다 채운 줄은 체크) · 오른쪽 끝 화살표.
+          메모지 전체가 링크라 화살표만 둔다 — 이름 · 체크는 aria-label 이 읽어 준다. */}
+      <span className="mt-auto flex items-end gap-2">
+        <span aria-hidden="true" className="grid min-w-0 flex-1 grid-cols-2 gap-x-2">
+          {checks.map((c) => (
+            <span key={c.label} className={`${LINE} gap-1.5 text-[13px] font-bold`}>
+              <span className="truncate">{c.label}</span>
+              <CheckBox done={c.done} />
+            </span>
+          ))}
+        </span>
+        <span className={`${LINE} text-primary`}>
+          <Arrow />
+        </span>
       </span>
     </Link>
   );
 }
+
+/** 메모지 체크 칸 — 「이어서 하기」 표시와 같은 색연필 결(`plans-crayon`)로 손으로 그린 검정 네모,
+ *  다 채운 줄은 네모 밖까지 뻗는 빨간 체크. 네모는 3/4 크기로 아래에 붙인다(굵기는 그대로).
+ *  그림 1 = 1px 이라 결의 굵기가 제목 표시와 같다. */
+const CheckBox = ({ done }: { done: boolean }) => (
+  <svg
+    aria-hidden="true"
+    width="18"
+    height="18"
+    viewBox="0 0 18 18"
+    className="mb-px shrink-0 overflow-visible text-ink"
+    fill="none"
+    stroke="currentColor"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    filter="url(#plans-crayon)"
+  >
+    <path
+      d="M2.6 3.4C6.5 2.9 11 3 15.3 2.8C15.5 7 15.2 11.2 15.4 15.3C11 15.6 6.8 15.2 2.8 15.5C2.5 11.4 2.9 7.3 2.6 3.4Z"
+      transform="translate(0.675 3.85) scale(0.75)"
+      strokeWidth={2.2}
+    />
+    {done && (
+      <path
+        d="M4 10.6C5 11.5 5.8 12.6 6.6 13.8C8.6 9.8 11.4 6 15.6 2.6"
+        strokeWidth={2.4}
+        className="text-alert-strong"
+      />
+    )}
+  </svg>
+);
 
 /** 메모지 한 줄 — 줄 간격(34px) 한 칸, 글자 아래가 줄 바로 위. */
 const LINE = "flex h-[34px] min-w-0 items-end pb-1";
@@ -531,10 +659,10 @@ function Panel({
   return (
     <section
       data-tour={v1 ? "plans-theme" : "plans-play"}
-      className="relative flex min-h-[340px] flex-col justify-between gap-5 bg-paper shadow-pg px-8 py-7 [@media(max-height:800px)]:min-h-0 [@media(max-height:800px)]:gap-4 [@media(max-height:800px)]:py-5"
+      className="relative flex flex-col justify-between gap-5 bg-paper shadow-pg px-8 py-7 [@media(max-height:800px)]:gap-[14px] [@media(max-height:800px)]:py-5"
     >
       <Tape />
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5">
         <span className={`text-sm font-bold ${v1 ? "text-[#49654f]" : "text-[#5e4b96]"}`}>
           {v1 ? "생활주제 따라" : "아이들 놀이 따라"}
         </span>

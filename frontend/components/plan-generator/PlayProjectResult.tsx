@@ -871,15 +871,8 @@ export default function PlayProjectResult({
         </Link>
       }
       saved={SAVE_LABEL[saving.status]}
-      status={
-        <span className="flex items-center gap-3">
-          <PlanMemoNote plan={plan} />
-          {/* ⑤ 에서 ④ 로 돌아가는 길. 없어서 멘토가 뒤로 갔다 다시 들어와야 놀이 고르기가 보였다(11-05). */}
-          <button type="button" className={BUTTON.outline} onClick={() => setStep(0)}>
-            놀이 다시 고르기
-          </button>
-        </span>
-      }
+      // 「놀이 다시 고르기」(⑤ → ④)는 뺐다(11-08) — 놀이는 「AI 후보」 탭에서 넣고 빼고 바꾼다.
+      status={<PlanMemoNote plan={plan} />}
       notice={
         <>
           {notice && (
