@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { loadClassSettings, saveClassSettings } from "@/lib/onboarding/settings";
 import { adoptServerClasses, hydrateClassChildren } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -136,6 +137,7 @@ export function useClasses(onError?: (message: string) => void) {
     () => loadClassSettings()?.classes || NO_CLASSES,
     NO_CLASSES,
   );
+  const pathname = usePathname();
   useEffect(() => {
     let live = true;
     const settings = loadClassSettings();
@@ -171,7 +173,9 @@ export function useClasses(onError?: (message: string) => void) {
     return () => {
       live = false;
     };
-  }, [setClasses, onError]);
+    // 화면을 옮길 때마다 다시 맞춘다. 사이드바는 화면을 옮겨도 다시 붙지 않아서(DemoSessionGate),
+    // 주소를 안 보면 그사이 서버에 생긴 반이 새로고침 전까지 반 고르개에 안 뜬다.
+  }, [setClasses, onError, pathname]);
   return classes;
 }
 export function useAIStatus() {
