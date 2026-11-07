@@ -30,10 +30,14 @@ export type IconName =
   | "sparkle"
   | "lock"
   | "more"
+  | "pause"
+  | "play"
   | "logout";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   more: <path d="M4 7h10M4 12h16M4 17h7" />,
+  pause: <path d="M9 6.5v11M15 6.5v11" />,
+  play: <path d="M8.5 6.2v11.6L18 12z" />,
   lock: (
     <>
       <rect x="4.5" y="10.5" width="15" height="9" rx="2" />

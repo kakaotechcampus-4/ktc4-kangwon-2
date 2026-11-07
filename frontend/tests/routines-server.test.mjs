@@ -28,6 +28,7 @@ const { API_STORAGE_CONTEXT } = await import("../lib/api/storage-context.ts");
 // **흉내 내지 않는다.** 주 반 판정 버그가 helper 를 mock 해서 숨어 있었다.
 const classSettings = await import("../lib/onboarding/settings.ts");
 const onboardingApi = await import("../lib/api/onboarding.ts");
+const domainLook = await import("../components/workspace/domain-look.ts");
 const routinesRoute = await import("../lib/workspace/routines-route.ts");
 const onboardingTypes = await import("../lib/onboarding/types.ts");
 const childMark = await import("../lib/workspace/child-mark.ts");
@@ -1536,6 +1537,7 @@ function recordsPage(
     "@/components/app/Posty": { Posty: "posty" },
     "@/components/app/ChildPicker": { ChildShape: "child-shape" },
     "@/components/app/icons": { Icon: "icon" },
+    "./domain-look": domainLook,
     "@/lib/workspace/child-mark": { markFor: () => ({ shape: 0, tone: 0 }) },
     "@/lib/hooks/use-client-state": { useClientState: (read) => app.state(read) },
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
@@ -2217,6 +2219,7 @@ function homePage(
     "@/components/app/AppLayout": { PageContainer: "container" },
     "@/components/app/icons": { Icon: "icon" },
     "@/components/workspace/WorkspaceUI": { useClasses: () => box.classes },
+    "@/components/workspace/domain-look": domainLook,
     "@/lib/api/records": records.api,
     "@/lib/api/onboarding": onboardingApi,
     "@/lib/workspace/model": { today: () => TODAY },
