@@ -57,6 +57,11 @@ e2e (playwright)               실제 DB 로
 | 화면 문구를 바꿨는데 e2e 가 옛 버튼을 찾아 develop CI 가 빨간불 | `frontend/e2e/mentor-pilot.spec.ts` |
 | 휴대폰에서 보육일지 주간 칸 날짜가 넘침 | `frontend/e2e/document-archive-layout.spec.ts` (390 · 375px) |
 
+## 화면 경로 E2E
+
+- 연간 → 월간 → 주간계획안을 API 로 건너뛰지 않고 화면으로 만들고 · 고치고 · 확정해 한글로 받는다 — `frontend/e2e/mentor-pilot.spec.ts` · PR #402
+- 주간 보육일지 확정본을 한글로 받아 교사가 고친 글이 파일 안에 있는지 연다 — `frontend/e2e/routines.spec.ts` 「주간 보육일지 — … 한글 다운로드」
+
 ## 규칙
 
 - 구현이 하나뿐인 인터페이스는 안 만든다 — [CLAUDE.md](../../CLAUDE.md) §일하는 방식 ②
@@ -67,6 +72,7 @@ e2e (playwright)               실제 DB 로
 
 - 커버리지를 재지 않는다
 - 프런트 테스트가 가짜 `useState` 하네스라 실제 렌더 경로를 전부 안 지난다
+- 영유아 평가 · 놀이 프로젝트형 연간 · 월간은 화면 경로 E2E 가 없다. 영유아 평가는 만든 문서를 보관함에서 열 길부터 없다 — `frontend/components/workspace/DocumentArchiveView.tsx` 의 `ArchiveType` 에 종류가 없음
 
 ## 더 모을 근거
 
