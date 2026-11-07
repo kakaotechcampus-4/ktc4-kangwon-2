@@ -101,7 +101,7 @@ export function OrgEditor({ onDone }: { onDone: () => void }) {
       actions={<SaveActions onCancel={onDone} onSave={save} canSave={canSave} busy={busy} />}
     >
       <label className={styles.field}>
-        원명
+        어린이집 이름
         <input
           value={settings.orgName}
           placeholder="기관명을 입력해주세요"
@@ -358,7 +358,7 @@ export function KidsEditor({ onDone }: { onDone: () => void }) {
   // 아동은 넣고 뺄 때마다 바로 저장된다. 「닫기」는 반 목록을 한 번 맞추고 닫는다.
   return (
     <NoteSheet
-      hint="반별로 아동의 이름을 한 명씩 등록합니다."
+      hint="반 별로 아동의 이름을 한 명씩 등록합니다."
       actions={
         <button type="button" className={styles.btn} onClick={finish} disabled={busy}>
           닫기
@@ -435,7 +435,7 @@ function KidRows({
 
   return (
     <>
-      <p className={styles.classhead}>{c.className} · 아동 명단</p>
+      <p className={styles.classhead}>{c.className}</p>
       <div className={styles.kids}>
         {c.children.map((k) => (
           <div key={k.id} className={styles.kid}>

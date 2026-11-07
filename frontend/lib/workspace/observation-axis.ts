@@ -31,5 +31,5 @@ export const DEFAULT_AXIS: ObservationAxis = "NURI_5";
 /** 축을 사람의 말로. 설정 화면이 고르게 할 때 쓴다. */
 export const AXIS_LABELS: Record<ObservationAxis, string> = {
   NURI_5: "누리과정 5영역",
-  DAILY_PLAY_2: "일상생활 · 놀이활동",
+  DAILY_PLAY_2: "일상생활 / 놀이활동",
 };

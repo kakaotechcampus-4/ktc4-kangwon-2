@@ -55,6 +55,7 @@
 | 목업이 PATCH 를 받아줘 통과, 진짜 서버는 PUT | 코드를 보고 짐작하고 값을 안 봤다 | [CLAUDE.md](../../CLAUDE.md) §서버 값은 타입 말고 실제 응답을 본다 |
 | 휴대폰(390px) 보관함에서 반 목록 아래 빈 칸 · 종류 카드 아이콘이 점으로 보임 | 넓은 화면의 최소 높이 360px 와 아이콘 안 여백 13px 을 그대로 물려받았다 | `frontend/components/workspace/DocumentArchive.module.css` |
 | 휴대폰에서 두 자리 날짜(「11.18」)가 보육일지 주간 칸을 넘침 | 칸 최소 폭 52px 이 글자 46px 에 여백을 못 담았다 | `frontend/components/workspace/DocumentArchive.module.css` · `frontend/e2e/document-archive-layout.spec.ts` |
+| 설정의 아동 명단 쪽지가 아이가 있어도 0명으로 보임 | 브라우저 저장소에서 셌는데, 아동 명단은 거기 남기지 않는다(ADR-013) | `frontend/components/auth/SettingsPage.tsx` — 서버에서 받아 수만 남긴다 |
 
 세 번 같은 실수를 하고 **규칙으로 굳혔다** — 「한 번 찍어보고 쓴다」.
 
