@@ -63,6 +63,7 @@
 | 소개 화면 「선생님의 하루」 창에 여섯 장면이 한꺼번에 쌓이고 안쪽 여백이 없음 · 위 메뉴를 누르면 뚝 끊겨 이동 | CSS 를 `.lp` 안에 가두며 선택자의 `body` · `html` 이 빠졌다(`.win-.view` · `.lp html`) | `frontend/components/landing/landing.css` |
 | 1024~1439 폭 소개 화면(/welcome)에서 스크롤 장면 아래가 빈 크림 띠로 남음 | 앱 전체 배율(1440 기준 zoom)이 소개 화면에도 걸려, 창 높이로 맞춘 고정 장면이 창보다 짧아졌다 | `frontend/app/globals.css` `html:has(.lp)` |
 | 주소만 치고 들어온 첫 방문이 로그인 화면으로 감 | 로그인 안 한 사람은 어느 주소든 `/login` 으로 보냈다 — 첫 방문(`/`)만 소개 화면으로 | `frontend/lib/auth/local-account.ts` `accessRedirect` · `frontend/tests/auth-access.test.mjs` |
+| 휴대폰(390px) 홈 「오늘 적은 기록으로 · 보육일지」 글이 한 단어씩 세로로 쪼개짐(멘토 화면) | 왼쪽 띠가 `flex-1`(기본 폭 0)이라 줄을 안 바꾸고 오른쪽 안내 · 버튼에 밀려 줄었다 | `frontend/components/dashboard/HomePage.tsx` `min-w-[12rem]` |
 | 휴대폰에서 두 자리 날짜(「11.18」)가 보육일지 주간 칸을 넘침 | 칸 최소 폭 52px 이 글자 46px 에 여백을 못 담았다 | `frontend/components/workspace/DocumentArchive.module.css` · `frontend/e2e/document-archive-layout.spec.ts` |
 
 세 번 같은 실수를 하고 **규칙으로 굳혔다** — 「한 번 찍어보고 쓴다」.
