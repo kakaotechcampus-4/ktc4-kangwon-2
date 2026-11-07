@@ -1,4 +1,10 @@
-/* 소개 화면(/welcome) — 인터랙티브판. 모든 규칙은 .lp 안에서만 걸린다. 색은 앱 토큰(--pg-*)을 그대로 쓴다. */
+/* 소개 화면(/welcome) — 인터랙티브판. 모든 규칙은 .lp 안에서만 걸린다. 색은 앱 토큰(--pg-*)을 그대로 쓴다.
+   예외는 스크롤 하나 — 스크롤은 html 이 하므로 「.lp 가 들어 있는 html」에 건다. */
+
+/* 위 메뉴 · 「직접 써 보기」 같은 #링크를 누르면 뚝 끊기지 않고 미끄러져 내려간다 */
+html:has(.lp) {
+  scroll-behavior: smooth;
+}
 
 .lp {
   color-scheme: light;
@@ -1177,7 +1183,12 @@
 .lp .win-bar span {
   margin-left: 8px;
 }
-.lp .win-.view {
+/* 하루 장면 여섯 개가 한 창 안에 겹쳐 있다가 하나씩 켜진다. 창 높이는 가장 긴 장면(1440 폭 303px)에 맞춘다. */
+.lp .win-body {
+  position: relative;
+  height: 320px;
+}
+.lp .win-body .view {
   position: absolute;
   inset: 0;
   padding: 20px 22px;
@@ -1542,7 +1553,11 @@
   .lp .mini {
     display: none;
   }
-  .lp .win- .quote {
+  /* 좁은 화면은 장면 글이 줄을 더 바꿔 길어진다(425 폭 346px) */
+  .lp .win-body {
+    height: 380px;
+  }
+  .lp .quote {
     font-size: 18px;
     min-height: 2.9em;
   }
@@ -2291,7 +2306,7 @@
     animation: none !important;
     transition-duration: 0.01s !important;
   }
-  .lp html {
+  html:has(.lp) {
     scroll-behavior: auto;
   }
 }

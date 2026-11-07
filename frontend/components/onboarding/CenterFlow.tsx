@@ -5,16 +5,18 @@ import { useRouter } from "next/navigation";
 import OnboardingLayout, { type PostySay } from "./OnboardingLayout";
 import RegionSheet from "./RegionSheet";
 import {
+  AnsweredList,
   Cascade,
   CtaButton,
   ErrorLine,
+  FieldHint,
   FieldLabel,
   LineField,
   LoadingLine,
   PickButton,
   Question,
-  TextAction,
   onEnter,
+  type Answered,
 } from "./FlowParts";
 import { useOnboardingData } from "./useOnboardingData";
 import { saveClassSettings } from "@/lib/onboarding/settings";
@@ -66,6 +68,14 @@ const centerSet = (s: ClassSettings) =>
 const street = (d: Daycare, s: ClassSettings) =>
   d.address.replace(`${s.regionProvince} ${s.regionDistrict}`, "").trim() || d.address;
 
+/**
+ * 찾기 결과 상자 높이. 한 줄은 66px(min-h) · 줄 사이 4px.
+ * 3줄(198 + 12) + 4번째 줄 윗부분 44px + 안쪽 여백 12 + 점선 4 = 270px.
+ * 4곳부터는 4번째 줄이 이름과 번호까지 보이다 상자 바닥에 잘려, 아래에 더 있다는 게 보인다.
+ * (26px 만 보이면 이름 윗부분만 보이고 번호는 안 보여 어색했다.) 줄 높이를 바꾸면 이 높이도 같이 바꾼다.
+ */
+const RESULT_BOX = "h-[270px]";
+
 /** /onboarding/center — 지역 · 어린이집 · (처음 쓰는 원이면) 원장. */
 export default function CenterFlow() {
   const router = useRouter();
@@ -73,6 +83,9 @@ export default function CenterFlow() {
   const { settings, edit, error, setError } = data;
   // 이미 등록한 원이면 답이 다 찬 채로 마지막 질문에서 시작한다.
   const [step, setStep] = useState<Step>(() => (centerSet(settings) ? "director" : "region"));
+  // 그렇게 들어온 원은 서버에 이미 있어 지역 · 이름을 고쳐도 chooseCenter 가 서버 값을 돌려준다.
+  // 고친 것처럼 보이고 저장되지 않으니 요약 줄에 「고치기」를 두지 않는다.
+  const [centerLocked] = useState(() => centerSet(settings));
   const [sheet, setSheet] = useState(false);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
@@ -174,6 +187,12 @@ export default function CenterFlow() {
     setSheet(false);
   }
 
+  /** 요약 줄의 「고치기」 — 그 질문으로 돌아간다. */
+  function revisit(target: Step) {
+    setError("");
+    setStep(target);
+  }
+
   if (!data.ready) return <LoadingLine />;
 
   const place = PLACE[step];
@@ -181,6 +200,72 @@ export default function CenterFlow() {
     ? `${settings.regionProvince} ${settings.regionDistrict}`
     : "";
   const results = found?.key === searchKey ? found.items : null;
+  // 안내는 질문 제목 아래가 아니라 지금 칸 밑에 둔다(FieldHint).
+  const hint = step === "find" ? `${regionText}에서 찾아요. 이름 일부만 쳐도 돼요.` : HINTS[step];
+  const orgStep: Step = settings.registryKey ? "find" : "manual";
+  const answered: Answered[] = [
+    {
+      label: "지역",
+      value: regionText,
+      onEdit: centerLocked ? undefined : () => revisit("region"),
+    },
+    {
+      label: "어린이집 이름",
+      value: settings.orgName,
+      onEdit: centerLocked ? undefined : () => revisit(orgStep),
+    },
+  ]
+    .slice(0, place)
+    .reverse();
+
+  function orgField() {
+    if (step === "find")
+      return (
+        <FindField
+          key="org"
+          query={query}
+          onQuery={setQuery}
+          results={results}
+          settings={settings}
+          hint={hint}
+          onPick={pick}
+          onManual={manual}
+        />
+      );
+    return (
+      <LineField
+        key="org"
+        id="orgName"
+        label="어린이집 이름"
+        active={step === "manual"}
+        readOnly={step !== "manual"}
+        hint={step === "manual" ? hint : undefined}
+        value={settings.orgName}
+        autoFocus={step === "manual"}
+        placeholder="예: 쌤플어린이집"
+        onChange={(e) => edit({ orgName: e.target.value })}
+        onKeyDown={(e) => onEnter(e, advance)}
+      />
+    );
+  }
+
+  function directorField() {
+    if (step === "join") return <JoinCard key="director" daycare={picked} settings={settings} />;
+    return (
+      <LineField
+        key="director"
+        id="directorName"
+        label="원장 이름"
+        active={step === "director"}
+        value={settings.directorName}
+        autoFocus={step === "director"}
+        placeholder="예: 포스티"
+        onChange={(e) => edit({ directorName: e.target.value })}
+        onKeyDown={(e) => onEnter(e, advance)}
+      />
+    );
+  }
+
   const fields = [
     <div key="region" className="mb-7 flex flex-col gap-1.5">
       <FieldLabel htmlFor="region">지역</FieldLabel>
@@ -191,51 +276,15 @@ export default function CenterFlow() {
         placeholder="시·도 선택"
         onClick={() => setSheet(true)}
       />
+      {step === "region" && hint && <FieldHint>{hint}</FieldHint>}
     </div>,
-    step === "find" ? (
-      <FindField
-        key="org"
-        query={query}
-        onQuery={setQuery}
-        results={results}
-        settings={settings}
-        onPick={pick}
-      />
-    ) : (
-      <LineField
-        key="org"
-        id="orgName"
-        label="어린이집 이름"
-        active={step === "manual"}
-        readOnly={step !== "manual"}
-        value={settings.orgName}
-        autoFocus={step === "manual"}
-        placeholder="예: 햇살어린이집"
-        onChange={(e) => edit({ orgName: e.target.value })}
-        onKeyDown={(e) => onEnter(e, advance)}
-      />
-    ),
-    step === "join" ? (
-      <JoinCard key="director" daycare={picked} settings={settings} />
-    ) : (
-      <LineField
-        key="director"
-        id="directorName"
-        label="원장 이름"
-        active={step === "director"}
-        value={settings.directorName}
-        autoFocus={step === "director"}
-        placeholder="예: 박미소"
-        onChange={(e) => edit({ directorName: e.target.value })}
-        onKeyDown={(e) => onEnter(e, advance)}
-      />
-    ),
+    orgField(),
+    directorField(),
+    <AnsweredList key="answered" items={answered} />,
   ];
-  // 지금 질문이 맨 위, 이미 답한 칸은 그 아래에 최근 것부터 쌓는다.
-  // 찾기만은 예외 — 결과 쪽지가 길어 지역 칸까지 쌓으면 칠판이 화면 밖으로 길어진다. 지역은 힌트 줄에 적는다.
-  const order =
-    step === "find" ? [place] : [place, ...Array.from({ length: place }, (_, i) => place - 1 - i)];
-  const hint = step === "find" ? `${regionText}에서 찾아요. 이름 일부만 쳐도 돼요.` : HINTS[step];
+  // 지금 질문이 맨 위, 그 아래에 앞에서 답한 요약(3번 칸).
+  // 찾기만은 예외 — 결과 쪽지가 길어 요약까지 쌓으면 칠판이 화면 밖으로 길어진다. 지역은 안내 줄에 적는다.
+  const order = step === "find" || place === 0 ? [place] : [place, 3];
 
   return (
     <OnboardingLayout
@@ -243,11 +292,12 @@ export default function CenterFlow() {
       say={SAY[step]}
       progress={((place + 1) / 3) * (1 / 3)}
       onBack={step !== "region" ? back : undefined}
+      // 찾기는 목록에서 고르면 바로 넘어가 주 버튼이 없다. 「직접 적기」는 목록 옆(FindField)에 있다.
       footer={
-        <Footer step={step} busy={busy} valid={valid[step]} onNext={advance} onManual={manual} />
+        step !== "find" && <Footer step={step} busy={busy} valid={valid[step]} onNext={advance} />
       }
     >
-      <Question title={TITLES[step]} hint={hint} focus={step === "region"} />
+      <Question title={TITLES[step]} focus={step === "region"} />
       <Cascade fields={fields} order={order} />
       <ErrorLine>{error}</ErrorLine>
       {sheet && <RegionSheet onPick={pickRegion} onClose={() => setSheet(false)} />}
@@ -255,92 +305,227 @@ export default function CenterFlow() {
   );
 }
 
-/** 찾기 칸 — 이름을 치는 밑줄 칸과 그 아래 결과 쪽지. */
+/**
+ * 찾기 칸 — 이름을 치는 밑줄 칸, 그 아래 점선 상자 안의 결과, 출처 줄.
+ * 「직접 적기」는 목록을 다 훑은 눈이 닿는 출처 줄 오른쪽에 작게 두고, 못 찾았으면 상자 가운데 크게 둔다.
+ */
 function FindField({
   query: q,
   onQuery,
   results: items,
   settings: s,
+  hint,
   onPick,
+  onManual,
 }: {
   query: string;
   onQuery: (q: string) => void;
   results: Daycare[] | null;
   settings: ClassSettings;
+  hint?: string;
   onPick: (d: Daycare) => void;
+  onManual: () => void;
 }) {
+  const empty = items !== null && items.length === 0;
+  // 칠판 높이(760px)를 다른 화면과 같게 두려고 이 칸만 여백을 줄인다 — 질문 쪽으로 8px 당기고(-mt-2),
+  // 안내와 상자 사이 4px(-mt-6), 출처 줄을 상자에 바짝(mt-1). 결과 상자 270px 를 지키려는 것이다.
   return (
-    <div className="mb-7">
+    <div className="-mt-2">
       <LineField
         id="daycareName"
         label="어린이집 이름"
         active
         autoFocus
+        hint={hint}
         value={q}
         placeholder="예: 햇살"
         onChange={(e) => onQuery(e.target.value)}
       />
-      <DaycareResults items={items} settings={s} onPick={onPick} />
-      <p className="mt-3 text-[13px] text-board-ink-soft">
-        어린이집 목록: 어린이집정보공개포털 (매달 새로 받아요)
-      </p>
+      {/* 결과 자리는 높이를 고정한다 — 찾은 수에 따라 아래 출처 줄이 오르내리지 않게. 넘치면 안에서 스크롤.
+          높이는 3줄 + 4번째 줄 머리(RESULT_BOX): 3곳이면 꽉 차 보이고, 4곳부터는 4번째 줄이 바닥에 걸친다. */}
+      <div
+        className={`-mt-6 ${RESULT_BOX} squircle [--r:16px] border-2 border-dashed border-line p-1.5`}
+      >
+        {empty ? (
+          <NoDaycare query={q} district={s.regionDistrict} onManual={onManual} />
+        ) : (
+          <DaycareResults items={items} settings={s} onPick={onPick} />
+        )}
+      </div>
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-x-4">
+        <p className="text-[13px] text-board-ink-soft">어린이집 목록: 어린이집정보공개포털</p>
+        {!empty && <ManualLink onClick={onManual} />}
+      </div>
     </div>
   );
 }
 
-/** 찾은 어린이집 — 칠판 위에 붙인 흰 쪽지. 쌤플을 쓰는 원이면 선생님 수를 단다(이름은 안 보인다). */
+/** 출처 줄 오른쪽 「직접 적기」. 이름(「목록에 없어요 · 직접 적기」)은 e2e 가 찾는 그대로 둔다. */
+function ManualLink({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      // 누르는 자리는 44px 로 두되(min-h-11) 위아래로 겹쳐(-my-3) 줄 높이는 글자만큼만 차지한다.
+      className="-my-3 inline-flex min-h-11 items-center gap-1.5 px-1 text-[14.5px] font-semibold text-ink hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+    >
+      <span className="underline decoration-primary underline-offset-4">
+        목록에 없어요 · 직접 적기
+      </span>
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className="text-primary"
+      >
+        <path d="M5 12h14M13 6l6 6-6 6" />
+      </svg>
+    </button>
+  );
+}
+
+/** 받침이 있으면 「이」, 없으면 「가」(「숲」이 · 「숲속나라」가). 한글이 아니면 「가」. */
+function iGa(word: string) {
+  const code = word.charCodeAt(word.length - 1);
+  const batchim = code >= 0xac00 && code <= 0xd7a3 && (code - 0xac00) % 28 !== 0;
+  return batchim ? "이" : "가";
+}
+
+/** 찾은 원이 없을 때 — 결과 상자 가운데에 「직접 적기」를 크게. */
+function NoDaycare({
+  query,
+  district,
+  onManual,
+}: {
+  query: string;
+  district: string;
+  onManual: () => void;
+}) {
+  const q = query.trim();
+  return (
+    <div
+      role="status"
+      className="flex h-full flex-col items-center justify-center gap-2.5 px-4 text-center"
+    >
+      <b className="text-[17px] text-ink">
+        {q
+          ? `${district}에 「${q}」${iGa(q)} 들어간 어린이집이 없어요`
+          : `${district}에서 찾은 어린이집이 없어요`}
+      </b>
+      <small className="text-[14px] leading-[1.55] text-ink-soft">
+        이번 달에 새로 문을 연 원은 목록에 아직 없을 수 있어요.
+      </small>
+      <CtaButton className="mt-2" onClick={onManual}>
+        직접 적기
+      </CtaButton>
+    </div>
+  );
+}
+
+/**
+ * 찾은 어린이집 — 칠판에 번호를 매겨 적은 목록. 쌤플을 쓰는 원이면 선생님 수를 단다(이름은 안 보인다).
+ * 마우스를 올리면(키보드로 가도) 이름에 노란 분필로 동그라미를 치고 체크를 그린다. 누르면 바로 고른다.
+ */
 function DaycareResults({
   items,
   settings,
   onPick,
 }: {
+  /** 빈 목록은 부르는 쪽(NoDaycare)이 따로 그린다. */
   items: Daycare[] | null;
   settings: ClassSettings;
   onPick: (d: Daycare) => void;
 }) {
-  if (items === null)
-    return <p className="-mt-4 text-[15px] text-board-ink-soft">찾는 중이에요…</p>;
-  if (!items.length)
-    return (
-      <p className="-mt-4 text-[15px] text-board-ink-soft">
-        이 지역에 그 이름의 어린이집이 없어요. 「목록에 없어요」로 직접 적어 주세요.
-      </p>
-    );
+  if (items === null) return <p className="p-2 text-[15px] text-board-ink-soft">찾는 중이에요…</p>;
   return (
-    <ul
+    <ol
       aria-label="찾은 어린이집"
-      className="paper -mt-3 grid max-h-[232px] gap-2 overflow-y-auto pr-1"
+      className="flex h-full flex-col gap-1 overflow-y-auto overflow-x-hidden"
     >
-      {items.map((d) => (
+      {items.map((d, i) => (
         <li key={d.key}>
           <button
             type="button"
             onClick={() => onPick(d)}
-            className="squircle [--r:12px] grid w-full grid-cols-[1fr_auto] items-center gap-3 bg-paper px-4 py-3 text-left text-ink shadow-[2px_3px_0_rgba(0,0,0,0.25)] hover:bg-ivory"
+            className="group grid min-h-[66px] w-full grid-cols-[34px_minmax(0,1fr)_40px] items-center gap-2.5 px-1 py-1.5 text-left text-ink focus-visible:outline-none"
           >
-            <span className="min-w-0">
-              <b className="text-[15.5px]">{d.name}</b>
+            <span
+              aria-hidden="true"
+              className="text-center font-display text-[26px] font-bold text-ink-soft group-hover:text-primary group-focus-visible:text-primary"
+            >
+              {i + 1}
+            </span>
+            <span className="relative min-w-0 justify-self-start py-1 pl-3 pr-3.5">
+              <ChalkRing />
+              <b className="text-[18px] leading-[26px]">{d.name}</b>
               {d.teacher_count > 0 && (
-                <span className="ml-1.5 inline-block rounded-full bg-sage-tint px-2 align-[2px] text-[11.5px] font-bold text-sage-ink">
+                <span className="ml-2 font-display text-[19px] font-bold text-primary">
                   쌤플 선생님 {d.teacher_count}명
                 </span>
               )}
               {d.status === "휴지" && (
-                <span className="ml-1.5 inline-block rounded-full bg-cream px-2 align-[2px] text-[11.5px] font-bold text-ink-soft">
-                  휴지
-                </span>
+                <span className="ml-2 font-display text-[19px] font-bold text-ink-soft">휴지</span>
               )}
-              <small className="block truncate text-[12.5px] text-ink-soft">
+              <small className="mt-0.5 block truncate text-[13px] leading-[18px] text-ink-soft">
                 {d.kind} · {street(d, settings)}
               </small>
             </span>
-            <span className="squircle [--r:8px] whitespace-nowrap border-[1.5px] border-primary-deep px-3 py-1.5 text-[13px] font-bold text-primary-deep">
-              이 원이에요
-            </span>
+            <ChalkCheck />
           </button>
         </li>
       ))}
-    </ul>
+    </ol>
+  );
+}
+
+/** 이름에 친 분필 동그라미 — 한 획으로 돌리고 시작한 자리를 조금 지나쳐 끝난다. 결은 OnboardingLayout 의 #chalk 필터. */
+function ChalkRing() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 100 40"
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute -inset-x-2.5 -inset-y-2 h-[calc(100%+16px)] w-[calc(100%+20px)] overflow-visible text-primary opacity-0 transition-opacity duration-150 group-hover:opacity-90 group-focus-visible:opacity-100 motion-reduce:transition-none"
+    >
+      <path
+        d="M50 3.5 C78.7 1.5 99 8 98 20 C97 32 70 38 48.7 37 C24.7 36 1.7 31.5 2.3 19.5 C3 7.5 26 2.5 57.3 5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.6}
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+        filter="url(#chalk)"
+      />
+    </svg>
+  );
+}
+
+/** 동그라미와 같이 나타나는 분필 체크. */
+function ChalkCheck() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="34"
+      height="34"
+      viewBox="0 0 34 34"
+      className="text-primary opacity-0 transition-opacity duration-150 group-hover:opacity-90 group-focus-visible:opacity-100 motion-reduce:transition-none"
+    >
+      <path
+        d="M6 18 L14 26 L29 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={3.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        filter="url(#chalk)"
+      />
+    </svg>
   );
 }
 
@@ -371,15 +556,12 @@ function Footer({
   busy,
   valid,
   onNext,
-  onManual,
 }: {
   step: Step;
   busy: boolean;
   valid: boolean;
   onNext: () => void;
-  onManual: () => void;
 }) {
-  if (step === "find") return <TextAction onClick={onManual}>목록에 없어요 · 직접 적기</TextAction>;
   return (
     <CtaButton disabled={busy || !valid} onClick={onNext}>
       {busy ? "저장 중이에요" : step === "join" ? "이 원으로 시작하기" : "다음"}

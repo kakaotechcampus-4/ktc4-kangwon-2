@@ -1,5 +1,6 @@
 "use client";
 import { useId } from "react";
+import { FieldHint, fieldLabelClass } from "./FlowParts";
 import type { SelectedAge } from "@/lib/onboarding/types";
 
 /**
@@ -14,16 +15,20 @@ export default function AgeSelection({
   value,
   onChange,
   active = false,
+  hint,
 }: {
   value: SelectedAge[];
   onChange: (value: SelectedAge[]) => void;
   active?: boolean;
+  /** 타일 밑 안내 한 줄(FieldHint). */
+  hint?: string;
 }) {
   const fieldId = useId();
 
   return (
     <fieldset className="mb-7 flex flex-col gap-2.5">
-      <legend className="mb-2.5 text-[13px] font-medium text-ink-soft">연령</legend>
+      {/* 칸 이름은 다른 칸(FieldLabel)과 같은 모양 */}
+      <legend className={`mb-2.5 ${fieldLabelClass}`}>연령</legend>
       <div className="grid grid-cols-3 gap-2">
         {AGES.map((age) => (
           <AgeTile
@@ -38,6 +43,7 @@ export default function AgeSelection({
           />
         ))}
       </div>
+      {hint && <FieldHint>{hint}</FieldHint>}
     </fieldset>
   );
 }
