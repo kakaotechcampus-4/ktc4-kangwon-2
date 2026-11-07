@@ -1,6 +1,5 @@
-import { readFile } from "node:fs/promises";
-import JSZip from "jszip";
-import { expect, test, type Download, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { verifyHwpx } from "./hwpx";
 import { completeOnboarding } from "./onboarding";
 
 /**
@@ -22,18 +21,6 @@ async function openObservation(
     .getByRole("complementary", { name: "문서 미리보기" })
     .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
     .click();
-}
-
-async function verifyHwpx(file: Download, path: string, expected: string[]) {
-  expect(file.suggestedFilename()).toMatch(/\.hwpx$/);
-  await file.saveAs(path);
-  const archive = await JSZip.loadAsync(await readFile(path));
-  const section = await archive.file("Contents/section0.xml")!.async("string");
-  const preview = await archive.file("Preview/PrvText.txt")!.async("string");
-  for (const text of expected) {
-    expect(section).toContain(text);
-    expect(preview).toContain(text);
-  }
 }
 
 /** The mentor follows these controls; API reads below verify persisted results. */
