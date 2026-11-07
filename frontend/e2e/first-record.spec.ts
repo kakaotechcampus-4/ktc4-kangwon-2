@@ -64,9 +64,12 @@ test("가입부터 관찰 기록까지", async ({ page }) => {
   // 관찰 기록 한 건
   await page.goto("/records");
   // 적는 칸은 늘 펴져 있고, 반은 사이드바가 고른다.
-  await page.getByRole("combobox", { name: "아이", exact: true }).selectOption({ label: child });
+  await page
+    .getByRole("group", { name: "아이", exact: true })
+    .getByRole("button", { name: child, exact: true })
+    .click();
   await page.getByLabel("본 대로 적기").fill(fact);
-  await page.getByRole("button", { name: "남기기" }).click();
+  await page.getByRole("button", { name: "기록하기", exact: true }).click();
   await expect(page.getByText("관찰 기록을 저장했어요.")).toBeVisible();
 
   // 사이드바가 **기록**과 **문서**로 갈리면서 「아이별 기록」는 메뉴에서 빠졌다.

@@ -20,7 +20,7 @@ import { Icon } from "@/components/app/icons";
 import ChildPicker from "@/components/app/ChildPicker";
 import { SsampleNote } from "@/components/app/SsampleNote";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
-import { DOMAIN_LOOK } from "@/components/workspace/domain-look";
+import { DOMAIN_LOOK } from "@/lib/workspace/domain-look";
 import { listRecords, addRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import { listRoutines, routineTime, type Routine } from "@/lib/api/routines";
@@ -945,19 +945,26 @@ function UnseenChildren({
   return (
     <BoardSection title="기록 안된 아이들" href="/records/children" linkLabel="아이별 기록 →">
       {unseen.length === 0 ? (
-        <ChalkLine>
+        // 흰 분필 한 색이라 칭찬하는 말이 칠판 제목 · 안내와 섞여 묻혔다. 노란 분필로 갈라 쓴다.
+        <p className="font-display text-[20px] leading-[1.6] text-board-ink">
           이번 주{" "}
           <span className="relative inline-block">
-            <span className="text-[40px] font-bold leading-none text-board-ink">모두</span>
+            <span className="text-[42px] font-bold leading-none text-note">모두</span>
+            {/* 분필로 두 번 그은 밑줄 */}
+            <span
+              aria-hidden="true"
+              className="absolute -bottom-1 left-0 h-[3px] w-full -rotate-2 rounded-full bg-note opacity-80"
+            />
             {/* 「다 적었다」는 표시다. 워드마크에서 뺀 그 마크를 여기서는 칭찬으로 쓴다. */}
             <Icon
               name="star"
               aria-hidden="true"
-              className="absolute -right-[18px] -top-1 h-[17px] w-[17px] text-board-ink"
+              className="absolute -right-[20px] -top-1 h-[18px] w-[18px] text-note"
             />
           </span>
-          <br />한 번씩 적혔어요
-        </ChalkLine>
+          <br />
+          <span className="text-note">한 번씩</span> 적혔어요
+        </p>
       ) : neverStarted ? (
         <ChalkLine>
           아직 아무도 안 적혔어요.
@@ -1041,8 +1048,14 @@ function LastWeekNote({ look }: { look: LastWeek }) {
   return (
     <TornNote tone="bg-primary-tint" tape="left-16 -rotate-2">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className={`${LABEL} min-w-0 text-primary-ink`}>
-          지난주 돌아보기 · {shortDate(look.from)}~{shortDate(look.to)}
+        {/* 글자 크기 · 색이 본문과 같은 한 줄이라 머리로 안 읽혔다. 손글씨 제목 + 날짜 도장으로 가른다. */}
+        <h2 className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="font-display text-[26px] font-bold leading-none text-primary-ink">
+            지난주 돌아보기
+          </span>
+          <span className="-rotate-2 rounded-md border-[1.5px] border-dashed border-[color:var(--pg-primary-tint-line)] bg-paper px-2.5 py-0.5 text-[13px] font-bold tabular-nums tracking-[0.04em] text-primary-ink">
+            {shortDate(look.from)} ~ {shortDate(look.to)}
+          </span>
         </h2>
         <Link
           href="/weekly-records"

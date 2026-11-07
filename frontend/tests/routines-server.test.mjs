@@ -9,6 +9,7 @@ import { test } from "node:test";
 import { createRequire, registerHooks } from "node:module";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+const domainLook = await import("../lib/workspace/domain-look.ts");
 
 registerHooks({
   resolve(spec, ctx, next) {
@@ -28,7 +29,6 @@ const { API_STORAGE_CONTEXT } = await import("../lib/api/storage-context.ts");
 // **흉내 내지 않는다.** 주 반 판정 버그가 helper 를 mock 해서 숨어 있었다.
 const classSettings = await import("../lib/onboarding/settings.ts");
 const onboardingApi = await import("../lib/api/onboarding.ts");
-const domainLook = await import("../components/workspace/domain-look.ts");
 const routinesRoute = await import("../lib/workspace/routines-route.ts");
 const onboardingTypes = await import("../lib/onboarding/types.ts");
 const childMark = await import("../lib/workspace/child-mark.ts");
@@ -648,6 +648,7 @@ function page(
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
     "@/lib/hooks/use-observation-domains": { useObservationDomains: () => OBSERVATION_DOMAINS },
+    "@/lib/workspace/domain-look": domainLook,
     "@/lib/api/routines": {
       listRoutines: async (...args) => (await api.list(...args)).items,
       createRoutine: api.create,
@@ -1536,14 +1537,14 @@ function recordsPage(
     "next/link": { default: "link" },
     // 그림들은 제 파일에서 본다. 여기서 보는 것은 길 · 저장이다.
     "@/components/app/Posty": { Posty: "posty" },
-    "@/components/app/ChildPicker": { ChildShape: "child-shape" },
+    "@/components/app/ChildPicker": { ChildNote: "child-note" },
     "@/components/app/icons": { Icon: "icon" },
-    "./domain-look": domainLook,
-    "@/lib/workspace/child-mark": { markFor: () => ({ shape: 0, tone: 0 }) },
+    "@/lib/workspace/child-mark": { markFor: () => ({ tone: 0 }) },
     "@/lib/hooks/use-client-state": { useClientState: (read) => app.state(read) },
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
     "@/lib/hooks/use-observation-domains": { useObservationDomains: () => OBSERVATION_DOMAINS },
+    "@/lib/workspace/domain-look": domainLook,
     "@/lib/onboarding/settings": classSettings,
     "@/lib/workspace/model": {
       today: () => TODAY,
@@ -1599,27 +1600,19 @@ function recordsPage(
   };
 }
 
-test("P1-3 기록 모아보기에서 고른 반 · 날짜를 그대로 일과 기록으로 들고 간다", async (t) => {
-  const view = recordsPage(t);
+test("관찰 기록 본문에는 일과 기록으로 가는 길을 두지 않는다 — 사이드바 메뉴가 고른 반을 들고 간다", async (t) => {
+  const view = recordsPage(t, {
+    rooms: [ROOM_A, ROOM_B, ROOM_GHOST],
+    settings: [CLASS_A, CLASS_B, CLASS_GHOST],
+    primaryClassId: CLASS_GHOST.id,
+  });
   await view.flush();
-  view.openForm();
-  // 아직 반을 안 골랐다 — 날짜만 들고 간다. 아무 반이나 붙이지 않는다.
-  assert.ok(view.links().includes(`/routines?date=${TODAY}&class_id=3`), view.links().join(" , "));
-
-  view.type(view.selects()[0], CLASS_A.id);
-  view.render();
-  view.type(view.dateInput(), "2026-10-02");
-  await view.flush();
-
-  assert.ok(
-    view.links().includes("/routines?date=2026-10-02&class_id=3"),
-    `문맥을 잃었다: ${view.links().join(" , ")}`,
+  // 서버 번호를 모르는 반이어도 주 반(A)으로 들어가는 길이 생기지 않는다.
+  assert.deepEqual(
+    view.links().filter((href) => href.startsWith("/routines")),
+    [],
   );
-  assert.equal(
-    view.links().some((href) => href === "/routines" || href === "/records/routines"),
-    false,
-    "문맥 없는 옛 주소를 쓰지 않는다",
-  );
+  assert.ok(view.links().includes("/records/journal"), view.links().join(" , "));
 });
 
 test("P1-3 들고 간 주소를 S-J1 이 그대로 읽는다", () => {
@@ -1638,45 +1631,6 @@ test("P1 고른 반의 서버 번호를 모르면 주소를 만들지 않는다"
   assert.equal(routinesRoute.routinesPath("", TODAY), `/routines?date=${TODAY}`);
   delete globalThis.window;
   delete globalThis.document;
-});
-
-test("P1 CASE A — 고른 반의 서버 번호가 있으면 그 반으로 간다", async (t) => {
-  // 반은 사이드바가 정한다. B 반을 고른 교사의 화면이다.
-  const view = recordsPage(t, {
-    rooms: [ROOM_A, ROOM_B, ROOM_GHOST],
-    settings: [CLASS_A, CLASS_B, CLASS_GHOST],
-    primaryClassId: CLASS_B.id,
-  });
-  await view.flush();
-  // 적는 칸은 접혀 있다. 날짜 칸은 그 안에 있다.
-  view.openForm();
-  view.type(view.dateInput(), "2026-10-06");
-  await view.flush();
-  assert.ok(
-    view.links().includes("/routines?date=2026-10-06&class_id=7"),
-    view.links().join(" , "),
-  );
-});
-
-test("P1 CASE B — 고른 반의 서버 번호가 없으면 다른 반으로 보내지 않는다", async (t) => {
-  const view = recordsPage(t, {
-    rooms: [ROOM_A, ROOM_B, ROOM_GHOST],
-    settings: [CLASS_A, CLASS_B, CLASS_GHOST],
-    primaryClassId: CLASS_GHOST.id,
-  });
-  await view.flush();
-  // 적는 칸은 접혀 있다. 날짜 칸은 그 안에 있다.
-  view.openForm();
-  view.type(view.dateInput(), "2026-10-06");
-  await view.flush();
-
-  assert.deepEqual(
-    view.links().filter((href) => href.startsWith("/routines")),
-    [],
-    "주 반(A)으로 들어가는 길을 만들었다",
-  );
-  assert.match(view.text(), /일과 기록으로 갈 수 없어요/);
-  assert.equal(view.dateInput().props.value, "2026-10-06", "고른 날짜는 그대로 둔다");
 });
 
 test("P1-2 저장을 기다리는 사이 날짜를 바꾸면 새 화면에 「저장했어요」를 띄우지 않는다", async (t) => {
@@ -2043,6 +1997,7 @@ function quickRecordsPage(
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
     "@/lib/hooks/use-observation-domains": { useObservationDomains: () => OBSERVATION_DOMAINS },
+    "@/lib/workspace/domain-look": domainLook,
   }).default;
   const view = app.mount(Page);
   t.after(app.cleanup);
@@ -2241,6 +2196,7 @@ function homePage(
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
     "@/lib/hooks/use-observation-domains": { useObservationDomains: () => OBSERVATION_DOMAINS },
+    "@/lib/workspace/domain-look": domainLook,
     "@/lib/hooks/use-dictation": {
       useDictation: () => ({ supported: false, listening: false, toggle: () => {} }),
     },
