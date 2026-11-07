@@ -16,7 +16,7 @@ import Tour from "./Tour";
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-[calc(100*var(--app-vh))] bg-cream">
+    <div className="min-h-[calc(100*var(--app-vh))]">
       <AppSidebar />
       <ContentShell>
         <Suspense fallback={<div className="h-[60px] border-b border-line" />}>

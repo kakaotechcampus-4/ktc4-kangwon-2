@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { fontClassName } from "@/lib/fonts";
 import MockProvider from "@/msw/MockProvider";
+import PostyDoodles from "@/components/app/PostyDoodles";
 import "./globals.css"; // styles/plan-generator-tokens.css 내용을 여기에 포함(또는 @import)
 
 export const metadata: Metadata = {
@@ -58,6 +59,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         />
       </head>
       <body className="font-body bg-cream text-ink antialiased [word-break:keep-all]">
+        <PostyDoodles />
         <MockProvider>{children}</MockProvider>
       </body>
     </html>

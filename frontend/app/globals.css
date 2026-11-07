@@ -127,6 +127,55 @@ body {
   }
 }
 
+/* 화면 뒤 벽의 포스티 낙서(components/app/PostyDoodles.tsx). 연필로 옅게 끄적인 정도라 전체를 28% 로 흐린다.
+ * 노랑(#c9a227) · 분홍(#c0697a)은 토큰에 맞는 값이 없어 시안 캔버스 「⑧ 포스티 낙서」 값을 그대로 둔다. */
+.postyDoodles {
+  opacity: 0.28;
+}
+.postyDoodles .dd {
+  fill: none;
+  stroke: var(--pg-ink-soft);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: url(#posty-doodle-pencil);
+}
+.postyDoodles .dd * {
+  vector-effect: non-scaling-stroke;
+}
+.postyDoodles .s2 {
+  stroke: var(--pg-primary);
+}
+.postyDoodles .s3 {
+  stroke: #c9a227;
+}
+.postyDoodles .s4 {
+  stroke: #c0697a;
+}
+.postyDoodles .f1 {
+  fill: var(--pg-ink-soft);
+  stroke: none;
+}
+.postyDoodles .thin {
+  stroke-width: 1.8;
+}
+.postyDoodles .dash {
+  stroke-dasharray: 2 9;
+}
+.postyDoodles text {
+  stroke: none;
+  fill: var(--pg-ink-soft);
+  font-family: var(--font-display), cursive;
+  font-weight: 700;
+  font-size: 22px;
+}
+.postyDoodles .k6 {
+  font-size: 16px;
+}
+.postyDoodles .mid {
+  text-anchor: middle;
+}
+
 /* 교실 칠판. 첫 화면 오른쪽 줄 세 칸이 이 판 위에 붙는다.
  *
  * 면을 한 색으로 칠하면 초록 네모일 뿐이라 칠판으로 안 읽힌다. 세 겹을 쌓는다 —
