@@ -46,6 +46,7 @@
 
 | 기능 | 코드 | 확인 |
 |---|---|---|
+| 같은 원 묶기 — 정부 어린이집 목록에서 고르면 합류 · 열람 승인하면 두 반이 서로 봄 | `features/centers/registry.py` · `class_access/router.py` · ADR-068 · PR #415 · #416 | `test_same_center.py` · 두 선생님 흐름 실서버 15단계 |
 | 가입 · 로그인 · 비밀번호 변경 | `backend/app/features/auth/` | `tests/test_auth.py` |
 | 원 · 반 · 아동 | `features/centers` · `children` | `test_centers.py` · `test_children.py` |
 | 관찰 기록 · 일과 기록 | `features/observations` · `routines` | `test_observations_db.py` · e2e `routines.spec.ts` |
