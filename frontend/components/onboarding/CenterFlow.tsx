@@ -15,7 +15,6 @@ import {
   LoadingLine,
   PickButton,
   Question,
-  TextAction,
   onEnter,
   type Answered,
 } from "./FlowParts";
@@ -222,6 +221,7 @@ export default function CenterFlow() {
           settings={settings}
           hint={hint}
           onPick={pick}
+          onManual={manual}
         />
       );
     return (
@@ -284,8 +284,9 @@ export default function CenterFlow() {
       say={SAY[step]}
       progress={((place + 1) / 3) * (1 / 3)}
       onBack={step !== "region" ? back : undefined}
+      // 찾기는 목록에서 고르면 바로 넘어가 주 버튼이 없다. 「직접 적기」는 목록 옆(FindField)에 있다.
       footer={
-        <Footer step={step} busy={busy} valid={valid[step]} onNext={advance} onManual={manual} />
+        step !== "find" && <Footer step={step} busy={busy} valid={valid[step]} onNext={advance} />
       }
     >
       <Question title={TITLES[step]} focus={step === "region"} />
@@ -296,7 +297,10 @@ export default function CenterFlow() {
   );
 }
 
-/** 찾기 칸 — 이름을 치는 밑줄 칸과 그 아래 결과 쪽지. */
+/**
+ * 찾기 칸 — 이름을 치는 밑줄 칸, 그 아래 점선 상자 안의 결과, 출처 줄.
+ * 「직접 적기」는 목록을 다 훑은 눈이 닿는 출처 줄 오른쪽에 작게 두고, 못 찾았으면 상자 가운데 크게 둔다.
+ */
 function FindField({
   query: q,
   onQuery,
@@ -304,6 +308,7 @@ function FindField({
   settings: s,
   hint,
   onPick,
+  onManual,
 }: {
   query: string;
   onQuery: (q: string) => void;
@@ -311,7 +316,9 @@ function FindField({
   settings: ClassSettings;
   hint?: string;
   onPick: (d: Daycare) => void;
+  onManual: () => void;
 }) {
+  const empty = items !== null && items.length === 0;
   return (
     <div className="mb-7">
       <LineField
@@ -325,10 +332,84 @@ function FindField({
         onChange={(e) => onQuery(e.target.value)}
       />
       {/* 결과 자리는 높이를 고정한다 — 찾은 수에 따라 아래 출처 줄이 오르내리지 않게. 넘치면 안에서 스크롤 */}
-      <div className="-mt-3 h-[272px]">
-        <DaycareResults items={items} settings={s} onPick={onPick} />
+      <div className="-mt-3 h-[280px] squircle [--r:16px] border-2 border-dashed border-line p-1.5">
+        {empty ? (
+          <NoDaycare query={q} district={s.regionDistrict} onManual={onManual} />
+        ) : (
+          <DaycareResults items={items} settings={s} onPick={onPick} />
+        )}
       </div>
-      <p className="mt-3 text-[13px] text-board-ink-soft">어린이집 목록: 어린이집정보공개포털</p>
+      <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-4">
+        <p className="text-[13px] text-board-ink-soft">어린이집 목록: 어린이집정보공개포털</p>
+        {!empty && <ManualLink onClick={onManual} />}
+      </div>
+    </div>
+  );
+}
+
+/** 출처 줄 오른쪽 「직접 적기」. 이름(「목록에 없어요 · 직접 적기」)은 e2e 가 찾는 그대로 둔다. */
+function ManualLink({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex min-h-11 items-center gap-1.5 px-1 text-[14.5px] font-semibold text-ink hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+    >
+      <span className="underline decoration-primary underline-offset-4">
+        목록에 없어요 · 직접 적기
+      </span>
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className="text-primary"
+      >
+        <path d="M5 12h14M13 6l6 6-6 6" />
+      </svg>
+    </button>
+  );
+}
+
+/** 받침이 있으면 「이」, 없으면 「가」(「숲」이 · 「숲속나라」가). 한글이 아니면 「가」. */
+function iGa(word: string) {
+  const code = word.charCodeAt(word.length - 1);
+  const batchim = code >= 0xac00 && code <= 0xd7a3 && (code - 0xac00) % 28 !== 0;
+  return batchim ? "이" : "가";
+}
+
+/** 찾은 원이 없을 때 — 결과 상자 가운데에 「직접 적기」를 크게. */
+function NoDaycare({
+  query,
+  district,
+  onManual,
+}: {
+  query: string;
+  district: string;
+  onManual: () => void;
+}) {
+  const q = query.trim();
+  return (
+    <div
+      role="status"
+      className="flex h-full flex-col items-center justify-center gap-2.5 px-4 text-center"
+    >
+      <b className="text-[17px] text-ink">
+        {q
+          ? `${district}에 「${q}」${iGa(q)} 들어간 어린이집이 없어요`
+          : `${district}에서 찾은 어린이집이 없어요`}
+      </b>
+      <small className="text-[14px] leading-[1.55] text-ink-soft">
+        이번 달에 새로 문을 연 원은 목록에 아직 없을 수 있어요.
+      </small>
+      <CtaButton className="mt-2" onClick={onManual}>
+        직접 적기
+      </CtaButton>
     </div>
   );
 }
@@ -342,17 +423,12 @@ function DaycareResults({
   settings,
   onPick,
 }: {
+  /** 빈 목록은 부르는 쪽(NoDaycare)이 따로 그린다. */
   items: Daycare[] | null;
   settings: ClassSettings;
   onPick: (d: Daycare) => void;
 }) {
-  if (items === null) return <p className="text-[15px] text-board-ink-soft">찾는 중이에요…</p>;
-  if (!items.length)
-    return (
-      <p className="text-[15px] text-board-ink-soft">
-        이 지역에 그 이름의 어린이집이 없어요. 「목록에 없어요」로 직접 적어 주세요.
-      </p>
-    );
+  if (items === null) return <p className="p-2 text-[15px] text-board-ink-soft">찾는 중이에요…</p>;
   return (
     <ol
       aria-label="찾은 어린이집"
@@ -466,15 +542,12 @@ function Footer({
   busy,
   valid,
   onNext,
-  onManual,
 }: {
   step: Step;
   busy: boolean;
   valid: boolean;
   onNext: () => void;
-  onManual: () => void;
 }) {
-  if (step === "find") return <TextAction onClick={onManual}>목록에 없어요 · 직접 적기</TextAction>;
   return (
     <CtaButton disabled={busy || !valid} onClick={onNext}>
       {busy ? "저장 중이에요" : step === "join" ? "이 원으로 시작하기" : "다음"}
