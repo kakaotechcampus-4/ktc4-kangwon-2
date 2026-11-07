@@ -825,8 +825,9 @@ function TodaySlip({
 
         {/* 일지는 일과를 근거로 쓴다. 일과가 비면 길을 막는 대신 그 자리에서 일과로 보낸다. */}
         <hr className={`${DASH} border-t-2`} />
+        {/* 왼쪽 띠가 12rem 아래로 줄면 버튼 줄이 아래로 내려간다 — 휴대폰에서 글이 한 단어씩 세로로 쪼개지지 않게 */}
         <div className="flex flex-wrap items-center gap-3 py-4">
-          <span className="min-w-0 flex-1 border-l-[3px] border-peach-strong bg-peach-tint py-2 pl-3.5">
+          <span className="min-w-[12rem] flex-1 border-l-[3px] border-peach-strong bg-peach-tint py-2 pl-3.5">
             <span className={`${LABEL} block text-peach-ink`}>오늘 적은 기록으로</span>
             <span className="mt-0.5 block text-sm font-bold text-ink">{day} 보육일지</span>
           </span>
