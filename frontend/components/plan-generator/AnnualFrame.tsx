@@ -475,9 +475,12 @@ export function PlanDone({
     <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)] lg:px-10">
       {/* 제목은 문서 이름만, 바로 옆에 확정 도장. 방식 쪽지는 오른쪽 내보내기 칸 위에. */}
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+        {/* 이름은 aria-label 한 덩어리로 준다 — sr-only 조각은 「연간계획안 을」처럼 띄어 읽혔다(e2e #437). */}
+        <h1
+          aria-label={`${title}을 확정했어요`}
+          className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink"
+        >
           {title}
-          <span className="sr-only">을 확정했어요</span>
         </h1>
         <span
           aria-hidden="true"
