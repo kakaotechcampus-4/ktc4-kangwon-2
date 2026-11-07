@@ -1724,6 +1724,19 @@
     min-height: 108px;
   }
 }
+/* 담임 이름 줄이 붙은 카드 — 위아래 여백을 줄여 한 줄 카드와 키를 맞춘다(두 장이 108px 에 든다). */
+.classCard:has(.railTeacher) {
+  padding-block: 6px;
+  line-height: 1.3;
+}
+.railTeacher {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--pg-ink-soft);
+}
 .railNote {
   margin: -8px 4px 10px;
   font-size: 12px;

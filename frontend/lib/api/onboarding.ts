@@ -3,10 +3,10 @@ import { API_STORAGE_CONTEXT } from "./storage-context";
 import { accountStorageKey, readAccountStorageKey } from "../auth/demo-session";
 import { isAlreadyExists, isApiNotFound } from "./client";
 import { getMe } from "./auth";
-import { createCenter, getCenter, updateCenter } from "./centers";
+import { createCenter, getCenter } from "./centers";
 import { createClass, getClasses, isMyClass, updateClass } from "./classes";
 import { listAnnualPlans } from "./plans";
-import type { ClassUpdate } from "./types";
+import type { Center, ClassUpdate } from "./types";
 import { createChild, getChildren, deleteChild } from "./children";
 import { finishedSettings } from "../onboarding/flow";
 import { normalizeProvince } from "../onboarding/regions";
@@ -94,47 +94,58 @@ export function childLocalId(id: number): string | null {
   return entries(storedLinks()?.children).find(([, v]) => serverId(v) === id)?.[0] ?? null;
 }
 
-async function syncCenterOnce(settings: ClassSettings) {
+/** 연결에 남기는 원 서명 — 서버가 저장한 값 그대로. 브라우저 입력이 아니라 서버 값을 적어 둔다. */
+const centerSignature = (c: Center) =>
+  JSON.stringify({
+    name: c.name,
+    director_name: c.director_name,
+    region_sido: c.region_sido,
+    region_sigungu: c.region_sigungu,
+  });
+
+/**
+ * 원을 만들거나, 정부 목록에서 고른 원이 이미 있으면 그 원으로 들어간다 (ADR-068).
+ * 돌려주는 원은 **서버 값**이다 — 들어간 원이면 이름 · 원장이 먼저 가입한 교사가 적은 것이다.
+ *
+ * 원 정보는 고치지 않는다(수정 API 가 없다). 이미 연결된 원이면 그 원을 그대로 쓴다.
+ */
+export async function chooseCenter(settings: ClassSettings): Promise<Center> {
+  const links = readLinks();
+  if (links.center) return getCenter(links.center.id);
   // 지역은 붙이지 않고 두 칸 그대로 보낸다 — 서버가 region_sido · region_sigungu 로 받는다(§1).
   const data = {
-      name: settings.orgName,
-      director_name: settings.directorName,
-      region_sido: settings.regionProvince.trim(),
-      region_sigungu: settings.regionDistrict.trim(),
-    },
-    signature = JSON.stringify(data),
-    links = readLinks();
-  if (links.center?.signature === signature) return links.center.id;
-  // **이미 만든 원은 고친다.** 예전에는 수정 API 가 없어 원을 새로 만들었는데, 서버가
-  // 「이미 등록한 원이 있습니다」 409 로 거절하거나 원이 쌓였고, links.classes 를 비워서
-  // 방금 들인 반까지 날아갔다. 기기를 바꾼 교사(ADOPTED)도 같은 길로 간다 —
-  // 그 교사의 원 정보 수정이 서버에 반영되지 않던 것이 이것으로 풀린다.
-  if (links.center) {
-    const updated = await updateCenter(links.center.id, data);
-    links.center = { id: updated.id, signature };
-    saveLinks(links);
-    return updated.id;
-  }
+    name: settings.orgName,
+    // 같은 원으로 들어가는 길은 원장 이름을 묻지 않는다 — 비어 있으면 칸째 뺀다.
+    ...(settings.directorName.trim() ? { director_name: settings.directorName } : {}),
+    region_sido: settings.regionProvince.trim(),
+    region_sigungu: settings.regionDistrict.trim(),
+    ...(settings.registryKey ? { registry_key: settings.registryKey } : {}),
+  };
   try {
     const center = await createCenter(data);
-    links.center = { id: center.id, signature };
+    links.center = { id: center.id, signature: centerSignature(center) };
     links.classes = {};
     links.children = {};
     saveLinks(links);
-    return center.id;
+    return center;
   } catch (error) {
     // **서버에는 원이 있는데 브라우저에는 연결이 없다.** 기기를 바꿨거나 저장소를 지운
-    // 교사다 — 그 교사는 원을 만든 적이 있으니 서버가 409 로 거절하고, 예전에는 거기서
-    // 온보딩이 막혔다. 내 원을 찾아 지금 입력대로 고치고 연결을 다시 맺는다.
+    // 교사다 — 서버가 409 로 거절한다. 내 원을 찾아 연결만 다시 맺는다(고치지 않는다).
     if (!isAlreadyExists(error)) throw error;
     const { center_id } = await getMe();
     if (center_id === null) throw error;
-    const updated = await updateCenter(center_id, data);
+    const center = await getCenter(center_id);
     // 반 · 아동 연결은 지우지 않는다 — 서버에 남아 있던 것을 adoptServerClasses 가 들인다.
-    links.center = { id: updated.id, signature };
+    links.center = { id: center.id, signature: centerSignature(center) };
     saveLinks(links);
-    return updated.id;
+    return center;
   }
+}
+
+async function syncCenterOnce(settings: ClassSettings) {
+  const links = readLinks();
+  if (links.center) return links.center.id;
+  return (await chooseCenter(settings)).id;
 }
 async function syncClassOnce(settings: ClassSettings, c: ClassroomEntry) {
   const center = await syncCenter(settings),
@@ -383,6 +394,7 @@ export async function restoreFromServer(centerId: number): Promise<boolean> {
     classes: kept.length ? kept : EMPTY_CLASS_SETTINGS.classes,
     orgName: center.name,
     directorName: center.director_name,
+    registryKey: center.registry_key ?? "",
     regionProvince: data.region_sido,
     regionDistrict: data.region_sigungu,
   };

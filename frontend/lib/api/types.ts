@@ -28,13 +28,35 @@ export interface ErrorResponse {
 /** 지역은 두 값으로 받는다. centers.region_sido · region_sigungu 각각 String(30) (§1). */
 export interface CenterInput {
   name: string;
-  director_name: string;
+  /** 새로 만드는 원에만 필요하다. 이미 있는 원으로 들어갈 때는 보내지 않는다(ADR-068). */
+  director_name?: string;
   region_sido: string;
   region_sigungu: string;
+  /** 정부 어린이집 목록에서 고른 원의 열쇠(ADR-068). 직접 적은 원은 없다. */
+  registry_key?: string;
 }
-export interface Center extends CenterInput {
+export interface Center extends Omit<CenterInput, "registry_key" | "director_name"> {
   id: number;
+  director_name: string;
   created_at: string;
+  registry_key: string | null;
+  /** 정부 목록의 유형 · 주소. 직접 적은 원은 null. */
+  kind: string | null;
+  address: string | null;
+  /** 이 원으로 가입한 교사 수. */
+  teacher_count: number;
+  /** 만들 때만 온다 — 같은 원이 있어 그리로 들어갔으면 true. */
+  joined?: boolean;
+}
+/** docs/api-spec.md §1 「어린이집 찾기」 — 정부 어린이집 목록 한 곳. */
+export interface Daycare {
+  key: string;
+  name: string;
+  kind: string;
+  status: string;
+  address: string;
+  /** 쌤플에 이미 있는 원이면 가입한 교사 수. */
+  teacher_count: number;
 }
 /**
  * 반 연령은 age_min·age_max 두 값이다 (docs/api-spec.md §2).

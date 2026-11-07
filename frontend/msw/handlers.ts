@@ -4,7 +4,7 @@ import { commit } from "./data/store";
 import {
   findCenter,
   addCenter,
-  patchCenter,
+  mockDaycares,
   putConfig,
   currentCenterId,
   findGreetings,
@@ -309,7 +309,23 @@ export const handlers = [
     if (!b) return bad("body");
     for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
       if (!text(b[k])) return bad(k);
-    return HttpResponse.json(addCenter(b as unknown as CenterInput), { status: 201 });
+    // 목업은 계정이 하나라 「같은 원으로 들어가기」(200 · joined)는 서버에서만 본다.
+    return HttpResponse.json(
+      { ...addCenter(b as unknown as CenterInput), joined: false },
+      { status: 201 },
+    );
+  }),
+  // §1 「어린이집 찾기」. 이름에 q 가 든 곳만.
+  http.get("*/api/daycares", ({ request }) => {
+    const url = new URL(request.url);
+    const q = (url.searchParams.get("q") ?? "").replace(/\s/g, "");
+    const items = mockDaycares(
+      url.searchParams.get("sido") ?? "",
+      url.searchParams.get("sigungu") ?? "",
+    )
+      .filter((d) => d.name.includes(q))
+      .map((d) => ({ ...d, teacher_count: 0 }));
+    return HttpResponse.json({ items });
   }),
   // §1. 원 정보 읽기. 서버처럼 자기 원만 읽는다.
   http.get("*/api/centers/:centerId", ({ params }) => {
@@ -317,17 +333,6 @@ export const handlers = [
     const center = findCenter(id);
     if (!center || id !== currentCenterId()) return missing();
     return HttpResponse.json(center);
-  }),
-  // §1. 원 정보 고치기. 서버처럼 보낸 칸만 바꾸고, 지역은 두 칸을 함께 받는다.
-  http.patch("*/api/centers/:centerId", async ({ request, params }) => {
-    const id = Number(params.centerId);
-    if (!findCenter(id) || id !== currentCenterId()) return missing();
-    const b = await body(request);
-    if (!b) return bad("body");
-    for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
-      if (k in b && !text(b[k])) return bad(k);
-    if ("region_sido" in b !== "region_sigungu" in b) return bad("region_sido");
-    return HttpResponse.json(patchCenter(id, b as Partial<CenterInput>));
   }),
   // §3-2. 주 1회 모은 자료. 목업에서는 한 건만 둔다 — 화면이 비어 보이면 안 된다.
   http.get("*/api/trends", async ({ request }) => {

@@ -140,6 +140,7 @@ function normalizeSettings(parsed: Record<string, unknown>): ClassSettings {
     classes,
     // **고른 적이 없으면 비워 둔다.** 첫 반을 여기서 채우면 「아직 안 골랐다」를 아무도 못 본다
     // (FR-402 · FR-405). 첫 반이 필요한 화면은 아래 `primaryClassFor` 가 그대로 내준다.
+    registryKey: typeof parsed.registryKey === "string" ? parsed.registryKey : "",
     primaryClassId: classes.some((c) => c.id === parsed.primaryClassId)
       ? String(parsed.primaryClassId)
       : "",
