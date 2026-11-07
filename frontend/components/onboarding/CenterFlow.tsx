@@ -324,7 +324,10 @@ function FindField({
         placeholder="예: 햇살"
         onChange={(e) => onQuery(e.target.value)}
       />
-      <DaycareResults items={items} settings={s} onPick={onPick} />
+      {/* 결과 자리는 높이를 고정한다 — 찾은 수에 따라 아래 출처 줄이 오르내리지 않게. 넘치면 안에서 스크롤 */}
+      <div className="-mt-3 h-[272px]">
+        <DaycareResults items={items} settings={s} onPick={onPick} />
+      </div>
       <p className="mt-3 text-[13px] text-board-ink-soft">어린이집 목록: 어린이집정보공개포털</p>
     </div>
   );
@@ -343,18 +346,17 @@ function DaycareResults({
   settings: ClassSettings;
   onPick: (d: Daycare) => void;
 }) {
-  if (items === null)
-    return <p className="-mt-4 text-[15px] text-board-ink-soft">찾는 중이에요…</p>;
+  if (items === null) return <p className="text-[15px] text-board-ink-soft">찾는 중이에요…</p>;
   if (!items.length)
     return (
-      <p className="-mt-4 text-[15px] text-board-ink-soft">
+      <p className="text-[15px] text-board-ink-soft">
         이 지역에 그 이름의 어린이집이 없어요. 「목록에 없어요」로 직접 적어 주세요.
       </p>
     );
   return (
     <ol
       aria-label="찾은 어린이집"
-      className="-mt-2 flex max-h-[272px] flex-col gap-1 overflow-y-auto overflow-x-hidden"
+      className="flex h-full flex-col gap-1 overflow-y-auto overflow-x-hidden"
     >
       {items.map((d, i) => (
         <li key={d.key}>
