@@ -49,6 +49,33 @@
     font-size: 44px;
   }
 }
+/* 보육일지 일일 · 주간 — 수첩에 붙인 색인 탭. 지금 보는 쪽이 종이색으로 앞에 나온다. */
+.journalTabs {
+  display: flex;
+  gap: 6px;
+  margin: -12px 0 22px;
+  border-bottom: 1px solid var(--pg-line);
+}
+.journalTabs a {
+  margin-bottom: -1px;
+  padding: 9px 16px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px 8px 0 0;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--pg-ink-soft);
+  text-decoration: none;
+}
+.journalTabs a:hover {
+  color: var(--pg-ink);
+}
+.journalTabs a[aria-current="page"] {
+  border-color: var(--pg-line);
+  border-bottom-color: var(--pg-paper);
+  background: var(--pg-paper);
+  font-weight: 700;
+  color: var(--pg-ink);
+}
 .badge {
   display: inline-flex;
   align-items: center;
@@ -1693,90 +1720,95 @@ a.item {
    「언제 · 누구」가 글을 읽기 전에 먼저 눈에 들어오게 한다. */
 .recordDays {
   display: grid;
-  gap: 22px;
+  gap: 28px;
 }
 .recordDay {
   display: grid;
-  gap: 8px;
+  gap: 12px;
 }
+/* 날짜는 묶음의 머리. 뒤로 가는 선을 그어 어디서 다음 날이 시작하는지 보이게 한다. */
 .recordDate {
   display: flex;
-  align-items: baseline;
-  gap: 9px;
+  align-items: center;
+  gap: 10px;
   margin: 0;
   font-family: var(--font-display), sans-serif;
-  font-size: 25px;
+  font-size: 23px;
   font-weight: 700;
   line-height: 1.1;
   color: var(--pg-primary-deep);
 }
 .recordDate span {
-  padding: 1px 9px;
+  padding: 2px 9px;
   border-radius: 999px;
   background: var(--pg-primary-tint);
   font-family: var(--font-body), sans-serif;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--pg-primary-ink);
 }
-.recordSheet {
-  position: relative;
+.recordDate::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--pg-line);
 }
-.recordRows {
-  padding: 2px 20px;
+/* 기록 카드 — 폭을 정해 한 줄이 너무 길어지지 않게 한다. 넓으면 두 줄로 선다. */
+.recordCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  align-items: start;
+  gap: 12px;
+}
+.recordCard {
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--pg-line);
-  border-top: 0;
-  border-bottom: 0;
-  background: var(--pg-ivory);
+  border-radius: 14px;
+  background: var(--pg-paper);
+  box-shadow: 0 1px 0 rgba(43, 36, 28, 0.05);
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
-.recordSplit {
-  height: 0;
-  margin: 0;
-  border: 0;
-  border-top: 1px dashed var(--pg-line);
+.recordCard:hover,
+.recordCard[data-open] {
+  border-color: var(--pg-primary-tint-line);
+  box-shadow: 0 12px 26px -18px rgba(43, 36, 28, 0.45);
 }
 .recordRow {
   display: flex;
-  gap: 11px;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
   width: 100%;
-  padding: 13px 0;
+  padding: 16px 18px;
   text-align: left;
   background: none;
   border: 0;
+  border-radius: 14px;
   cursor: pointer;
 }
-.recordMark {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  margin-top: 1px;
-  /* 연한 테두리 한 겹으로는 아이보리 종이 위에서 떠오르지 않았다. */
-  border: 1px solid var(--pg-shell-line);
-  border-radius: 50%;
-  background: var(--pg-paper);
-  box-shadow: 0 1px 0 rgba(43, 36, 28, 0.07);
-}
-.recordBody {
-  flex: 1;
-  min-width: 0;
+.recordRow:focus-visible {
+  outline: 3px solid var(--pg-primary);
+  outline-offset: 2px;
 }
 .recordWho {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 8px;
+  align-items: center;
+  gap: 6px 8px;
 }
 .recordWho b {
-  font-size: 15px;
+  margin-right: auto;
+  font-size: 15.5px;
   font-weight: 700;
   color: var(--pg-ink);
 }
 /* 다섯 영역이 전부 같은 보라였다. 글자를 읽어야만 갈려서, 목록을 훑어도
    어느 영역이 비어 있는지 보이지 않았다. 색과 그림을 하나씩 준다. */
-.recordDomain {
+.recordDomain,
+.recordFilter {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1788,42 +1820,114 @@ a.item {
   font-weight: 600;
   color: var(--pg-primary-ink);
 }
-.recordDomain[data-tone="body"] {
+.recordDomain[data-tone="body"],
+.recordFilter[data-tone="body"][aria-pressed="true"] {
   border-color: var(--pg-clay-line);
   background: var(--pg-clay);
   color: var(--pg-alert-ink);
 }
-.recordDomain[data-tone="talk"] {
-  border-color: var(--pg-primary-tint-line);
-  background: var(--pg-primary-tint);
-  color: var(--pg-primary-ink);
+.recordDomain[data-tone="talk"],
+.recordFilter[data-tone="talk"][aria-pressed="true"] {
+  border-color: var(--pg-sky-line);
+  background: var(--pg-sky);
+  color: var(--pg-sky-ink);
 }
-.recordDomain[data-tone="social"] {
+.recordDomain[data-tone="social"],
+.recordFilter[data-tone="social"][aria-pressed="true"] {
   border-color: var(--pg-sun);
   background: var(--pg-sun-tint);
   color: var(--pg-sun-ink);
 }
-.recordDomain[data-tone="art"] {
+.recordDomain[data-tone="art"],
+.recordFilter[data-tone="art"][aria-pressed="true"] {
   border-color: var(--pg-plum-line);
   background: var(--pg-plum);
   color: var(--pg-primary-deep);
 }
-.recordDomain[data-tone="nature"] {
+.recordDomain[data-tone="nature"],
+.recordFilter[data-tone="nature"][aria-pressed="true"] {
   border-color: var(--pg-sage-line);
   background: var(--pg-sage-tint);
   color: var(--pg-sage-ink);
 }
-.recordWhere {
-  min-width: 0;
-  font-size: 12.5px;
-  color: var(--pg-ink-soft);
-}
 .recordFact {
   display: block;
-  margin-top: 5px;
-  font-size: 14.5px;
-  line-height: 1.75;
+  font-size: 15.5px;
+  line-height: 1.7;
   color: var(--pg-ink);
+}
+/* 카드의 영역 표시는 그림 하나 — 이름은 위 거르기 칩이 알려 준다 */
+.recordDomain[role="img"] {
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+/* 고르기 전에도 그림 색은 그 영역 색이라, 칩이 카드 그림의 이름표 노릇을 한다 */
+.recordFilter[data-tone="body"] svg {
+  color: var(--pg-alert-ink);
+}
+.recordFilter[data-tone="talk"] svg {
+  color: var(--pg-sky-ink);
+}
+.recordFilter[data-tone="social"] svg {
+  color: var(--pg-sun-ink);
+}
+.recordFilter[data-tone="art"] svg {
+  color: var(--pg-primary-deep);
+}
+.recordFilter[data-tone="nature"] svg {
+  color: var(--pg-sage-ink);
+}
+.recordActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 18px 14px;
+  border-top: 1px dashed var(--pg-line);
+}
+/* 카드 안의 단추는 작게 — 한 줄에 셋이 들어가야 카드가 길어지지 않는다 */
+.recordActions .secondary {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.recordActions .secondary:first-child {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+/* 영역으로 거르기 — 고른 칩만 그 영역 색이 된다 */
+.recordFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.recordFilter {
+  min-height: 34px;
+  padding: 0 12px;
+  border-color: var(--pg-line);
+  background: var(--pg-paper);
+  color: var(--pg-ink-soft);
+  cursor: pointer;
+  transition:
+    background-color 0.2s,
+    border-color 0.2s,
+    color 0.2s;
+}
+.recordFilter span {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  opacity: 0.75;
+}
+.recordFilter:hover {
+  border-color: var(--pg-primary-tint-line);
+  color: var(--pg-ink);
+}
+.recordFilter[aria-pressed="true"]:not([data-tone]) {
+  border-color: var(--pg-ink);
+  background: var(--pg-ink);
+  color: var(--pg-paper);
 }
 
 /* 적는 칸이 이 화면의 주인공이다. 흰 네모 한 장이던 자리에 테이프를 붙이고
@@ -1831,68 +1935,268 @@ a.item {
 .recordForm {
   position: relative;
 }
-.recordFormHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+.recordWrite {
+  display: grid;
+  gap: 10px;
 }
-.recordFormHead {
-  align-items: flex-end;
-}
-.recordFormWord {
-  flex: 1;
-  min-width: 0;
-  padding-bottom: 4px;
-}
-.recordFormTitle {
+/* 문장 속 빈칸 — 날짜 · 장소 · 아이. 회색 네모 대신 밑줄만 둔다. */
+.recordSentence {
   margin: 0;
-  font-family: var(--font-display), sans-serif;
-  font-size: 31px;
-  font-weight: 700;
-  line-height: 1.1;
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 2.1;
   color: var(--pg-ink);
 }
-.recordFormLead {
-  margin: 3px 0 0;
-  font-size: 12.5px;
-  line-height: 1.7;
-  color: var(--pg-ink-soft);
-}
-/* 적는 순서. 글 안에 굵은 글씨로 묻혀 있어 「순서」로 안 읽혔다. */
-.recordOrder {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 5px 8px;
-}
-.recordSteps {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 5px;
-}
-.recordSteps b {
-  padding: 2px 9px;
-  border: 1px solid var(--pg-primary-tint-line);
-  border-radius: 999px;
-  background: var(--pg-primary-tint);
-  font-size: 12px;
+.recordBlank {
+  display: inline;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 2px solid var(--pg-primary-tint-line);
+  border-radius: 0;
+  background: none;
+  font: inherit;
   font-weight: 700;
   color: var(--pg-primary-ink);
 }
-.recordSteps b + b::before {
-  content: "→";
-  margin-right: 7px;
-  margin-left: -16px;
+.recordSentence input.recordBlank {
+  width: 11em;
+  max-width: 100%;
+  min-height: 0;
+  outline-offset: 2px;
+}
+.recordBlank::placeholder {
+  font-weight: 500;
   color: var(--pg-ink-hint);
-  font-weight: 400;
+}
+button.recordBlank {
+  cursor: pointer;
+}
+button.recordBlank[data-empty] {
+  font-weight: 500;
+  color: var(--pg-ink-hint);
+}
+button.recordBlank:disabled {
+  cursor: default;
+  border-bottom-style: dashed;
+}
+.recordNowrap {
+  white-space: nowrap;
+}
+/* 날짜 — 보이는 글자 위에 투명한 달력 칸을 겹친다. 누르면 달력이 열린다. */
+.recordDateBlank {
+  position: relative;
+  display: inline-block;
+}
+.recordDateBlank input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.recordDateBlank input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  cursor: pointer;
+}
+.recordDateBlank:focus-within .recordBlank {
+  outline: 3px solid var(--pg-primary);
+  outline-offset: 2px;
+}
+/* 아이 이름 칩 — 쪽지 표식을 단 이름을 누른다. 고르면 접히고 문장에 이름이 들어간다. */
+.recordKids {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.recordKid {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 13px 0 7px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--pg-ink);
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+.recordKid:hover {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-ivory);
+}
+.recordKid[aria-pressed="true"] {
+  border-color: var(--pg-ink);
+  background: var(--pg-ink);
+  color: var(--pg-paper);
+  font-weight: 700;
+}
+.recordFactInput {
+  display: block;
+  width: 100%;
+  min-height: 128px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--pg-ivory);
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--pg-ink);
+  resize: vertical;
+}
+.recordFactInput::placeholder {
+  color: var(--pg-ink-hint);
+}
+.recordGuide {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin: -4px 0 0;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
 }
 .recordCount {
   margin-left: auto;
+  font-size: 12.5px;
   color: var(--pg-ink-hint);
   font-variant-numeric: tabular-nums;
+}
+.recordTip {
+  order: 2;
+  flex-basis: 100%;
+  font-size: 12.5px;
+  letter-spacing: -0.01em;
+}
+.recordTip b {
+  margin-right: 4px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--pg-primary-ink);
+}
+/* 영역 — 평소에는 그림만, 마우스를 올리거나 고르면 옆으로 펼쳐져 이름이 보인다 */
+/* 이름표는 위에 따로 둔다 — 옆에 두면 그림이 펼쳐질 때 이름표가 다음 줄로 밀려 흔들렸다 */
+.recordAreaRow {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+.recordAreaLabel {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.recordAreas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.recordArea {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  min-width: 38px;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  color: var(--pg-ink-soft);
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    gap 0.25s ease,
+    padding 0.25s ease;
+}
+.recordArea span {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0;
+  transition:
+    max-width 0.3s ease,
+    opacity 0.2s ease;
+}
+.recordArea:hover,
+.recordArea:focus-visible,
+.recordArea[aria-pressed="true"],
+.recordArea[data-plain] {
+  gap: 5px;
+  padding: 0 13px 0 11px;
+}
+.recordArea:hover span,
+.recordArea:focus-visible span,
+.recordArea[aria-pressed="true"] span,
+.recordArea[data-plain] span {
+  max-width: 9em;
+  opacity: 1;
+}
+.recordArea:hover:not([aria-pressed="true"]) {
+  border-color: currentColor;
+}
+.recordArea[data-tone="body"] {
+  color: var(--pg-alert-ink);
+}
+.recordArea[data-tone="talk"] {
+  color: var(--pg-sky-ink);
+}
+.recordArea[data-tone="social"] {
+  color: var(--pg-sun-ink);
+}
+.recordArea[data-tone="art"] {
+  color: var(--pg-primary-deep);
+}
+.recordArea[data-tone="nature"] {
+  color: var(--pg-sage-ink);
+}
+.recordArea[aria-pressed="true"] {
+  border-color: currentColor;
+  background: var(--pg-primary-tint);
+}
+.recordArea[aria-pressed="true"][data-tone="body"] {
+  background: var(--pg-clay);
+}
+.recordArea[aria-pressed="true"][data-tone="talk"] {
+  background: var(--pg-sky);
+}
+.recordArea[aria-pressed="true"][data-tone="social"] {
+  background: var(--pg-sun-tint);
+}
+.recordArea[aria-pressed="true"][data-tone="art"] {
+  background: var(--pg-plum);
+}
+.recordArea[aria-pressed="true"][data-tone="nature"] {
+  background: var(--pg-sage-tint);
+}
+.recordSubmit {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--pg-line);
+}
+@media (prefers-reduced-motion: reduce) {
+  .recordArea,
+  .recordArea span {
+    transition: none;
+  }
 }
 
 /* 목록 머리. 날짜 머리(손글씨 25px)보다 작아 위계가 거꾸로 서 있었다. */
@@ -1902,6 +2206,8 @@ a.item {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  /* 왼쪽(제목만) · 오른쪽(제목 + 단추) 머리가 같은 높이라야 아래 칸 윗선이 맞는다 */
+  min-height: 40px;
 }
 .recordListTitle {
   display: flex;
@@ -1919,11 +2225,6 @@ a.item {
   font-size: 13px;
   font-weight: 600;
   color: var(--pg-ink-soft);
-}
-.recordWays {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 /* 작은 밑줄 글씨라 오른쪽 끝에서 사라졌다. 다음에 갈 곳이라 단추 모양으로 세운다. */
 .recordWay {
@@ -2254,34 +2555,22 @@ a.item {
 .recordGrid {
   grid-template-columns: minmax(340px, 0.8fr) minmax(0, 1.25fr);
 }
-/* 좁은 칸이라 아이를 한 줄 다 쓰고, 날짜 · 영역을 그 밑에 나란히 둔다. */
-.recordForm .row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
-}
-.recordForm .row > :first-child {
-  grid-column: 1 / -1;
-}
 @media (max-width: 1100px) {
   .recordGrid {
     grid-template-columns: 1fr;
   }
 }
-/* 왼쪽 칸은 화면 높이 안에 「남기기」까지 들어와야 한다. 머리와 칸 사이를 줄인다. */
+/* 목록을 내려도 적는 칸이 따라온다. 화면이 낮으면 칸이 잘리니 키가 큰 화면에서만. */
+@media (min-width: 1101px) and (min-height: 860px) {
+  .recordGrid > .side {
+    position: sticky;
+    top: 84px;
+    align-self: start;
+  }
+}
+/* 왼쪽 칸은 화면 높이 안에 「기록하기」까지 들어와야 한다. 머리와 칸 사이를 줄인다. */
 .recordGrid .recordForm {
   padding: 22px 24px 24px;
-}
-.recordGrid .recordFormHead {
-  flex-wrap: nowrap;
-  align-items: center;
-  margin-bottom: 10px;
-}
-.recordGrid .recordFormTitle {
-  font-size: 27px;
-}
-.recordGrid .recordForm textarea {
-  min-height: 118px;
 }
 
 /* ── 문서 보관함 · 같은 원 남의 반 (ADR-059) ── */
@@ -2531,4 +2820,710 @@ a.item {
 .journalDays .link {
   margin-left: auto;
   font-size: 13px;
+}
+
+/* ── 관찰일지 만들기 (/records/journal) — 왼쪽 아이 · 기간 · 근거, 오른쪽 만든 일지 · 편집기 ── */
+.jrSetup {
+  display: grid;
+  gap: 22px;
+}
+.jrStep {
+  display: grid;
+  gap: 10px;
+}
+.jrStep h2,
+.jrList h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pg-ink);
+}
+.jrStep h2 span {
+  margin-left: 4px;
+  font-size: 13px;
+  color: var(--pg-primary-ink);
+}
+.jrPeriod {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.jrPeriod input {
+  flex: 1 1 140px;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--pg-line);
+  border-radius: 10px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+}
+.jrPeriod input,
+.jrPeriod input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+.jrSources {
+  display: grid;
+  gap: 6px;
+  max-height: 360px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.jrSources label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--pg-line);
+  border-radius: 10px;
+  background: var(--pg-paper);
+  font-size: 14px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.jrSources label:has(input:checked) {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-ivory);
+}
+.jrSources input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+  accent-color: var(--pg-primary);
+}
+.jrSources small {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.jrMake {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--pg-line);
+}
+.jrMake small {
+  margin-right: auto;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.jrList {
+  display: grid;
+  gap: 14px;
+}
+.jrEmpty {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 4px;
+  color: var(--pg-ink-soft);
+}
+.jrEmpty p {
+  margin: 0;
+}
+.jrDocs {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.jrDocs button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--pg-line);
+  border-radius: 10px;
+  background: var(--pg-paper);
+  text-align: left;
+  cursor: pointer;
+}
+.jrDocs button:hover {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-ivory);
+}
+.jrDocs small {
+  font-size: 12.5px;
+  color: var(--pg-ink-soft);
+}
+
+/* 관찰 기록 왼쪽 머리의 관찰일지 길 — 이 화면에서 제일 진한 단추 */
+.recordJournalLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--pg-primary);
+  color: var(--pg-paper);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color 0.15s;
+}
+.recordJournalLink:hover {
+  background: var(--pg-primary-hover);
+}
+.recordJournalLink:focus-visible {
+  outline: 3px solid var(--pg-primary);
+  outline-offset: 2px;
+}
+/* 찾기 칸 옆 날짜 거르기 */
+.recordFindRow {
+  display: flex;
+  gap: 8px;
+}
+.recordFindRow .recordFind {
+  flex: 1;
+  min-width: 0;
+}
+.recordDayPick {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.recordDayPick:hover {
+  border-color: var(--pg-primary-tint-line);
+}
+.recordDayPick[data-on] {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+.recordDayPick .recordFindMark {
+  color: currentColor;
+}
+.recordDayPick input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.recordDayPick input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  cursor: pointer;
+}
+.recordDayPick:focus-within {
+  outline: 3px solid var(--pg-primary);
+  outline-offset: 2px;
+}
+
+/* ── 관찰일지 한 편 (ObservationJournalEditor) ────────────────────────────
+ * 초안: 칠판 위에 근거 쪽지, 그 아래 공책 두 장(해석 · 지원), 확정은 도장.
+ * 확정본: 내려받을 한글 양식과 같은 칸의 종이 + 오른쪽 내려받기. */
+.ojWrap {
+  display: grid;
+  gap: 14px;
+}
+.ojBoard {
+  display: grid;
+  gap: 18px;
+  padding: 26px 28px 34px;
+  border-radius: 6px;
+  margin-bottom: 14px;
+}
+.ojHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  color: var(--pg-board-ink);
+}
+.ojHead h2 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.ojHead span {
+  font-family: var(--font-display), sans-serif;
+  font-size: 20px;
+  color: var(--pg-board-ink-soft);
+}
+.ojHead em {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--pg-paper-warm);
+  border: 1px solid var(--pg-paper-warm-line);
+  color: var(--pg-ink);
+  font-size: 12.5px;
+  font-weight: 700;
+  font-style: normal;
+}
+.ojHead em + em,
+.ojHead em[data-alert] {
+  margin-left: 0;
+  background: var(--pg-alert-soft);
+  border-color: var(--pg-alert-soft-line);
+  color: var(--pg-alert-ink);
+}
+.ojChalk {
+  margin: -6px 0 0;
+  font-size: 13.5px;
+  color: var(--pg-board-ink-soft);
+}
+.ojChalk a {
+  color: var(--pg-note);
+  text-underline-offset: 3px;
+}
+.ojNotes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 20px;
+  margin: 0;
+  padding: 8px 0 0;
+  list-style: none;
+}
+.ojNotes li {
+  position: relative;
+  width: min(250px, 100%);
+  padding: 20px 16px 16px;
+  background: var(--pg-note);
+  color: var(--pg-ink);
+  font-size: 14.5px;
+  line-height: 1.6;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.28);
+  transform: rotate(-1.4deg);
+}
+.ojNotes li:nth-child(even) {
+  transform: rotate(1.1deg);
+}
+/* 테이프 */
+.ojNotes li::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  width: 64px;
+  height: 18px;
+  translate: -50% 0;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.ojNotes li[data-tone="body"] {
+  background: var(--pg-clay);
+}
+.ojNotes li[data-tone="talk"] {
+  background: var(--pg-sky);
+}
+.ojNotes li[data-tone="social"] {
+  background: var(--pg-note);
+}
+.ojNotes li[data-tone="art"] {
+  background: var(--pg-plum);
+}
+.ojNotes li[data-tone="nature"] {
+  background: var(--pg-sage);
+}
+.ojNotes small {
+  display: block;
+  margin-bottom: 4px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.ojStale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--pg-alert-soft);
+  color: var(--pg-alert-ink);
+}
+.ojStale p {
+  flex: 1 1 260px;
+  margin: 0;
+  font-size: 14px;
+}
+.ojPads {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 18px;
+}
+/* 공책 한 장. 왼쪽 빨간 여백선 + 34px 줄 — 글줄 높이와 같아야 글자가 줄에 앉는다. */
+.ojPad {
+  display: grid;
+  gap: 2px;
+  padding: 16px 18px 14px 46px;
+  border-radius: 4px;
+  background:
+    linear-gradient(90deg, transparent 30px, var(--pg-alert) 30px 31.5px, transparent 31.5px),
+    var(--pg-paper-warm);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+}
+.ojPad span {
+  font-family: var(--font-display), sans-serif;
+  font-size: 23px;
+  font-weight: 700;
+  color: var(--pg-ink);
+}
+.ojPad small {
+  font-size: 12.5px;
+  color: var(--pg-ink-soft);
+}
+.ojPad textarea {
+  min-height: 204px;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  resize: vertical;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 33px,
+    var(--pg-paper-warm-line) 33px 34px
+  );
+  font: inherit;
+  font-size: 15.5px;
+  line-height: 34px;
+  color: var(--pg-ink);
+}
+.ojPad textarea:focus-visible {
+  outline: 2px solid var(--pg-primary);
+  outline-offset: 4px;
+}
+.ojFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 18px;
+}
+.ojCheck {
+  display: flex;
+  flex: 1 1 280px;
+  align-items: center;
+  gap: 10px;
+  font-size: 14.5px;
+  color: var(--pg-board-ink);
+  cursor: pointer;
+}
+.ojCheck input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--pg-note);
+}
+.ojSave {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1.5px solid var(--pg-board-ink-soft);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pg-board-ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+.ojSave:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+/* 확정 도장. 체크 전에는 흐린 분필 동그라미, 체크하면 노란 도장. */
+.ojStamp {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  width: 104px;
+  height: 104px;
+  border: 3px dashed var(--pg-board-ink-soft);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--pg-board-ink-soft);
+  rotate: -8deg;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    transform 0.15s;
+}
+.ojStamp b {
+  font-family: var(--font-display), sans-serif;
+  font-size: 30px;
+  line-height: 1;
+}
+.ojStamp small {
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.ojStamp:not(:disabled) {
+  border: 3px double var(--pg-ink);
+  background: var(--pg-note);
+  color: var(--pg-ink);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.32);
+}
+.ojStamp:not(:disabled):hover {
+  transform: scale(1.05);
+}
+.ojStamp:disabled {
+  cursor: not-allowed;
+}
+.ojRemove {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12.5px;
+  color: var(--pg-board-ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* 출력 미리보기 — A4 종이 비율의 한 장 + 오른쪽 내려받기 */
+.ojPreview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  align-items: start;
+  gap: 22px;
+}
+@media (max-width: 900px) {
+  .ojPreview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.ojSheet {
+  padding: 46px 44px 56px;
+  background: var(--pg-paper);
+  border: 1px solid var(--pg-line);
+  box-shadow: 0 10px 24px rgba(52, 49, 47, 0.12);
+  font-family: "Malgun Gothic", "Apple SD Gothic Neo", var(--font-body), sans-serif;
+  color: #111;
+}
+@media (max-width: 600px) {
+  .ojSheet {
+    padding: 26px 16px 32px;
+  }
+}
+.ojSheet h2 {
+  margin: 0 0 22px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.ojSheet table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.ojSheet th,
+.ojSheet td {
+  border: 1px solid #222;
+  padding: 10px 12px;
+  vertical-align: top;
+}
+.ojSheet th {
+  width: 118px;
+  background: #f1f1f1;
+  font-weight: 700;
+  text-align: center;
+  vertical-align: middle;
+}
+.ojSheet thead th {
+  width: auto;
+}
+.ojSheet thead th:first-child {
+  width: 118px;
+}
+.ojSheet td {
+  min-height: 56px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ojSheet td p {
+  margin: 0;
+}
+.ojSheet td p + p {
+  margin-top: 8px;
+}
+.ojRail {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 14px;
+  background: var(--pg-paper);
+  border: 1px solid var(--pg-line);
+}
+.ojRail h3 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+}
+.ojRail p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--pg-ink-soft);
+}
+.ojDone {
+  justify-self: start;
+  padding: 4px 14px;
+  border: 2.5px double var(--pg-alert-strong-line);
+  border-radius: 6px;
+  color: var(--pg-alert-strong-line);
+  font-family: var(--font-display), sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  rotate: -6deg;
+}
+.ojExportHead {
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.ojExports {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.ojExports button {
+  display: flex;
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--pg-line);
+  border-radius: 8px;
+  background: var(--pg-paper);
+  cursor: pointer;
+}
+.ojExports button:hover:not(:disabled) {
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-shell, #f7f4ee);
+}
+.ojExports button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ojNote {
+  margin: 0;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+/* 확정본에서 다시 고치기 — 그림 · 굵은 이름 · 무슨 일이 생기는지 한 줄 */
+.ojRedo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 14px;
+  border: 1px dashed var(--pg-line);
+  border-radius: 10px;
+  background: var(--pg-paper-warm);
+  color: var(--pg-ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.ojRedo:hover:not(:disabled) {
+  border-style: solid;
+  border-color: var(--pg-ink-soft);
+}
+.ojRedo span {
+  display: grid;
+}
+.ojRedo b {
+  font-size: 15px;
+}
+.ojRedo small {
+  font-size: 12.5px;
+  color: var(--pg-ink-soft);
+}
+/* 누구 · 언제 — 손글씨 두 줄 */
+.ojWho {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  line-height: 1.15;
+}
+.ojWho b {
+  font-size: 30px;
+  color: var(--pg-ink);
+}
+.ojWho span {
+  font-size: 20px;
+  color: var(--pg-ink-soft);
+}
+
+/* 나가기 경고 — 포스티가 든 노란 쪽지. 사라지는 것 한 줄만 빨갛게. */
+.ojLeave {
+  width: min(380px, calc(100vw - 32px));
+  padding: 26px 26px 20px;
+  border: 1.5px solid var(--pg-note-line);
+  border-radius: 6px;
+  background: var(--pg-note);
+  color: var(--pg-ink);
+  text-align: center;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
+  rotate: -1deg;
+}
+.ojLeave::backdrop {
+  background: rgba(43, 51, 46, 0.55);
+}
+.ojLeave h3 {
+  margin: 6px 0 4px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 30px;
+}
+.ojLeave p {
+  margin: 0 0 18px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--pg-alert-ink);
+}
+.ojLeave > div {
+  display: grid;
+  gap: 8px;
+}
+.ojLeave > div > button {
+  min-height: 46px;
+}
+.ojLeave > :first-child {
+  display: block;
+  margin: 0 auto;
+}
+/* 「저장하고 나가기」가 제일 먼저 눈에 가야 한다 — 노란 쪽지 위 보라는 약하다. */
+.ojLeave > div > button:first-child {
+  border-color: var(--pg-ink);
+  background: var(--pg-ink);
+  color: var(--pg-paper);
+}
+@media (max-width: 600px) {
+  .ojBoard {
+    padding: 22px 16px 28px;
+  }
 }

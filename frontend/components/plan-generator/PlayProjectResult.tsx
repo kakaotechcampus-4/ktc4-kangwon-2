@@ -33,7 +33,13 @@ import { ApiError } from "@/lib/api/client";
 import { confirmPlayProject, errorFields, isSaveConflict } from "@/lib/api/plans";
 import { usePlaySelectionSave } from "@/lib/hooks/use-play-selection-save";
 import type { Rejected } from "@/lib/plan-generator/playSelectionQueue";
-import { eulReul, fields, playSeason, type PlayField } from "./playProjectPagination";
+import {
+  eulReul,
+  fields,
+  playPageLabels,
+  playSeason,
+  type PlayField,
+} from "./playProjectPagination";
 import { PlanMemoNote } from "./PlanMemo";
 export { buildPlayProjectPreviewRows } from "./playProjectPagination";
 
@@ -880,6 +886,10 @@ export default function PlayProjectResult({
       status={
         <span className="flex items-center gap-3">
           <PlanMemoNote plan={plan} />
+          {/* ⑤ 에서 ④ 로 돌아가는 길. 없어서 멘토가 뒤로 갔다 다시 들어와야 놀이 고르기가 보였다(11-05). */}
+          <button type="button" className={BUTTON.outline} onClick={() => setStep(0)}>
+            놀이 다시 고르기
+          </button>
         </span>
       }
       notice={
@@ -974,6 +984,7 @@ export default function PlayProjectResult({
           <span>
             <BigView
               pages={Math.ceil(plan.periods.length / 2)}
+              labels={playPageLabels(plan.periods)}
               width={SHEET_WIDTH}
               dialog={bigDialog}
               render={(page) => (

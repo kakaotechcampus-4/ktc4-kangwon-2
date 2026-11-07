@@ -940,7 +940,7 @@ export default function DocumentsPage() {
             {blocked && <p className={ws.hint}>{blocked}</p>}
             {fromRoutines && routineHref && (
               <Link className={ws.link} href={routineHref}>
-                새 일과 기록 열기 →
+                보육일지에서 일과 적기 →
               </Link>
             )}
             {!fromRoutines && (

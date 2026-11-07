@@ -269,11 +269,14 @@ export const POPOVER = "absolute right-0 top-full z-20 mt-2 w-[380px]";
  */
 export function BigView({
   pages,
+  labels,
   width,
   render,
   dialog,
 }: {
   pages: number;
+  /** 쪽 탭 이름. 없으면 「1쪽 · 2쪽」. */
+  labels?: string[];
   /** 문서 기준 폭(px) — 배율 「맞춤」이 이 폭을 창 폭에 맞춘다. */
   width: number;
   render: (page: number) => ReactNode;
@@ -326,7 +329,7 @@ export function BigView({
                         className={pageClass(page === i)}
                         onClick={() => setPage(i)}
                       >
-                        {i + 1}쪽
+                        {labels?.[i] ?? `${i + 1}쪽`}
                       </button>
                     ))}
                   </div>
@@ -363,13 +366,22 @@ export function BigView({
  * 확정 취소는 없다 — 고치려면 문서 보관함에서 지우고 다시 만든다(ADR-064).
  * 월간 진입은 두 형식 다 `/plans/monthly` 다 — 놀이 중심형은 그 화면이 놀이 월간 만들기로 가른다.
  */
-export function AnnualDone({ plan, pages }: { plan: AnnualPlanResponse; pages: ReactNode[] }) {
+export function AnnualDone({
+  plan,
+  pages,
+  pageLabels,
+}: {
+  plan: AnnualPlanResponse;
+  pages: ReactNode[];
+  pageLabels?: string[];
+}) {
   return (
     <PlanDone
       title={`${plan.school_year} 연간계획안을 확정했어요`}
       docLabel="확정된 연간계획안"
       format={plan.format}
       pages={pages}
+      pageLabels={pageLabels}
       download={(format) => downloadAnnualHwpx(plan.id, format)}
       next={{
         href: "/plans/monthly",
@@ -381,7 +393,7 @@ export function AnnualDone({ plan, pages }: { plan: AnnualPlanResponse; pages: R
 }
 
 /** 내보내기 버튼 — 로고만 보이고 이름은 aria-label · title. */
-const EXPORTS: Record<ExportFormat, { label: string; done: string; color: string }> = {
+export const EXPORTS: Record<ExportFormat, { label: string; done: string; color: string }> = {
   pdf: { label: "PDF로 내려받기", done: "PDF로 내려받았어요.", color: "bg-[#d4483b]" },
   hwpx: {
     label: "한글 파일(hwpx)로 내려받기",
@@ -396,7 +408,7 @@ const EXPORTS: Record<ExportFormat, { label: string; done: string; color: string
 };
 
 /** 접힌 귀퉁이가 있는 문서 모양 + 형식 이름 띠. 받는 중이면 띠가 「…」. */
-function FileLogo({ format, busy }: { format: ExportFormat; busy: boolean }) {
+export function FileLogo({ format, busy }: { format: ExportFormat; busy: boolean }) {
   return (
     <span aria-hidden="true" className="relative block h-12 w-10">
       <svg viewBox="0 0 40 48" className="absolute inset-0 h-full w-full">
@@ -423,6 +435,7 @@ export function PlanDone({
   docLabel,
   format,
   pages,
+  pageLabels,
   download,
   next,
   notes,
@@ -431,6 +444,8 @@ export function PlanDone({
   docLabel: string;
   format: Format;
   pages: ReactNode[];
+  /** 쪽 탭 이름(놀이 중심형 「봄·여름 · 가을·겨울」). 없으면 「1쪽 · 2쪽」. */
+  pageLabels?: string[];
   /** 파일 받기(확정본만) — PDF · HWPX · HWP. 서버 경로가 없으면 빼고, 내보내기 칸을 숨긴다. */
   download?: (format: ExportFormat) => Promise<void>;
   /** `onClick` 이 있으면 주소로 가지 않고 그것을 부른다(같은 주소 안에서 화면만 바꿀 때). */
@@ -476,7 +491,7 @@ export function PlanDone({
                   className={pageClass(i === page)}
                   onClick={() => setPage(i)}
                 >
-                  {i + 1}쪽
+                  {pageLabels?.[i] ?? `${i + 1}쪽`}
                 </button>
               ))}
             </div>

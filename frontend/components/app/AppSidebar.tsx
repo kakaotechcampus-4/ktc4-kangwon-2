@@ -11,6 +11,7 @@ import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { accountName } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import {
+  chosenClassFor,
   loadClassSettings,
   primaryClassFor,
   saveClassSettings,
@@ -44,26 +45,22 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
     items: [
       {
         key: "records",
-        label: "관찰 기록",
+        // 메뉴 이름은 선생님이 쓰는 문서 이름 — 보육일지와 짝(PM 11-07).
+        label: "관찰일지",
         short: "관찰",
         href: "/records",
         icon: "users",
         match: (p) => p.startsWith("/records") || p === "/compare",
       },
       {
+        // 일과를 적고 그 자리에서 일일 보육일지를 만든다. 주간 보육일지는 같은 메뉴의 주간 탭이다
+        // (13주차 멘토 리뷰 — 메뉴 이름은 선생님이 쓰는 말로 · 주간 기록 메뉴는 합친다).
         key: "routines",
-        label: "일과 기록",
-        short: "일과",
+        label: "보육일지",
+        short: "일지",
         href: "/routines",
         icon: "edit",
-        match: (p) => p.startsWith("/routines"),
-      },
-      {
-        key: "quick",
-        label: "주간 기록",
-        short: "주간",
-        href: "/weekly-records",
-        icon: "record",
+        match: (p) => p.startsWith("/routines") || p.startsWith("/weekly-records"),
       },
     ],
   },
@@ -116,7 +113,7 @@ const NO_ROOM = {
   orgName: "",
   className: "",
   age: "",
-  classId: "",
+  chosenId: "",
   classes: [] as ClassroomEntry[],
 };
 
@@ -128,7 +125,9 @@ function readRoom() {
     orgName: settings?.orgName ?? "",
     className: klass?.className ?? "",
     age: klass?.ageGroup ? AGE_LABEL[klass.ageGroup as AgeGroup] : "",
-    classId: klass?.id ?? "",
+    // 교사가 실제로 고른 반. 비어 있으면 고르개도 빈칸에서 시작한다 — 보이는 첫 반을 그대로
+    // 다시 골라도 값이 안 바뀌어 아무 일도 안 일어나던 것을 막는다(13주차 멘토 리뷰).
+    chosenId: chosenClassFor(settings)?.id ?? "",
     classes: settings?.classes ?? [],
   };
 }
@@ -266,10 +265,15 @@ export default function AppSidebar() {
           {classes.length > 1 ? (
             <select
               aria-label="반 바꾸기"
-              value={room.classId}
+              value={room.chosenId}
               onChange={(e) => switchClass(e.target.value)}
               className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             >
+              {!room.chosenId && (
+                <option value="" disabled>
+                  반 고르기
+                </option>
+              )}
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.className}
@@ -509,10 +513,15 @@ function MoreMenu({
                 반 바꾸기
                 <select
                   aria-label="반 바꾸기"
-                  value={room.classId}
+                  value={room.chosenId}
                   onChange={(e) => switchClass(e.target.value)}
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                 >
+                  {!room.chosenId && (
+                    <option value="" disabled>
+                      반 고르기
+                    </option>
+                  )}
                   {classes.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.className}

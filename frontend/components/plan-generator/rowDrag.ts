@@ -30,8 +30,10 @@ export function liftCells(
   // 문서 배율(zoom)을 복사본에도 준다 — 글자 크기가 같아 보이게.
   // 복사본은 body 에 붙어 화면 전체 배율(app)도 받으므로, 화면 좌표 · 크기를 그만큼 나눠 넣는다.
   const app = appZoom();
-  const docZoom = Number(cells[0].closest<HTMLElement>('[style*="zoom"]')?.style.zoom) || 1;
-  const zoom = docZoom * app;
+  const sheet = cells[0].closest<HTMLElement>('[style*="zoom"]');
+  const docZoom = Number(sheet?.style.zoom) || 1;
+  // 칸 크기는 문서 안에서 잰 배율로 되돌린다 — 화면 배율 × 문서 배율을 곱해 짐작하지 않는다.
+  const zoom = sheet ? appZoom(sheet) : app;
   const offset = axis === "y" ? event.clientY - rects[0].top : event.clientX - rects[0].left;
   const table = document.createElement("table");
   table.className = cells[0].closest("table")?.className ?? "";

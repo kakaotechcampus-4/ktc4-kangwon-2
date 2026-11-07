@@ -32,19 +32,27 @@ test("표식은 목록 순서가 아니라 id 를 따른다", () => {
   }
 });
 
-test("도형·색이 범위 안이고 한쪽으로 쏠리지 않는다", () => {
-  const shapes = new Set();
+test("색이 범위 안이고, 차례로 등록한 아이끼리 겹치지 않는다", () => {
   const tones = new Set();
   for (let i = 0; i < 40; i += 1) {
     const m = mark.markFor(`c${i}`);
-    assert.ok(m.shape >= 0 && m.shape < mark.MARK_SHAPES, `shape ${m.shape}`);
     assert.ok(m.tone >= 0 && m.tone < mark.MARK_TONES, `tone ${m.tone}`);
-    shapes.add(m.shape);
     tones.add(m.tone);
   }
-  // 마흔 명이면 여섯 도형·세 색이 모두 한 번씩은 나와야 쓸모가 있다.
-  assert.equal(shapes.size, mark.MARK_SHAPES);
   assert.equal(tones.size, mark.MARK_TONES);
+  // 번호가 이어지는 일곱 명은 일곱 색을 하나씩 받는다.
+  const run = new Set(Array.from({ length: 7 }, (_, i) => mark.markFor(`child-${i + 1}`).tone));
+  assert.equal(run.size, 7);
+  // 번호 없는 id 도 범위 안이다.
+  const named = mark.markFor("김하늘").tone;
+  assert.ok(named >= 0 && named < mark.MARK_TONES);
+});
+
+test("쪽지 글자는 성을 뺀 이름 첫 글자", () => {
+  assert.equal(mark.markLetter("김하늘"), "하");
+  assert.equal(mark.markLetter("하람"), "하");
+  assert.equal(mark.markLetter(" 정하람 "), "하");
+  assert.equal(mark.markLetter(""), "");
 });
 
 test("주는 월요일에 시작한다", () => {

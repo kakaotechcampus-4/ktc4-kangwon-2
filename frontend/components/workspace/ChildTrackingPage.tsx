@@ -9,9 +9,12 @@ import { useClientState } from "@/lib/hooks/use-client-state";
 import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
 import { CHILD_PREFIX, CLASS_PREFIX, classServerId } from "@/lib/api/onboarding";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
-import { AXES, DEFAULT_AXIS, type ObservationAxis } from "@/lib/workspace/observation-axis";
+import { daysBetween, markFor, STALE_DAYS } from "@/lib/workspace/child-mark";
+import { DOMAIN_LOOK } from "@/lib/workspace/domain-look";
+import { today } from "@/lib/workspace/model";
 import type { ApiChildTracking, ApiClass, ApiObservation } from "@/lib/api/types";
 import { Icon } from "@/components/app/icons";
+import { ChildNote } from "@/components/app/ChildPicker";
 import { ObservationArt } from "./DocumentArchiveArt";
 import { Message } from "./WorkspaceUI";
 import styles from "./ChildTracking.module.css";
@@ -32,11 +35,80 @@ function recordsHref(classId: number | null, childId?: number) {
   return "/records?" + query.toString();
 }
 
+/** 마지막 기록이 며칠 전인지. 한 번도 없으면 null. */
+const gapOf = (child: ApiChildTracking, now: string) =>
+  child.last_date ? daysBetween(child.last_date, now) : null;
+/** 「오늘」 · 「어제」 · 「14일 전」 · 「없음」 */
+function whenLabel(days: number | null) {
+  if (days === null) return "없음";
+  return days === 0 ? "오늘" : days === 1 ? "어제" : `${days}일 전`;
+}
+
+/** 오래 비어 있는 순 — 한 번도 없는 아이가 맨 앞, 그다음 마지막 기록이 오래된 아이. */
+function byNeed(a: ApiChildTracking, b: ApiChildTracking) {
+  if (a.last_date !== b.last_date) {
+    if (a.last_date === null) return -1;
+    if (b.last_date === null) return 1;
+    return a.last_date.localeCompare(b.last_date);
+  }
+  return a.name.localeCompare(b.name, "ko");
+}
+
 /**
- * 발달 추적 — 아이 한 명의 관찰 기록을 모아 본다.
+ * 칠판 띠 한 줄. **가장 오래 비어 있는 아이에 맞춰 말을 고른다** — 모두 사흘 안에
+ * 적었는데 「한 주 넘게 못 본 아이」라고 하면 틀린 말이다.
+ *
+ * - 한 번도 없는 아이가 있으면 → 「아직 한 번도 못 적은 아이 — ○○」
+ * - 한 주(7일)를 넘긴 아이가 있으면 → 「한 주 넘게 못 본 아이 — ○○」
+ * - 다 한 주 안이면 → 「다음엔 ○○ 차례예요」(가장 오래된 아이)
+ * - 오늘 모두 적었으면 → 「오늘 모두 한 번씩 적었어요」
+ */
+export function boardLine(children: ApiChildTracking[], now: string) {
+  if (!children.length) return null;
+  const sorted = [...children].sort(byNeed);
+  const top = sorted[0];
+  const gap = gapOf(top, now);
+  const names = (list: ApiChildTracking[]) =>
+    list.length > 3
+      ? `${list
+          .slice(0, 3)
+          .map((c) => c.name)
+          .join(" · ")} 외 ${list.length - 3}명`
+      : list.map((c) => c.name).join(" · ");
+  if (gap === null) {
+    const never = sorted.filter((c) => c.last_date === null);
+    return {
+      lead: "아직 한 번도 못 적은 아이 — ",
+      names: names(never),
+      tail: "",
+      sub: "",
+      target: top,
+    };
+  }
+  if (gap > STALE_DAYS) {
+    const late = sorted.filter((c) => (gapOf(c, now) ?? 0) > STALE_DAYS);
+    const sub = `${late.length > 1 ? "가장 오래된 기록" : "마지막 기록"} ${whenLabel(gap)}`;
+    return { lead: "한 주 넘게 못 본 아이 — ", names: names(late), tail: "", sub, target: top };
+  }
+  if (gap > 0)
+    return {
+      lead: "다음엔 ",
+      names: top.name,
+      tail: " 차례예요",
+      sub: `마지막 기록 ${whenLabel(gap)}`,
+      target: top,
+    };
+  return { lead: "오늘 모두 한 번씩 적었어요", names: "", tail: "", sub: "", target: null };
+}
+
+/**
+ * 아이별 기록 — 쪽지 하나가 아이 한 명. 오래 비어 있는 아이가 먼저 온다(순서는 하나뿐이다),
+ * 쪽지를 누르면 옆에 그 아이의 영역 칸과 날짜별 기록이 펼쳐진다.
  *
  * **조회만 한다.** 발달 수준을 판정하지 않는다 — 판정은 ADR-007 이 스펙아웃한 발달평가다.
  * 영역별 개수는 「어느 영역을 덜 봤나」를 교사가 알게 하는 용도다. 서버가 센다 (§2-1).
+ * 영역 축(누리과정 5영역 · 일상생활 · 놀이활동)은 원 설정을 따른다 — 화면에서 바꾸게
+ * 두었더니, 그 축으로 적은 기록이 없는 칸만 보여서 헷갈렸다.
  *
  * 서버에서 바로 읽고 브라우저에 저장하지 않는다 — 아동 실명이 담긴다 (ADR-013).
  */
@@ -45,14 +117,7 @@ export default function ChildTrackingPage() {
   const [classData, setClassData] = useState<ClassData | null>(null);
   const [pickedChild, setPickedChild] = useState<number | null>(null);
   const [error, setError] = useState("");
-  const configuredDomains = useObservationDomains();
-  // 기존 훅은 설정을 읽기 전이나 실패했을 때 DEFAULT_AXIS의 상수 배열을 반환한다.
-  const defaultAxis: ObservationAxis =
-    configuredDomains === AXES.DAILY_PLAY_2 ? "DAILY_PLAY_2" : DEFAULT_AXIS;
-  const [axisSelection, setAxisSelection] = useState<{
-    classId: number;
-    axis: ObservationAxis;
-  } | null>(null);
+  const domains = useObservationDomains();
 
   /*
     반은 사이드바가 고른다. 화면 안에 셀렉트를 두지 않으므로 주 반의 서버 번호를 그대로
@@ -67,7 +132,6 @@ export default function ChildTrackingPage() {
     (primaryServerId && classes?.some((c) => c.id === primaryServerId) ? primaryServerId : null) ??
     classes?.[0]?.id ??
     null;
-  const axis = axisSelection?.classId === classId ? axisSelection.axis : defaultAxis;
 
   useEffect(() => {
     getMe()
@@ -88,31 +152,55 @@ export default function ChildTrackingPage() {
   }, [classId]);
 
   const current = classData?.classId === classId ? classData : null;
-  const child =
-    current?.children.find((c) => c.child_id === pickedChild) ?? current?.children[0] ?? null;
+  const now = today();
+  const sorted = current ? [...current.children].sort(byNeed) : [];
+  const child = sorted.find((c) => c.child_id === pickedChild) ?? sorted[0] ?? null;
 
   return (
     <main className={styles.page}>
       <header className={styles.header}>
         <div>
           <h1>아이별 기록</h1>
-          <p>아이를 고르면 그 아이 기록만 봅니다.</p>
+          <p>쪽지 하나가 아이 한 명이에요. 누르면 그 아이 기록이 펼쳐져요.</p>
         </div>
+        {/* 관찰 기록 아래 화면이다. 관찰일지 만들기 화면과 같은 자리 · 같은 말로 돌아간다. */}
+        <Link href="/records" className={styles.back}>
+          ← 관찰 기록
+        </Link>
       </header>
       <Message error>{error}</Message>
       {/* 조회가 실패하면 로딩 안내를 함께 보여주지 않는다. */}
-      {!error && (
-        <Body
-          classes={classes}
-          classId={classId}
-          classData={current}
-          child={child}
-          axis={axis}
-          onPickAxis={(next) => {
-            if (classId !== null) setAxisSelection({ classId, axis: next });
-          }}
-          onPickChild={setPickedChild}
-        />
+      {!error && !classes && <TrackingState loading title="기록을 불러오고 있어요" />}
+      {!error && classes && !classes.length && (
+        <TrackingState title="먼저 아이를 등록해 주세요">
+          <Link href="/onboarding" className={styles.action}>
+            반·아동 등록하기 →
+          </Link>
+        </TrackingState>
+      )}
+      {!error && !!classes?.length && (
+        <>
+          {current && <Board kids={current.children} now={now} classId={classId} />}
+          <div className={styles.workspace}>
+            <Wall
+              loaded={!!current}
+              sorted={sorted}
+              selected={child?.child_id ?? null}
+              now={now}
+              domains={domains}
+              onPick={setPickedChild}
+            />
+            {/* 아이를 바꾸면 이전 아이의 본문을 즉시 걷고 새로 조회한다. */}
+            {child && (
+              <ChildDetail
+                key={`${classId}:${child.child_id}`}
+                classId={classId}
+                child={child}
+                domains={domains}
+              />
+            )}
+          </div>
+        </>
       )}
       {error && (
         <div className={styles.notice}>
@@ -128,89 +216,59 @@ export default function ChildTrackingPage() {
   );
 }
 
-function Body({
-  classes,
+/** 칠판 띠 — 지금 챙길 아이 한 줄과 바로 적으러 가는 단추. */
+function Board({
+  kids,
+  now,
   classId,
-  classData,
-  child,
-  axis,
-  onPickAxis,
-  onPickChild,
 }: {
-  classes: ApiClass[] | null;
+  kids: ApiChildTracking[];
+  now: string;
   classId: number | null;
-  classData: ClassData | null;
-  child: ApiChildTracking | null;
-  axis: ObservationAxis;
-  onPickAxis: (axis: ObservationAxis) => void;
-  onPickChild: (id: number) => void;
 }) {
-  if (!classes) return <TrackingState loading title="기록을 불러오고 있어요" />;
-  if (!classes.length) {
-    return (
-      <TrackingState title="먼저 아이를 등록해 주세요">
-        <Link href="/onboarding" className={styles.action}>
-          반·아동 등록하기 →
-        </Link>
-      </TrackingState>
-    );
-  }
-  const className = classes.find((item) => item.id === classId)?.name ?? "";
+  const line = boardLine(kids, now);
+  if (!line) return null;
   return (
-    <div className={styles.workspace}>
-      <aside className={styles.selector} aria-label="아이 고르기">
-        {/* 반은 사이드바 맨 위에서 고른다. 여기에 또 두면 두 곳에서 같은 것을 고르게 된다. */}
-        <div className={styles.selectorHead}>
-          <h2>아이 고르기</h2>
-          <p>고른 아이의 기록만 봅니다.</p>
-        </div>
-        <ChildList
-          key={classId ?? "loading"}
-          classData={classData}
-          selected={child?.child_id ?? null}
-          onPick={onPickChild}
-        />
-      </aside>
-      {/* 아이를 바꾸면 이전 아이의 본문을 즉시 걷고 새로 조회한다. */}
-      {child && (
-        <ChildDetail
-          key={`${classId}:${child.child_id}`}
-          classId={classId}
-          child={child}
-          className={className}
-          writeHref={recordsHref(classId, child.child_id)}
-          axis={axis}
-          onPickAxis={onPickAxis}
-        />
+    <section className={`chalkboard ${styles.board}`} aria-label="챙길 아이">
+      <div>
+        <p className={styles.boardSay}>
+          {line.lead}
+          {line.names && <em>{line.names}</em>}
+          {line.tail}
+        </p>
+        {line.sub && <p className={styles.boardSub}>{line.sub}</p>}
+      </div>
+      {line.target && (
+        <Link href={recordsHref(classId, line.target.child_id)} className={styles.boardGo}>
+          기록 작성 →
+        </Link>
       )}
-      {!child && (
-        <TrackingState
-          loading={!classData}
-          title={classData ? "아직 적은 기록이 없어요" : "아이 정보를 불러오고 있어요"}
-        >
-          {classData && <p>반에 아동을 등록하면 아이별로 관찰을 모아 볼 수 있어요.</p>}
-        </TrackingState>
-      )}
-    </div>
+    </section>
   );
 }
 
-function ChildList({
-  classData,
+function Wall({
+  loaded,
+  sorted,
   selected,
+  now,
+  domains,
   onPick,
 }: {
-  classData: ClassData | null;
+  loaded: boolean;
+  sorted: ApiChildTracking[];
   selected: number | null;
+  now: string;
+  domains: readonly string[];
   onPick: (id: number) => void;
 }) {
-  if (!classData)
+  if (!loaded)
     return (
       <p role="status" className={styles.helper}>
         아이 목록을 불러오고 있어요…
       </p>
     );
-  if (!classData.children.length) {
+  if (!sorted.length) {
     return (
       <div className={styles.rosterEmpty}>
         <p>이 반에 등록된 아동이 없어요</p>
@@ -221,50 +279,63 @@ function ChildList({
     );
   }
   return (
-    <>
-      <p className={styles.rosterLabel}>
-        아이 <span>{classData.children.length}명</span>
-      </p>
-      <ul className={styles.childList} aria-label="아이 목록">
-        {classData.children.map((item) => (
+    <ul className={styles.wall} aria-label="아이 목록" data-tour="child-picker">
+      {sorted.map((item) => {
+        const gap = gapOf(item, now);
+        const late = gap === null || gap > STALE_DAYS;
+        return (
           <li key={item.child_id}>
             <button
               type="button"
-              className={styles.childCard}
+              className={styles.note}
+              data-tone={markFor(CHILD_PREFIX + item.child_id).tone}
               aria-label={`${item.name} · ${item.total}건`}
               aria-pressed={item.child_id === selected}
               onClick={() => onPick(item.child_id)}
             >
-              <span className={styles.childInfo}>
-                <strong>{item.name}</strong>
-                <small>기록 {item.total}건</small>
+              {late && (
+                <span className={styles.flag}>{gap === null ? "기록 없음" : `D+${gap}`}</span>
+              )}
+              <strong>{item.name}</strong>
+              <small data-late={late || undefined}>
+                기록 {item.total}건<span className={styles.sep}> · </span>
+                <span className={styles.last}>마지막 {whenLabel(gap)}</span>
+              </small>
+              <span className={styles.noteDomains} aria-hidden="true">
+                {domains.map((domain) => {
+                  const look = DOMAIN_LOOK[domain];
+                  if (!look) return null;
+                  return (
+                    <i
+                      key={domain}
+                      data-tone={look.tone}
+                      data-off={!item.by_domain[domain] || undefined}
+                    >
+                      <Icon name={look.icon} width={13} height={13} />
+                    </i>
+                  );
+                })}
               </span>
-              <Icon name="chevron" />
             </button>
           </li>
-        ))}
-      </ul>
-    </>
+        );
+      })}
+    </ul>
   );
 }
 
 function ChildDetail({
   classId,
   child,
-  className,
-  writeHref,
-  axis,
-  onPickAxis,
+  domains,
 }: {
   classId: number | null;
   child: ApiChildTracking;
-  className: string;
-  writeHref: string;
-  axis: ObservationAxis;
-  onPickAxis: (axis: ObservationAxis) => void;
+  domains: readonly string[];
 }) {
   const [records, setRecords] = useState<ApiObservation[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const writeHref = recordsHref(classId, child.child_id);
 
   useEffect(() => {
     let stale = false;
@@ -278,90 +349,55 @@ function ChildDetail({
     };
   }, [classId, child.child_id]);
 
+  // tracking 조회가 성공해 전체 0건임을 알 때만 누락 키를 0으로 보충한다.
+  // 기록이 있는 아동의 누락 키는 숫자를 추정하지 않고 「—」 로 둔다.
+  const countOf = (domain: string): number | undefined =>
+    child.by_domain[domain] ?? (child.total === 0 ? 0 : undefined);
+
   return (
-    <section className={styles.detail} aria-label={`${child.name} 관찰 기록`}>
-      <div className={styles.summary}>
-        <div className={styles.summaryText}>
-          <span className={styles.eyebrow}>{className}</span>
-          <h2>{child.name}</h2>
-          <p className={styles.recordTotal}>기록 {child.total}건</p>
-        </div>
-        <Link href={writeHref} className={styles.action}>
-          전체 기록에서 보기 →
-        </Link>
+    <section
+      className={styles.detail}
+      aria-label={`${child.name} 관찰 기록`}
+      data-tour="child-detail"
+    >
+      <div className={styles.detailHead}>
+        <ChildNote name={child.name} mark={markFor(CHILD_PREFIX + child.child_id)} size={40} />
+        <h2>{child.name}</h2>
       </div>
-      <DomainCounts
-        counts={child.by_domain}
-        total={child.total}
-        axis={axis}
-        onPickAxis={onPickAxis}
-      />
+
+      <section className={styles.domainSection} aria-label="영역별 기록 수">
+        <ul className={styles.domainRow} data-axis={domains.length}>
+          {domains.map((domain) => {
+            const count = countOf(domain);
+            const look = DOMAIN_LOOK[domain];
+            return (
+              <li key={domain} data-tone={look?.tone} data-empty={count ? undefined : true}>
+                {look && (
+                  <i aria-hidden="true">
+                    <Icon name={look.icon} width={17} height={17} />
+                  </i>
+                )}
+                <span>{domain}</span>
+                <b>{count ?? "—"}</b>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+
+      <Link
+        href={`/records/journal?child=${encodeURIComponent(CHILD_PREFIX + child.child_id)}`}
+        className={styles.journalGo}
+      >
+        관찰일지 작성 →
+      </Link>
+
       {/* 본문 조회 오류가 다른 아동의 선택을 막지 않게 상세 안에서 안내한다. */}
       {failed && (
         <Message error>기록을 불러오지 못했어요. 다른 아이를 골랐다가 다시 열어주세요.</Message>
       )}
       {!failed && records === null && <TrackingState loading title="기록을 불러오고 있어요" />}
       {!failed && records !== null && <Timeline records={records} writeHref={writeHref} />}
-    </section>
-  );
-}
-
-/**
- * 고른 기준의 카드는 빈 집계에서도 늘 유지한다 — 5영역은 5장, 놀이·일상생활은 2장.
- * 전체 0건이 확인된 경우만 누락된 영역을 0건으로 채우고, 기록이 있는데 그 기준의 키가
- * 없으면 숫자를 추정하지 않고 카드 안에서 「정보 없음」으로 안내한다.
- */
-function DomainCounts({
-  counts,
-  total,
-  axis,
-  onPickAxis,
-}: {
-  counts: Record<string, number>;
-  total: number;
-  axis: ObservationAxis;
-  onPickAxis: (axis: ObservationAxis) => void;
-}) {
-  const playLife = axis === "DAILY_PLAY_2";
-  // 저장 계약의 두 영역을 그대로 쓰되, 시안처럼 놀이활동을 먼저 배치한다.
-  const domains = playLife ? [...AXES[axis]].reverse() : AXES[axis];
-  return (
-    <section className={styles.domainSection} aria-label="영역별 기록 수">
-      <div className={styles.sectionHead}>
-        <div className={styles.sectionTitleRow}>
-          <h3>영역별 기록 수</h3>
-          <div className={styles.axisSwitch} role="group" aria-label="관찰 영역 보기 기준">
-            <button
-              type="button"
-              aria-pressed={axis === "NURI_5"}
-              onClick={() => onPickAxis("NURI_5")}
-            >
-              누리과정 5영역
-            </button>
-            <button
-              type="button"
-              aria-pressed={playLife}
-              onClick={() => onPickAxis("DAILY_PLAY_2")}
-            >
-              놀이·일상생활
-            </button>
-          </div>
-        </div>
-        <p>관찰한 횟수입니다. 발달 수준을 뜻하지 않습니다.</p>
-      </div>
-      <ul className={styles.domainRow} data-axis={axis}>
-        {domains.map((domain) => {
-          // tracking 조회가 성공해 전체 0건임을 알 때만 누락 키를 0으로 보충한다.
-          // 기록이 있는 아동의 누락 키는 숫자를 추정하지 않고 「—」 로 둔다.
-          const count: number | undefined = counts[domain] ?? (total === 0 ? 0 : undefined);
-          return (
-            <li key={domain} data-empty={count ? undefined : true}>
-              <span>{domain}</span>
-              <b>{count ?? "—"}</b>
-            </li>
-          );
-        })}
-      </ul>
     </section>
   );
 }
@@ -393,26 +429,30 @@ function Timeline({ records, writeHref }: { records: ApiObservation[]; writeHref
         <h3>날짜별 기록</h3>
         <span className={styles.timelineCount}>기록 {records.length}건</span>
       </div>
-      <div aria-hidden="true" className="slipEdge top" />
       <div className={styles.slip}>
         {[...months].map(([month, items]) => (
           <section key={month} aria-label={`${month} 기록`}>
             <h4 className={styles.monthLine}>
               {month.slice(0, 4)}년 {Number(month.slice(5))}월 <span>{items.length}건</span>
             </h4>
-            {items.map((record) => (
-              <article className={styles.slipLine} key={record.id}>
-                <time dateTime={record.date}>{shortDate(record.date)}</time>
-                <div>
-                  <span className={styles.domainTag}>{record.domain}</span>
-                  <p>{record.fact}</p>
-                </div>
-              </article>
-            ))}
+            {items.map((record) => {
+              const look = DOMAIN_LOOK[record.domain];
+              return (
+                <article className={styles.slipLine} key={record.id}>
+                  <time dateTime={record.date}>{shortDate(record.date)}</time>
+                  <div>
+                    <span className={styles.domainTag} data-tone={look?.tone}>
+                      {look && <Icon name={look.icon} width={12} height={12} />}
+                      {record.domain}
+                    </span>
+                    <p>{record.fact}</p>
+                  </div>
+                </article>
+              );
+            })}
           </section>
         ))}
       </div>
-      <div aria-hidden="true" className="slipEdge bottom" />
     </section>
   );
 }

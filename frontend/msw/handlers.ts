@@ -4,7 +4,7 @@ import { commit } from "./data/store";
 import {
   findCenter,
   addCenter,
-  patchCenter,
+  mockDaycares,
   putConfig,
   currentCenterId,
   findGreetings,
@@ -156,7 +156,6 @@ const withMemo = <T extends { id: number }>(
   return Object.assign(plan, fields);
 };
 const missing = () => failure("NOT_FOUND", "대상을 찾을 수 없습니다.");
-const MOCK_INVITE = "MOCK234567";
 async function body(request: Request): Promise<Record<string, unknown> | null> {
   try {
     const b = await request.json();
@@ -310,7 +309,23 @@ export const handlers = [
     if (!b) return bad("body");
     for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
       if (!text(b[k])) return bad(k);
-    return HttpResponse.json(addCenter(b as unknown as CenterInput), { status: 201 });
+    // 목업은 계정이 하나라 「같은 원으로 들어가기」(200 · joined)는 서버에서만 본다.
+    return HttpResponse.json(
+      { ...addCenter(b as unknown as CenterInput), joined: false },
+      { status: 201 },
+    );
+  }),
+  // §1 「어린이집 찾기」. 이름에 q 가 든 곳만.
+  http.get("*/api/daycares", ({ request }) => {
+    const url = new URL(request.url);
+    const q = (url.searchParams.get("q") ?? "").replace(/\s/g, "");
+    const items = mockDaycares(
+      url.searchParams.get("sido") ?? "",
+      url.searchParams.get("sigungu") ?? "",
+    )
+      .filter((d) => d.name.includes(q))
+      .map((d) => ({ ...d, teacher_count: 0 }));
+    return HttpResponse.json({ items });
   }),
   // §1. 원 정보 읽기. 서버처럼 자기 원만 읽는다.
   http.get("*/api/centers/:centerId", ({ params }) => {
@@ -318,41 +333,6 @@ export const handlers = [
     const center = findCenter(id);
     if (!center || id !== currentCenterId()) return missing();
     return HttpResponse.json(center);
-  }),
-  // §1. 원 정보 고치기. 서버처럼 보낸 칸만 바꾸고, 지역은 두 칸을 함께 받는다.
-  http.patch("*/api/centers/:centerId", async ({ request, params }) => {
-    const id = Number(params.centerId);
-    if (!findCenter(id) || id !== currentCenterId()) return missing();
-    const b = await body(request);
-    if (!b) return bad("body");
-    for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
-      if (k in b && !text(b[k])) return bad(k);
-    if ("region_sido" in b !== "region_sigungu" in b) return bad("region_sido");
-    return HttpResponse.json(patchCenter(id, b as Partial<CenterInput>));
-  }),
-  // 초대 코드 (§1-1). 목업은 계정이 하나라 코드를 하나로 고정한다.
-  http.post("*/api/centers/:centerId/invites", ({ params }) => {
-    const id = Number(params.centerId);
-    if (!findCenter(id) || id !== currentCenterId()) return missing();
-    const expires_at = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-    return HttpResponse.json({ code: MOCK_INVITE, expires_at }, { status: 201 });
-  }),
-  http.post("*/api/centers/join", async ({ request }) => {
-    const b = await body(request);
-    if (!b || !text(b.code)) return bad("code");
-    // 실제 서버와 같은 순서다 — 이미 원이 있으면 409, 코드가 틀리면 404.
-    if (currentCenterId() !== null) return failure("ALREADY_EXISTS", "이미 등록한 원이 있습니다.");
-    if (b.code.trim().toUpperCase() !== MOCK_INVITE)
-      return failure("NOT_FOUND", "초대 코드가 없거나 만료됐습니다.", "code");
-    // 목업은 계정이 하나라 초대한 원이 없다. 들어갈 원을 그 자리에서 만든다.
-    return HttpResponse.json(
-      addCenter({
-        name: "초대받은 어린이집",
-        director_name: "김원장",
-        region_sido: "강원특별자치도",
-        region_sigungu: "춘천시",
-      }),
-    );
   }),
   // §3-2. 주 1회 모은 자료. 목업에서는 한 건만 둔다 — 화면이 비어 보이면 안 된다.
   http.get("*/api/trends", async ({ request }) => {

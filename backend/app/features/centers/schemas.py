@@ -25,6 +25,8 @@ PersonName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=
 # 지역 두 칸은 마이그레이션 A 가 centers.region_sido · region_sigungu 를 각각 String(30) 으로
 # 확정했다. DB 가 자르기 전에 계약 형식 422 로 돌려준다.
 RegionPart = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=30)]
+# 정부 어린이집 목록의 열쇠. centers.registry_key 가 String(300) 이다.
+RegistryKey = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
 # 학년도 기준 연 나이. 계약도 DB CHECK 도 3~5 뿐이다.
 SelectedAge = Annotated[int, Field(ge=3, le=5)]
 
@@ -37,33 +39,14 @@ class CenterCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: Name
-    director_name: PersonName
+    # 새로 만드는 원에만 필요하다 — 이미 있는 원으로 들어가는 교사에게는 묻지 않는다(ADR-068).
+    # 필요한지는 원이 있는지를 봐야 알아서 라우터가 본다.
+    director_name: PersonName | None = None
     region_sido: RegionPart
     region_sigungu: RegionPart
-
-
-class CenterUpdate(BaseModel):
-    """`PATCH /api/centers/{center_id}` 요청. **보낸 칸만 바꾼다.**
-
-    원명 · 원장 이름 · 지역은 바뀐다 — 원이 이름을 바꾸거나 원장이 교체되고, 처음에 지역을
-    잘못 고르기도 한다. 그런데 고칠 길이 없어서 `POST /api/centers` 를 다시 불러야 했고,
-    거기서는 「이미 등록한 원이 있습니다」 409 가 났다 (수린 점검).
-
-    지역 두 칸은 함께 보낸다. 시·도만 바꾸면 시·군·구가 그 시·도에 없는 값으로 남는다.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    name: Name | None = None
-    director_name: PersonName | None = None
-    region_sido: RegionPart | None = None
-    region_sigungu: RegionPart | None = None
-
-    @model_validator(mode="after")
-    def _region_pair(self):
-        if (self.region_sido is None) != (self.region_sigungu is None):
-            raise ValueError("region_sido 와 region_sigungu 는 함께 보낸다")
-        return self
+    # 정부 어린이집 목록에서 고른 원의 열쇠(ADR-068). 같은 열쇠의 원이 있으면 그 원으로 들어간다.
+    # 없으면 「목록에 없어요」로 직접 적은 원이다 — 다른 교사가 찾을 수 없다.
+    registry_key: RegistryKey | None = None
 
 
 class ClassCreate(BaseModel):
@@ -192,23 +175,34 @@ class CenterResponse(BaseModel):
     region_sido: str
     region_sigungu: str
     created_at: datetime
+    registry_key: str | None
+    # 정부 목록에서 읽어 붙인다(ADR-068). 직접 적은 원 · 옛 원은 None 이다.
+    kind: str | None = None
+    address: str | None = None
+    # 이 원으로 가입한 교사 수. 이름은 주지 않는다.
+    teacher_count: int = 0
 
 
-class InviteResponse(BaseModel):
-    """`POST /api/centers/{center_id}/invites` 응답 (§1-1)."""
+class CenterCreated(CenterResponse):
+    """`POST /api/centers` 응답. 같은 원이 이미 있어 그리로 들어갔으면 `joined` 가 참이다."""
 
-    model_config = ConfigDict(from_attributes=True)
-
-    code: str
-    expires_at: datetime
+    joined: bool
 
 
-class JoinRequest(BaseModel):
-    """`POST /api/centers/join` 요청 (§1-1). 대소문자·앞뒤 공백은 서버가 맞춘다."""
+class DaycareItem(BaseModel):
+    """`GET /api/daycares` 의 항목 — 정부 어린이집 목록 한 곳 (ADR-068)."""
 
-    model_config = ConfigDict(extra="forbid")
+    key: str
+    name: str
+    kind: str
+    status: str
+    address: str
+    # 쌤플에 이미 있는 원이면 그 원으로 가입한 교사 수. 없으면 0.
+    teacher_count: int
 
-    code: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20)]
+
+class DaycareList(BaseModel):
+    items: list[DaycareItem]
 
 
 class ClassResponse(BaseModel):
