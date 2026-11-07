@@ -12,7 +12,7 @@ import re
 from .names import name_variants
 from .pool import SubstitutionError, has_final
 
-__all__ = ["NameTable", "SubstitutionError", "mask", "unmask"]
+__all__ = ["NameTable", "SubstitutionError", "mask", "unmask", "unmask_from"]
 
 
 class NameTable:
@@ -106,3 +106,26 @@ def unmask(text: str, table: NameTable) -> str:
     if not isinstance(table, NameTable):
         raise SubstitutionError("NameTable 을 넘긴다")
     return _replace(text, table.restoring)
+
+
+def unmask_from(text: str, table: NameTable, original: str) -> str:
+    """원문에서 그대로 옮겨 온 글을, 원문에 적혀 있던 표기 그대로 되돌린다.
+
+    unmask 는 가명을 등록 실명으로 돌린다. 주제 칸의 「여름」이 김여름의 이름과 같아 가려졌으면
+    unmask 는 「김여름」을 돌려준다. 옮겨 온 글이니 가명 자리에 그 아이의 표기를 넣어 원문에서
+    찾고, 찾은 글자를 그대로 준다. 원문에 없으면 unmask 와 같다.
+    """
+    restoring = table.restoring
+    if not any(code in text for code in restoring):
+        return text
+    codes = sorted(restoring, key=len, reverse=True)
+    parts = re.split("(" + "|".join(map(re.escape, codes)) + ")", text)
+
+    def spot(index: int, part: str) -> str:
+        if index % 2 == 0:
+            return re.escape(part)
+        options = sorted({part, *name_variants(restoring[part])}, key=len, reverse=True)
+        return "(?:" + "|".join(map(re.escape, options)) + ")"
+
+    found = re.search("".join(spot(i, p) for i, p in enumerate(parts)), original)
+    return found[0] if found else unmask(text, table)
