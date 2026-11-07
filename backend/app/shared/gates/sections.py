@@ -43,7 +43,7 @@ def check_sections(
     source_texts: Sequence[str],
     valid_source_ids: set[int],
     *,
-    stage: Literal["generate", "edit", "confirm", "reconfirm"],
+    stage: Literal["generate", "edit", "confirm", "reconfirm", "verify"],
 ) -> list[str]:
     """틀린 칸을 전부 모아 `fields` 로 돌려준다. 비어 있으면 통과다.
 

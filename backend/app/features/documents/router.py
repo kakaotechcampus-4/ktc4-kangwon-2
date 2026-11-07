@@ -52,9 +52,13 @@ from app.features.documents.schemas import (
     DocumentSourceItem,
     DocumentUnconfirmResponse,
     DocumentUpdateRequest,
+    DocumentVerifyIssue,
+    DocumentVerifyRequest,
+    DocumentVerifyResponse,
     RelatedDocumentsResponse,
 )
 from app.features.documents.stale import SourceImpact, document_changed
+from app.features.documents.verify import verify_sections
 from app.features.observations.models import Observation
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.dependency import CurrentUser
@@ -63,8 +67,10 @@ from app.shared.auth.ownership import (
     require_own_child,
     require_own_class,
 )
+from app.shared.childCode import SubstitutionError
+from app.shared.gates.judge import JUDGED_KINDS, MAX_SENTENCES, TooLong
 from app.shared.gates.sections import check_sections, join_facts
-from app.shared.llm import LlmBudgetExceeded
+from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -806,6 +812,105 @@ def related_documents(
     rows = session.execute(query.order_by(Document.start_date.desc(), Document.id.desc())).all()
     return RelatedDocumentsResponse(
         items=[_list_item(item) for item in rows], expected_kinds=list(expected)
+    )
+
+
+@router.post("/{document_id}/verify", response_model=DocumentVerifyResponse)
+def verify_document(
+    document_id: int,
+    session: DbSession,
+    user: CurrentUser,
+    body: DocumentVerifyRequest | None = None,
+) -> DocumentVerifyResponse:
+    """3단 게이트 3단 — 교사가 고친 해석 · 지원을 근거 기록과 대조한다 (ADR-069 · api-spec §11).
+
+    순서: 1 · 2단(모델 없음) → 원 전체 가명 처리 → jev 판정 → 화면용 이름 되돌림.
+    **판정하지 못하면 빈 목록이 아니라 오류를 낸다.** 빈 목록은 「문제없음」이라서다.
+    결과는 저장하지 않고, 확정은 이 단계를 요구하지 않는다.
+    """
+    doc = _own_document(session, user, document_id)
+    if doc.kind not in JUDGED_KINDS:
+        # 판정 질문과 기준값은 이 세 가지로 실측했다(ADR-069). 영유아 평가는 재지 않았다.
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "VALIDATION_FAILED",
+            "관찰일지 · 일일 보육일지 · 주간 보육일지만 AI 검토를 합니다.",
+            ["kind"],
+        )
+    if doc.origin == "IMPORT":
+        # 증빙 등록은 원문 그대로다. 해석 · 지원을 AI 가 쓰지 않았고 교사가 고친 것도 아니다.
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "VALIDATION_FAILED",
+            "증빙으로 올린 문서는 AI 검토를 하지 않습니다.",
+            ["origin"],
+        )
+    sources = _sources(session, doc.id)
+    if body is not None and body.sections is not None:
+        sections = list(body.sections)
+    else:
+        sections = list(
+            session.scalars(select(DocumentSection).where(DocumentSection.document_id == doc.id))
+        )
+    fields = check_sections(
+        sections, [s.text for s in sources], {s.source_id for s in sources}, stage="verify"
+    )
+    if fields:
+        # 1 · 2단에 걸린 글은 3단에 보내지 않는다 (CLAUDE.md 「3단 게이트」 — 순서를 바꾸지 않는다).
+        raise _invalid(fields)
+    try:
+        issues, judge_name = verify_sections(session, doc, sections, sources)
+    except SubstitutionError as exc:
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "VALUE_INVALID",
+            "아이 이름을 가명으로 바꾸지 못해 AI 검토를 하지 않았어요.",
+            ["sections"],
+        ) from exc
+    except TooLong as exc:
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "VALUE_INVALID",
+            f"해석 · 지원 문장이 {MAX_SENTENCES}개를 넘어 AI 검토를 하지 않았어요. "
+            "나눠서 적어 주세요.",
+            ["sections"],
+        ) from exc
+    except LlmBudgetExceeded as exc:
+        raise _error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "LLM_BUDGET_EXCEEDED",
+            "AI 사용 한도를 넘었습니다. 담당자에게 알려주세요.",
+            [],
+        ) from exc
+    except LlmUnavailable as exc:
+        raise _error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "DEPENDENCY_UNAVAILABLE",
+            "지금은 AI 검토를 쓸 수 없어요. 확정은 그대로 할 수 있어요.",
+            [],
+        ) from exc
+    except (LlmFailed, KeyError) as exc:
+        raise _error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "GENERATION_FAILED",
+            "AI 검토를 하지 못했어요. 다시 시도해 주세요.",
+            [],
+        ) from exc
+    texts = {s.source_id: s.text for s in sources}
+    return DocumentVerifyResponse(
+        issues=[
+            DocumentVerifyIssue(
+                heading=i.heading,
+                sentence=i.sentence,
+                code=i.code,
+                source_id=i.source_id,
+                source_text=texts.get(i.source_id),
+                reason=i.reason,
+                fix=i.fix,
+            )
+            for i in issues
+        ],
+        judge=judge_name,
     )
 
 

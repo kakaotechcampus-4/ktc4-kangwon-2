@@ -93,6 +93,45 @@ def complete_json(
     return content
 
 
+# 판정 전용 모델(ADR-069). 글을 쓰지 않고 정해 둔 질문에 보기 · 확률로만 답한다.
+# **버전을 고정한다** — `jev-latest` 는 새 버전이 나오면 같은 문장에 다른 판정을 낼 수 있다.
+# 실측(판정 기준값)은 이 버전으로 했다. 올리면 다시 잰다.
+JEV_MODEL = "typesafe/jev-1.14"
+# 문장 6개(질문 40여 개)가 1초 안쪽이다. 화면이 기다리는 호출이라 생성보다 짧게 끊는다.
+# 한 문서가 많아야 6번 부른다(judge.MAX_SENTENCES 36 / CHUNK 6) — 최악에도 1분 안에 끝난다.
+JEV_TIMEOUT_SECONDS = 10.0
+
+
+def require_jev_config() -> tuple[str, str]:
+    base_url = settings.elice_jev_base_url or ""
+    api_key = settings.elice_mlapi_api_key or ""
+    parsed = urlparse(base_url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise LlmUnavailable("ELICE_JEV_BASE_URL 이 없거나 https 주소가 아니다")
+    if not api_key.strip():
+        raise LlmUnavailable("ELICE_MLAPI_API_KEY 가 없다")
+    return base_url, api_key
+
+
+def decide(state: Mapping[str, object], questions: Mapping[str, object], *, transport=None) -> dict:
+    """jev 에 판정을 묻고 `answers` 를 돌려준다. OpenAI 형식이 아니라 `/v1/decisions` 다.
+
+    **가명으로 바꾼 글만 넘긴다.** 이름 처리는 부르는 쪽(shared/childCode)이 한다.
+    """
+    base_url, api_key = require_jev_config()
+    post = transport or post_json
+    result = post(
+        f"{base_url.rstrip('/')}/v1/decisions",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        payload={"model": JEV_MODEL, "state": dict(state), "questions": dict(questions)},
+        timeout=JEV_TIMEOUT_SECONDS,
+    )
+    answers = result.get("answers") if isinstance(result, Mapping) else None
+    if not isinstance(answers, Mapping):
+        raise LlmFailed("응답에 answers 가 없다")
+    return dict(answers)
+
+
 def _log_usage(result: object, model: object) -> None:
     """성공한 호출에 쓴 토큰을 한 줄 남긴다.
 

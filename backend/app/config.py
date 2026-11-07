@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # 아무도 안 읽어서 "키를 넣었는데 왜 안 되지" 가 났다.
     elice_mlapi_base_url: str | None = None
     elice_mlapi_api_key: str | None = None
+    # 판정 전용 모델 jev 의 주소(ADR-069). 엘리스는 모델마다 주소가 달라 Luna 주소와 따로 둔다.
+    # 키는 위 `elice_mlapi_api_key` 를 같이 쓴다. 없으면 일지 AI 검토(`/verify`)만 503 이다.
+    elice_jev_base_url: str | None = None
     # str 이면 'Real' · 'production' 이 들어와도 통과하고 mock 분기에 안 걸려
     # 실제 호출이 나간다. 이제 기동 시점에 터진다.
     llm_mode: Literal["mock", "real"] = "mock"
