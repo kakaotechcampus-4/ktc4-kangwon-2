@@ -686,6 +686,7 @@ function page(
         return jsx("page", { children: [action, children] });
       },
       Empty: "empty",
+      JournalTabs: "journal-tabs",
       Message: "message",
       Notice: "notice",
       ws: {},
@@ -1952,6 +1953,7 @@ function quickRecordsPage(
     "next/link": { default: "link" },
     "./WorkspaceUI": {
       WorkspacePage: "page",
+      JournalTabs: "journal-tabs",
       Message: "message",
       Notice: "notice",
       useClasses: () => rooms,
@@ -2174,6 +2176,7 @@ function homePage(
     "@/components/app/AppLayout": { PageContainer: "container" },
     "@/components/app/icons": { Icon: "icon" },
     "@/components/workspace/WorkspaceUI": { useClasses: () => box.classes },
+    "@/components/workspace/domain-look": domainLook,
     "@/lib/api/records": records.api,
     "@/lib/api/onboarding": onboardingApi,
     "@/lib/workspace/model": { today: () => TODAY },

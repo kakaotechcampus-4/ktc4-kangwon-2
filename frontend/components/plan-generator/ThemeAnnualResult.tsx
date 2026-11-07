@@ -306,9 +306,9 @@ export default function ThemeAnnualResult({
           {BACK_ICON}
         </Link>
       }
+      saved={SAVE_LABEL[status]}
       status={
         <span className="flex items-center gap-3">
-          {SAVE_LABEL[status]}
           <PlanMemoNote plan={plan} />
         </span>
       }
@@ -350,7 +350,10 @@ export default function ThemeAnnualResult({
             {asking && (
               <div className={POPOVER}>
                 <PlayMonthlyConfirm
-                  message="확정하면 확정을 풀기 전까지 고칠 수 없어요. 이 내용으로 월간계획안을 만들게 돼요."
+                  title="연간계획안을 확정할까요?"
+                  message={
+                    "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요.\n이 내용으로 월간계획안을 만들게 돼요."
+                  }
                   yes={confirming ? "확정하는 중…" : "확정하기"}
                   no="더 다듬기"
                   disabled={confirming}
@@ -377,6 +380,7 @@ export default function ThemeAnnualResult({
           <span>
             <BigView
               pages={1}
+              width={SHEET_WIDTH}
               render={() => <AnnualThemeSheet title={sheetTitle} months={sheetMonths} />}
             />
           </span>

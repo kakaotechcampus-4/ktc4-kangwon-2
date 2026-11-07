@@ -65,7 +65,7 @@ def test_group_activity_is_written_per_operating_day(days):
     assert [cell.day for cell in group] == list(days)
     assert len({cell.value for cell in group}) == len(days)
     assert {cell.generation.method for cell in group} == {GenerationMethod.RULE_LLM}
-    assert {cell.generation.rule_version for cell in group} == {"weekly-planner-v2+monthly-linked-v7+day-cells-v1"}
+    assert {cell.generation.rule_version for cell in group} == {"weekly-planner-v2+monthly-linked-v8+indoor-alternative-v3+teacher-venues-v2+day-cells-v1"}
     assert all(cell.evidence for cell in group)
     # special_program: one blank teacher-input cell per day, never generated.
     assert [(c.day, c.value, c.generation) for c in _days(plan, "special_program")] == [(d, "", None) for d in days]
@@ -123,7 +123,7 @@ def test_a_repeated_day_value_is_repaired_for_the_whole_section():
     group = _days(plan, "group_activity")
     assert len({cell.value for cell in group}) == 5
     # S2-4: the Section is repaired as one answer, so every day records the repair prompt.
-    assert {cell.generation.rule_version for cell in group} == {"weekly-planner-repair-v1+monthly-linked-v7+day-cells-v1"}
+    assert {cell.generation.rule_version for cell in group} == {"weekly-planner-repair-v1+monthly-linked-v8+indoor-alternative-v3+teacher-venues-v2+day-cells-v1"}
 
 
 def test_regenerating_one_day_keeps_every_other_cell():
@@ -132,7 +132,7 @@ def test_regenerating_one_day_keeps_every_other_cell():
     after = harness.regenerate_weekly(before, section_key="group_activity", day=OperatingDay.TUE)
 
     request = harness.weekly_provider.requests[-1]
-    assert request.prompt_version == "weekly-cell-planner-v1+monthly-linked-v7+day-cells-v1"
+    assert request.prompt_version == "weekly-cell-planner-v1+monthly-linked-v8+indoor-alternative-v3+teacher-venues-v2+day-cells-v1"
     assert request.target("group_activity").days == ("TUE",)
     assert len(request.other_day_values) == 4
     target = before.cell("group_activity", OperatingDay.TUE)
@@ -146,7 +146,7 @@ def test_indoor_list_format_and_source_area_reach_generation_and_regeneration():
     plan = _generate(harness)
     harness.regenerate_weekly(plan, section_key="indoor_play")
     for request in (harness.weekly_provider.requests[0], harness.weekly_provider.requests[-1]):
-        assert "[역할놀이] - 활동명: 짧은 설명" in request.system_prompt
+        assert "[역할놀이] 활동명: 짧은 설명" in request.system_prompt
         assert "임의 분류를 붙이지 않는다" in request.system_prompt
         indoor = [e for e in json.loads(request.user_content)["evidence"]
                   if e["grounding_class"] == "INDOOR_PLAY"]

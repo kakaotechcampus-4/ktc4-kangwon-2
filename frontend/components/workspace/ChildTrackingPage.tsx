@@ -279,7 +279,7 @@ function Wall({
     );
   }
   return (
-    <ul className={styles.wall} aria-label="아이 목록">
+    <ul className={styles.wall} aria-label="아이 목록" data-tour="child-picker">
       {sorted.map((item) => {
         const gap = gapOf(item, now);
         const late = gap === null || gap > STALE_DAYS;
@@ -355,7 +355,11 @@ function ChildDetail({
     child.by_domain[domain] ?? (child.total === 0 ? 0 : undefined);
 
   return (
-    <section className={styles.detail} aria-label={`${child.name} 관찰 기록`}>
+    <section
+      className={styles.detail}
+      aria-label={`${child.name} 관찰 기록`}
+      data-tour="child-detail"
+    >
       <div className={styles.detailHead}>
         <ChildNote name={child.name} mark={markFor(CHILD_PREFIX + child.child_id)} size={40} />
         <h2>{child.name}</h2>

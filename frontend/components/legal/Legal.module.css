@@ -1,7 +1,7 @@
 /* 약관 · 개인정보처리방침 — 읽는 화면. 색은 토큰만 쓴다. */
 
 .page {
-  min-height: 100vh;
+  min-height: calc(100 * var(--app-vh));
   background: var(--pg-cream);
   color: var(--pg-ink);
 }

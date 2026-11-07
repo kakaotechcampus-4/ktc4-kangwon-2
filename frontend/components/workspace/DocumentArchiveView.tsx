@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/app/icons";
+import { Posty } from "@/components/app/Posty";
 import { DOCUMENT_KINDS, localDate, today, type DocumentKind } from "@/lib/workspace/model";
 import {
   ARCHIVE_STATUS_LABEL,
@@ -24,8 +25,9 @@ import {
 } from "@/lib/workspace/document-archive";
 import { classServerId } from "@/lib/api/onboarding";
 import { listMonthlyPlans } from "@/lib/api/monthly";
+import { listPlayMonthly } from "@/lib/api/playMonthly";
 import { listWeeklyPlans } from "@/lib/api/weekly";
-import type { AnnualPlanSummary, MonthlyPlanSummary, WeeklyPlanSummary } from "@/lib/api/types";
+import type { AnnualPlanSummary, PlayMonthlySummary, WeeklyPlanSummary } from "@/lib/api/types";
 import { ageSelectionLabel, selectedAgesFor, type ClassroomEntry } from "@/lib/onboarding/types";
 import type { RecordKind } from "@/lib/api/documents";
 import { Message, ws } from "./WorkspaceUI";
@@ -38,7 +40,6 @@ import {
   MonthlyCover,
   ObservationArt,
   OverviewArt,
-  SidebarDecor,
   StartArt,
   WeeklyCover,
 } from "./DocumentArchiveArt";
@@ -69,13 +70,47 @@ export type ArchiveDoc = {
 
 type ArchiveType = "annual" | "monthly" | "weekly" | "care" | "observation";
 
-const TYPES: { key: ArchiveType; name: string; desc: string; icon: IconName }[] = [
-  { key: "annual", name: "연간 계획안", desc: "한 해의 흐름을 잡아요.", icon: "nature" },
-  { key: "monthly", name: "월간 계획안", desc: "이달의 주제를 정해요.", icon: "plan" },
-  { key: "weekly", name: "주간 계획안", desc: "한 주의 놀이를 그려요.", icon: "art" },
-  { key: "care", name: "보육일지", desc: "하루 일과를 남겨요.", icon: "doc" },
-  { key: "observation", name: "관찰일지", desc: "아이의 순간을 적어요.", icon: "record" },
+/**
+ * 문서 종류 다섯. `icon` 이 숫자면 달력을 그리고 그 숫자가 안쪽 줄 수다.
+ *
+ * 계획안 셋은 **모두 같은 달력**이다 — 그림이 서로 다르면 한 묶음으로 안 읽힌다.
+ * 기간은 안쪽 줄 수로만 가른다(한 해 셋 · 한 달 둘 · 한 주 하나).
+ */
+/** icon 이 null 이면 계획안 달력이다 — 연간 · 월간 · 주간이 같은 그림을 쓴다. */
+const TYPES: { key: ArchiveType; name: string; icon: IconName | null }[] = [
+  { key: "annual", name: "연간 계획안", icon: null },
+  { key: "monthly", name: "월간 계획안", icon: null },
+  { key: "weekly", name: "주간 계획안", icon: null },
+  { key: "care", name: "보육일지", icon: "doc" },
+  { key: "observation", name: "관찰일지", icon: "record" },
 ];
+
+/** 달력 한 장 — 고리 둘, 머리 띠, 안쪽 한 줄. */
+function PlanCalendar() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M7 3v4m10-4v4M3 10h18" />
+      <path d="M7 15.5h1.5m3 0h1.5m3 0h1.5" />
+    </svg>
+  );
+}
+
+function ArchiveHeader({ children }: { children: ReactNode }) {
+  return (
+    <div className={styles.archiveHeading}>
+      <div className={styles.headingText}>{children}</div>
+    </div>
+  );
+}
 
 function StatusBadge({ state }: { state: ArchiveStatus }) {
   return (
@@ -129,6 +164,7 @@ export default function DocumentArchiveView({
   onPickClass,
   documents,
   annual,
+  onAnnualChanged,
   activeId,
   editingId,
   onBackToPreview,
@@ -144,6 +180,8 @@ export default function DocumentArchiveView({
   onPickClass: (id: string) => void;
   documents: ArchiveDoc[];
   annual: AnnualPlanSummary[] | null;
+  /** 연간을 지운 뒤 목록을 다시 받는다 — 연간 목록은 부른 쪽이 가진다. */
+  onAnnualChanged: () => void;
   activeId: string;
   editingId: string;
   onBackToPreview: () => void;
@@ -211,11 +249,14 @@ export default function DocumentArchiveView({
     setChildSearch("");
   }
 
+  // 주제형 · 놀이 중심 월간을 한 목록에 둔다 — 놀이 월간도 보여야 지울 수 있다(놀이 연간을 지우려면 먼저).
   const [monthly, setMonthly] = useState<{
     classId: number;
-    items: MonthlyPlanSummary[];
+    items: (PlayMonthlySummary & { play?: boolean })[];
     error: string;
   } | null>(null);
+  // 계획안을 지우면 올린다 — 월간 · 주간 목록을 다시 받는다.
+  const [planReload, setPlanReload] = useState(0);
   const [weekly, setWeekly] = useState<{
     key: string;
     items: WeeklyPlanSummary[];
@@ -226,8 +267,16 @@ export default function DocumentArchiveView({
   useEffect(() => {
     if (!needMonthly || serverClassId === null) return;
     let live = true;
-    listMonthlyPlans(serverClassId)
-      .then(({ items }) => live && setMonthly({ classId: serverClassId, items, error: "" }))
+    Promise.all([listMonthlyPlans(serverClassId), listPlayMonthly(serverClassId)])
+      .then(
+        ([theme, play]) =>
+          live &&
+          setMonthly({
+            classId: serverClassId,
+            items: [...theme.items, ...play.items.map((p) => ({ ...p, play: true }))],
+            error: "",
+          }),
+      )
       .catch(
         (e: unknown) =>
           live &&
@@ -240,7 +289,7 @@ export default function DocumentArchiveView({
     return () => {
       live = false;
     };
-  }, [needMonthly, serverClassId]);
+  }, [needMonthly, serverClassId, planReload]);
 
   const weekKey = type === "weekly" && serverClassId !== null ? `${serverClassId}|${month}` : "";
   useEffect(() => {
@@ -261,7 +310,7 @@ export default function DocumentArchiveView({
     return () => {
       live = false;
     };
-  }, [weekKey]);
+  }, [weekKey, planReload]);
 
   // 서버 반 번호로 거른다. 반 이름이 같아도 다른 반의 문서가 섞이면 안 된다.
   const annualOfClass = useMemo(
@@ -318,6 +367,11 @@ export default function DocumentArchiveView({
     setPlanPreview(null);
     onCloseDetail();
   }
+  function planDeleted(kind: PlanPreviewTarget["kind"]) {
+    closePreview();
+    if (kind === "annual") onAnnualChanged();
+    else setPlanReload((n) => n + 1);
+  }
 
   const days = useMemo(() => weekDays(day), [day]);
   const sorted = <T,>(items: T[]) => (oldestFirst ? [...items].reverse() : items);
@@ -347,9 +401,9 @@ export default function DocumentArchiveView({
   if (!classId || !classroom || foreign !== null) {
     return (
       <div className={styles.archive}>
+        <ArchiveHeader>{header}</ArchiveHeader>
         {rail}
         <div className={styles.content}>
-          {header}
           {foreign !== null ? (
             foreignBody
           ) : (
@@ -395,39 +449,44 @@ export default function DocumentArchiveView({
           sort={sortButton}
         >
           {items.map((p, i) => (
-            <button
-              type="button"
-              key={p.id}
-              className={styles.docCard}
-              aria-pressed={shownPlan?.kind === "annual" && shownPlan.id === p.id}
-              onClick={() =>
-                openPlan({
-                  kind: "annual",
-                  id: p.id,
-                  classId: p.class_id,
-                  className: classroom?.className ?? "",
-                  title: `${p.school_year}학년도 연간계획안`,
-                  period: `${p.school_year}학년도`,
-                  periodKey: String(p.school_year),
-                  createdAt: p.created_at,
-                  href: `/plans/annual/${p.id}`,
-                })
-              }
-            >
-              <div className={styles.cover} data-type="annual">
-                <b>{p.school_year}학년도</b>
-                <small>
-                  {classroom?.className}
-                  {p.format === "PLAY_PROJECT" ? " · 놀이 프로젝트형" : ""}
-                </small>
-                <AnnualCover index={i} className={styles.coverArt} />
-              </div>
-              <div className={styles.docTitle}>{p.school_year}학년도 연간계획안</div>
-              <div className={styles.docFoot}>
-                <span>{localDate(p.created_at)}</span>
-                <StatusBadge state={planStatus(p.status)} />
-              </div>
-            </button>
+            <div key={p.id} className={styles.docSlot}>
+              <button
+                type="button"
+                className={styles.docCard}
+                aria-pressed={shownPlan?.kind === "annual" && shownPlan.id === p.id}
+                onClick={() =>
+                  openPlan({
+                    kind: "annual",
+                    id: p.id,
+                    classId: p.class_id,
+                    className: classroom?.className ?? "",
+                    title: `${p.school_year}학년도 연간계획안`,
+                    period: `${p.school_year}학년도`,
+                    periodKey: String(p.school_year),
+                    createdAt: p.created_at,
+                    href: annualHref(p),
+                  })
+                }
+              >
+                <div className={styles.cover} data-type="annual">
+                  <b>{p.school_year}학년도</b>
+                  <small>
+                    {classroom?.className}
+                    {p.format === "PLAY_PROJECT" ? " · 놀이 프로젝트형" : ""}
+                  </small>
+                  <AnnualCover index={i} className={styles.coverArt} />
+                </div>
+                <div className={styles.docTitle}>{p.school_year}학년도 연간계획안</div>
+                <div className={styles.docFoot}>
+                  <span>{localDate(p.created_at)}</span>
+                  <StatusBadge state={planStatus(p.status)} />
+                </div>
+              </button>
+              {/* 미리보기를 거치지 않고 바로 연다 — 미리보기 맨 아래 단추는 있는 줄 모를 수 있다(멘토 11-05). */}
+              <Link className={styles.cardOpen} href={annualHref(p)}>
+                문서 열기 →
+              </Link>
+            </div>
           ))}
         </PlanGrid>
       </>
@@ -442,6 +501,7 @@ export default function DocumentArchiveView({
         .sort((a, b) => (a.target_month < b.target_month ? 1 : -1)),
     );
     const confirmedAnnual = annualOfClass.some((p) => p.status === "CONFIRMED");
+    const otherMonths = [...new Set(monthlyOfClass.map((p) => p.target_month))].sort();
     return (
       <>
         <PeriodNav
@@ -459,6 +519,22 @@ export default function DocumentArchiveView({
           }
         />
         {monthly?.error && <Message error>{monthly.error}</Message>}
+        {/* 이 달이 비었으면 계획안이 있는 달로 바로 간다 — 확정본이 다른 달에 있어 「없다」고 보이지 않게. */}
+        {!items.length && otherMonths.length > 0 && (
+          <Message>
+            이 달에는 월간계획안이 없어요. 있는 달:
+            {otherMonths.map((m) => (
+              <button
+                key={m}
+                type="button"
+                className="ml-2 font-semibold underline underline-offset-2"
+                onClick={() => setMonth(m)}
+              >
+                {monthLabel(m)}
+              </button>
+            ))}
+          </Message>
+        )}
         <PlanGrid
           title="월간 계획안"
           count={items.length}
@@ -475,36 +551,45 @@ export default function DocumentArchiveView({
           sort={sortButton}
         >
           {items.map((p) => (
-            <button
-              type="button"
-              key={p.id}
-              className={styles.docCard}
-              aria-pressed={shownPlan?.kind === "monthly" && shownPlan.id === p.id}
-              onClick={() =>
-                openPlan({
-                  kind: "monthly",
-                  id: p.id,
-                  classId: p.class_id,
-                  className: classroom?.className ?? "",
-                  title: `${p.month}월 월간계획안`,
-                  period: p.target_month,
-                  periodKey: p.target_month,
-                  createdAt: p.created_at,
-                  href: `/plans/monthly?plan_id=${p.id}&class_id=${p.class_id}&month=${p.month}`,
-                })
-              }
-            >
-              <div className={styles.cover} data-type="monthly">
-                <b>{monthLabel(p.target_month)}</b>
-                <small>{classroom?.className}</small>
-                <MonthlyCover month={p.month} className={styles.coverArt} />
-              </div>
-              <div className={styles.docTitle}>{p.month}월 월간계획안</div>
-              <div className={styles.docFoot}>
-                <span>{localDate(p.created_at)}</span>
-                <StatusBadge state={planStatus(p.status)} />
-              </div>
-            </button>
+            <div key={p.id} className={styles.docSlot}>
+              <button
+                type="button"
+                className={styles.docCard}
+                aria-pressed={shownPlan?.kind === "monthly" && shownPlan.id === p.id}
+                onClick={() =>
+                  openPlan({
+                    kind: "monthly",
+                    id: p.id,
+                    classId: p.class_id,
+                    className: classroom?.className ?? "",
+                    title: `${p.month}월 월간계획안`,
+                    period: p.target_month,
+                    periodKey: p.target_month,
+                    createdAt: p.created_at,
+                    href: monthlyHref(p),
+                    play: p.play,
+                  })
+                }
+              >
+                <div className={styles.cover} data-type="monthly">
+                  <b>{monthLabel(p.target_month)}</b>
+                  <small>
+                    {classroom?.className}
+                    {p.play ? " · 놀이 중심형" : ""}
+                  </small>
+                  <MonthlyCover month={p.month} className={styles.coverArt} />
+                </div>
+                <div className={styles.docTitle}>{p.month}월 월간계획안</div>
+                <div className={styles.docFoot}>
+                  <span>{localDate(p.created_at)}</span>
+                  <StatusBadge state={planStatus(p.status)} />
+                </div>
+              </button>
+              {/* 미리보기를 거치지 않고 바로 연다 — 미리보기 맨 아래 단추는 있는 줄 모를 수 있다(멘토 11-05). */}
+              <Link className={styles.cardOpen} href={monthlyHref(p)}>
+                문서 열기 →
+              </Link>
+            </div>
           ))}
         </PlanGrid>
       </>
@@ -513,7 +598,7 @@ export default function DocumentArchiveView({
 
   function weeklyView() {
     const items = sorted([...weeklyOfMonth].sort((a, b) => (a.week_id < b.week_id ? 1 : -1)));
-    const parent = monthlyOfClass.find((p) => p.target_month === month);
+    const parent = monthlyOfClass.find((p) => !p.play && p.target_month === month);
     return (
       <>
         <PeriodNav
@@ -545,37 +630,42 @@ export default function DocumentArchiveView({
           sort={sortButton}
         >
           {items.map((p, i) => (
-            <button
-              type="button"
-              key={p.id}
-              className={styles.docCard}
-              aria-pressed={shownPlan?.kind === "weekly" && shownPlan.id === p.id}
-              onClick={() =>
-                openPlan({
-                  kind: "weekly",
-                  id: p.id,
-                  classId: p.class_id,
-                  className: classroom?.className ?? "",
-                  title: `${weekIdLabel(p.week_id)} 주간계획안`,
-                  period: p.week_id,
-                  periodKey: month,
-                  createdAt: p.created_at,
-                  href: `/plans/weekly?plan_id=${p.id}&class_id=${p.class_id}&week_id=${p.week_id}`,
-                })
-              }
-            >
-              <div className={styles.cover} data-type="weekly">
-                {/* 주차는 서버가 준 week_id 를 읽기만 한다 — 화면이 세지 않는다. */}
-                <b>{weekIdLabel(p.week_id)}</b>
-                <small>{classroom?.className}</small>
-                <WeeklyCover index={i} className={styles.coverArt} />
-              </div>
-              <div className={styles.docTitle}>{weekIdLabel(p.week_id)} 주간계획안</div>
-              <div className={styles.docFoot}>
-                <span>{localDate(p.created_at)}</span>
-                <StatusBadge state={planStatus(p.status)} />
-              </div>
-            </button>
+            <div key={p.id} className={styles.docSlot}>
+              <button
+                type="button"
+                className={styles.docCard}
+                aria-pressed={shownPlan?.kind === "weekly" && shownPlan.id === p.id}
+                onClick={() =>
+                  openPlan({
+                    kind: "weekly",
+                    id: p.id,
+                    classId: p.class_id,
+                    className: classroom?.className ?? "",
+                    title: `${weekIdLabel(p.week_id)} 주간계획안`,
+                    period: p.week_id,
+                    periodKey: month,
+                    createdAt: p.created_at,
+                    href: weeklyHref(p),
+                  })
+                }
+              >
+                <div className={styles.cover} data-type="weekly">
+                  {/* 주차는 서버가 준 week_id 를 읽기만 한다 — 화면이 세지 않는다. */}
+                  <b>{weekIdLabel(p.week_id)}</b>
+                  <small>{classroom?.className}</small>
+                  <WeeklyCover index={i} className={styles.coverArt} />
+                </div>
+                <div className={styles.docTitle}>{weekIdLabel(p.week_id)} 주간계획안</div>
+                <div className={styles.docFoot}>
+                  <span>{localDate(p.created_at)}</span>
+                  <StatusBadge state={planStatus(p.status)} />
+                </div>
+              </button>
+              {/* 미리보기를 거치지 않고 바로 연다 — 미리보기 맨 아래 단추는 있는 줄 모를 수 있다(멘토 11-05). */}
+              <Link className={styles.cardOpen} href={weeklyHref(p)}>
+                문서 열기 →
+              </Link>
+            </div>
           ))}
         </PlanGrid>
       </>
@@ -791,14 +881,13 @@ export default function DocumentArchiveView({
   /** 문서 종류 다섯 칸. 상세 화면에서는 그리지 않는다. */
   function typeGrid() {
     return (
-      <div className={styles.typeGrid}>
+      <div className={styles.typeGrid} data-tour="archive-types">
         {TYPES.map((t) => (
           <button
             type="button"
             key={t.key}
             className={styles.typeCard}
             data-type={t.key}
-            // 설명까지 이름에 섞이면 「보육일지 작성」 단추와 구분이 안 된다.
             aria-label={t.name}
             aria-pressed={type === t.key}
             onClick={() => {
@@ -807,9 +896,10 @@ export default function DocumentArchiveView({
               onCloseDetail();
             }}
           >
-            <Icon name={t.icon} />
-            <strong>{t.name}</strong>
-            <small>{t.desc}</small>
+            <span className={styles.typeLabel}>
+              {t.icon ? <Icon name={t.icon} /> : <PlanCalendar />}
+              <strong>{t.name}</strong>
+            </span>
           </button>
         ))}
       </div>
@@ -818,9 +908,9 @@ export default function DocumentArchiveView({
 
   return (
     <div className={styles.archive}>
+      <ArchiveHeader>{header}</ArchiveHeader>
       {rail}
       <div className={styles.content}>
-        {header}
         {openDoc && editingId === openDoc.id ? (
           <>
             <button
@@ -842,6 +932,7 @@ export default function DocumentArchiveView({
               className={styles.split}
               data-preview={Boolean(previewKey)}
               data-selected={Boolean(previewKey) && !mobileList}
+              data-overview={type === null}
             >
               <div className={styles.browser}>
                 {type === null && (
@@ -849,7 +940,7 @@ export default function DocumentArchiveView({
                     art={<OverviewArt className={styles.blankArt} />}
                     title="문서를 선택해 주세요"
                   >
-                    위의 문서 종류를 선택하면 해당 문서 목록을 확인할 수 있어요.
+                    위쪽의 문서 종류를 선택하면 저장된 문서를 확인할 수 있어요.
                   </Blank>
                 )}
                 {type === "annual" && annualView()}
@@ -873,6 +964,7 @@ export default function DocumentArchiveView({
                     <PlanArchivePreview
                       key={`${shownPlan.kind}:${shownPlan.id}`}
                       target={shownPlan}
+                      onDeleted={() => planDeleted(shownPlan.kind)}
                     />
                   )}
                 </aside>
@@ -906,7 +998,7 @@ function PlanGrid({
   sort: ReactNode;
 }) {
   return (
-    <section className={styles.panel}>
+    <section className={`${styles.panel} ${styles.planPanel}`}>
       <div className={styles.panelHead}>
         <div className={styles.panelHeadLeft}>
           <h3>{title}</h3>
@@ -917,9 +1009,9 @@ function PlanGrid({
           {sort}
         </div>
       </div>
-      <div className={styles.docGrid}>
+      <div className={`${styles.docGrid} ${styles.planGrid}`}>
         {blocked ? (
-          <button type="button" className={styles.addCard} disabled>
+          <button type="button" className={`${styles.addCard} ${styles.planCreateCard}`} disabled>
             <span className={styles.plus}>
               <Icon name="plus" />
             </span>
@@ -927,7 +1019,7 @@ function PlanGrid({
             <span className={styles.addNote}>{blocked}</span>
           </button>
         ) : (
-          <Link className={styles.addCard} href={createHref}>
+          <Link className={`${styles.addCard} ${styles.planCreateCard}`} href={createHref}>
             <span className={styles.plus}>
               <Icon name="plus" />
             </span>
@@ -1073,6 +1165,22 @@ function Legend() {
   );
 }
 
+/** 계획안 편집 화면 주소 — 카드의 「문서 열기」와 미리보기가 같이 쓴다. */
+const annualHref = (p: { id: number }) => `/plans/annual/${p.id}`;
+const monthlyHref = (p: { id: number; class_id: number; month: number; play?: boolean }) =>
+  p.play
+    ? `/plans/monthly/play/${p.id}`
+    : `/plans/monthly?plan_id=${p.id}&class_id=${p.class_id}&month=${p.month}`;
+const weeklyHref = (p: { id: number; class_id: number; week_id: string }) =>
+  `/plans/weekly?plan_id=${p.id}&class_id=${p.class_id}&week_id=${p.week_id}`;
+
+/** 내 반 쪽지 둘째 줄 — 「만 5세 · 아이 6명」. 아이 이름은 브라우저에 없어 수만 센다(ADR-013). */
+function classLine(c: ClassroomEntry) {
+  const kids = c.children.length || c.childIds?.length || 0;
+  // 반 이름 바로 아래라 「만 5세반」의 「반」은 겹친다 — 「만 5세」로(시안).
+  return `${ageSelectionLabel(selectedAgesFor(c)).replace(/세반$/, "세")} · 아이 ${kids}명`;
+}
+
 /** 문서 보관함 안쪽 반 선택. **전역 사이드바(AppSidebar)를 대신하지 않는다.** */
 function ClassRail({
   classes,
@@ -1095,11 +1203,8 @@ function ClassRail({
 }) {
   const waiting = received.filter((r) => r.status === "PENDING").length;
   return (
-    <aside className={styles.classRail} aria-label="반 선택">
-      <div className={styles.railHead}>
-        <Icon name="users" />
-        우리 반
-      </div>
+    <aside className={styles.classRail} aria-label="반 선택" data-tour="archive-rail">
+      <div className={styles.railHead}>우리 반</div>
       {classes.length ? (
         <div className={styles.classList}>
           {classes.map((c) => (
@@ -1107,17 +1212,25 @@ function ClassRail({
               type="button"
               key={c.id}
               className={styles.classCard}
+              data-tone="own"
               aria-pressed={c.id === classId}
+              // 버튼 이름은 반 이름만 — 둘째 줄은 설명으로 읽힌다(이름이 「햇살반만 4세…」가 되지 않게).
+              aria-describedby={`rail-line-${c.id}`}
               onClick={() => onPick(c.id)}
             >
-              <span className={styles.grow}>{c.className || "이름 없는 반"}</span>
-              <Icon name="chevron" />
+              <span className={styles.grow}>
+                <span>{c.className || "이름 없는 반"}</span>
+                <small id={`rail-line-${c.id}`} aria-hidden="true" className={styles.railTeacher}>
+                  {classLine(c)}
+                </small>
+              </span>
             </button>
           ))}
           {received.length > 0 && (
             <button
               type="button"
               className={styles.classCard}
+              data-tone="received"
               aria-pressed={foreign === "received"}
               onClick={() => onPickForeign("received")}
             >
@@ -1127,7 +1240,6 @@ function ClassRail({
                   {waiting}
                 </span>
               )}
-              <Icon name="bell" />
             </button>
           )}
         </div>
@@ -1136,10 +1248,7 @@ function ClassRail({
       )}
       {others.length > 0 && (
         <>
-          <div className={styles.railHead}>
-            <Icon name="lock" />
-            같은 원 반
-          </div>
+          <div className={styles.railHead}>같은 원 반</div>
           <p className={styles.railNote}>담임 선생님이 승인하면 문서를 볼 수 있어요.</p>
           <div className={styles.classList}>
             {others.map((c) => {
@@ -1149,10 +1258,18 @@ function ClassRail({
                   type="button"
                   key={c.id}
                   className={styles.classCard}
+                  data-state={state}
                   aria-pressed={foreign === c.id}
                   onClick={() => onPickForeign(c.id)}
                 >
-                  <span className={styles.grow}>{c.name}</span>
+                  {/* 같은 원 다른 반은 담임 이름을 붙여 누구 반인지 보인다(ADR-068).
+                      둘째 줄에 두어 상태 배지가 길어도 이름이 잘리지 않는다. */}
+                  <span className={styles.grow}>
+                    {c.name}
+                    {c.teacher_name && (
+                      <small className={styles.railTeacher}>담임 {c.teacher_name}</small>
+                    )}
+                  </span>
                   <span className={styles.railBadge} data-state={state}>
                     {ACCESS_LABEL[state]}
                   </span>
@@ -1162,7 +1279,10 @@ function ClassRail({
           </div>
         </>
       )}
-      <SidebarDecor className={styles.decor} />
+      {/* 아래 그림은 두 팔을 든 포스티 하나 — 홈 · 첫 설정과 같은 그림 말투(PM 11-07 시안). */}
+      <div className={styles.decor} data-art="rail-posty">
+        <Posty pose="cheer" tone="note" size={104} tape label={null} />
+      </div>
     </aside>
   );
 }

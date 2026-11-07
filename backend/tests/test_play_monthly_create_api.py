@@ -60,7 +60,9 @@ def _post(world, **body):
 
 def _monthly_count(world):
     return world["session"].scalar(
-        select(func.count()).select_from(Plan).where(Plan.kind == "monthly")
+        select(func.count())
+        .select_from(Plan)
+        .where(Plan.kind == "monthly", Plan.center_id == world["mine"]["center"])
     )
 
 
@@ -261,6 +263,7 @@ def test_요청_사항은_남고_반영한_활동에만_표시가_붙는다(worl
     def marked(cell):
         return any(e["source_id"] == "teacher_memo" for e in cell["evidence"])
 
-    assert [marked(a["name"]) for a in body["together"]][:2] == [True, False]
-    assert not any(marked(a["name"]) for a in body["free_play"])
+    pool = body["activity_pool"]  # 처음에는 후보 목록에만 있다(ADR-065)
+    assert [marked(a["name"]) for a in pool if a["section"] == "together"][:2] == [True, False]
+    assert not any(marked(a["name"]) for a in pool if a["section"] == "free_play")
     assert client.get(f"{URL}/{body['id']}").json() == body

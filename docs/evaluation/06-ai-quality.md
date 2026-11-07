@@ -1,5 +1,7 @@
 # 06 · AI 품질
 
+- 실내대체는 방법이 명시된 적격 근거를 우선하고, 새 월간·연결형 주간의 빈 응답을 한 번 수리하며 부모 맥락과 방법 근거를 구분한다 — [ADR-050](../adr/050-monthly-v1-indoor-alternative.md) · `p0-planning/tests/application/test_monthly_application.py` · `p0-planning/tests/adapters/test_weekly_composition.py`. 실제 문장 품질은 별도 실측 전이다.
+
 **멘토 심사 기준(기술·개발 중심) ⑥ AI 품질 점검·개선 노력 — 5점**
 
 > 평가 기준·테스트셋으로 AI 응답 품질을 점검하고, 실패를 분석해 고친 기록이 있는가
@@ -105,3 +107,7 @@
 - [ ] 월간 bench 를 돌렸는지 확인하고 결과 문서 남기기
 - [ ] 반려된 생성의 사유별 건수
 - 주간 활동 후보(ADR-054): 가짜 전송으로 후보별 허용 근거·형식 수리 1회, 선택·분할 후 저장/재조회·한글 출력을 확인한다. 실제 LLM의 종류별 문장 품질은 미측정이다.
+- 주간 후보의 짧은 이름에 근거의 대상·핵심 행동을 보존하도록 생성·수리 지침을 함께 구분한다 — ADR-054 「후보 활동명의 구체성 보완」, `tests/adapters/test_weekly_activity_candidates.py`; 실제 모델의 제목 개선 효과는 미측정이다.
+- 주간 후보는 유형+이름만으로 활동이 식별되는지 별도로 검토하고, 원문 검토 7건의 `(record_id, text)` 제외를 후보 검색에만 적용한다 — ADR-054 「활동 식별성과 후보 원문 충분성 보완」, `tests/retrieval/test_weekly_retrieval.py`; 문구 지침 검사와 원문 선별 검사는 실제 모델의 의미 품질 보증이 아니다.
+- 주간 후보에 허용 원문의 사용할 활동 구간을 전달하고, 명화의 ‘감상’과 검토한 ‘편지 발표’의 제목 정보 누락을 기존 수리 경로로 거절한다 — ADR-054 「후보의 사용할 활동 범위와 이름 정보 검사」 · `tests/adapters/test_weekly_activity_candidates.py`; 일반 의미·문체의 자동 판정은 아니다.
+- 주간 후보 생성·수리에 v2 월간의 공용 놀이 문체와 기존 합니다체 1~2문장 기준을 재사용한다 — ADR-054 「기존 문체 기준 재사용」 · `tests/adapters/test_weekly_activity_candidates.py`; 새 판의 실제 말투 효과는 미측정이다.

@@ -438,6 +438,7 @@ def test_RULE_ONLY_DRAFT_가_Postgres_를_거쳐_그대로_돌아온다(a):
         "theme": RepeatBy.NONE,
         "week_axis": None,
         "outdoor_play": RepeatBy.WEEK,
+        "outdoor_play_detail": RepeatBy.WEEK,  # ADR-066 숨은 설명
         "safety_education": RepeatBy.WEEK,
     }
     assert {s.section_key: s.repeat_by for s in restored.sections} == {

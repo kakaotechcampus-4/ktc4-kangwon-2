@@ -39,7 +39,7 @@ import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { playSeason } from "@/components/plan-generator/playProjectPagination";
-import GenerationRing, { ringFinished } from "@/components/plan-ui/GenerationRing";
+import GenerationRing, { ringFinished, STOPPED_NOTE } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { BACK_BUTTON, BACK_ICON } from "@/components/plan-generator/AnnualFrame";
 import { Tape, useClasses } from "./WorkspaceUI";
@@ -168,6 +168,8 @@ export function MonthlyNewView(props: {
   /** 만들 수 없는 까닭(버튼 아래 한 줄). null 이면 만들 수 있다. */
   blocked: ReactNode;
   problem: string;
+  /** [생성 멈추기]로 돌아왔다. */
+  stopped?: boolean;
   /** 요청 사항(ADR-060). 없으면 칸을 그리지 않는다(미리보기). */
   memo?: string;
   memoProblem?: string | null;
@@ -179,7 +181,7 @@ export function MonthlyNewView(props: {
   const { play, month, plans, inherit, focus, blocked, template, extras = [] } = props;
   const look = play ? LOOK.play : LOOK.theme;
   return (
-    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)]">
+    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)]">
       <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <Tape />
         <section className="flex min-h-0 flex-col gap-5 overflow-y-auto border border-line bg-paper rounded-md p-7">
@@ -349,6 +351,7 @@ export function MonthlyNewView(props: {
             />
           )}
 
+          {props.stopped && STOPPED_NOTE}
           {props.problem && (
             <p
               role="alert"
@@ -376,9 +379,6 @@ export function MonthlyNewView(props: {
           aria-label="양식 미리보기"
           className="flex min-h-[420px] flex-col border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] p-3"
         >
-          <p className="m-0 mb-2 text-[13px] text-ink-soft">
-            양식 예시예요. 만들면 고른 달 · 반의 내용으로 채워져요.
-          </p>
           <div className="relative min-h-0 flex-1">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -436,6 +436,7 @@ export default function MonthlyNew({
 }) {
   const router = useRouter();
   const [problem, setProblem] = useState("");
+  const [stopped, setStopped] = useState(false);
   const [memo, setMemo] = useState("");
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
   const classes = useClasses(setProblem);
@@ -524,6 +525,7 @@ export default function MonthlyNew({
     setBusy(true);
     setDone(false);
     setProblem("");
+    setStopped(false);
     setMemoProblem(null);
     const note = memo.trim() ? { memo: memo.trim() } : {};
     try {
@@ -601,11 +603,12 @@ export default function MonthlyNew({
 
   if (busy)
     return (
-      <div className="flex min-h-[calc(100vh-60px)]">
+      <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
-          kind={play ? "monthly:PLAY_PROJECT" : "monthly:MONTHLY_THEME"}
-          // Sol 실측: 주제형 28초(2026-10-31) · 38초, 놀이 중심형 40 · 33 · 43초(2026-11-05).
-          expect={play ? 40 : 35}
+          // 놀이 중심형은 활동 후보가 8개씩으로 늘어(ADR-065) 예전 기억을 버리려고 kind 를 바꿨다.
+          kind={play ? "monthly:PLAY_PROJECT:v0.3" : "monthly:MONTHLY_THEME"}
+          // Sol 실측: 주제형 28초(2026-10-31) · 38초, 놀이 중심형(후보 8개씩) 55.5 · 51.6 · 55.0초(2026-11-06).
+          expect={play ? 55 : 35}
           title={`${month}월 월간계획안을 만들고 있어요`}
           done={done}
           steps={
@@ -616,6 +619,7 @@ export default function MonthlyNew({
           onCancel={() => {
             controller.current?.abort();
             setBusy(false);
+            setStopped(true);
           }}
         />
       </div>
@@ -638,6 +642,7 @@ export default function MonthlyNew({
       onExtras={setExtras}
       blocked={blocked}
       problem={problem}
+      stopped={stopped}
       memo={memo}
       memoProblem={memoProblem}
       onMemo={setMemo}

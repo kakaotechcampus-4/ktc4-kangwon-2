@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { WorkspacePage, Message, Notice, useClasses, ws } from "./WorkspaceUI";
+import { WorkspacePage, JournalTabs, Message, Notice, useClasses, ws } from "./WorkspaceUI";
 import WeeklyJournalCard, {
   WeeklyJournalEditor,
   useWeeklyJournal,
@@ -159,7 +159,7 @@ export default function WeeklyRecordsPage() {
   // 같이 보이면 기록이 사라진 것으로 읽힌다. 한쪽만 실패했으면 다른 쪽은 그대로 그린다.
   if (error || week?.failedAll) {
     return (
-      <WorkspacePage title="주간 기록" description="한 주를 펼쳐 놓고 어느 날이 비었는지 봅니다.">
+      <WorkspacePage title="보육일지" description="한 주를 펴 놓고 주간 보육일지를 만듭니다.">
         <Message error>{error || week?.error}</Message>
       </WorkspacePage>
     );
@@ -170,8 +170,8 @@ export default function WeeklyRecordsPage() {
 
   return (
     <WorkspacePage
-      title="주간 기록"
-      description="한 주를 펼쳐 놓고 어느 날이 비었는지 봅니다."
+      title="보육일지"
+      description="한 주를 펴 놓고 주간 보육일지를 만듭니다."
       action={
         journal.off ? undefined : (
           /* `disabled` 면 눌러도 아무 일이 없어 이유를 말할 수 없다. 눌리게 두고 막는다. */
@@ -188,7 +188,8 @@ export default function WeeklyRecordsPage() {
         )
       }
     >
-      {/* 왼쪽에서 날을 고르고 오른쪽에 그날을 본다 — 일과 기록과 같은 짜임이다. */}
+      <JournalTabs at="weekly" daily={routines ?? "/routines"} weekly="/weekly-records" />
+      {/* 왼쪽에서 날을 고르고 오른쪽에 그날을 본다 — 일일 보육일지와 같은 짜임이다. */}
       <div className={ws.grid}>
         <div className={ws.side}>
           <aside className={`${ws.card} ${ws.weekCard}`} data-tour="weekly-week">

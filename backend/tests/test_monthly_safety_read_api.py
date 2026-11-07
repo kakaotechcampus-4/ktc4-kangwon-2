@@ -111,8 +111,8 @@ def test_후보를_배치하면_그_주에_표시값이_붙고_안내가_빠진�
     by_week = {w["week_id"]: w for w in got["safety_weeks"]}
     label = STATUTORY_SHORT_LABELS[statutory["category_id"]]
     assert by_week[week1]["candidate_item_id"] == statutory["cell"]["item_id"]
-    assert by_week[week1]["display_value"] == f"[{label}] - {statutory['cell']['value']}"
-    assert by_week[week2]["display_value"] == f"[생활안전] - {supplemental['cell']['value']}"
+    assert by_week[week1]["display_value"] == f"[{label}] {statutory['cell']['value']}"
+    assert by_week[week2]["display_value"] == f"[생활안전] {supplemental['cell']['value']}"
     assert {n["week_id"] for n in got["notices"]}.isdisjoint({week1, week2})
 
 

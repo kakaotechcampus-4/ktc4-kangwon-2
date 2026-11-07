@@ -62,7 +62,17 @@ def create_child(
 
     # 빈 반도 같은 행을 잠근다. READ COMMITTED에서 대기 후 다음 명단 조회는
     # 선행 등록의 커밋을 보므로 code 중복과 양방향 이름 충돌을 함께 막는다.
-    session.get(Class, class_id, with_for_update=True, populate_existing=True)
+    classroom = session.get(Class, class_id, with_for_update=True, populate_existing=True)
+    # 잠근 행으로 본다 — 동의 끄기(PATCH /api/classes/{id})와 겹쳐도 어긋나지 않는다.
+    if classroom.consent_confirmed_at is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "GATE_BLOCKED",
+                "message": "법정대리인 동의를 확인한 반에만 아이를 넣을 수 있습니다.",
+                "fields": ["class_id"],
+            },
+        )
     try:
         code = allocate_for_class(
             load_pool(),

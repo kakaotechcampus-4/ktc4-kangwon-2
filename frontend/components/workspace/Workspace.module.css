@@ -49,6 +49,33 @@
     font-size: 44px;
   }
 }
+/* 보육일지 일일 · 주간 — 수첩에 붙인 색인 탭. 지금 보는 쪽이 종이색으로 앞에 나온다. */
+.journalTabs {
+  display: flex;
+  gap: 6px;
+  margin: -12px 0 22px;
+  border-bottom: 1px solid var(--pg-line);
+}
+.journalTabs a {
+  margin-bottom: -1px;
+  padding: 9px 16px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px 8px 0 0;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--pg-ink-soft);
+  text-decoration: none;
+}
+.journalTabs a:hover {
+  color: var(--pg-ink);
+}
+.journalTabs a[aria-current="page"] {
+  border-color: var(--pg-line);
+  border-bottom-color: var(--pg-paper);
+  background: var(--pg-paper);
+  font-weight: 700;
+  color: var(--pg-ink);
+}
 .badge {
   display: inline-flex;
   align-items: center;
@@ -442,11 +469,6 @@ a.item {
   color: var(--pg-ink-soft);
   font-size: 12px;
 }
-.divider {
-  border: 0;
-  border-top: 1px solid var(--pg-line);
-  margin: 20px 0;
-}
 .upload {
   border: 2px dashed var(--pg-primary-tint-line);
   border-radius: 6px;
@@ -460,20 +482,132 @@ a.item {
   margin: 18px auto 0;
   font-size: 13px;
 }
+/* ── 문서 편집 (문서 보관함 → 편집하기) ─────────────────────────────────
+   미리보기와 같은 결이다: 머리 쪽지 한 장 + 단락 카드 + 확인 상자 + 아래 단추 줄.
+   넓은 화면에서 글줄이 끝없이 늘지 않도록 가운데 920px 안에 둔다. */
 .document {
-  padding: 36px;
+  padding: 32px clamp(20px, 4vw, 56px) 28px;
+}
+.document > * {
+  max-width: 920px;
+  margin-inline: auto;
 }
 .document > header {
-  border-bottom: 2px solid var(--pg-primary-tint-line);
-  padding-bottom: 22px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
+  padding: 20px 22px 18px;
+  border: 1px solid var(--pg-paper-warm-line);
+  border-radius: 6px;
+  background: var(--pg-paper-warm);
+  box-shadow: var(--pg-shadow-card);
+}
+.document > header .badge {
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
 }
 .document > header h2 {
-  font-size: 26px;
-  margin: 8px 0 12px;
+  margin: 12px 0 6px;
+  font-size: 24px;
+  line-height: 1.4;
+}
+.document > header p {
+  margin: 2px 0 0;
+}
+.document > header .hint {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--pg-paper-warm-line);
+}
+/* 사실 · 해석 · 지원 카드. 왼쪽 띠 색은 이름표 색을 따라간다. */
+.document > .documentLayer {
+  --tone: var(--pg-line);
+  margin-block: 14px;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--pg-line);
+  border-left: 4px solid var(--tone);
+  border-radius: 4px;
+  background: var(--pg-paper);
+}
+.documentLayer:has(.layerFact) {
+  --tone: #c2a36a;
+}
+.documentLayer:has(.layerInterpretation) {
+  --tone: #a48cc9;
+}
+.documentLayer:has(.layerSupport) {
+  --tone: #8fb39b;
+}
+.documentLayer > .hint {
+  margin: 6px 0 10px;
+}
+.documentLayer .field > .muted {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.documentLayer .field textarea {
+  min-height: 132px;
+  background: #fffdf8;
+}
+.documentLayer .field textarea:focus {
+  outline: 2px solid var(--tone);
+  outline-offset: 1px;
+  border-color: var(--tone);
+}
+.documentLayer .quote {
+  margin: 8px 0 0;
+  border-left-color: var(--tone);
+  background: var(--pg-paper-warm);
+}
+.documentLayer .source {
+  margin-top: 8px;
+}
+/* 원본 근거 펼치기 — 접혀 있을 땐 점선 상자 한 줄. */
+.document > details {
+  margin-block: 16px;
+  padding: 12px 16px;
+  border: 1px dashed var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-cream);
+}
+.document > details > summary {
+  cursor: pointer;
+  font-size: 14px;
+}
+.document > details .quote {
+  background: var(--pg-paper);
+}
+/* 사실 · 해석 · 지원 확인 상자. 확정 전에 거치는 곳이라 연보라로 눈에 띄게 둔다. */
+.verify {
+  margin-top: 24px;
+  margin-bottom: 4px;
+  padding: 18px 20px;
+  border: 1px solid var(--pg-primary-tint-line);
+  border-radius: 6px;
+  background: var(--pg-mint-tint);
+}
+.verify > h3 {
+  margin: 0 0 6px;
+  color: var(--pg-primary-ink);
+  font-size: 16px;
+}
+.verify .check {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+}
+.document > .actions {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--pg-line);
 }
 .document section {
-  margin: 30px 0;
+  margin-block: 30px;
+}
+.document > section {
+  margin-inline: auto;
 }
 /* 사실 · 해석 · 지원을 이름표로 가른다. 칸 바탕은 흰색 그대로 두고 이름표에만 색을 준다 —
    흰 바탕은 「내가 쓰는 칸」이라는 신호라서, 고치는 칸까지 색을 깔면 그 신호가 흐려진다.
@@ -569,10 +703,6 @@ a.item {
 .monthlyTable textarea {
   min-height: 110px;
   resize: vertical;
-}
-.documentLayer {
-  border-top: 1px solid var(--pg-line);
-  padding-top: 20px;
 }
 .loading {
   border: 1px solid var(--pg-line);
@@ -936,7 +1066,7 @@ a.item {
   align-content: start;
   position: sticky;
   top: 76px;
-  max-height: calc(100vh - 92px);
+  max-height: calc(calc(100 * var(--app-vh)) - 92px);
   overflow: auto;
 }
 .calendarCard {
@@ -1455,7 +1585,7 @@ a.item {
   gap: 10px;
   /* `left: 50%` 라 그냥 두면 화면 오른쪽 절반 너비에 맞춰 접힌다 — 글 길이만큼 편다. */
   width: max-content;
-  max-width: min(460px, calc(100vw - 32px));
+  max-width: min(460px, calc(calc(100 * var(--app-vw)) - 32px));
   margin: 0;
   padding: 13px 20px 13px 16px;
   border-radius: 999px;

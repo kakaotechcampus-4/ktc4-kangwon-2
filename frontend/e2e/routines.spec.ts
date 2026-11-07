@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { completeOnboarding } from "./onboarding";
 import { execFileSync } from "node:child_process";
 
 /** TASK 2: 실제 Next → FastAPI → PostgreSQL. 응답을 fulfill하거나 MSW로 대체하지 않는다. */
@@ -73,21 +74,12 @@ async function enterHome(page: Page) {
   await page.getByRole("link", { name: "메인화면으로 가기", exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
   await page.goto("/onboarding");
-  await expect(page).toHaveURL(/\/onboarding\/center$/);
-  await page.getByLabel("원명").fill("일과테스트어린이집");
-  await page.getByLabel("원장 이름").fill("테스트원장");
-  await page.getByLabel("시·도", { exact: true }).selectOption("강원특별자치도");
-  await page.getByLabel("시·군·구").selectOption("춘천시");
-  await page.getByRole("button", { name: "다음", exact: true }).click();
-  await page.getByLabel("반 이름").fill("햇살반");
-  await page.getByLabel("만 4세", { exact: true }).check();
-  await page.getByLabel("담임 이름").fill("테스트교사");
-  await page.getByLabel("이 반 모든 아동의 법정대리인 동의를 받았습니다.").check();
-  await page.getByRole("button", { name: "다음", exact: true }).click();
-  await page.getByLabel("아동 추가").fill("가나다");
-  await page.getByRole("button", { name: "+ 추가", exact: true }).click();
-  await page.getByRole("button", { name: "설정 완료", exact: true }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await completeOnboarding(page, {
+    center: "일과테스트어린이집",
+    director: "테스트원장",
+    teacher: "테스트교사",
+    children: ["가나다"],
+  });
   await expect(page.getByRole("link", { name: "일과 작성하기" })).toBeVisible();
   const me = await api(page, "/api/auth/me");
   const classes = await api(page, `/api/centers/${me.center_id}/classes`);
@@ -456,14 +448,14 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
       fact,
     });
   }
-  await page.getByRole("link", { name: "관찰 기록", exact: true }).click();
+  await page.getByRole("link", { name: "관찰일지", exact: true }).click();
   await expect(page.getByText("햇살반 관찰 사실", { exact: true })).toBeVisible();
   await expect(page.getByText("달님반 관찰 사실", { exact: true })).toHaveCount(0);
   await switchClass(page, "달님반");
   await expect(page.getByText("달님반 관찰 사실", { exact: true })).toBeVisible();
   await expect(page.getByText("햇살반 관찰 사실", { exact: true })).toHaveCount(0);
-  // 관찰 기록 본문의 「일과 기록 →」은 걷었다. 사이드바 메뉴로 가도 고른 반이 따라간다.
-  await page.getByRole("link", { name: "일과 기록", exact: true }).click();
+  // 관찰 기록 본문의 일과 링크는 걷었다. 사이드바 「보육일지」 메뉴로 가도 고른 반이 따라간다.
+  await page.getByRole("link", { name: "보육일지", exact: true }).click();
   await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
   await page.getByLabel("날짜", { exact: true }).fill("2026-10-16");
   await expect(rows(page)).toHaveCount(PRESET_ROWS);
@@ -479,10 +471,11 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
     classB: other.id,
     preservedDate: "2026-10-16",
   });
-  await page.getByRole("link", { name: "주간 기록", exact: true }).click();
+  // 주간 기록 메뉴는 보육일지 메뉴의 주간 탭으로 합쳤다(13주차 멘토 리뷰).
+  await page.getByRole("link", { name: "주간 보육일지", exact: true }).click();
   await expect(page).toHaveURL(/\/weekly-records$/);
   await expect(
-    page.getByRole("heading", { name: "주간 기록", exact: true, level: 1 }),
+    page.getByRole("heading", { name: "보육일지", exact: true, level: 1 }),
   ).toBeVisible();
   await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
   await expect(page.getByText("달님반 관찰 사실", { exact: true })).toBeVisible();

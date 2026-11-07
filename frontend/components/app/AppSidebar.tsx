@@ -11,6 +11,7 @@ import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { accountName } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import {
+  chosenClassFor,
   loadClassSettings,
   primaryClassFor,
   saveClassSettings,
@@ -44,26 +45,22 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
     items: [
       {
         key: "records",
-        label: "관찰 기록",
+        // 메뉴 이름은 선생님이 쓰는 문서 이름 — 보육일지와 짝(PM 11-07).
+        label: "관찰일지",
         short: "관찰",
         href: "/records",
         icon: "users",
         match: (p) => p.startsWith("/records") || p === "/compare",
       },
       {
+        // 일과를 적고 그 자리에서 일일 보육일지를 만든다. 주간 보육일지는 같은 메뉴의 주간 탭이다
+        // (13주차 멘토 리뷰 — 메뉴 이름은 선생님이 쓰는 말로 · 주간 기록 메뉴는 합친다).
         key: "routines",
-        label: "일과 기록",
-        short: "일과",
+        label: "보육일지",
+        short: "일지",
         href: "/routines",
         icon: "edit",
-        match: (p) => p.startsWith("/routines"),
-      },
-      {
-        key: "quick",
-        label: "주간 기록",
-        short: "주간",
-        href: "/weekly-records",
-        icon: "record",
+        match: (p) => p.startsWith("/routines") || p.startsWith("/weekly-records"),
       },
     ],
   },
@@ -116,7 +113,7 @@ const NO_ROOM = {
   orgName: "",
   className: "",
   age: "",
-  classId: "",
+  chosenId: "",
   classes: [] as ClassroomEntry[],
 };
 
@@ -128,7 +125,9 @@ function readRoom() {
     orgName: settings?.orgName ?? "",
     className: klass?.className ?? "",
     age: klass?.ageGroup ? AGE_LABEL[klass.ageGroup as AgeGroup] : "",
-    classId: klass?.id ?? "",
+    // 교사가 실제로 고른 반. 비어 있으면 고르개도 빈칸에서 시작한다 — 보이는 첫 반을 그대로
+    // 다시 골라도 값이 안 바뀌어 아무 일도 안 일어나던 것을 막는다(13주차 멘토 리뷰).
+    chosenId: chosenClassFor(settings)?.id ?? "",
     classes: settings?.classes ?? [],
   };
 }
@@ -158,65 +157,75 @@ export default function AppSidebar() {
 
   return (
     <>
-      {collapsed && (
-        <aside
-          aria-label="주 메뉴"
-          className="bg-rail z-30 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[75px] lg:flex-col lg:items-center lg:gap-0.5 lg:overflow-y-auto lg:border-r lg:border-rail-line lg:py-4"
-        >
-          {/* 접힌 레일에는 글자가 긴 워드마크가 안 들어간다. 네모 칸용 「S.」 를 쓴다 —
+      <aside
+        aria-label="주 메뉴"
+        // 늘 그려 두고 보였다 숨겼다만 한다(PM 2026-11-06). 이 바와 넓은 메뉴는 아이콘 높이가 달라서, 겹쳐 흐리게
+        // 바꾸면 두 메뉴가 포개져 비치고, 사이에 틈을 두면 아이콘이 사라졌다 나와 깜빡인다. 그래서 한 번에 바꾼다 —
+        // 접을 때는 넓은 메뉴 글이 먼저 사라지고 빈 판이 바 폭까지 접힌 뒤(0.27초) 바가 보이고, 아이콘이 이어서 나타난다(PM 2026-11-06 「바가 먼저 접히고」). 펼 때는 바로 바뀐다. 숨으면 탭·읽기에서도 빠진다.
+        // 바의 빈 곳(로고 · 메뉴 · 설정이 아닌 곳)을 누르면 펼친다 — 커서가 양옆 화살표로 바뀐다(PM 2026-11-06).
+        onClick={(e) => {
+          if (!(e.target as HTMLElement).closest("a,button")) setSidebarCollapsed(false);
+        }}
+        className={`bg-rail z-40 hidden lg:cursor-ew-resize lg:transition-[visibility] motion-reduce:transition-none ${collapsed ? "lg:visible lg:delay-[270ms] lg:[&>*]:transition-opacity lg:[&>*]:duration-200 lg:[&>*]:delay-300" : "lg:invisible lg:duration-0 lg:[&>*]:opacity-0"} lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[75px] lg:flex-col lg:items-center lg:gap-0.5 lg:overflow-y-auto lg:[scrollbar-color:var(--pg-rail-card-line)_var(--pg-rail)] lg:border-r lg:border-rail-line lg:py-4`}
+      >
+        {/* 접힌 레일에는 글자가 긴 워드마크가 안 들어간다. 네모 칸용 「S.」 를 쓴다 —
               브라우저 탭 아이콘(`app/icon.svg`)과 같은 표시다. */}
+        {/* 로고도 빈 곳처럼 누르면 펼친다 — 홈은 아래 「홈」 메뉴가 있다(PM 2026-11-06). */}
+        <span aria-hidden="true" className="flex h-11 w-11 items-center justify-center">
+          <SsampleMark size={32} tone="rail" />
+        </span>
+        {/* 마우스는 빈 곳을 누른다. 단추는 키보드용으로만 남기고, 탭으로 왔을 때만 보인다. */}
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(false)}
+          aria-expanded={false}
+          aria-label="메뉴 펼치기"
+          title="메뉴 펼치기"
+          className="sr-only rounded-md text-rail-ink-soft focus-visible:not-sr-only focus-visible:mb-2 focus-visible:flex focus-visible:h-11 focus-visible:w-11 focus-visible:items-center focus-visible:justify-center"
+        >
+          <Icon name="panel" className="h-[18px] w-[18px]" />
+        </button>
+        {[HOME, ...GROUPS.flatMap((g) => g.items)].map((item) => (
           <Link
-            href="/"
-            aria-label="쌤플 홈으로"
-            className="flex h-11 w-11 items-center justify-center"
+            key={item.key}
+            href={item.href}
+            aria-label={item.label}
+            title={item.label}
+            aria-current={isActive(item) ? "page" : undefined}
+            className={`flex w-full flex-col items-center justify-center gap-[3px] rounded-md border py-1.5 text-[11px] font-medium ${isActive(item) ? activeStyle : "border-transparent text-rail-ink-soft hover:bg-rail-hover"}`}
           >
-            <SsampleMark size={32} tone="rail" />
+            <Icon name={item.icon} className="h-[17px] w-[17px]" />
+            <span>{item.short ?? item.label}</span>
           </Link>
-          <button
-            type="button"
-            onClick={() => setSidebarCollapsed(false)}
-            aria-expanded={false}
-            aria-label="메뉴 펼치기"
-            title="메뉴 펼치기"
-            className="mb-2 flex h-11 w-11 items-center justify-center rounded-md text-rail-ink-soft hover:bg-rail-hover"
-          >
-            <Icon name="panel" className="h-[18px] w-[18px]" />
-          </button>
-          {[HOME, ...GROUPS.flatMap((g) => g.items)].map((item) => (
-            <Link
-              key={item.key}
-              href={item.href}
-              aria-label={item.label}
-              title={item.label}
-              aria-current={isActive(item) ? "page" : undefined}
-              className={`flex w-full flex-col items-center justify-center gap-[3px] rounded-md border py-1.5 text-[11px] font-medium ${isActive(item) ? activeStyle : "border-transparent text-rail-ink-soft hover:bg-rail-hover"}`}
-            >
-              <Icon name={item.icon} className="h-[17px] w-[17px]" />
-              <span>{item.short ?? item.label}</span>
-            </Link>
-          ))}
-          <Link
-            href="/settings"
-            aria-label="설정"
-            title="설정"
-            className="mt-auto flex h-11 w-11 items-center justify-center rounded-md text-rail-ink-soft hover:bg-rail-hover"
-          >
-            <Icon name="settings" className="h-[18px] w-[18px]" />
-          </Link>
-        </aside>
-      )}
+        ))}
+        <Link
+          href="/settings"
+          aria-label="설정"
+          title="설정"
+          className="mt-auto flex h-11 w-11 items-center justify-center rounded-md text-rail-ink-soft hover:bg-rail-hover"
+        >
+          <Icon name="settings" className="h-[18px] w-[18px]" />
+        </Link>
+      </aside>
       <aside
         aria-label="주 메뉴"
         data-tour="nav"
         className={
           "bg-rail z-30 " +
           // 여닫기는 단추로만 한다. 마우스만 올려도 펼쳐지면 글 읽다가 지나가기만 해도 덮인다 (PM).
-          (collapsed ? "lg:hidden " : "") +
+          // 접을 때 휙 사라지지 않게(PM 2026-11-06): 내용은 그대로 둔 채 넓은 판이 커튼처럼 중간 폭을 지나 75px 까지
+          // 잘려 들어가고(0.3초), 끝에서 위 좁은 바로 바뀐다(visibility 는 끝에 바뀐다).
+          // 펼칠 때는 거꾸로 — 바로 넓은 메뉴로 바뀌고 75px 에서 넓어진다. 본문 여백도 같이 움직인다.
+          // visibility 를 전환에 넣으면 숨김→보임의 첫 프레임이 숨김이라 한 프레임 비어 보인다. 그래서 펼칠 때는 뺀다.
+          "lg:duration-300 lg:ease-out motion-reduce:transition-none " +
+          (collapsed
+            ? "lg:invisible lg:transition-[clip-path,visibility] lg:[clip-path:inset(0_192px_0_0)] lg:[&>*]:opacity-0 lg:[&>*]:transition-opacity lg:[&>*]:duration-100 "
+            : "lg:transition-[clip-path] lg:[clip-path:inset(0)] ") +
           // 묶음 제목이 생기며 세로가 길어졌다. 낮은 화면(720p 노트북)에서 맨 아래 설정·로그아웃이
           // 뷰포트 밖으로 밀려 눌리지 않았다. 넘치면 사이드바만 스크롤한다.
           // 그 스크롤바가 267px 안쪽을 15px 쯤 먹어 글자 자리가 화면마다 달라 보였다 (PM 점검).
-          // 자리를 늘 잡아 두면 스크롤바가 생기든 말든 폭이 그대로다.
-          "lg:fixed lg:inset-y-0 lg:left-0 lg:w-[267px] lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:border-r lg:border-rail-line lg:flex lg:flex-col " +
+          // 자리를 늘 잡아 두면 스크롤바가 생기든 말든 폭이 그대로다. 스크롤바는 사이드바 먹색에 맞춘다.
+          "lg:fixed lg:inset-y-0 lg:left-0 lg:w-[267px] lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:[scrollbar-color:var(--pg-rail-card-line)_var(--pg-rail)] lg:border-r lg:border-rail-line lg:flex lg:flex-col " +
           "fixed bottom-0 inset-x-0 flex flex-row border-t border-rail-line px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] lg:px-0 lg:pt-0 lg:pb-0"
         }
       >
@@ -256,10 +265,15 @@ export default function AppSidebar() {
           {classes.length > 1 ? (
             <select
               aria-label="반 바꾸기"
-              value={room.classId}
+              value={room.chosenId}
               onChange={(e) => switchClass(e.target.value)}
               className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             >
+              {!room.chosenId && (
+                <option value="" disabled>
+                  반 고르기
+                </option>
+              )}
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.className}
@@ -499,10 +513,15 @@ function MoreMenu({
                 반 바꾸기
                 <select
                   aria-label="반 바꾸기"
-                  value={room.classId}
+                  value={room.chosenId}
                   onChange={(e) => switchClass(e.target.value)}
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                 >
+                  {!room.chosenId && (
+                    <option value="" disabled>
+                      반 고르기
+                    </option>
+                  )}
                   {classes.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.className}

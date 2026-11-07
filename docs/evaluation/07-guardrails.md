@@ -33,6 +33,22 @@
 - 교사 「요청 사항」이 안전교육 횟수 · 주차를 말해도 LLM 은 정해진 모양으로 뽑기만 하고 배치는 Rule 이 한다. 반영 못한 요청은 `memo_notices` 로 보인다 — PR #378 · ADR-060 · `p0-planning/src/ssuksak/planning/rules/safety_requests.py`
 - 요청 사항에 반 아이 이름이 있으면 메모 글만 가명으로 바꿔 보내고, 못 바꾸면 LLM 을 부르지 않고 422 — PR #378 · `backend/app/features/plans/memo_privacy.py`
 
+## 소방대피 · 재난대비 훈련 칸
+
+놀이 중심 월간(`fire_disaster_drill`) · 주제형 월간 v1(`drill` Section)의 「소방대피/재난대비」 칸. 문서 칸은 빈칸으로 시작하고, 교사가 후보 하나를 골라 복사할 때만 채워진다(자동 배치 없음).
+
+| 누가 정하나 | 무엇 | 코드 |
+|---|---|---|
+| Rule | 그 달 후보 주제 5개 — 승인된 훈련 주제 Reference(`emergency-drill-topics-v0.1.0`, 2026-10-29 `HUMAN_APPROVED` · `runtime_active: true`)에서만, 월 한정 주제 먼저 · 나머지는 목록 순서. Reference 가 없거나 승인 전 · 누리과정 판이 다르거나 · 내용 ID 가 없으면 LLM 호출 전에 중단 | `p0-planning/src/ssuksak/planning/application/drill_topics.py` |
+| Rule | 후보의 누리과정 근거(`CURRICULUM` 하나, `nuri2019.1.3.4`) — LLM 이 근거를 달면 거절 | `planner/validation.py` `_drill_candidate_issues` · `domain/monthly_plan.py` `MonthlyDrillCandidate` · `domain/play_monthly_plan.py` `DrillCandidate` |
+| LLM | 주제마다 유아가 알아듣는 말로 한 문장(문장화만). 응답의 `topic_id` 가 Rule 이 준 목록과 다르거나 · 겹치거나 · 빠지면 거절 | `planner/play_monthly.py` `UNKNOWN_DRILL_TOPIC` · `DUPLICATE_DRILL_TOPIC` · `MISSING_DRILL_TOPIC` |
+| 검사 | 입력에 없는 날짜 · 시각 · 사람 이름(`UNSUPPORTED_FACT`), 내부 ID 노출, 두 문장 이상 · 주제끼리 같은 문장(v1) — 거절 | 같은 곳 · `planner/weekly.py` `unsupported_facts` |
+| Rule | 복사: 칸 값은 「[주제]」 다음 줄에 그 후보 문장(안전교육 칸과 같은 모양), 근거는 후보 것 그대로, 생성 방식 `RULE_ONLY`(`play_monthly.drill_copy` · `monthly.drill_copy`), `CANDIDATE_COPIED` 이벤트에 원본 후보 | `application/play_monthly_lifecycle.py` · `application/copy_monthly_drill_candidate.py` · `domain/drill_topic_reference.py` `drill_cell_value` |
+
+- 공식 근거: 주제 · 상황은 2026 보육사업안내 부록 8 「어린이집 비상대피훈련 표준 안내」(PDF 241-244)와 본문 Ⅱ 라. 안전교육(PDF 125-126) — Reference 의 `origins[]` 에 원본 SHA 와 함께 있다. `applicable_months` 는 제품 후보 조건이지 공식 월 배치가 아니고, 이 목록은 훈련 횟수 · 법정 충족을 정하지 않는다.
+- 파일 이름의 `_draft` 와 `$schema_note` 의 「Draft · runtime 에 연결하지 않는다」는 승인 전 문구다. 실제 상태는 `review.domain_owner_approval` · `runtime_active` 가 정한다(ADR-027 §5 — 승인 뒤 파일을 고치지 않는다).
+- **코드가 막지 않는 것(프롬프트에만 있다):** 대피 경로 · 집결 장소 · 담당자 · 절차 · 실시 결과를 쓰지 않는 것, 문장이 그 주제 상황에 맞는 것. 화면이 문장 옆에 주제 이름을 보이고 교사가 검토한다. 장소 · 절차 결정적 검사기는 「아직 아닌 것」.
+
 ## 키와 비용
 
 - **로컬에서 `real` 모드를 코드가 막는다** — 키가 팀 공유라 6명이 각자 부르면 어디로 새는지 모른다.
@@ -56,15 +72,18 @@
   # ✓  text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
   ```
 - 서버 인증과 센터 범위 — ADR-017 · `test_auth.py` · `features/auth/`
-- 비밀번호 scrypt · 원 초대 코드 — ADR-029
+- 비밀번호 scrypt — ADR-029 · 같은 원은 정부 어린이집 목록으로 묶고 다른 반은 담임 승인 뒤 보기만 — ADR-068 · ADR-059
 
 - 생성에 쓰는 기관 근거 자료에서 사람이 개인정보로 판정한 기록 42개를 통째 제외하고 분류 4종을 같은 SHA에 연결했다 — [검토·승인 기록](../evidence-store-v0-2-human-review.md) · `p0-planning/tests/evidence/test_evidence_store.py` · `p0-planning/tests/finalization/test_freeze.py`
 - 그 42개가 남아 있던 옛 근거 본체 v0.1.0 을 저장소에서 지웠다(git 이력에는 남는다) — `p0-planning/data/evidence/` · `p0-planning/tests/unit/test_safety_evidence_classification.py`
+
+- 계획안의 장소 경계: 검토된 특정 장소명·명시적 현장학습 근거를 맥락형 월간/주간 후보에서 제외한다. 생성의 장소 허용은 긍정 요청·교사가 입력/수정한 확정 부모 값에 한하며, 단순 확정·무변경 저장·거절 요청은 허용하지 않는다. 출처 전달·수리 거절은 `p0-planning/tests/planner/test_venue_policy.py`, 소주제 저장·재조회는 `backend/tests/test_plans_api.py`로 확인한다. 목록에 없는 새 장소명과 일반 외부 방문을 전부 감지하지는 않는다 — `p0-planning/CLAUDE.md`의 Named venue boundary.
 
 ## 아직 아닌 것
 
 - 속도 제한(rate limit)이 없다
 - 로그에서 개인정보를 거르는 검사가 자동이 아니다 — `test_error_logging.py` · `test_llm_logging.py` 가 일부만 본다
+- 소방대피 · 재난대비 후보 문장의 대피 장소 · 절차 · 주제 적합성을 결정적으로 거르는 검사기가 없다 — 지금은 프롬프트와 교사 검토뿐(§소방대피 · 재난대비 훈련 칸)
 
 ## 더 모을 근거
 

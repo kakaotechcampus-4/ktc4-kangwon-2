@@ -23,7 +23,6 @@ import {
 
 const ENTRY_NONE = { classId: "", childId: "" };
 
-
 // 서버 observations.context 컬럼이 50자다. 더 받으면 저장할 때 422 다.
 const CONTEXT_MAX = 50;
 

@@ -66,6 +66,7 @@ def _search(records, **overrides):
         (
             (SourceSection.INDOOR_PLAY, "쌓기", INDOOR),
             (SourceSection.INDOOR_PLAY, "이야기 나누기", WeeklySemanticClass.GROUP_ACTIVITY),
+            (SourceSection.INDOOR_PLAY, "실내대체", WeeklySemanticClass.INDOOR_ALTERNATIVE),
         ),
     )
     arguments = dict(weekly_class=INDOOR, calendar_month=9, ages=frozenset({3}), query_text="가을 열매")
@@ -87,6 +88,29 @@ def test_only_that_class_that_month_valid_and_age_verified_records_are_used():
     assert _search(records, weekly_class=WeeklySemanticClass.GROUP_ACTIVITY) == ["ev_3"]
 
 
+def test_new_generation_excludes_venue_bound_source_without_rewriting_it():
+    records = (_record("ev_1", text="<현장학습> 배산유아숲터 숲체험"),
+               _record("ev_2", text="부산시민공원 가을소풍"),
+               _record("ev_3", text="자연물로 겨울나무 꾸미기"))
+    assert _search(records, exclude_venue_bound=True) == ["ev_3"]
+    assert records[0].text == "<현장학습> 배산유아숲터 숲체험"
+
+
+def test_indoor_methods_are_explicit_without_bypassing_month_age_or_class():
+    records = (
+        _record("ev_1", label="실내대체", text="겨울나무를 표현해요"),
+        _record("ev_2", label="실내대체", text="겨울나무를 몸으로 표현해요"),
+        _record("ev_3", label="실내대체", text="겨울나무를 몸으로 표현해요", age_scope=()),
+        _record("ev_4", label="실내대체", text="겨울나무를 몸으로 표현해요", month=12),
+        _record("ev_5", label="쌓기", text="겨울나무를 몸으로 표현해요"),
+    )
+    assert _search(records, weekly_class=WeeklySemanticClass.INDOOR_ALTERNATIVE,
+                   query_text="겨울나무", explicit_indoor_methods=True) == ["ev_2", "ev_1"]
+    assert _search(records, weekly_class=WeeklySemanticClass.INDOOR_ALTERNATIVE,
+                   query_text="겨울나무") == ["ev_1", "ev_2"]  # legacy requests keep their ranking
+    assert _search(records, query_text="겨울나무") == ["ev_5"]
+
+
 @pytest.mark.parametrize("text,label,expected", [
     ("[이야기 나누기] 가을 이야기", "대소집단", "이야기나누기"),
     ("[이야기나누기] 가을 이야기", "대소집단", "이야기나누기"),
@@ -104,6 +128,20 @@ def test_at_most_two_per_institution_and_top_k():
     found = _search(records, top_k=5)
     assert len(found) == 5
     assert sum(record_id in {"ev_1", "ev_2", "ev_3"} for record_id in found) == 2
+
+
+def test_candidate_pools_fill_leftover_slots_with_capped_sources_after_distinct_ones():
+    # Human Decision 2026-11-05(하민): for candidates the source cap orders, it does not cut.
+    records = tuple(_record(f"ev_{i}", text=f"가을 열매 쌓기 {i}") for i in range(1, 7)) + (
+        _record("ev_7", text="가을 열매 쌓기 7", institution="B"),
+        _record("ev_8", text="가을 열매 쌓기 8", institution="C"),
+    )
+    assert len(_search(records, top_k=5)) == 4
+    found = _search(records, top_k=5, by_activity_type=True)
+    assert len(found) == 5
+    assert {"ev_7", "ev_8"} <= set(found[:4]) and sum(r not in {"ev_7", "ev_8"} for r in found[:4]) == 2
+    assert found[4] not in {"ev_7", "ev_8"}
+    assert len(_search(records, top_k=20, by_activity_type=True)) == 8
 
 
 def test_parent_citation_survives_top_k_without_bypassing_eligibility_or_source_cap():
@@ -131,6 +169,67 @@ def test_mixed_age_requests_are_balanced_by_age():
     )
     found = _search(records, ages=frozenset({3, 4}), top_k=4)
     assert sorted(record_id[3] for record_id in found) == ["3", "3", "4", "4"]
+
+
+@pytest.mark.parametrize("weekly_class,label,ref,text", [
+    (INDOOR, "쌓기", "ev_010245b6472d_p01_r00208_c05_i02", "우리 반에서 지켜야 할 약속"),
+    (WeeklySemanticClass.GROUP_ACTIVITY, "이야기 나누기", "ev_e5e84e83db52_p01_r00428_c01_i02", "파랑새반 약속!"),
+])
+def test_reviewed_unclear_sources_are_removed_before_candidate_ranking_only(weekly_class, label, ref, text):
+    reviewed = _record(ref, text=text, label=label, institution="reviewed")
+    clear = _record("ev_99", text="우리 반 놀잇감 책 만들기", label=label, institution="clear")
+    records = (reviewed, clear)
+    normal = _search(records, weekly_class=weekly_class, query_text="", top_k=20)
+    assert set(normal) == {r.record_id for r in records}
+    assert _search(records, weekly_class=weekly_class, query_text="", by_activity_type=True) == [clear.record_id]
+
+
+def test_candidate_source_review_is_not_a_word_length_or_genre_filter():
+    ref, text = "ev_e5e84e83db52_p01_r00428_c01_i02", "파랑새반 약속!"
+    records = (
+        _record(ref, text="우리 반 약속 카드 만들기", institution="changed"),
+        _record("ev_97", text=text, institution="unreviewed"),
+        _record("ev_98", text="책 만들기", institution="short"),
+    )
+    found = _search(records, by_activity_type=True, query_text="")
+    assert set(found) == {r.record_id for r in records}
+
+
+def test_reviewed_candidate_sources_match_the_unchanged_evidence_artifact():
+    from ssuksak.planning.retrieval.weekly import REVIEWED_UNCLEAR_ACTIVITY_SOURCES
+
+    records = {r.record_id: r for r in JsonInstitutionEvidenceRepository().get_store().records}
+    assert REVIEWED_UNCLEAR_ACTIVITY_SOURCES
+    for ref, text in REVIEWED_UNCLEAR_ACTIVITY_SOURCES:
+        assert records[ref].text == text
+        assert records[ref].month == 3
+
+
+@pytest.mark.parametrize("text,expected,terms", [
+    ("【이야기나누기】 친구와 같은 점과 다른 점 【음악】 사랑의 인사 【미술】 친구 얼굴 꾸미기",
+     "【이야기나누기】 친구와 같은 점과 다른 점", ()),
+    ("[명화] ‘아이들 놀이’", "[명화] ‘아이들 놀이’", ("감상",)),
+    ("동화[바람과 햇님]듣기", "동화[바람과 햇님]듣기", ("듣기",)),
+    ("‘ㄱ, ㄴ, ㄷ’ 낱말을 배워요", "‘ㄱ, ㄴ, ㄷ’ 낱말을 배워요", ()),
+    ("종이, 빨대로 만들기", "종이, 빨대로 만들기", ()),
+])
+def test_candidate_activity_basis_uses_only_explicit_tag_boundaries(text, expected, terms):
+    from ssuksak.planning.retrieval.weekly import candidate_activity_basis
+
+    basis, required = candidate_activity_basis(_record("ev_1", text=text))
+    assert basis == expected and required == terms
+    assert basis in text
+
+
+def test_reviewed_letter_activity_does_not_apply_to_revised_or_unrelated_sources():
+    from ssuksak.planning.retrieval.weekly import candidate_activity_basis
+
+    ref = "ev_e5e84e83db52_p01_r00428_c01_i01"
+    text = "<이야기 나누기> 편지 발표, 함께 지켜요"
+    assert candidate_activity_basis(_record(ref, text=text)) == ("편지 발표", ("편지", "발표"))
+    assert candidate_activity_basis(_record("ev_99", text=text)) == (text, ())
+    revised = "<이야기 나누기> 편지 읽기, 함께 지켜요"
+    assert candidate_activity_basis(_record(ref, text=revised)) == (revised, ())
 
 
 def test_a_classification_for_another_store_is_refused():

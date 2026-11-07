@@ -16,6 +16,7 @@ from .contracts import (
 from .parser import parse_monthly_cell_proposal
 from .ports import MonthlyCellPlanningProvider
 from .teacher_memo import split_memo_applied
+from .validation import sanitize_cell_activity_detail
 
 
 class MonthlyCellPlanner:
@@ -49,7 +50,7 @@ class MonthlyCellPlanner:
         if not validation.is_valid:
             raise ProposalRejectedError(validation.codes)
         return MonthlyCellPlanningOutcome(
-            proposal=proposal,
+            proposal=sanitize_cell_activity_detail(proposal, packet, request),
             model=response.model,
             prompt_version=request.prompt_version,
             packet_fingerprint=request.packet_fingerprint,

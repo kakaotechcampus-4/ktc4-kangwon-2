@@ -12,7 +12,7 @@ institution isolation belongs to the parent repository's scope and the backend p
 from __future__ import annotations
 
 import calendar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from ..domain.curriculum_reference import CurriculumCatalog
@@ -43,6 +43,7 @@ from ..domain.play_monthly_plan import (
     PlayMonthlyLayout,
     PlayMonthlyPlan,
     PlayMonthlyReferences,
+    RemovedActivity,
     SafetyCandidate,
     SafetyWeek,
     TimetableNode,
@@ -98,6 +99,7 @@ from .safety_candidates import (
 )
 from ..domain.safety_placement import SafetyKind
 from ..domain.teacher_memo import TEACHER_MEMO_EVIDENCE
+from ..venue_policy import parent_teacher_venues, venue_name_only_repair
 from ..rules.safety_requests import SAFETY_REQUEST_RULE_ID, SAFETY_REQUEST_RULE_VERSION
 
 SYSTEM_ACTOR = "play_monthly_application"
@@ -132,6 +134,16 @@ PLAY_MONTHLY_LAYOUT_V0_2 = PlayMonthlyLayout(
     together_count=5,
     free_play_count=5,
     drill_candidate_count=5,  # M2-D15: candidates, not a drill frequency
+)
+
+# v0.3.0 (2026-11-06 Human Decision): the AI writes 8 candidates per play section and the teacher
+# keeps exactly 5 in the document, like the play-project yearly picking. The rest is v0.2.0.
+PLAY_MONTHLY_LAYOUT_V0_3 = replace(
+    PLAY_MONTHLY_LAYOUT_V0_2,
+    layout_version="play-monthly-layout-v0.3.0",
+    together_count=8,
+    free_play_count=8,
+    activity_pick=5,
 )
 
 # The special-activity parts as the approved template draws them (전달본 rows 20~21): None is a
@@ -237,7 +249,7 @@ class GeneratePlayMonthlyPlan:
         month = command.target_month
         weeks = canonical_week_periods(month)
         period = next(p for p in parent.periods if p.period.key == snapshot.period_key)
-        layout = PLAY_MONTHLY_LAYOUT_V0_2
+        layout = PLAY_MONTHLY_LAYOUT_V0_3
         counts = {"together": layout.together_count, "free_play": layout.free_play_count}
         request = build_play_monthly_request(
             target_month=month.value,
@@ -263,7 +275,7 @@ class GeneratePlayMonthlyPlan:
             nutrition_entries=daily.of_kind(DailyLifeKind.NUTRITION),
             drill_topics=tuple((t.topic_id, t.label, t.situation) for t in drill_topics),
             reference_versions=(
-                PLAY_MONTHLY_LAYOUT_V0_2.layout_version,
+                layout.layout_version,
                 catalog.catalog_version,
                 daily.catalog_version,
                 drills.catalog_version,
@@ -274,6 +286,13 @@ class GeneratePlayMonthlyPlan:
                 command.safety_quality_version,
             ),
             teacher_memo=command.teacher_memo,
+            teacher_venues=parent_teacher_venues(
+                (getattr(row, field) for period in parent.periods
+                 if command.target_month.calendar_month in period.period.months
+                 for row in period.candidates if row.row_key in period.selected
+                 for field in ("play_name", "materials", "support_direction")),
+                memo=parent.teacher_memo,
+            ),
         )
 
         response = self._provider.generate_play_monthly(request)
@@ -285,6 +304,8 @@ class GeneratePlayMonthlyPlan:
         if issues:
             repair = build_repair_request(request, content, issues)
             repaired = parse_play_monthly_proposal(self._provider.generate_play_monthly(repair).content)
+            if any(issue.code == "UNREQUESTED_VENUE" for issue in issues) and venue_name_only_repair(proposal, repaired):
+                raise ProposalRejectedError(("VENUE_NAME_ONLY_REMOVAL",))
             changed = changed_locations(proposal, repaired)
             remaining = validate_play_monthly(repaired, request) + repair_scope_issues(changed, issues)
             if remaining:
@@ -459,6 +480,7 @@ class GeneratePlayMonthlyPlan:
                 make_extra=extra,
             )
             memo_skipped += placed
+        candidates = [(s, a) for s in ("together", "free_play") for a in activities(s)]
         plan = PlayMonthlyPlan(
             plan_id=plan_id,
             school_year=command.school_year,
@@ -487,8 +509,11 @@ class GeneratePlayMonthlyPlan:
             # Theme and rationale are written from the parent period's selected plays.
             theme=cell("theme", "theme", proposal.theme, memo("theme", (parent_period,))),
             rationale=cell("rationale", "rationale", proposal.rationale, memo("rationale", (parent_period,))),
-            together=activities("together"),
-            free_play=activities("free_play"),
+            # All candidates start in the pool; the teacher picks the document rows.
+            together=(),
+            free_play=(),
+            activity_candidates=tuple(a.cell.item_id for _, a in candidates),
+            activity_pool=tuple(RemovedActivity(section, a) for section, a in candidates),
             habits=tuple(
                 HabitWeek(
                     w.week_id,
@@ -631,7 +656,7 @@ class GeneratePlayMonthlyPlan:
         drills = self._drills.get_catalog(command.drill_catalog_id, command.drill_catalog_version)
         try:
             topics = select_drill_topics(
-                drills, catalog, command.target_month.calendar_month, PLAY_MONTHLY_LAYOUT_V0_2.drill_candidate_count
+                drills, catalog, command.target_month.calendar_month, PLAY_MONTHLY_LAYOUT_V0_3.drill_candidate_count
             )
         except DrillTopicError as error:
             raise _fail(error.code) from None

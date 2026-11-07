@@ -6,7 +6,7 @@
   container: child-tracking / inline-size;
   width: 100%;
   min-width: 0;
-  min-height: calc(100dvh - 60px);
+  min-height: calc(calc(100 * var(--app-dvh)) - 60px);
   margin: 0;
   padding: 28px 32px 40px;
   background: var(--pg-cream, #f3eee4);
@@ -562,6 +562,13 @@
     padding: 22px 24px 32px;
   }
 }
+
+@media (max-width: 1023px) {
+  .page {
+    min-height: calc(calc(100 * var(--app-dvh)) - 60px - 84px);
+  }
+}
+
 @media (max-width: 600px) {
   .page {
     padding: 18px 14px calc(24px + env(safe-area-inset-bottom, 0px));

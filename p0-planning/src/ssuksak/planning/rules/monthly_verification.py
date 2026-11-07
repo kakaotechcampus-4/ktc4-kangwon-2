@@ -21,7 +21,10 @@ from ..domain.monthly_verification import (
     ViolationLocation,
 )
 from ..domain.provenance import EvidenceSource, EvidenceSourceType, GenerationMethod
+from ..domain.monthly_template_snapshot import ACTIVITY_DETAIL_SECTION_KEYS
 from .errors import MonthlyRuleError
+
+_DETAIL_KEYS = frozenset(ACTIVITY_DETAIL_SECTION_KEYS.values())
 
 AGE_RULE_ID = "monthly.activity.supported_ages"
 AGE_RULE_VERSION = "v2"
@@ -98,6 +101,8 @@ def verify_monthly_activity_ages(
         raise MonthlyRuleError(AGE_RULE_ID, "The Activity Catalog pinned by the Plan is missing")
     findings: list[Violation] = []
     for cell in plan.cells:
+        if cell.section_key in _DETAIL_KEYS:
+            continue  # ADR-066: a description shares its activity Cell's evidence, not its own age check
         references = tuple(
             source
             for source in cell.evidence

@@ -42,6 +42,7 @@ test("P0 clients use real URLs: center, mixed class, children, annual, patch, co
       age_min: 3,
       age_max: 5,
       child_count: null,
+      consent_confirmed: true, // 동의 전 반에는 아동을 못 넣는다 (§2-1)
     });
     assert.equal(klass.age_min, 3);
     assert.equal(klass.age_max, 5);
@@ -294,7 +295,7 @@ test("보낼 때는 범위로 바뀌고, 라벨도 그 범위로 적는다", asy
     });
     for (const ages of [[3], [3, 4], [3, 5], [3, 4, 5]]) {
       const created = await createClass(center.id, {
-        name: "반",
+        name: "반" + ages.join(""), // 같은 원 · 학년도에 같은 이름은 409
         teacher_name: "교사",
         ...ageRangePayload({ selectedAges: ages }),
         child_count: null,
