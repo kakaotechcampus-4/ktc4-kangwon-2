@@ -124,7 +124,7 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
             type="email"
             inputMode="email"
             autoComplete="username"
-            placeholder="teacher@example.com"
+            placeholder="이메일을 입력해주세요"
             required
             maxLength={254}
             disabled={busy}

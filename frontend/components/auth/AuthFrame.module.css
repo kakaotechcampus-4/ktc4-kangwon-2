@@ -9,6 +9,18 @@
     var(--pg-desk);
 }
 
+/* 큰 모니터에서는 내용 덩어리를 통째로 키운다. 책상 바탕은 그대로 화면 끝까지 깔린다 */
+@media (min-width: 1800px) {
+  .scale {
+    zoom: 1.15;
+  }
+}
+@media (min-width: 2200px) {
+  .scale {
+    zoom: 1.25;
+  }
+}
+
 /* 위에서 본 머그잔 · 연필. 움직이지 않는다 */
 .mug {
   position: absolute;
