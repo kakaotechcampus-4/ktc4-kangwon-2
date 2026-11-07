@@ -1,3 +1,3 @@
 import RecordsPage from "@/components/workspace/RecordsPage";
-export const metadata = { title: "교사 관찰 기록" };
+export const metadata = { title: "관찰일지" };
 export default RecordsPage;

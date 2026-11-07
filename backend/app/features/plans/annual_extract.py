@@ -25,8 +25,10 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.features.forms import hwp_form
+from app.features.plans.memo_privacy import center_name_table
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
+from app.shared.childCode import SubstitutionError, mask, unmask_from
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable, complete_json, is_mock
 
 router = APIRouter(prefix="/plans/annual", tags=["plans"])
@@ -88,6 +90,13 @@ _UNREADABLE = _error(
     422,
     "VALIDATION_FAILED",
     "파일에서 글자를 찾지 못했어요. 비어 있거나 손상되었거나 암호가 걸려 있는지 확인해 주세요.",
+    ["file"],
+)
+# 원 아이 이름을 가명으로 못 바꾸면 LLM 을 부르지 않는다(ADR-004). 표 직접 입력은 그대로 된다.
+_MASK_FAILED = _error(
+    422,
+    "VALUE_INVALID",
+    "파일 속 아이 이름을 가명으로 바꾸지 못해 AI 를 부르지 않았어요. 표에 직접 적어 주세요.",
     ["file"],
 )
 # 서버에 hwp5html 이 없는 것은 교사가 고칠 수 없다 — 양식 파싱(§8)과 같이 503 이다.
@@ -289,7 +298,13 @@ def extract_annual_import(
     lines = extract_lines(file_format, data)
     if not lines:
         raise _UNREADABLE
-    source = mask_personal("\n".join(lines))[:MAX_SOURCE_CHARS]
+    personal = mask_personal("\n".join(lines))
+    # 아이 이름도 가린다 — 반 아이만이 아니라 원 아이 전부(멘토 리뷰 #380).
+    try:
+        names = center_name_table(session, klass.id, personal)
+    except SubstitutionError as error:
+        raise _MASK_FAILED from error
+    source = (personal if names is None else mask(personal, names))[:MAX_SOURCE_CHARS]
     try:
         months, notices = build_months(assign_months(source, klass.school_year), source)
     except LlmUnavailable as error:
@@ -311,6 +326,12 @@ def extract_annual_import(
             "파일을 읽지 못했습니다. 다시 시도해주세요.",
             [],
         ) from error
+    if names is not None:
+        # 가린 원문에서 옮긴 글이다. 원문에 적힌 표기 그대로 되돌린다.
+        original = _squash(personal)
+        for month in months:
+            month.theme = month.theme and unmask_from(month.theme, names, original)
+            month.sub_themes = [unmask_from(v, names, original) for v in month.sub_themes]
     return ExtractOut(
         file=FileOut(format=file_format, sha256=hashlib.sha256(data).hexdigest()),
         months=months,

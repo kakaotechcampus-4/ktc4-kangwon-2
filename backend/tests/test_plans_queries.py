@@ -60,6 +60,8 @@ def _plan(
         school_year=2026,
         classroom_ref=classroom,
         status=status,
+        class_name="햇살반",
+        teacher_name="김선생",
         body=body,
         target_month=target_month,
     )

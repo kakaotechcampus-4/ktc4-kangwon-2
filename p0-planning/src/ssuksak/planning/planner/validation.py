@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 import json
+import logging
 import re
 from .v1_guidance import curriculum_source_refs
 
@@ -32,12 +33,18 @@ from .contracts import (
     CANDIDATE_PREFIXES,
     DRILL_CANDIDATE_PREFIX,
     SAFETY_CANDIDATE_PREFIX,
+    MonthlyCellPlanningRequest,
+    MonthlyCellProposal,
     MonthlyPlanProposal,
     MonthlyPlanningRequest,
     ProposedSectionValue,
 )
 from .text_policy import normalize_visible_text, visible_text_violations
+from .indoor_alternative import INDOOR_REQUIRED, INDOOR_ALTERNATIVE_TAG
 from .weekly import unsupported_facts
+from ..venue_policy import VENUE_POLICY_TAG, venue_memo
+
+_log = logging.getLogger(__name__)
 
 
 class ProposalValidationCode(str, Enum):
@@ -51,6 +58,7 @@ class ProposalValidationCode(str, Enum):
     SECTION_PLACEMENT_MISMATCH = "SECTION_PLACEMENT_MISMATCH"
     REQUIRED_SECTION_MISSING = "REQUIRED_SECTION_MISSING"
     UNRESOLVED_NOT_ALLOWED = "UNRESOLVED_NOT_ALLOWED"
+    INDOOR_ALTERNATIVE_REQUIRED = INDOOR_REQUIRED
     UNKNOWN_GROUNDING_REF = "UNKNOWN_GROUNDING_REF"
     WRONG_SOURCE_GROUNDING = "WRONG_SOURCE_GROUNDING"
     RESOLVED_REQUIRES_GROUNDING = "RESOLVED_REQUIRES_GROUNDING"
@@ -296,11 +304,12 @@ def _canonical_values(
 
 # What each LLM-repairable finding needs to change in the cell it names (from the
 # validator branch that raises it). Every other field, and every cell no finding
-# names, keeps its pre-repair value; reference_id and unresolved are never repaired.
+# names, keeps its pre-repair value. Only the indoor-required finding can fill unresolved.
 # A code without an entry authorizes nothing, so its finding survives and fails closed.
 _VALUE = frozenset({"value"})
 _VALUE_AND_REFS = frozenset({"value", "grounding_refs"})
 REPAIR_MUTABLE_FIELDS: dict[ProposalValidationCode, frozenset[str]] = {
+    ProposalValidationCode.INDOOR_ALTERNATIVE_REQUIRED: frozenset({"value", "grounding_refs", "unresolved"}),
     ProposalValidationCode.SOURCE_TEXT_COPY: _VALUE,
     ProposalValidationCode.TEXT_POLICY: _VALUE,
     ProposalValidationCode.SAFETY_MULTIPLE_SENTENCES: _VALUE,
@@ -321,6 +330,8 @@ def repair_targets(
     """
     authorized: dict[tuple[str | None, str], set[str]] = {}
     for issue in issues:
+        if issue.code is ProposalValidationCode.INDOOR_ALTERNATIVE_REQUIRED and issue.field != "indoor_alternative":
+            continue
         authorized.setdefault((issue.week_id, issue.field), set()).update(REPAIR_MUTABLE_FIELDS.get(issue.code, ()))
     return tuple(
         (week_id, section_key, tuple(sorted(fields)))
@@ -650,6 +661,9 @@ def validate_monthly_proposal_grounding(
                     reason=problem.reason.value, expected=problem.expected, actual=problem.actual,
                 )
         if value.unresolved:
+            if value.section_key == "indoor_alternative" and INDOOR_ALTERNATIVE_TAG in request.prompt_version:
+                fail(ProposalValidationCode.INDOOR_ALTERNATIVE_REQUIRED, value.section_key, week_id=week_id)
+                continue
             if (
                 value.section_key not in {"safety_education", "indoor_alternative"}
                 or section.empty_value_policy
@@ -670,7 +684,8 @@ def validate_monthly_proposal_grounding(
             for ref in value.grounding_refs
         )
         for code in visible_text_violations(
-            value.value, evidence_refs=_hidden_ids(request, packet)
+            value.value, evidence_refs=_hidden_ids(request, packet),
+            teacher_venue_text=venue_memo(_input_facts(request)) if VENUE_POLICY_TAG in request.prompt_version else None
         ):
             if code == "SAFETY_CONTENT_LEAKAGE" and safety_grounded:
                 continue
@@ -851,7 +866,8 @@ def _safety_candidate_issues(
             fail(ProposalValidationCode.UNRESOLVED_NOT_ALLOWED)
             continue
         for code in visible_text_violations(
-            value.value, evidence_refs=_hidden_ids(request, packet)
+            value.value, evidence_refs=_hidden_ids(request, packet),
+            teacher_venue_text=venue_memo(_input_facts(request)) if VENUE_POLICY_TAG in request.prompt_version else None
         ):
             if code != "SAFETY_CONTENT_LEAKAGE":
                 fail(ProposalValidationCode.TEXT_POLICY, code, reason=code)
@@ -928,7 +944,8 @@ def _drill_candidate_issues(
         reasons = [
             code
             for code in visible_text_violations(
-                value.value, evidence_refs=_hidden_ids(request, packet)
+                value.value, evidence_refs=_hidden_ids(request, packet),
+                teacher_venue_text=venue_memo(_input_facts(request)) if VENUE_POLICY_TAG in request.prompt_version else None
             )
             if code != "SAFETY_CONTENT_LEAKAGE"
         ]
@@ -947,6 +964,69 @@ def _drill_candidate_issues(
         if value.reference_id is not None:
             fail(ProposalValidationCode.UNKNOWN_REFERENCE_ID, "REFERENCE_FORBIDDEN_FOR_SECTION")
     return issues
+
+
+MAX_ACTIVITY_DETAIL_SENTENCES = 2
+
+
+def _detail_keeper(packet: MonthlyContextPacket, asked, hidden: frozenset[str], facts: str):
+    evidence_texts = {normalize_visible_text(item.text) for item in packet.grounding_items}
+
+    def keep(value: ProposedSectionValue) -> bool:
+        text = value.detail
+        return (
+            value.section_key in asked
+            and not value.unresolved
+            and bool(value.value.strip())
+            and not visible_text_violations(text, evidence_refs=hidden)
+            and sentence_count(text) <= MAX_ACTIVITY_DETAIL_SENTENCES
+            and normalize_visible_text(text) not in evidence_texts
+            and not unsupported_facts(text, facts)
+        )
+
+    return keep
+
+
+def sanitize_cell_activity_detail(
+    proposal: MonthlyCellProposal,
+    packet: MonthlyContextPacket,
+    request: MonthlyCellPlanningRequest,
+) -> MonthlyCellProposal:
+    """ADR-066 (Human Decision 2026-11-06): the regenerated cell's detail, same policy as generation."""
+    value = proposal.section
+    if not value.detail:
+        return proposal
+    asked = (request.target_section_key,) if request.detail_requested else ()
+    if _detail_keeper(packet, asked, _hidden_ids(request, packet), request.user_content)(value):
+        return proposal
+    _log.info("activity_detail_dropped count=1 reason=POLICY")
+    return replace(proposal, section=replace(value, detail=""))
+
+
+def sanitize_activity_details(
+    proposal: MonthlyPlanProposal,
+    packet: MonthlyContextPacket,
+    request: MonthlyPlanningRequest,
+) -> MonthlyPlanProposal:
+    """ADR-066: drop (to "") every detail the request did not ask for or that breaks text policy.
+
+    A detail is supplementary: it never becomes a finding, a repair target or a failure.
+    Kept only on a resolved cell of an asked section, within the visible-text policy, at most
+    two sentences, not a verbatim evidence copy and with no fact the input does not hold."""
+    keep = _detail_keeper(packet, request.detail_section_keys, _hidden_ids(request, packet), _input_facts(request))
+    dropped = 0
+    weeks = []
+    for week in proposal.weeks:
+        sections = []
+        for value in week.sections:
+            if value.detail and not keep(value):
+                value = replace(value, detail="")
+                dropped += 1
+            sections.append(value)
+        weeks.append(replace(week, sections=tuple(sections)))
+    if dropped:
+        _log.info("activity_detail_dropped count=%d reason=POLICY", dropped)
+    return replace(proposal, weeks=tuple(weeks))
 
 
 def validate_monthly_proposal(

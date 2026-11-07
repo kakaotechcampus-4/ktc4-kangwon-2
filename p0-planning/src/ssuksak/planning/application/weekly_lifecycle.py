@@ -38,6 +38,7 @@ from ..planner.weekly import (
     cell_request,
 )
 from ..rules.errors import MonthlyRuleError
+from ..venue_policy import parent_teacher_venues
 from ..rules.monthly_cell_state import resolve_cell_state
 from ..rules.weekly_verification import verify_weekly_plan
 from .generate_weekly_plan import (
@@ -324,6 +325,9 @@ class RegenerateWeeklyPlanCell(_WeeklyLifecycle):
                 c.value for c in plan.cells
                 if c.item_id != cell.item_id and c.value.strip()
                 and (c.section_key in WEEKLY_INSTITUTION_INPUT_SECTION_KEYS or c.audit.current_value_teacher_edited())
+            ),
+            teacher_venues=parent_teacher_venues(
+                (c for c in plan.cells if c.item_id != cell.item_id), memo=plan.teacher_memo,
             ),
         )
         try:

@@ -46,23 +46,24 @@ def official_ref(category_id: str, index: int) -> str:
 
 
 def safety_display_value(placement: SafetyPlacement | None, content: str) -> str:
-    """A STATUTORY week reads "[교통안전] - 내용"; any other safety value is kept as written.
+    """A STATUTORY week reads "[교통안전] 내용"; any other safety value is kept as written.
 
-    The Rule owns the label, so the LLM writes only the content after it.
+    The Rule owns the label, so the LLM writes only the content after it. No 「 - 」 after the
+    label (Human Decision 2026-11-06, 하민); values stored before keep theirs.
     """
     if placement is None or placement.kind is not SafetyKind.STATUTORY or not content.strip():
         return content
-    return f"[{STATUTORY_SHORT_LABELS[placement.category_id]}] - {content}"
+    return f"[{STATUTORY_SHORT_LABELS[placement.category_id]}] {content}"
 
 
 def candidate_display_value(candidate: MonthlySafetyCandidate) -> str:
-    """"[교통안전] - 문장" / "[생활안전] - 문장"; a blank sentence stays blank (no label)."""
+    """"[교통안전] 문장" / "[생활안전] 문장"; a blank sentence stays blank (no label)."""
     content = candidate.cell.value
     if not content.strip():
         return ""
     if candidate.kind is SafetyKind.STATUTORY:
-        return f"[{STATUTORY_SHORT_LABELS[candidate.category_id]}] - {content}"
-    return f"[생활안전] - {content}"
+        return f"[{STATUTORY_SHORT_LABELS[candidate.category_id]}] {content}"
+    return f"[생활안전] {content}"
 
 
 def placed_safety_candidate(plan: MonthlyPlan, week_id: WeekId) -> MonthlySafetyCandidate | None:

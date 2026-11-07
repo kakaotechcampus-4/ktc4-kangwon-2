@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from ..venue_policy import unrequested_venues
+
 MAX_VISIBLE_TEXT_CHARS = 240
 MAX_RATIONALE_CHARS = 600
 
@@ -37,10 +39,13 @@ def visible_text_violations(
     *,
     max_chars: int = MAX_VISIBLE_TEXT_CHARS,
     evidence_refs: frozenset[str] = frozenset(),
+    teacher_venue_text: str | None = None,
 ) -> tuple[str, ...]:
     codes: list[str] = []
     if not value.strip():
         codes.append("BLANK_TEXT")
+    if teacher_venue_text is not None and unrequested_venues(value, teacher_venue_text):
+        codes.append("UNREQUESTED_VENUE")
     if len(value) > max_chars:
         codes.append("TEXT_TOO_LONG")
     if _CONTROL.search(value):

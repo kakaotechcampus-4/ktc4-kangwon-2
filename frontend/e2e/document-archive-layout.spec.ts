@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { completeOnboarding } from "./onboarding";
 
 const viewports = [
   { width: 1440, height: 900 },
@@ -37,21 +38,12 @@ async function enter(page: Page) {
   await page.getByRole("link", { name: "메인화면으로 가기", exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
   await page.goto("/onboarding");
-  await expect(page).toHaveURL(/\/onboarding\/center$/);
-  await page.getByLabel("원명").fill("점검전용어린이집");
-  await page.getByLabel("원장 이름").fill("가상원장");
-  await page.getByLabel("시·도", { exact: true }).selectOption("강원특별자치도");
-  await page.getByLabel("시·군·구").selectOption("춘천시");
-  await page.getByRole("button", { name: "다음", exact: true }).click();
-  await page.getByLabel("반 이름").fill("햇살반");
-  await page.getByLabel("만 4세", { exact: true }).check();
-  await page.getByLabel("담임 이름").fill("점검교사");
-  await page.getByLabel("이 반 모든 아동의 법정대리인 동의를 받았습니다.").check();
-  await page.getByRole("button", { name: "다음", exact: true }).click();
-  await page.getByLabel("아동 추가").fill("가나다");
-  await page.getByRole("button", { name: "+ 추가", exact: true }).click();
-  await page.getByRole("button", { name: "설정 완료", exact: true }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await completeOnboarding(page, {
+    center: "점검전용어린이집",
+    director: "가상원장",
+    teacher: "점검교사",
+    children: ["가나다"],
+  });
   // 첫 화면이 서버 반 들여오기를 한 번 끝낼 때까지 기다린다. 그 전에 서버에 반을 더 만들면
   // 그 반은 「예전에 버린 반」으로 적혀 다시 안 들어온다(adoptServerClasses 의 retired).
   await page.waitForFunction(() =>

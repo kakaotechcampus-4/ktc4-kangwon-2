@@ -1,4 +1,4 @@
-"""카카오 로그인 (ADR-063 · docs/api-spec.md §0-1).
+"""카카오 로그인 (ADR-069 · docs/api-spec.md §0-1).
 
 카카오에는 닿지 않는다. 주고받는 모양은 `httpx.MockTransport` 로, 계정 잇기는 `fetch_profile` 을
 갈아 끼워 본다. **진짜 카카오와 되는지는 키를 넣고 화면에서 한 번 눌러 봐야 안다.**

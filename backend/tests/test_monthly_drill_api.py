@@ -133,6 +133,10 @@ def test_훈련_칸이_없는_계획은_후보가_비어_있고_복사하면_422
 # ── 복사 ──────────────────────────────────────────────────────────────────
 
 
+def _held(drill) -> str:
+    return f"[{drill['label']}] {drill['cell']['value']}"  # Human Decision 2026-11-06: one line
+
+
 def test_복사하면_칸에_후보_문장이_들어가고_RULE_ONLY_이고_revision_이_오른다(plan):
     candidate = plan["drill_candidates"][0]["cell"]
 
@@ -141,7 +145,8 @@ def test_복사하면_칸에_후보_문장이_들어가고_RULE_ONLY_이고_revi
     assert response.status_code == 200, response.json()
     copied = response.json()
     cell = _drill_cell(copied)
-    assert cell["value"] == candidate["value"]
+    # 「[주제]」 다음 줄에 문장 — Human Decision 2026-11-05(하민).
+    assert cell["value"] == _held(plan["drill_candidates"][0])
     assert cell["generation"]["method"] == "RULE_ONLY"
     assert cell["evidence"] == candidate["evidence"]
     assert copied["revision"] == plan["revision"] + 1
@@ -289,7 +294,7 @@ def test_이력에_훈련_후보_칸_CREATED_와_복사의_copied_from_이_있�
     event = events[0]
     assert (event["scope"], event["item_id"], event["section_key"]) == ("CELL", drill_item, "drill")
     assert event["copied_from"] == candidate_id
-    assert event["value_change"] == {"before": "", "after": candidates[0]["cell"]["value"]}
+    assert event["value_change"] == {"before": "", "after": _held(candidates[0])}
     assert all(
         i["copied_from"] is None for i in _audit(plan["id"]) if i["type"] != "CANDIDATE_COPIED"
     )
@@ -316,19 +321,40 @@ def _drill_row_text(response) -> str:
 
 
 @pytest.mark.parametrize("month", [9, 10])  # 2026-09 는 5주, 2026-10 은 4주다
-def test_훈련_후보를_복사해도_내보낸_12행은_빈칸이다(seed, month):
+def test_내보내면_소방대피_재난대비_줄이_훈련_칸_값이다(seed, month):
     _annual_confirmed(seed)
     plan = _create(seed, month=month).json()
     candidate = plan["drill_candidates"][0]["cell"]
     copied = _copy(plan["id"], candidate["item_id"], plan["revision"]).json()
     assert candidate["value"].strip()
-    assert _drill_cell(_get(plan["id"]))["value"] == candidate["value"]
+    held = _drill_cell(_get(plan["id"]))["value"]
+    assert held == _held(plan["drill_candidates"][0])
     assert _confirm(plan["id"], copied["revision"]).status_code == 200
 
     response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
 
     assert response.status_code == 200, response.text
-    assert _drill_row_text(response) == ""
+    assert _drill_row_text(response) == held
+    assert _bold_drill_heads(response) == [held.split("] ")[0] + "]"]  # 화면처럼 「[주제]」 만 굵게
+
+
+def _bold_drill_heads(response) -> list[str]:
+    import zipfile
+    from io import BytesIO
+
+    from lxml import etree
+
+    from app.shared.hwpx import NS, _cells
+
+    table, _ = _exported_table(response.content)
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        header = etree.fromstring(archive.read("Contents/header.xml"))
+    bold = {e.getparent().get("id") for e in header.iterfind(".//{*}charPr/{*}bold")}
+    return [
+        "".join(run.itertext())
+        for run in _cells(table)[(12, 1)].iterfind("hp:subList/hp:p/hp:run", NS)
+        if run.get("charPrIDRef") in bold and "".join(run.itertext())
+    ]
 
 
 def test_훈련_칸이_비어_있으면_그_줄은_빈칸이다(seed):

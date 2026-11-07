@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type DragEvent,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
@@ -22,6 +23,9 @@ import {
   tooNarrow,
   withRatio,
 } from "@/lib/plan-generator/playMonthlyTimetable";
+import type { PlaySection } from "@/lib/plan-generator/playMonthlyQueue";
+import { dropCells, liftCells, settle } from "./rowDrag";
+import { SAFETY_DRAG, safetyTopic } from "./PlayMonthlySafetyPanel";
 
 /**
  * 월간 문서 용지 — 디자인 넘김 `monthly-docs.tsx`(내보내기 양식 모양)의 선 · 머리 색 · 주 색.
@@ -48,7 +52,14 @@ export const Cell = ({
   selected,
   onSelect,
   hint = "+ 채우기",
-}: Pick & { id: string; value: string; hint?: string }) => (
+  strong = false,
+}: Pick & {
+  id: string;
+  value: string;
+  hint?: string;
+  /** 「[화재대피] …」의 [..] 를 건강 · 영양 머리처럼 굵게. */
+  strong?: boolean;
+}) => (
   <span
     className={`${!value.trim() && onSelect ? "flex items-center justify-center" : "block"} min-h-[1.5em] whitespace-pre-line px-[7px] py-[2px] ${onSelect ? "cursor-pointer hover:bg-[#faf7fd]" : ""} ${selected === id ? SELECTED : ""}`}
     data-cell={id}
@@ -66,7 +77,11 @@ export const Cell = ({
     })}
   >
     {value.trim() || !onSelect ? (
-      value
+      strong ? (
+        value.split(/(\[[^\]\n]*\])/).map((part, n) => (n % 2 ? <b key={n}>{part}</b> : part))
+      ) : (
+        value
+      )
     ) : (
       <span
         data-hint
@@ -141,8 +156,8 @@ export function Paper({
   children,
 }: {
   label: string;
-  title: string;
-  sub: string;
+  title: ReactNode;
+  sub: ReactNode;
   scale?: number;
   /** 제목 줄 높이(HWPUNIT) — 월간 6250 · 주간 4800. */
   head?: number;
@@ -188,44 +203,195 @@ export function Paper({
 
 /** 안전교육 줄의 칸 주소 — 주마다 하나(같은 후보를 여러 주에 둘 수 있어 후보 id 로는 주를 모른다). */
 export const safetyCellId = (weekId: string) => "safety:" + weekId;
+/** 함께 하는 활동 · 자유놀이의 「AI 후보에서 고르기」 칸 주소(ADR-065). */
+export const pickCellId = (section: PlaySection) => "pick:" + section;
 const N = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
+/** 행 순서를 끌어 바꾼다 — 같은 목록 안에서만. 끈 행을 놓은 행 자리에 넣는다. */
+type MoveRow = (section: PlaySection, fromId: string, toId: string) => void;
+/**
+ * 함께 하는 활동 · 자유놀이 목록. `onMove` 가 있으면 행 왼쪽 위 손잡이로 끌어 같은 목록 안에서 순서를 바꾼다
+ * (안전교육 칸 끌기와 같은 모양). 손으로 옮기기 어려우면 행을 눌러 「칸 편집」의 위로 · 아래로 단추를 쓴다.
+ */
 const Rows = ({
   rows,
   mark,
+  section,
+  pick,
+  onMove,
   ...at
-}: Pick & { rows: PlayMonthlyActivity[]; mark: (i: number) => string }) => (
-  <ol className="m-0 list-none p-0">
-    {rows.map((row, i) => (
-      <li key={row.activity_id} className="flex items-start">
-        <span aria-hidden="true" className="shrink-0 py-1 pl-1.5">
-          {mark(i)}
-        </span>
-        <span className="min-w-0 flex-1">
-          <Cell {...at} id={row.name.item_id} value={row.name.value} />
-        </span>
-      </li>
-    ))}
-  </ol>
+}: Pick & {
+  rows: PlayMonthlyActivity[];
+  mark: (i: number) => string;
+  section: PlaySection;
+  /** AI 후보에서 고르는 계획안(ADR-065)이면 목록마다 둘 수 — 모자라면 다듬는 동안 「고르기」 칸을 단다. */
+  pick?: number | null;
+  onMove?: MoveRow;
+}) => (
+  <>
+    <ol className="m-0 list-none p-0">
+      {rows.map((row, i) => (
+        <li
+          key={row.activity_id}
+          data-play-row={row.activity_id}
+          className={`flex items-start ${onMove ? "group relative transition-[background-color,opacity] duration-200 [&[data-dragging]]:opacity-40 [&[data-drop]]:bg-[#efe7f8]" : ""}`}
+          {...(onMove && {
+            onDragOver: (event: DragEvent<HTMLElement>) => {
+              event.preventDefault();
+              event.currentTarget.dataset.drop = "";
+            },
+            onDragLeave: (event: DragEvent<HTMLElement>) => delete event.currentTarget.dataset.drop,
+            onDrop: (event: DragEvent<HTMLElement>) => {
+              event.preventDefault();
+              delete event.currentTarget.dataset.drop;
+              dropCells();
+              const from = event.dataTransfer.getData("text/plain");
+              // 다른 목록 · 안전교육 칸에서 끈 것은 받지 않는다.
+              if (from === row.activity_id || !rows.some((r) => r.activity_id === from)) return;
+              onMove(section, from, row.activity_id);
+              settle(`li[data-play-row="${CSS.escape(from)}"]`);
+            },
+          })}
+        >
+          {onMove && (
+            <span
+              draggable
+              aria-hidden="true"
+              title="끌어서 순서 바꾸기"
+              className="absolute left-0 top-0 z-10 cursor-grab rounded-br-md bg-[#7053a0] px-1 text-[10px] font-bold leading-[16px] text-white opacity-0 transition-opacity duration-150 active:cursor-grabbing group-hover:opacity-100"
+              onDragStart={(event) => {
+                const li = event.currentTarget.closest("li");
+                if (li) liftCells(event, [li], row.activity_id);
+              }}
+              onDragEnd={dropCells}
+            >
+              ⠿
+            </span>
+          )}
+          <span aria-hidden="true" className="shrink-0 py-1 pl-1.5">
+            {mark(i)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <Cell {...at} id={row.name.item_id} value={row.name.value} />
+          </span>
+        </li>
+      ))}
+    </ol>
+    {pick != null && at.onSelect && rows.length < pick && (
+      <Cell
+        {...at}
+        id={pickCellId(section)}
+        value=""
+        hint={
+          rows.length ? `+ AI 후보에서 ${pick - rows.length}개 더 고르기` : "+ AI 후보에서 고르기"
+        }
+      />
+    )}
+  </>
 );
 
+/** 「[건강] 문장」 — 한글 양식처럼 가운데. */
 const Tagged = ({ tag, children }: { tag: string; children: ReactNode }) => (
-  <div className="flex items-start text-left">
+  <div className="flex items-start justify-center text-center">
     <b className="shrink-0 py-1 pl-1.5">[{tag}]</b>
-    <span className="min-w-0 flex-1">{children}</span>
+    <span className="min-w-0">{children}</span>
   </div>
 );
 
+/**
+ * 주마다 한 칸인 줄(안전교육 · 기본생활습관)의 칸 하나. `onMove` 가 있으면 넣은 칸 왼쪽 위 손잡이로 끌어
+ * 같은 줄의 다른 주 칸에 놓는다(놀이 중심형 연간 줄 끌기와 같은 모양). 끄는 글은 안전교육이면 주 id, 습관이면
+ * `habit:<주>` — 다른 줄에 놓아도 받지 않는다. 안전교육 칸은 「AI 후보」 카드를 끌어 놓아도(`onPlace`) 그 주에 둔다.
+ * 손으로 옮기기 어려우면 칸을 눌러 「AI 후보」 · 「칸 편집」을 쓴다.
+ */
+function WeekTd({
+  row,
+  weekId,
+  cellId,
+  value,
+  weekIds,
+  onMove,
+  onPlace,
+  ...at
+}: Pick & {
+  row: "safety" | "habit";
+  weekId: string;
+  cellId: string;
+  value: string;
+  weekIds: string[];
+  onMove?: (fromWeekId: string, toWeekId: string) => void;
+  onPlace?: (weekId: string, candidateItemId: string) => void;
+}) {
+  const prefix = row === "safety" ? "" : "habit:";
+  const where = `data-${row}-week`;
+  const drop = onMove && {
+    onDragOver: (event: DragEvent<HTMLElement>) => {
+      event.preventDefault();
+      event.currentTarget.dataset.drop = "";
+    },
+    onDragLeave: (event: DragEvent<HTMLElement>) => delete event.currentTarget.dataset.drop,
+    onDrop: (event: DragEvent<HTMLElement>) => {
+      event.preventDefault();
+      delete event.currentTarget.dataset.drop;
+      dropCells();
+      const data = event.dataTransfer.getData("text/plain");
+      const settled = () => settle(`td[${where}="${CSS.escape(weekId)}"]`);
+      if (onPlace && data.startsWith(SAFETY_DRAG)) {
+        onPlace(weekId, data.slice(SAFETY_DRAG.length));
+        return settled();
+      }
+      const from = data.startsWith(prefix) ? data.slice(prefix.length) : "";
+      if (!weekIds.includes(from) || from === weekId) return;
+      onMove(from, weekId);
+      settled();
+    },
+  };
+  return (
+    <td
+      {...{ [where]: weekId }}
+      className={`${LINE} p-0 ${onMove ? "group relative transition-[background-color,opacity] duration-200 [&[data-dragging]]:opacity-40 [&[data-drop]]:bg-[#efe7f8]" : ""}`}
+      {...drop}
+    >
+      {onMove && value && (
+        <span
+          draggable
+          aria-hidden="true"
+          title="끌어서 다른 주로 옮기기"
+          className="absolute left-0 top-0 z-10 cursor-grab rounded-br-md bg-[#7053a0] px-1 text-[10px] font-bold leading-[16px] text-white opacity-0 transition-opacity duration-150 active:cursor-grabbing group-hover:opacity-100"
+          onDragStart={(event) => {
+            const td = event.currentTarget.closest("td");
+            if (td) liftCells(event, [td], prefix + weekId, "x");
+          }}
+          onDragEnd={dropCells}
+        >
+          ⠿
+        </span>
+      )}
+      <Cell {...at} id={cellId} value={value} strong={row === "safety"} />
+    </td>
+  );
+}
+
 export default function PlayMonthlySheet({
   plan,
-  className,
   selected,
   onSelect,
   scale,
   onRatio,
   onSize,
+  onMoveSafety,
+  onPlaceSafety,
+  onMoveHabit,
+  onMoveRow,
 }: {
   plan: PlayMonthlyPlan;
-  className: string;
+  /** 「AI 후보」의 안전교육 후보 카드를 문서의 주 칸에 끌어 놓았다 — `onMoveSafety` 가 있을 때만 받는다. */
+  onPlaceSafety?: (weekId: string, candidateItemId: string) => void;
+  /** 기본생활습관 칸을 다른 주로 끌어 옮긴다(두 주를 맞바꾼다) — 다듬는 동안만. */
+  onMoveHabit?: (fromWeekId: string, toWeekId: string) => void;
+  /** 함께 하는 활동 · 자유놀이 행을 같은 목록 안에서 끌어 옮긴다 — 다듬는 동안만. */
+  onMoveRow?: MoveRow;
+  /** 안전교육 칸을 다른 주로 끌어 옮긴다(두 주를 맞바꾼다) — 다듬는 동안만. */
+  onMoveSafety?: (fromWeekId: string, toWeekId: string) => void;
   /** 문서 배율(다듬기). 없으면 칸에 맞춰 줄이기만. */
   scale?: number;
   /** 특별활동 시간표 경계 · 크기 — 다듬는 동안만. */
@@ -248,17 +414,29 @@ export default function PlayMonthlySheet({
       </tr>
     );
   };
+  // 「[교통안전]」 다음 줄에 문장. 빈 문장이면 빈칸(머리도 안 붙인다).
   const safetyText = (weekId: string) => {
     const picked = plan.safety_weeks.find((w) => w.week_id === weekId)?.candidate_item_id;
-    return plan.safety_candidates.find((c) => c.cell.item_id === picked)?.cell.value ?? "";
+    const c = plan.safety_candidates.find((c) => c.cell.item_id === picked);
+    return c?.cell.value.trim() ? `[${safetyTopic(c)}]\n${c.cell.value}` : "";
   };
   const drill = teacher("fire_disaster_drill");
   const weeks = plan.weeks;
+  const weekIds = weeks.map((w) => w.week_id);
   return (
     <Paper
       label="놀이 중심 월간계획안 미리보기"
-      title={`${plan.month}월 놀이계획안`}
-      sub={`만 ${plan.target_ages.join("·")}세 ${className}`.trim()}
+      title={<Cell {...at} id={plan.display.title.item_id} value={plan.display.title.value} />}
+      sub={
+        <div className="flex justify-end">
+          <Cell {...at} id={plan.display.age.item_id} value={plan.display.age.value} />
+          <Cell
+            {...at}
+            id={plan.display.class_name.item_id}
+            value={plan.display.class_name.value}
+          />
+        </div>
+      }
       scale={scale}
     >
       <table className="w-full table-fixed border-collapse">
@@ -268,18 +446,21 @@ export default function PlayMonthlySheet({
         </colgroup>
         <tbody>
           <tr>
-            <th scope="row" className={`${LINE} h-7 font-bold`}>
-              놀이 주제
+            {/* 머리칸 글은 한글 양식 그대로(띄어 쓴 「놀 이 주 제」). */}
+            <th scope="row" aria-label="놀이 주제" className={`${LINE} h-7 font-bold`}>
+              놀 이 주 제
             </th>
             <td className={`${LINE} p-0`}>
               <Cell {...at} id={plan.theme.item_id} value={plan.theme.value} />
             </td>
           </tr>
           <tr>
-            <th scope="row" className={`${LINE} h-7 font-bold`}>
-              예상 기간
+            <th scope="row" aria-label="예상 기간" className={`${LINE} h-7 font-bold`}>
+              예 상 기 간
             </th>
-            <td className={`${LINE} px-1.5`}>{period(weeks)}</td>
+            <td className={`${LINE} p-0`}>
+              <Cell {...at} id={plan.display.period.item_id} value={plan.display.period.value} />
+            </td>
           </tr>
           <tr>
             <th scope="row" className={`${LINE} font-bold`}>
@@ -303,19 +484,34 @@ export default function PlayMonthlySheet({
             <th scope="col" className={`${LINE} h-6 font-normal text-[#d0479a]`}>
               함께 하는 활동
             </th>
-            <td rowSpan={2} className={`${LINE} px-2 text-center font-bold`}>
-              {plan.theme.value}
+            <td rowSpan={2} className={`${LINE} p-0 text-center font-bold`}>
+              <Cell {...at} id={plan.direction.item_id} value={plan.direction.value} />
             </td>
             <th scope="col" className={`${LINE} font-normal text-[#d0479a]`}>
               유아 예상 자유놀이
             </th>
           </tr>
           <tr>
-            <td className={`${LINE} p-0 align-top`}>
-              <Rows {...at} rows={plan.together} mark={(i) => N[i] ?? `${i + 1}.`} />
+            {/* 한글 양식처럼 목록은 세로 가운데. */}
+            <td className={`${LINE} p-0 align-middle`}>
+              <Rows
+                {...at}
+                rows={plan.together}
+                mark={(i) => N[i] ?? `${i + 1}.`}
+                section="together"
+                pick={plan.activity_pick}
+                onMove={onMoveRow}
+              />
             </td>
-            <td className={`${LINE} p-0 align-top`}>
-              <Rows {...at} rows={plan.free_play} mark={() => "-"} />
+            <td className={`${LINE} p-0 align-middle`}>
+              <Rows
+                {...at}
+                rows={plan.free_play}
+                mark={() => "-"}
+                section="free_play"
+                pick={plan.activity_pick}
+                onMove={onMoveRow}
+              />
             </td>
           </tr>
         </tbody>
@@ -330,9 +526,8 @@ export default function PlayMonthlySheet({
         </colgroup>
         <thead>
           <tr>
-            <th scope="col" className={`${LINE} ${HEAD} h-6`}>
-              구분
-            </th>
+            {/* 한글 양식의 이 칸은 비어 있다. */}
+            <th scope="col" className={`${LINE} ${HEAD} h-6`} />
             {weeks.map((week, i) => (
               <WeekHead key={week.week_id} index={i} week={week} />
             ))}
@@ -345,10 +540,23 @@ export default function PlayMonthlySheet({
             </th>
             {weeks.map((week) => {
               const habit = plan.habits.find((h) => h.week_id === week.week_id);
-              return (
-                <td key={week.week_id} className={`${LINE} p-0`}>
-                  {habit && <Cell {...at} id={habit.cell.item_id} value={habit.cell.value} />}
-                </td>
+              return habit ? (
+                <WeekTd
+                  key={week.week_id}
+                  row="habit"
+                  weekId={week.week_id}
+                  cellId={habit.cell.item_id}
+                  value={
+                    habit.label && habit.cell.value.trim()
+                      ? `[${habit.label}]\n${habit.cell.value}`
+                      : habit.cell.value
+                  }
+                  weekIds={weekIds}
+                  onMove={onMoveHabit}
+                  {...at}
+                />
+              ) : (
+                <td key={week.week_id} className={`${LINE} p-0`} />
               );
             })}
           </tr>
@@ -357,17 +565,25 @@ export default function PlayMonthlySheet({
               안전교육
             </th>
             {weeks.map((week) => (
-              <td key={week.week_id} className={`${LINE} p-0`}>
-                <Cell {...at} id={safetyCellId(week.week_id)} value={safetyText(week.week_id)} />
-              </td>
+              <WeekTd
+                key={week.week_id}
+                row="safety"
+                weekId={week.week_id}
+                cellId={safetyCellId(week.week_id)}
+                value={safetyText(week.week_id)}
+                weekIds={weekIds}
+                onMove={onMoveSafety}
+                onPlace={onPlaceSafety}
+                {...at}
+              />
             ))}
           </tr>
           <tr>
             <th scope="row" className={`${LINE} ${HEAD} h-6`}>
               소방대피/재난대비
             </th>
-            <td colSpan={weeks.length} className={`${LINE} p-0 text-left`}>
-              {drill && <Cell {...at} hint={TEACHER_HINT} id={drill.item_id} value={drill.value} />}
+            <td colSpan={weeks.length} className={`${LINE} p-0`}>
+              {drill && <Cell {...at} id={drill.item_id} value={drill.value} strong />}
             </td>
           </tr>
           <tr>
@@ -542,7 +758,7 @@ function Timetables({
   const tree = (part: Part, day: number): ReactNode => {
     if (part.cell)
       return (
-        <div className="flex h-full min-h-0 min-w-0 overflow-auto [&>span]:h-full [&>span]:w-full [&>span]:text-center">
+        <div className="flex h-full min-h-0 min-w-0 overflow-auto [&>span]:flex [&>span]:min-h-full [&>span]:w-full [&>span]:flex-col [&>span]:justify-center [&>span]:text-center">
           <Cell {...at} hint={TEACHER_HINT} id={part.cell.item_id} value={part.cell.value} />
         </div>
       );

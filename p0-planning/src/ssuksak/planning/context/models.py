@@ -291,10 +291,15 @@ class MonthlyContextPacket:
     drill_topics: tuple[DrillTopic, ...] = ()
     # ADR-060: the teacher's request note; "" = none (fingerprint unchanged).
     teacher_memo: str = ""
+    teacher_venues: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.packet_version != CONTEXT_PACKET_VERSION:
             raise InvalidDomainValueError("Context Packet version is invalid")
+        if not isinstance(self.teacher_venues, tuple) or any(
+            not isinstance(name, str) or not name.strip() for name in self.teacher_venues
+        ):
+            raise InvalidDomainValueError("teacher_venues must contain non-blank strings")
         if self.curriculum is not None and (
             not isinstance(self.curriculum, CurriculumCatalog) or not self.curriculum.is_active
         ):

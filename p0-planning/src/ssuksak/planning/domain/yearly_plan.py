@@ -71,11 +71,19 @@ class YearlyPlan:
     # ADR-060: the teacher's request note and the requests generation could not apply.
     teacher_memo: str = ""
     memo_notices: tuple[MemoNotice, ...] = ()
+    # Subthemes are a server sidecar; retain demonstrably teacher-written values by month.
+    teacher_subthemes: tuple[tuple[int, tuple[str, ...]], ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
             raise InvalidDomainValueError("YearlyPlan.plan_id must be PlanId")
         require_memo_fields("YearlyPlan", self.teacher_memo, self.memo_notices)
+        if not isinstance(self.teacher_subthemes, tuple) or any(
+            not isinstance(entry, tuple) or len(entry) != 2 or type(entry[0]) is not int
+            or not 1 <= entry[0] <= 12 or not isinstance(entry[1], tuple)
+            or any(not isinstance(text, str) for text in entry[1]) for entry in self.teacher_subthemes
+        ) or len({entry[0] for entry in self.teacher_subthemes}) != len(self.teacher_subthemes):
+            raise InvalidDomainValueError("teacher_subthemes must contain unique months and text tuples")
         if type(self.school_year) is not int or not 1 <= self.school_year <= 9998:
             raise InvalidDomainValueError(
                 "YearlyPlan.school_year must be an integer from 1 through 9998"

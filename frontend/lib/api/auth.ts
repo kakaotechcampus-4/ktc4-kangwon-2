@@ -59,7 +59,7 @@ export async function login(email: string, password: string): Promise<AuthResult
 export const kakaoAuthorizeUrl = (state: string) =>
   apiRequest<{ url: string }>(`/api/auth/kakao/authorize?state=${encodeURIComponent(state)}`);
 
-/** 카카오가 돌려준 인가 코드로 로그인한다. 처음이면 서버가 계정을 만든다 (ADR-063). */
+/** 카카오가 돌려준 인가 코드로 로그인한다. 처음이면 서버가 계정을 만든다 (ADR-069). */
 export async function kakaoLogin(code: string): Promise<AuthResult> {
   const result = await apiRequest<AuthResult>("/api/auth/kakao", {
     method: "POST",

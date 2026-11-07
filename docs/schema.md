@@ -35,11 +35,11 @@ op.alter_column("children", "code", server_default=None)
 
 | 테이블 | 무엇을 담는가 |
 |---|---|
-| `centers` | 원. 파일럿 원 개수가 미정이라 여러 곳으로 열어뒀다. `trends_enabled` 는 트렌드봇을 켰는지다 — **기본 `false` 고 그 기본값을 떼지 않는다**(아래 참고, docs/api-spec.md §3-1 · FR-808) |
+| `centers` | 원. 파일럿 원 개수가 미정이라 여러 곳으로 열어뒀다. `trends_enabled` 는 트렌드봇을 켰는지다 — **기본 `false` 고 그 기본값을 떼지 않는다**(아래 참고, docs/api-spec.md §3-1 · FR-808). `registry_key` 는 정부 어린이집 목록의 열쇠(시도|시군구|이름|주소) — 같은 열쇠를 고른 교사가 이 원으로 든다. `UNIQUE`, 직접 적은 원은 NULL (docs/api-spec.md §1 · ADR-068) |
 | `classes` | 반. `centers` 를 참조한다. **학년도마다 새 행이다** — 2026 씨앗반과 2027 씨앗반은 다른 반이다. `UNIQUE(center_id, name, school_year)`. `consent_confirmed_at` 은 아동 정보 동의를 확인한 시각이다. `age_min` · `age_max` 범위로 혼합반(3~5세 한 반)에 대응하며 단일 연령반은 두 값이 같다 |
 | `children` | 아동. `classes` 를 참조한다. `name` 은 평문 실명이고 `code` 는 LLM 에 나가는 가명이다. `UNIQUE(class_id, code)` |
 | `activities` | 활동 풀. 규칙 엔진의 검사 층이 읽는다(ADR-014) |
-| `plans` | 연간·월간 계획안. `centers` 를 참조한다. **본문을 행으로 펼치지 않고 `body` JSONB 하나에 도메인 객체를 통째로 넣는다** — `kind`·`school_year`·`classroom_ref`·`status`·`target_month`(월간의 대상 월 `YYYY-MM`)·`confirmed_at` 은 조회용으로 꺼낸 값이고 언제나 `body` 에서 유도한다. `id` 는 계약에 나가는 정수(자동 증가)이고, p0-planning 의 `PlanId` 는 `plan_ref` 에 따로 담는다. `revision` 은 저장할 때마다 +1 — 월간 편집 · 재생성 · 확정의 `expected_revision` 비교 대상이다(ADR-035). **반당 연간 하나 · 반 · 월당 월간 하나**를 부분 유일 인덱스(`uq_plans_annual_per_classroom` · `uq_plans_monthly_per_classroom_month`)가 최종 보장한다. `CHECK (kind = 'monthly') = (target_month IS NOT NULL)`. `kind` 는 지금 `annual` · `monthly` 둘뿐이다 — 주간은 계약이 생길 때 넓힌다. 서버가 생성·교사 수정 소주제를 `sub_themes`에 별도 저장하며, 교사 안전교육 배치와 변경 이력은 `annual_safety` JSONB에 둔다(ADR-041). `annual_safety` 기본값 `{}`는 배치 미입력이다 |
+| `plans` | 연간·월간 계획안. `centers` 를 참조한다. **본문을 행으로 펼치지 않고 `body` JSONB 하나에 도메인 객체를 통째로 넣는다** — `kind`·`school_year`·`classroom_ref`·`status`·`target_month`(월간의 대상 월 `YYYY-MM`)·`confirmed_at` 은 조회용으로 꺼낸 값이고 언제나 `body` 에서 유도한다. `id` 는 계약에 나가는 정수(자동 증가)이고, p0-planning 의 `PlanId` 는 `plan_ref` 에 따로 담는다. `class_name` · `teacher_name` 은 확정할 때 찍은 반 · 담임 이름이다(NULL 은 미확정 — CHECK). `revision` 은 저장할 때마다 +1 — 월간 편집 · 재생성 · 확정의 `expected_revision` 비교 대상이다(ADR-035). **반당 연간 하나 · 반 · 월당 월간 하나**를 부분 유일 인덱스(`uq_plans_annual_per_classroom` · `uq_plans_monthly_per_classroom_month`)가 최종 보장한다. `CHECK (kind = 'monthly') = (target_month IS NOT NULL)`. `kind` 는 지금 `annual` · `monthly` 둘뿐이다 — 주간은 계약이 생길 때 넓힌다. 서버가 생성·교사 수정 소주제를 `sub_themes`에 별도 저장하며, 교사 안전교육 배치와 변경 이력은 `annual_safety` JSONB에 둔다(ADR-041). `annual_safety` 기본값 `{}`는 배치 미입력이다 |
 | `template_profiles` | 월간 양식 설정(TemplateProfile)의 버전 하나. `centers` 를 참조한다. `(profile_id, profile_version)` 유일, 상태 `DRAFT` · `READY` · `ARCHIVED`, `doc_kind` 는 지금 `monthly` 뿐. **버전 행은 지우지 않는다** — 과거 계획안의 Snapshot 이 가리킨다. READY 는 바뀌지 않는다(ADR-034) |
 | `template_profile_defaults` | 원 기본 포인터. (원, `doc_kind`)당 하나. `template_profiles` 의 정확한 버전을 복합 FK 로 가리킨다. 바꾼 계정 `changed_by` · 시각 `changed_at` |
 | `template_profile_overrides` | 반 override 포인터. (`classes.id`, `doc_kind`)당 하나. 같은 원의 READY 버전만 가리킨다(이 조건은 Application 이 검사한다 — FK 로 표현되지 않는다) |
@@ -49,7 +49,6 @@ op.alter_column("children", "code", server_default=None)
 | `routine_records` | 일과 기록 — 반 하루의 일과 한 줄(시간 · 일과 이름 · 활동계획 · 활동실행). 일일 보육일지의 사실 층이다. 행 수는 정해지지 않았다. `classes` 를 참조한다 (docs/api-spec.md §10-1 · ADR-025) |
 | `forms` | 원이 등록한 양식의 파싱 결과(`tables` · `labels` · `label_map` JSONB) · 원본(`content`) · 숨김 시각(`hidden_at`). `centers` 를 참조한다. 수정이 없어 `updated_at` 이 없다 — 삭제 후 재등록이다(docs/api-spec.md §8 · ADR-020 · ADR-026) |
 | `evaluation_checks` | 평가제 자기 점검 체크. `centers` 를 참조한다. 줄이 있으면 ☑, 풀면 그 줄을 지운다 — 다시 체크하면 새 줄 · 새 시각이다. 누가 체크했는지는 남기지 않는다. `UNIQUE(center_id, school_year, element)`. 지난 학년도 줄은 보존한다(docs/api-spec.md §12 · ADR-022) |
-| `center_invites` | 같은 원 교사 초대 코드. `centers` · `users`(만든 교사 `created_by`, 쓴 교사 `used_by`)를 참조한다. **1회용 · 7일 만료** — `used_at` 이 차면 끝이다. `UNIQUE(code)` (docs/api-spec.md §1-1 · ADR-029) |
 
 ## 관계
 
@@ -57,7 +56,6 @@ op.alter_column("children", "code", server_default=None)
 centers ←── classes ←── children
 centers ←── forms
 centers ←── evaluation_checks
-centers ←── center_invites ──> users (created_by · used_by)
 centers ←── plans ──> forms (form_id, 선택)
 centers ←── template_profiles ←── template_profile_defaults (원 기본)
 classes ←── template_profile_overrides ──> template_profiles (반 override)
@@ -71,8 +69,10 @@ documents ←── document_sources ──(source_kind·source_id, FK 없음)�
 
 1. `activities.code` 는 불변 슬러그다. **한 번 정하면 고치지 않는다.** 고치면 발행된
    계획안과 golden set 이 그 활동을 잃는다. 작명 규칙은 시드 PR 에서 정한다.
-2. `plans` 가 생기면 셀은 생성 시점 값(반 이름·연령·담임·학년도)을 **스냅샷**한다.
-   `classes` · `activities` FK 는 출처 표시용이며 렌더링에 쓰지 않는다.
+2. 계획안은 반 이름 · 담임 이름을 **확정할 때** `plans.class_name` · `plans.teacher_name` 에
+   스냅샷한다(ADR-062 · DB CHECK — 확정본은 둘 다 있어야 한다). 확정 취소해도 값은 남고,
+   다시 확정하면 그때의 반 값으로 덮는다. 연령은 만들 때 굳은 본문 `target_ages` 이고
+   학년도는 `school_year` 칸이다. `classes` · `activities` FK 는 출처 표시용이며 렌더링에 쓰지 않는다.
 3. `children.name` 은 평문 실명이다. **개발 DB 에 실제 아동 실명을 넣지 않는다.
    테스트는 가명으로**(ADR-004:77). LLM 호출 직전 치환기는 `backend/app/shared/childCode`
    에 있다. `children.code` 가 그 치환기가 붙여줄 가명의 자리다 — 아직 둘을 잇는 코드는

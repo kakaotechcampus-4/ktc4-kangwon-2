@@ -30,7 +30,7 @@ class User(Base):
     kakao_id: Mapped[int | None] = mapped_column(
         BigInteger,
         unique=True,
-        comment="카카오 회원번호. 카카오로 로그인한 적이 있을 때만 채워진다 (ADR-063)",
+        comment="카카오 회원번호. 카카오로 로그인한 적이 있을 때만 채워진다 (ADR-069)",
     )
     center_id: Mapped[int | None] = mapped_column(
         ForeignKey("centers.id"),

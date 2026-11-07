@@ -11,8 +11,9 @@ HTTP 요청을 Core 명령으로 바꾸고, 돌아온 도메인 객체를 계약
     B. Core 실행 — DB 없이. 부모 · Profile 은 메모리 저장소로 넘기고 저장도 메모리가 받는다
     C. 짧은 쓰기 — 중복을 다시 보고 Postgres 에 저장 · commit
 
-부모 CONFIRMED 와 READY 는 바뀌지 않는 값이라 A 와 C 사이에 달라지지 않는다. 같은 반 · 같은
-달 동시 요청은 C 의 부분 유일 인덱스가 최종으로 막는다.
+READY 는 바뀌지 않는 값이라 A 와 C 사이에 달라지지 않는다. 부모는 그 사이 확정이 풀리거나
+지워질 수 있어(ADR-055 · ADR-064) C 첫머리에 공유 잠금으로 다시 본다(`_lock_parent`). 같은 반 ·
+같은 달 동시 요청은 C 의 부분 유일 인덱스가 최종으로 막는다.
 
 **편집 · 재생성 · 확정도 같은 세 단계다**(결정 문서 12.10). 다른 점은 C 가 조건부 UPDATE 라는
 것 — 읽은 `expected_revision` 과 DRAFT 를 한 문장으로 보고 +1 한다. 그 사이 누가 바꿨으면
@@ -22,9 +23,9 @@ HTTP 요청을 Core 명령으로 바꾸고, 돌아온 도메인 객체를 계약
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import ValidationError
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
@@ -77,6 +78,14 @@ from ssuksak.planning.application.monthly_dto import (  # 공개 창구에 없�
     SafetyCandidatesSelector,
     UnconfirmMonthlyPlanCommand,
 )
+from ssuksak.planning.application.monthly_teacher_tables import (  # 공개 창구에 없다
+    RemoveMonthlyTableCell,
+    RemoveMonthlyTableCellCommand,
+    ResizeMonthlyTable,
+    ResizeMonthlyTableCommand,
+    SplitMonthlyTableCell,
+    SplitMonthlyTableCellCommand,
+)
 from ssuksak.planning.application.place_monthly_safety import (  # 공개 창구에 없다
     PlaceMonthlySafety,
     PlaceMonthlySafetyCommand,
@@ -84,11 +93,17 @@ from ssuksak.planning.application.place_monthly_safety import (  # 공개 창구
 )
 from ssuksak.planning.domain.play_monthly_plan import PLAY_MONTHLY_FORMAT  # 공개 창구에 없다
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT  # 공개 창구에 없다
+from ssuksak.planning.domain.provenance import SplitAxis  # 공개 창구에 없다
 from ssuksak.planning.rules.safety_placement import candidate_display_value  # 공개 창구에 없다
 
 from app.db import get_session
 from app.features.plans.annual_content import subthemes_for_month
-from app.features.plans.memo_privacy import memo_name_table, raise_if_mask_failed, with_masked_memo
+from app.features.plans.memo_privacy import (
+    REGEN_MASK_FAILED,
+    memo_name_table,
+    raise_if_mask_failed,
+    with_masked_memo,
+)
 from app.features.plans.models import Plan
 from app.features.plans.monthly_llm import monthly_llm_provider
 from app.features.plans.monthly_schemas import (
@@ -114,11 +129,16 @@ from app.features.plans.monthly_schemas import (
     SafetyWeekIn,
     SafetyWeekOut,
     SectionOut,
+    TableCellOut,
+    TablePartOut,
+    TableSizeIn,
+    TeacherTableOut,
     TemplateRefOut,
     ValueChangeOut,
     VerificationOut,
     WeekOut,
 )
+from app.features.plans.play_monthly_schemas import SplitTimetableIn, TimetableRatioIn
 from app.features.plans.play_project import format_of
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.runtime import SystemClock, UuidGenerator
@@ -211,7 +231,9 @@ _PROFILE_UNUSABLE_ERROR = _error(
 _PLAY_MONTHLY = _error(
     409, "GATE_BLOCKED", "놀이 중심 월간계획안은 /api/plans/monthly/play 경로로 다룹니다.", []
 )
-_NOT_DELETABLE = _error(409, "GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.", [])
+_IN_USE = _error(
+    409, "IN_USE", "이 월간계획안으로 만든 주간계획안이 있습니다. 먼저 지워주세요.", []
+)
 
 
 def _is_play_monthly(row: Plan) -> bool:
@@ -270,6 +292,21 @@ def _generation_error(error: MonthlyApplicationError) -> HTTPException:
 
 def _gate(message: str) -> HTTPException:
     return _error(409, "GATE_BLOCKED", message, ["class_id"])
+
+
+def _lock_parent(session: Session, parent_id: int, message: str) -> None:
+    """생성의 C 단계 첫머리 — 부모가 아직 있고 CONFIRMED 인지 공유 잠금(`FOR SHARE`)으로 다시 본다.
+
+    부모 DELETE 는 부모 행을 `FOR UPDATE` 로 잡고 자식을 본다(ADR-064 — 확정본도 지운다).
+    겹치면 한쪽이 기다리고, 늦은 쪽이 상대 결과를 본다 — 부모 없는 자식이 저장되지 않는다.
+    """
+    locked = session.scalar(
+        select(Plan.id)
+        .where(Plan.id == parent_id, Plan.status == "CONFIRMED")
+        .with_for_update(read=True)
+    )
+    if locked is None:
+        raise _gate(message)
 
 
 @router.post("", response_model=MonthlyPlanOut, status_code=status.HTTP_201_CREATED)
@@ -359,6 +396,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
         raise _generation_error(error) from error
 
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
+    _lock_parent(session, parent_id, "연간계획안을 먼저 만들어 확정해주세요.")
     if _existing(session, center_id, class_id, month) is not None:
         raise _ALREADY_EXISTS
     try:
@@ -440,30 +478,35 @@ def get_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser):
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
-    """확정 전 월간계획안을 지운다. 연간과 같은 이유다 — 지울 길이 있어야 다시 만든다.
+    """월간계획안을 지운다. 초안이든 확정본이든 지운다(ADR-064). 연간과 같은 이유다 — 지울
+    길이 있어야 다시 만든다.
 
     반 하나에 그 달 월간은 하나다(models.py 부분 유니크 인덱스). 만들기가 409 로 막히므로,
     지우기가 없으면 첫 초안이 마음에 안 들어도 그 달은 영영 다시 못 만든다.
 
-    **확정본은 안 지운다.** 제출 문서다.
+    **확정본도 지운다**(Human Decision 2026-11-05 하민). 화면의 확정 취소를 없앴다 — 고치려면
+    문서 보관함에서 지우고 다시 만든다. 이력 · 근거는 본문 안에 있어 행과 함께 사라진다.
+
+    **이 월간으로 만든 주간이 있으면 안 지운다**(409 `IN_USE`). 주간은 이 월간을 부모로 들고
+    있다(`parent_lineage`). 확정 월간만 주간을 가질 수 있어서 전에는 확정본 금지가 이걸 막았다.
     """
     row = _own_row(session, user, plan_id)
-    if row.status == "CONFIRMED":
-        raise _NOT_DELETABLE
-    # **상태 확인과 삭제를 한 SQL 로 한다** (멘토 리뷰 #210, 주간과 같은 방식).
-    # 읽은 뒤 다른 요청이 확정하면, 읽은 값으로 지우는 순간 확정본이 사라진다 —
-    # DRAFT 일 때만 지워지게 조건을 건다.
-    deleted = session.execute(
-        delete(Plan).where(
-            Plan.id == row.id,
+    # **잠그고 자식을 본다**(연간 DELETE 와 같다). 주간 생성은 저장 직전에 이 행을 FOR SHARE 로
+    # 다시 본다 — 「주간 없음」을 본 DELETE 와 같은 순간에 주간이 저장되지 않는다.
+    if session.scalar(select(Plan.id).where(Plan.id == row.id).with_for_update()) is None:
+        raise _NOT_FOUND  # 그 사이 사라졌다
+    child = session.scalar(
+        select(Plan.id)
+        .where(
             Plan.center_id == user.center_id,
-            Plan.kind == "monthly",
-            Plan.status == "DRAFT",
+            Plan.kind == "weekly",
+            Plan.body["parent_lineage"]["parent_plan_id"]["value"].astext == row.plan_ref,
         )
-    ).rowcount
-    if not deleted:  # 0건이면 이 transaction 에서 바뀐 것이 없다 — 되돌릴 것도 없다
-        _own_row(session, user, plan_id)  # 그 사이 사라졌으면 404
-        raise _NOT_DELETABLE
+        .limit(1)
+    )
+    if child is not None:
+        raise _IN_USE
+    session.delete(row)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -836,6 +879,134 @@ def copy_drill_candidate(
     return _write(session, user, plan_id, changed, body.expected_revision)
 
 
+# ── 교사 표(행사 일정 · 특성화 · 특별활동) 나누기 · 빼기 · 크기 ─────────────────────────
+# Human Decision 2026-11-05(하민). 경로 · 본문은 놀이 월간(ADR-047)과 같은 모양이고, 칸 글은
+# 위 칸 편집(PUT cells)으로 쓴다. 표가 셋이라 표 크기만 `table_key` 를 더 받는다.
+
+_TABLE_ERRORS = {
+    "monthly_table_cell_not_found": _error(
+        404, "NOT_FOUND", "그 표 칸을 찾을 수 없습니다.", ["item_id"]
+    ),
+    "monthly_table_not_found": _error(404, "NOT_FOUND", "그 표를 찾을 수 없습니다.", ["table_key"]),
+    "timetable_boundary_not_found": _error(
+        404, "NOT_FOUND", "그 표 경계를 찾을 수 없습니다.", ["split_id"]
+    ),
+    "timetable_split_limit": _error(
+        422, "VALIDATION_FAILED", "한 칸은 네 번까지 나눌 수 있습니다.", ["item_id"]
+    ),
+    "timetable_last_cell": _error(
+        422,
+        "VALIDATION_FAILED",
+        "열의 마지막 칸은 뺄 수 없습니다. 글을 비워 주세요.",
+        ["item_id"],
+    ),
+    "timetable_width_limit": _error(
+        422, "VALIDATION_FAILED", "칸이 너무 좁아집니다. 조금 덜 줄여 주세요.", []
+    ),
+    "invalid_timetable_size": _invalid("ratio"),
+}
+
+
+def _table_change(session, user, plan_id: int, expected_revision: int, run) -> MonthlyPlanOut:
+    """A · B · C 세 단계. 같은 크기면 Core 가 같은 계획안을 돌려주고 저장하지 않는다."""
+    plan = _read_draft(session, user, plan_id, expected_revision)
+    try:
+        changed = run(_drafts(plan), plan)
+    except InvalidStateTransitionError as error:  # 읽은 뒤 확정된 경우
+        raise _ALREADY_CONFIRMED from error
+    except MonthlyApplicationError as error:
+        if error.code in _TABLE_ERRORS:
+            raise _TABLE_ERRORS[error.code] from error
+        raise
+    if changed is plan:
+        return _current(session, user, plan_id)
+    return _write(session, user, plan_id, changed, expected_revision)
+
+
+@router.post("/{plan_id}/cells/{item_id}/split", response_model=MonthlyPlanOut)
+def split_table_cell(
+    plan_id: int, item_id: str, body: SplitTimetableIn, session: DbSession, user: CurrentUser
+):
+    """원래 칸(id · 글 · 이력)은 위 · 왼쪽에 남고 아래 · 오른쪽에 빈 새 칸이 50:50 으로 생긴다."""
+    item = _item_id(item_id)
+    return _table_change(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: SplitMonthlyTableCell(
+            plan_repository=drafts, id_generator=UuidGenerator(), clock=SystemClock()
+        ).execute(
+            SplitMonthlyTableCellCommand(plan.plan_id, _actor(user), item, SplitAxis(body.axis))
+        ),
+    )
+
+
+@router.delete("/{plan_id}/cells/{item_id}/split", response_model=MonthlyPlanOut)
+def remove_table_cell(
+    plan_id: int,
+    item_id: str,
+    session: DbSession,
+    user: CurrentUser,
+    expected_revision: Annotated[int, Query(ge=1)],
+):
+    """칸을 문서에서 뺀다. 형제 칸이 자리를 채우고, 뺀 칸은 이력과 함께 보관된다."""
+    item = _item_id(item_id)
+    return _table_change(
+        session,
+        user,
+        plan_id,
+        expected_revision,
+        lambda drafts, plan: RemoveMonthlyTableCell(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(RemoveMonthlyTableCellCommand(plan.plan_id, _actor(user), item)),
+    )
+
+
+@router.put("/{plan_id}/timetable/splits/{split_id}", response_model=MonthlyPlanOut)
+def resize_table_split(
+    plan_id: int, split_id: str, body: TimetableRatioIn, session: DbSession, user: CurrentUser
+):
+    """경계 하나의 첫 갈래(위 · 왼쪽) 비율. 같은 값이면 200 · 무변경."""
+    try:
+        split = ItemId(split_id)
+    except InvalidDomainValueError as error:
+        raise _invalid("split_id") from error
+    return _table_change(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: ResizeMonthlyTable(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(
+            ResizeMonthlyTableCommand(plan.plan_id, _actor(user), split_id=split, ratio=body.ratio)
+        ),
+    )
+
+
+@router.put("/{plan_id}/timetable/size", response_model=MonthlyPlanOut)
+def resize_table(plan_id: int, body: TableSizeIn, session: DbSession, user: CurrentUser):
+    """표 하나의 열 폭(합 100) · 높이(mm). 같은 값이면 200 · 무변경."""
+    return _table_change(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: ResizeMonthlyTable(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(
+            ResizeMonthlyTableCommand(
+                plan.plan_id,
+                _actor(user),
+                table_key=body.table_key,
+                column_widths=tuple(body.column_widths),
+                height_mm=body.height_mm,
+            )
+        ),
+    )
+
+
 @router.post("/{plan_id}/cells/{item_id}/regenerate", response_model=MonthlyPlanOut)
 def regenerate_monthly_cell(
     plan_id: int, item_id: str, body: RevisionIn, session: DbSession, user: CurrentUser
@@ -845,18 +1016,24 @@ def regenerate_monthly_cell(
     LLM 을 기다리는 동안 transaction 이 없다. 그 사이 누가 고쳤으면 결과를 버리고 409 다.
     """
     plan = _read_draft(session, user, plan_id, body.expected_revision)
+    # 칸 프롬프트에도 저장된 요청 사항이 실린다. 생성과 같이 가린다(ADR-060).
+    names = memo_name_table(session, int(plan.classroom_ref), plan.teacher_memo, REGEN_MASK_FAILED)
+    session.commit()  # 이름표 읽기까지 끝낸다. LLM 을 기다리는 동안 transaction 을 잡지 않는다
     try:
         provider = monthly_llm_provider()
     except LlmUnavailable as error:
         raise _UNAVAILABLE from error
     use_case = monthly_regeneration(
-        plan_repository=_drafts(plan), provider=provider, clock=SystemClock()
+        plan_repository=_drafts(plan),
+        provider=with_masked_memo(provider, plan.teacher_memo, names),
+        clock=SystemClock(),
     )
     try:
         changed = use_case.execute(
             RegenerateMonthlyPlanItemCommand(plan.plan_id, _item_id(item_id), _actor(user))
         ).plan
     except MonthlyApplicationError as error:
+        raise_if_mask_failed(error, REGEN_MASK_FAILED)
         _log.warning(
             "monthly cell regeneration failed code=%s stage=%s cause=%s validation_codes=%s",
             error.code,
@@ -1009,6 +1186,17 @@ def _detail(
             DrillCandidateOut(topic_id=c.topic_id, label=c.label, cell=_cell(c.cell))
             for c in plan.drill_candidates
         ],
+        teacher_tables=[
+            TeacherTableOut(
+                table_key=t.table_key,
+                label=t.source_label,
+                titles=[_table_cell(c) for c in t.titles],
+                columns=[_table_part(c) for c in t.columns],
+                column_widths=list(t.column_widths),
+                height_mm=t.height_mm,
+            )
+            for t in plan.tables
+        ],
         notices=[
             NoticeOut(code=notice.code, week_id=notice.week_id.value)
             for notice in monthly_safety_notices(plan)
@@ -1045,6 +1233,35 @@ def _detail(
         ),
         created_at=row.created_at,
         confirmed_at=row.confirmed_at,
+    )
+
+
+def _table_cell(cell) -> TableCellOut:
+    return TableCellOut(
+        item_id=cell.item_id.value,
+        value=cell.value,
+        evidence=[
+            EvidenceOut(
+                source_type=source.source_type.value,
+                source_id=source.source_id,
+                source_version=source.source_version,
+                effective_date=source.effective_date,
+                display_name=source.display_name,
+            )
+            for source in cell.evidence
+        ],
+        generation=None if cell.generation is None else _generation(cell.generation),
+    )
+
+
+def _table_part(node) -> TablePartOut:
+    if node.cell is not None:
+        return TablePartOut(cell=_table_cell(node.cell))
+    return TablePartOut(
+        split_id=node.split_id.value,
+        axis=node.axis.value,
+        ratio=node.ratio,
+        children=[_table_part(c) for c in node.children],
     )
 
 

@@ -55,6 +55,7 @@ e2e (playwright)               실제 DB 로
 | 백업 스크립트 | `test_backup_script.py` |
 | 시간표를 나눈 월간 PDF 에서 두 줄에 걸친 칸의 긴 글이 다른 줄을 덮음 | `test_play_monthly_hwpx.py` `test_a_long_day_over_split_rows_gets_room_in_the_pdf` |
 | 화면 문구를 바꿨는데 e2e 가 옛 버튼을 찾아 develop CI 가 빨간불 | `frontend/e2e/mentor-pilot.spec.ts` |
+| 휴대폰에서 보육일지 주간 칸 날짜가 넘침 | `frontend/e2e/document-archive-layout.spec.ts` (390 · 375px) |
 
 ## 규칙
 

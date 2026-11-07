@@ -32,6 +32,8 @@ def _class(center, name, teacher_id):
         age_max=4,
         teacher_name="김",
         teacher_id=teacher_id,
+        # 아이 등록(SAFE_WRITES)이 통과하려면 동의를 확인한 반이어야 한다(§2-1).
+        consent_confirmed_at=datetime.now(UTC),
     )
 
 
@@ -132,6 +134,7 @@ SAFE_WRITES = {
             "updated_at": datetime.now(UTC).isoformat(),
         },
     ),
+    "반 수정": lambda w: client.patch(f"/api/classes/{w['class'].id}", json={"name": "새이름반"}),
     "아이 등록": lambda w: client.post(
         f"/api/classes/{w['class'].id}/children", json={"name": "다새아"}
     ),
@@ -356,6 +359,8 @@ def test_요약은_열람_권한이_없어도_주고_제목_이름_id_는_없다
                 school_year=2026,
                 classroom_ref=str(klass.id),
                 status="CONFIRMED",
+                class_name=klass.name,
+                teacher_name=klass.teacher_name,
                 target_month="2026-10",
                 body={},
             ),

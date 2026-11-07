@@ -140,7 +140,7 @@ def kakao_authorize(state: Annotated[KakaoState, Query()]) -> KakaoAuthorizeResp
 
 @router.post("/kakao", response_model=TokenResponse)
 def kakao_login(body: KakaoLoginRequest, session: DbSession) -> TokenResponse:
-    """카카오 인가 코드로 로그인한다. 처음이면 계정을 만든다 (ADR-063).
+    """카카오 인가 코드로 로그인한다. 처음이면 계정을 만든다 (ADR-069).
 
     ```
     카카오 회원번호로 이어진 계정   → 그 계정

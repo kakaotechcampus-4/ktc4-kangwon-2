@@ -22,8 +22,10 @@ REPO_URL=https://github.com/kakaotechcampus-4/ktc4-kangwon-2.git
 # 전에는 이 값이 main 으로 박혀 있어서, 손으로 develop 을 올려 둔 서버에 자동 배포를
 # 한 번 돌리면 조용히 main 으로 되돌아갔다. 무엇이 돌고 있는지 아무도 모르게 된다.
 #
-# **SHA 를 받는 이유는 롤백이다.** 나쁜 배포가 나면 직전 커밋 SHA 를 넣어 다시 돌린다.
-# 롤백 전용 길을 따로 만들지 않는다 — 평소에 안 쓰는 길은 정작 급할 때 안 돈다.
+# **Actions 는 늘 커밋 SHA 를 넘긴다**(deploy.yml 「올릴 커밋 고정」). 브랜치 이름을 넘기면
+# 이 스크립트가 도는 순간의 끝 커밋이 올라가서, 그 사이 들어온 머지가 다른 run 의 이름으로 나갔다.
+# 롤백도 같은 길이다 — 직전 커밋 SHA 를 넣어 다시 돌린다. 롤백 전용 길을 따로 만들지 않는다.
+# 평소에 안 쓰는 길은 정작 급할 때 안 돈다.
 #   직전에 무엇이 돌았는지 보기:  Actions 의 배포 기록, 또는 서버에서
 #   cd /home/ubuntu/ktc4-kangwon-2 && git log --oneline -5
 DEPLOY_REF="${DEPLOY_REF:-main}"
@@ -67,11 +69,10 @@ if git rev-parse --verify --quiet "origin/$DEPLOY_REF" >/dev/null; then
   git checkout -f "$DEPLOY_REF"
   git reset --hard "origin/$DEPLOY_REF"
 else
-  # 되감기(롤백)다. 브랜치에서 떨어져 나온 상태가 되는데 배포에는 문제가 없다 —
-  # 다음 배포가 브랜치 이름으로 오면 다시 붙는다.
+  # 커밋이다. Actions 배포는 늘 이리로 온다. 브랜치에서 떨어져 나온 상태(detached HEAD)가
+  # 되는데 배포에는 문제가 없다. 서버에서 git pull 을 하지 않는다 — 붙은 브랜치가 없어 실패한다.
   git rev-parse --verify --quiet "${DEPLOY_REF}^{commit}" >/dev/null \
     || { echo "그런 브랜치도 커밋도 없다: $DEPLOY_REF"; exit 1; }
-  echo "브랜치가 아니라 커밋이다 — 되감는다"
   git checkout -f --detach "$DEPLOY_REF"
 fi
 

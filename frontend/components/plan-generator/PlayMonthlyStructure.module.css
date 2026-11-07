@@ -40,6 +40,19 @@
   font-size: 15px;
   line-height: 1.6;
 }
+/* 제목 → (남은 빈칸) → 작은 안내 → 단추. 안내는 줄마다 끊어 쓴다. */
+.confirm .title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.confirm .note {
+  margin-bottom: 4px;
+  color: #5c5243;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-line;
+}
 .confirm button[data-act] {
   min-height: 44px;
   padding: 0 16px;

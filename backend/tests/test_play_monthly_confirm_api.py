@@ -4,6 +4,7 @@
 
 import pytest
 from fastapi.testclient import TestClient
+from play_monthly_factory import with_room
 from sqlalchemy import select
 from ssuksak.planning.domain.provenance import AuditEventType
 from test_play_monthly_edit_api import (  # noqa: F401
@@ -165,7 +166,7 @@ def test_이름이_빈_행은_422_구역_점_item_id(world, section):
 
 @pytest.mark.parametrize("section", ("together", "free_play"))
 def test_연결이_0개인_행은_422_content_ids(world, section):
-    plan, row = _play(world)
+    plan, row = _play(world, edit=lambda p: with_room(p, section))
     added = client.post(
         f"{URL}/{row.id}/activities", json={"section": section, "expected_revision": 1}
     ).json()
@@ -192,7 +193,8 @@ def test_이력은_키_11개가_늘_오고_CREATED_는_계획안_1건_칸마다_
     created = [e for e in items if e["type"] == "CREATED"]
     assert [e["scope"] for e in created].count("PLAN") == 1
     cells = [e for e in created if e["scope"] == "CELL"]
-    assert [e["item_id"] for e in cells] == [c.item_id.value for c in plan.cells()]
+    pooled = [c for r in plan.activity_pool for c in (r.activity.cell, r.activity.description)]
+    assert [e["item_id"] for e in cells] == [c.item_id.value for c in (*plan.cells(), *pooled)]
     assert created[0]["scope"] == "PLAN" and created[0]["system_actor"] and not created[0]["actor"]
 
 
@@ -201,8 +203,8 @@ def test_칸_고치기_안전_배치_훈련_복사가_이력에_남는다(world)
     for kind, rev in (("cell", 1), ("safety", 2), ("drill", 3)):
         assert _call(row.id, plan, kind, rev=rev).status_code == 200
     items = _audit(row.id)
-    edited, arranged, copied = (
-        next(e for e in items if e["type"] == t)
+    edited, arranged, copied = (  # 마지막 것 — factory 의 후보 넣기도 ARRANGEMENT_CHANGED 다
+        next(e for e in reversed(items) if e["type"] == t)
         for t in ("TEACHER_EDITED", "ARRANGEMENT_CHANGED", "CANDIDATE_COPIED")
     )
     assert edited["scope"] == "CELL" and edited["item_id"] == plan.theme.item_id.value
@@ -233,8 +235,10 @@ def test_지운_행의_칸_이벤트도_싣고_순서는_시각_계획안_활성
     shown = {a["activity_id"] for a in client.get(f"{URL}/{row.id}").json()["together"]}
     assert gone.cell.item_id.value not in shown
     created = [e for e in items if e["type"] == "CREATED" and e["scope"] == "CELL"]
-    flags = [e["item_id"] in ids for e in created]
-    assert flags == sorted(flags) and flags[-2:] == [True, True]  # 지운 칸은 맨 뒤
+    order = [e["item_id"] for e in created]
+    # 지운 AI 후보는 후보 목록으로 돌아가(ADR-065) 활성 칸 뒤에 실린다
+    active = [order.index(c.item_id.value) for c in plan.cells() if c.item_id.value not in ids]
+    assert min(order.index(i) for i in ids) > max(active)
     times = [e["occurred_at"] for e in items]
     assert times == sorted(times)
     # 같은 시각이면 계획안 단위가 칸 단위보다 앞이다 — 칸 고치기 뒤에 배치를 해도 그렇다

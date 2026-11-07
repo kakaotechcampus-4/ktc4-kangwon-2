@@ -118,7 +118,7 @@ export async function verifyAccount(email: string, password: string): Promise<nu
 }
 
 /**
- * 카카오 인가 코드로 로그인한다 (ADR-063). 이메일 로그인과 같은 브라우저 기록을 남긴다 —
+ * 카카오 인가 코드로 로그인한다 (ADR-069). 이메일 로그인과 같은 브라우저 기록을 남긴다 —
  * 열쇠가 서버가 돌려준 이메일이라, 같은 이메일로 가입했던 교사는 쓰던 반 설정을 그대로 본다.
  */
 export async function verifyKakao(code: string): Promise<number | null> {

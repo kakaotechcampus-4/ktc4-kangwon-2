@@ -296,6 +296,7 @@ def test_확정된_놀이형은_선택도_편집도_409(world, saved):
     item_id = _item_id(plan, 0, 1)
     _put_selection(row, {**EMPTY, "m03_m05": ["cand1"]})
     row.status = "CONFIRMED"
+    row.class_name, row.teacher_name = "햇살반", "김선생"
     world["session"].flush()
 
     _error(_put_selection(row, EMPTY, revision=2), 409, "ALREADY_CONFIRMED", [])
@@ -357,7 +358,11 @@ def _interleave(monkeypatch, row_id, statement):
             ["expected_revision"],
         ),
         (
-            lambda i: update(Plan).where(Plan.id == i).values(status="CONFIRMED"),
+            lambda i: (
+                update(Plan)
+                .where(Plan.id == i)
+                .values(status="CONFIRMED", class_name="햇살반", teacher_name="김선생")
+            ),
             409,
             "ALREADY_CONFIRMED",
             [],

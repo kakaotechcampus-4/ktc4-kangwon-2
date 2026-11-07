@@ -14,7 +14,25 @@ import { dropCells, liftCells, settle } from "./rowDrag";
 
 const SELECTED = "outline outline-2 -outline-offset-2 outline-[#7053a0] bg-[#f6f1fb]";
 
-const CELL = "border border-black px-1.5 py-1.5 align-top whitespace-pre-line";
+// 세로 가운데 — 양식(play_project_annual.hwpx) 칸이 모두 가운데 맞춤이다.
+const CELL = "border border-black px-1.5 py-1.5 align-middle whitespace-pre-line";
+
+/** 배움 칸 「영역 - 범주 - 내용」 줄 → 한글 내려받기처럼 「[영역] 범주 - 내용」, `[영역]` 만 굵게(export.py `_learning`). */
+const learningLines = (value: string) =>
+  value.split("\n").map((line, i) => {
+    const [domain, category, ...rest] = line.split(" - ");
+    return (
+      <span key={i} className="block">
+        {rest.length ? (
+          <>
+            <b>[{domain}]</b> {category} - {rest.join(" - ")}
+          </>
+        ) : (
+          line
+        )}
+      </span>
+    );
+  });
 
 type Props = {
   plan: PlayProjectAnnualPlan;
@@ -134,7 +152,8 @@ export default function PlayProjectSheet({
                         {row.candidate ? (
                           fields.map((field) => {
                             const candidate = row.candidate!;
-                            const value = candidate[field.key].value;
+                            const raw = candidate[field.key].value;
+                            const value = field.key === "learning" ? learningLines(raw) : raw;
                             const selected =
                               selectedCell?.periodKey === period.period_key &&
                               selectedCell.rowKey === candidate.row_key &&

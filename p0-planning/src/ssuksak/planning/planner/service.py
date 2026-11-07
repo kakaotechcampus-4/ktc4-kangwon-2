@@ -6,6 +6,7 @@ import logging
 
 from ..context.models import MonthlyContextPacket
 from ..domain.monthly_template_snapshot import TemplateSnapshot
+from ..venue_policy import venue_name_only_repair
 from .contracts import (
     is_compatible_monthly_model,
     MonthlyPlanningOutcome,
@@ -23,6 +24,7 @@ from .validation import (
     hydrate_reference_values,
     merge_repair_patches,
     repair_targets,
+    sanitize_activity_details,
     validate_monthly_proposal,
 )
 
@@ -41,6 +43,7 @@ REPAIRABLE_CODES = frozenset(
         "SOURCE_TEXT_COPY", "TEXT_POLICY", "WRONG_SOURCE_GROUNDING", "SAFETY_GROUNDING_MISMATCH",
         "SAFETY_FOCUS_MISMATCH", "SAFETY_MULTIPLE_SENTENCES", "SAFETY_DUPLICATE_CONTENT", "SAFETY_DUPLICATE_REFERENCE",
         "REFERENCE_VALUE_MISMATCH",
+        "INDOOR_ALTERNATIVE_REQUIRED",
     }
 )
 
@@ -116,6 +119,8 @@ class MonthlyPlanner:
                 validate_monthly_proposal(proposal, packet, request).issues
                 + changed_reference_ids(rejected, proposal, found)
             )
+            if any(issue.detail == "UNREQUESTED_VENUE" for issue in found) and venue_name_only_repair(rejected, proposal):
+                raise ProposalRejectedError(("VENUE_NAME_ONLY_REMOVAL",))
             if validation.is_valid:
                 _log.info("Monthly LLM repair succeeded")
             else:
@@ -125,7 +130,7 @@ class MonthlyPlanner:
                 _log.warning("Monthly LLM proposal rejected: %s", finding_summary(validation.issues))
             raise ProposalRejectedError(validation.codes, validation.issues)
         return MonthlyPlanningOutcome(
-            proposal=proposal,
+            proposal=sanitize_activity_details(proposal, packet, request),
             model=response.model,
             prompt_version=request.prompt_version,
             packet_fingerprint=request.packet_fingerprint,

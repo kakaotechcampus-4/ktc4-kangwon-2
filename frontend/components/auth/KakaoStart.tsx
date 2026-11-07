@@ -4,7 +4,7 @@ import { errorCode } from "@/lib/api/client";
 import { startKakaoLogin } from "@/lib/auth/kakao";
 
 /**
- * 카카오로 시작하기 (ADR-063). 이메일 폼 아래 「또는」 뒤 두 번째 길이다.
+ * 카카오로 시작하기 (ADR-069). 이메일 폼 아래 「또는」 뒤 두 번째 길이다.
  * 처음 누르면 곧 가입이라 로그인 · 가입 화면 둘 다 같은 단추다.
  *
  * 색 · 심볼은 카카오 로그인 디자인 가이드를 따른다 — 바탕 #FEE500, 글자 · 심볼 검정 85%,

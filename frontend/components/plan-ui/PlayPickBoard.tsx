@@ -1,24 +1,41 @@
 "use client";
 /**
- * 놀이 고르기 (놀이 중심형, 생성 직후) — 디자인 확정본의 3패널.
- * 패널 구분: 위쪽 색 띠 + 연한 머리말. 선택 표시: 고른 것을 위로 모은다.
+ * 놀이 고르기 (놀이 중심형, 생성 직후) — 디자인 확정본의 3패널. 놀이 중심형 월간의 활동 고르기도 같은 판을 쓴다(ADR-065).
+ * 패널 구분: 위쪽 색 띠 + 연한 머리말. 왼쪽 후보는 한 장씩 테두리 카드. 선택 표시: 고른 것을 위로 모은다.
  *
  * 상호작용
  * - 왼쪽 줄을 누르면 가운데 '자세히 보기'에 그 놀이를 띄운다. 고르지는 않는다(고른 줄은 굵게).
  * - 고르기/빼기는 가운데 맨 아래 [이 놀이 고르기]/[✓ 골랐어요] 버튼 — 오른쪽 [다음] 버튼과 같은 높이.
  * - 오른쪽: 점선 칸 5개가 고른 순서대로 채워진다. ✕로 빼기. 계절당 최대 5개(서버 규칙).
  *
- * 계절 탭은 이 판 밖(PlayProjectResult)에 있다. 판은 지금 계절 하나만 그린다.
+ * 계절 탭(월간은 목록 탭)은 이 판 밖에 있다. 판은 지금 계절(목록) 하나만 그린다.
  */
 import type { ReactNode } from "react";
 
 export type PickCandidate = {
   key: string;
   name: string;
-  materials: string;
-  support: string;
-  learning: string[];
+  /** 왼쪽 줄의 둘째 줄(연간: 지원매체). */
+  summary: string;
+  /** 가운데 「자세히 보기」의 항목들 — 이름표와 줄. */
+  fields: { label: string; lines: string[] }[];
+  /** 요청 사항을 반영한 후보 — 작은 표시만 단다. */
+  memoApplied?: boolean;
 };
+
+/** 요청 사항을 반영한 후보의 작은 표시(Human Decision 2026-11-05). 글자 배지 대신 조용한 ✦. */
+export function MemoMark() {
+  // relative — 숨은 글자(sr-only, absolute)가 스크롤 상자를 빠져나가 페이지를 늘이지 않게.
+  return (
+    <span
+      title="요청을 반영한 놀이"
+      className="relative shrink-0 text-[13px] leading-none text-[#7053a0]"
+    >
+      <span aria-hidden="true">✦</span>
+      <span className="sr-only">요청을 반영한 놀이</span>
+    </span>
+  );
+}
 
 const TONE = { a: "#49654f", b: "#5e4b96", c: "#705936" } as const;
 const TINT = { a: "#e8f1ea66", b: "#eee4f466", c: "#f8efdc66" } as const;
@@ -75,7 +92,7 @@ function Row({
         type="button"
         onClick={onFocus}
         aria-current={focused ? "true" : undefined}
-        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-[#f7f3ec] ${focused ? "bg-[#f3efe8]" : ""}`}
+        className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left ${focused ? "border-[#7053a0] bg-[#f6f1fb]" : "border-[#e3dccf] bg-white hover:border-[#c9bfae] hover:bg-[#fbf9f5]"}`}
       >
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span
@@ -83,8 +100,9 @@ function Row({
           >
             {c.name}
           </span>
-          <span className="truncate text-[14px] text-ink-soft">{c.materials}</span>
+          <span className="truncate text-[14px] text-ink-soft">{c.summary}</span>
         </span>
+        {c.memoApplied && <MemoMark />}
       </button>
     </li>
   );
@@ -94,11 +112,13 @@ function Detail({
   c,
   picked,
   full,
+  pickLabel,
   onToggle,
 }: {
   c: PickCandidate;
   picked: boolean;
   full: boolean;
+  pickLabel: string;
   onToggle: () => void;
 }) {
   return (
@@ -106,22 +126,16 @@ function Detail({
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-8 pb-4 pt-5">
         <h3 className="m-0 text-[24px] font-bold leading-snug tracking-[-0.4px]">{c.name}</h3>
         <dl className="m-0 flex max-w-[640px] flex-col gap-5">
-          <div className="flex flex-col gap-1.5">
-            <dt className="text-sm font-bold text-[#5c5243]">지원매체</dt>
-            <dd className="m-0 text-base">{c.materials}</dd>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <dt className="text-sm font-bold text-[#5c5243]">내용 및 지원 방향</dt>
-            <dd className="m-0 text-base leading-[1.75]">{c.support}</dd>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <dt className="text-sm font-bold text-[#5c5243]">놀이를 통한 배움</dt>
-            <dd className="m-0 flex flex-col gap-1 text-base">
-              {c.learning.map((line) => (
-                <span key={line}>{line}</span>
-              ))}
-            </dd>
-          </div>
+          {c.fields.map((f) => (
+            <div key={f.label} className="flex flex-col gap-1.5">
+              <dt className="text-sm font-bold text-[#5c5243]">{f.label}</dt>
+              <dd className="m-0 flex flex-col gap-1 text-base leading-[1.75]">
+                {f.lines.map((line, n) => (
+                  <span key={n}>{line}</span>
+                ))}
+              </dd>
+            </div>
+          ))}
         </dl>
       </div>
       {/* 오른쪽 [다음] 버튼과 같은 줄 — 두 판 모두 아래 여백 16px · 버튼 높이 50px. */}
@@ -137,7 +151,7 @@ function Detail({
           aria-pressed={picked}
           className={`min-h-[50px] rounded-xl px-8 text-[15px] font-bold disabled:opacity-40 ${picked ? "border border-[#c5b7dd] bg-[#f6f1fb] text-[#5e4b96]" : "bg-[#7053a0] text-white"}`}
         >
-          {picked ? "✓ 골랐어요" : "이 놀이 고르기"}
+          {picked ? "✓ 골랐어요" : pickLabel}
         </button>
       </div>
     </div>
@@ -145,7 +159,8 @@ function Detail({
 }
 
 export default function PlayPickBoard({
-  season,
+  subject,
+  pickLabel = "이 놀이 고르기",
   max,
   candidates,
   picked,
@@ -158,8 +173,9 @@ export default function PlayPickBoard({
   nextLabel,
   onFinishEarly,
 }: {
-  /** 지금 계절 이름. 예: "3월~5월" */
-  season: string;
+  /** 고르는 것의 이름 — 머리말에 쓴다. 예: "봄 놀이", "함께 하는 활동" */
+  subject: string;
+  pickLabel?: string;
   max: number;
   candidates: PickCandidate[];
   /** 고른 후보 key, 고른 순서 */
@@ -192,26 +208,28 @@ export default function PlayPickBoard({
   );
 
   return (
-    <div className="flex w-full flex-col gap-4 text-[#2b2826] lg:h-[calc(100vh-210px)] lg:min-h-[520px] lg:flex-row">
+    <div className="flex w-full flex-col gap-4 text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-210px)] lg:min-h-[520px] lg:flex-row">
       <section
-        aria-label={`${season} 놀이 후보`}
-        className={`max-h-[60vh] lg:max-h-none lg:w-[400px] lg:shrink-0 ${PANEL}`}
+        aria-label={`${subject} 후보`}
+        className={`max-h-[calc(60*var(--app-vh))] lg:max-h-none lg:w-[400px] lg:shrink-0 ${PANEL}`}
         style={{ borderTopColor: STRIP.a }}
       >
         <Head
           tone="a"
-          title={`${season} 놀이 후보 ${candidates.length}`}
-          extra={<span className="text-[13px] text-[#5c5243]">누르면 자세히 보여요</span>}
+          title={`${subject} 후보 ${candidates.length}`}
+          extra={
+            <span className="font-display text-[17px] font-bold text-[#5c5243]">
+              누르면 자세히 보여요!
+            </span>
+          }
         />
-        <ul className="m-0 flex min-h-0 flex-1 list-none flex-col gap-0.5 overflow-y-auto p-2">
+        <ul className="m-0 flex min-h-0 flex-1 list-none flex-col gap-2 overflow-y-auto bg-[#faf8f4] p-3">
           {chosen.length > 0 && (
-            <li className="px-3 pb-1 pt-1 text-[13px] font-bold text-[#5e4b96]">
-              고른 놀이 {chosen.length}
-            </li>
+            <li className="px-1 text-[13px] font-bold text-[#5e4b96]">고른 놀이 {chosen.length}</li>
           )}
           {chosen.map(row)}
           {chosen.length > 0 && rest.length > 0 && (
-            <li aria-hidden="true" className="mx-3 my-2 border-t border-[#efeae2]" />
+            <li aria-hidden="true" className="mx-1 my-1 border-t border-[#e3dccf]" />
           )}
           {rest.map(row)}
         </ul>
@@ -228,20 +246,21 @@ export default function PlayPickBoard({
             c={shown}
             picked={picked.includes(shown.key)}
             full={full}
+            pickLabel={pickLabel}
             onToggle={() => onToggle(shown.key)}
           />
         )}
       </section>
 
       <aside
-        aria-label={`고른 ${season} 놀이`}
+        aria-label={`고른 ${subject}`}
         className={`lg:w-[300px] lg:shrink-0 ${PANEL}`}
         style={{ borderTopColor: STRIP.c }}
       >
         <Head
           tone="c"
           id={`${idPrefix}-heading`}
-          title={`고른 ${season} 놀이`}
+          title={`고른 ${subject}`}
           extra={
             <span className={`text-[20px] font-bold ${full ? "text-[#3b5441]" : ""}`}>
               {picked.length}/{max}

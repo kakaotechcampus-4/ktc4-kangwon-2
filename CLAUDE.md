@@ -310,9 +310,11 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic check   # CI �
 cd backend  && ruff check . && ruff format .
 cd frontend && npm run lint && npx prettier --write .
 
-# 서버 배포 (5주차 · 수동)
-ssh ktc-server
-cd ~/ktc4-kangwon-2 && git pull && docker compose up -d --build
+# 서버 배포 — 배포 브랜치에 머지되면 Actions 가 한다. 상세는 docs/deploy.md
+# 손으로: Actions → Deploy → Run workflow → ref 에 브랜치 · 커밋 SHA
+# 서버 안에서: Session Manager 로 들어가서 (SSH 22 는 닫혀 있다)
+sudo -iu ubuntu
+DEPLOY_REF=<커밋 SHA> bash ~/ktc4-kangwon-2/scripts/deploy.sh   # 서버에서 git pull 하지 않는다
 ```
 
 `.env` 의 `POSTGRES_PASSWORD` 와 `DATABASE_URL` 안의 비밀번호는 **같은 값**이어야 한다.

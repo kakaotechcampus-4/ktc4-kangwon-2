@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # 그 열쇠는 저장소에 적혀 있으므로 누구나 토큰을 만들 수 있다.
     secret_key: str
 
-    # 카카오 로그인 (ADR-063). 키 · 주소가 없으면 카카오 경로만 503 이다.
+    # 카카오 로그인 (ADR-069). 키 · 주소가 없으면 카카오 경로만 503 이다.
     # 이메일 로그인은 그대로 돈다.
     # redirect_uri 는 콘솔에 등록한 값과 **글자 하나까지 같아야** 한다 — 다르면 KOE006.
     kakao_rest_api_key: str | None = None

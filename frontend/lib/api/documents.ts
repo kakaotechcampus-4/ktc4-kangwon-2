@@ -1,6 +1,6 @@
 /** 일지 계열 문서 API (docs/api-spec.md §11). id 변환을 여기서 끝내고 화면에는 화면 id 만 준다. */
 import { apiRequest, errorCode } from "./client";
-import { downloadHwpx } from "./export";
+import { downloadHwpx, type ExportFormat } from "./export";
 import {
   CLASS_PREFIX,
   CHILD_PREFIX,
@@ -228,11 +228,16 @@ export async function getDocument(localId: string): Promise<ServerDocument> {
   return toDocument(await apiRequest<ApiDocumentDetail>("/api/documents/" + id));
 }
 
-/** Confirmed observation/daily journals use the same authenticated download path as plans. */
-export async function downloadDocumentHwpx(localId: string): Promise<void> {
+/** Confirmed observation/daily journals use the same authenticated download path as plans.
+ *  서버가 같은 hwpx 를 hwp · pdf 로도 바꿔 준다 (`?format=`, ADR-039 · ADR-061). */
+export async function downloadDocumentHwpx(
+  localId: string,
+  format: ExportFormat = "hwpx",
+): Promise<void> {
   const id = documentServerId(localId);
   if (id === null) throw new Error(UNMAPPED);
-  return downloadHwpx(`/api/documents/${id}/export/hwp`, "일지.hwpx");
+  const query = format === "hwpx" ? "" : `?format=${format}`;
+  return downloadHwpx(`/api/documents/${id}/export/hwp${query}`, `일지.${format}`);
 }
 
 /** 겹치는 확정 문서와 기대하는 종류. 관련 여부와 반환 순서는 서버가 결정한다 (§11). */
