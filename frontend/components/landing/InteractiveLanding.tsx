@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, type CSSProperties } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, type CSSProperties, type MouseEvent } from "react";
 import { LegalFooter } from "@/components/legal/LegalPage";
 import { startLanding } from "./landing-engine";
 import "./landing.css";
@@ -20,6 +21,32 @@ import "./landing.css";
  */
 export default function InteractiveLanding() {
   useEffect(() => startLanding(), []);
+  const router = useRouter();
+
+  /**
+   * 로그인 · 가입 화면으로 갈 때 뚝 바뀌지 않고 겹쳐 사라지게 한다(View Transitions).
+   * 새 화면이 그려져 소개 화면이 빠지면 전환을 끝낸다 — 2초가 지나도 안 빠지면 그냥 끝낸다.
+   * 이 기능을 모르는 브라우저 · 「움직임 줄이기」 · 새 탭 열기(⌘ · Ctrl · Shift 클릭)는 원래대로 간다.
+   */
+  function fadeTo(e: MouseEvent<HTMLAnchorElement>) {
+    const href = e.currentTarget.getAttribute("href");
+    const plainClick = e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!href || !plainClick || reduce || !document.startViewTransition) return;
+    e.preventDefault();
+    document.startViewTransition(
+      () =>
+        new Promise<void>((done) => {
+          router.push(href);
+          const start = performance.now();
+          const wait = () =>
+            !document.querySelector(".lp") || performance.now() - start > 2000
+              ? done()
+              : requestAnimationFrame(wait);
+          wait();
+        }),
+    );
+  }
 
   return (
     <div className="lp">
@@ -44,10 +71,10 @@ export default function InteractiveLanding() {
           </a>
         </nav>
         <div className="nav-end">
-          <Link className="nav-login" href="/login">
+          <Link className="nav-login" href="/login" onClick={fadeTo}>
             로그인
           </Link>
-          <Link className="nav-cta" href="/signup">
+          <Link className="nav-cta" href="/signup" onClick={fadeTo}>
             시작하기
           </Link>
         </div>
@@ -72,7 +99,7 @@ export default function InteractiveLanding() {
               관찰 · 일과 · 일지 · 평가, 그리고 계획안. 선생님의 문서 일을 한곳에 모았어요.
             </p>
             <div className="hero-cta">
-              <Link className="btn" href="/signup">
+              <Link className="btn" href="/signup" onClick={fadeTo}>
                 우리 반으로 시작하기
               </Link>
               <a className="btn ghost" href="#try">
@@ -866,7 +893,7 @@ export default function InteractiveLanding() {
               <b>쌤플.</b>
             </h2>
             <div>
-              <Link className="btn" href="/signup">
+              <Link className="btn" href="/signup" onClick={fadeTo}>
                 우리 반으로 시작하기
               </Link>
             </div>
