@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import functools
-import json
 from pathlib import Path
 
+from .. import timing
 from ..planning.domain.activity_reference import ActivityCatalog
 from .activity_reference_schema import parse_activity_reference_payload
 
@@ -24,7 +24,7 @@ LEGACY_ACTIVITY_CATALOG_PATH = _DATA / "activity_reference_v0.json"
 # and is not cached.
 @functools.cache
 def _load_catalog(path: Path) -> ActivityCatalog:
-    return parse_activity_reference_payload(json.loads(path.read_text(encoding="utf-8")))
+    return parse_activity_reference_payload(timing.read_json(path))
 
 
 class JsonActivityReferenceRepository:

@@ -6,6 +6,7 @@ import functools
 import json
 from pathlib import Path
 
+from .. import timing
 from ..planning.domain.errors import InvalidDomainValueError
 from ..planning.domain.provenance import EvidenceSourceType
 from ..planning.evidence.artifact import (
@@ -221,7 +222,7 @@ class JsonInstitutionEvidenceRepository:
 @functools.lru_cache(maxsize=4)
 def _load_store(path: Path, expected: str | None) -> InstitutionEvidenceStore:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = timing.read_json(path)
     except (FileNotFoundError, json.JSONDecodeError) as exc:
         raise EvidenceStoreError(f"Cannot read Evidence Store: {path}") from exc
     return load_evidence_store_from_dict(payload, expected_content_sha256=expected)

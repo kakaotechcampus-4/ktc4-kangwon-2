@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
+from ssuksak import timing
 from ssuksak.adapters.v1_curriculum import v1_curriculum_catalog
 from ssuksak.planning.application.yearly_ports import ThemeTextRequest, ThemeTextResult
 from ssuksak.planning.planner.v1_guidance import V1_GUIDANCE, curriculum_context
@@ -56,11 +57,13 @@ class EliceThemeTextGenerator:
     def generate(self, requests: tuple[ThemeTextRequest, ...]) -> tuple[ThemeTextResult, ...]:
         if not requests:
             return ()
+        timing.phase("prompt")
         asked = {request.theme_id: request for request in requests}
         user_content = _user_content(requests)
         content = complete_json(
             SYSTEM_PROMPT + V1_GUIDANCE + VENUE_GUIDANCE, user_content, transport=self._transport
         )
+        timing.phase("validate")
         results = tuple(_parse(content, asked))
         if any(unrequested_venues(result.value) for result in results):
             raise LlmFailed("교사가 지정하지 않은 지역·시설명이 연간 주제에 들어 있습니다")

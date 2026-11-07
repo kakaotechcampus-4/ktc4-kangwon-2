@@ -15,6 +15,7 @@ from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from ssuksak import timing
 from ssuksak.adapters.elice_openai_monthly import MonthlyLlmConfigurationError
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.json_theme_reference_repository import JsonThemeReferenceRepository
@@ -391,6 +392,7 @@ def _play_project_plan(session: Session, user: User, klass, memo: str, names, st
         raise _play_project_generation_error(error) from error
 
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
+    timing.phase("save")
     duplicate = session.scalar(
         select(Plan.id).where(
             Plan.center_id == user.center_id,
@@ -450,6 +452,7 @@ def _domain_error(error: Exception) -> HTTPException:
     response_model=Annotated[AnnualPlanOut | PlayProjectPlanOut, Field(discriminator="format")],
     status_code=status.HTTP_201_CREATED,
 )
+@timing.timed("annual_theme", logging.getLogger("app.server.timing").info)
 def create_annual_plan(
     body: CreateAnnualPlan, request: Request, session: DbSession, user: CurrentUser
 ):
@@ -474,6 +477,7 @@ def create_annual_plan(
     if duplicate is not None:
         raise _ALREADY_EXISTS
     if body.format == "PLAY_PROJECT":
+        timing.set_kind("annual_play")
         return _play_project_plan(session, user, klass, body.memo, names, _disconnected(request))
     if body.form_id is not None and find_own_form(session, user.center_id, body.form_id) is None:
         # 남의 원 양식 번호를 넣어도 통과하면 안 된다. 없는 것과 남의 것을 가르지 않는다(ADR-017).
@@ -523,6 +527,7 @@ def create_annual_plan(
     # **응답을 다 만든 뒤에 확정한다.** 먼저 commit 하면 아래에서 터졌을 때 DB 에는
     # 계획안이 남고 교사는 500 을 본다 — 실패한 줄 알고 다시 눌러 두 개가 생긴다.
     # 저장소가 이미 flush 해두어 commit 전에도 행을 읽을 수 있다.
+    timing.phase("save")
     row = session.scalar(select(Plan).where(Plan.plan_ref == result.plan.plan_id.value))
     plan = result.plan
     try:
@@ -562,6 +567,7 @@ def create_annual_plan(
             },
         ) from error
     # 어느 양식에서 나왔는지 남긴다. 도메인은 양식을 모르므로 서버가 칸에 넣는다.
+    timing.phase("save")
     row.form_id = body.form_id
     detail = _detail(row, plan)
     session.commit()

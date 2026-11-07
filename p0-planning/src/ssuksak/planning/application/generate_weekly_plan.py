@@ -9,6 +9,7 @@ ages; otherwise, and always on the RULE_ONLY path, they stay empty (§7-4).
 
 from __future__ import annotations
 
+from ... import timing
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import timedelta
@@ -222,6 +223,7 @@ class GenerateWeeklyPlan:
         self._daily_life_loader = daily_life_loader
 
     def execute(self, command: GenerateWeeklyPlanCommand) -> GenerateWeeklyPlanResult:
+        timing.phase("select")
         llm = command.generation_mode is MonthlyGenerationMode.LLM_PLANNER
         if llm and (self._context is None or self._planner is None):
             raise WeeklyApplicationError(
@@ -295,6 +297,7 @@ class GenerateWeeklyPlan:
                 raise WeeklyApplicationError(
                     "weekly_llm_planning_failed", "Weekly LLM planning failed before any Plan was saved"
                 ) from exc
+        timing.phase("assemble")
         selection: ActivitySelectionTrace | None = None
         cells = []
         # ADR-051: a repeat_by DAY Section gets one Cell per operating day.
