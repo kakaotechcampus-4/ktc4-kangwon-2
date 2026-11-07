@@ -8,7 +8,8 @@
  *
  * - 비출 자리는 `data-tour="…"` 로 단다. CSS 모듈 클래스 이름은 빌드마다 바뀐다.
  * - 화면에 없는 칸(기록이 아직 없어 안 그려진 칸)은 건너뛴다.
- * - 한 화면은 한 번만 뜬다. 「다시 보지 않기」면 전부 끈다. 설정에서 다시 켠다.
+ * - 한 화면은 한 번만 뜬다. 설정의 「튜토리얼 다시 보기」로 다시 켠다.
+ *   (「다시 보지 않기」 단추는 뺐다 — 한 번만 뜨니 따로 끌 까닭이 없다. 예전에 끈 기록은 그대로 따른다.)
  * - 이 브라우저에만 적는다. 실패해도 한 번 더 뜰 뿐이라 막지 않는다.
  *
  * farmguardian-FE 의 `Tour.tsx` 를 옮겨 왔다(PM 작업).
@@ -115,7 +116,7 @@ const TOURS: Record<string, Step[]> = {
     },
     {
       at: "plans-continue",
-      title: "쓰다 만 계획안",
+      title: "이어서 하기",
       body: "확정하지 않은 초안은 여기서 이어 써요. 확정한 계획안은 문서 보관함에 모여요.",
     },
   ],
@@ -156,32 +157,32 @@ const SLIDES: Record<"MONTHLY_THEME" | "PLAY_PROJECT", { dir: string; slides: Sl
     dir: "theme",
     slides: [
       {
-        title: "요청 사항을 적고 만들어요",
-        body: "반 · 연령 · 학년도는 미리 채워져 있어요. 바라는 것을 적거나 아래 단추로 넣고 「연간계획안 만들기」를 눌러요.",
+        title: "요청 사항을 적고 시작해요",
+        body: "반 · 연령 · 학년도는 이미 채워져 있어요. 바라는 점을 적거나 아래 쪽지를 눌러 넣고 「연간계획안 만들기」를 눌러요. 같은 쪽지는 한 번만 들어가요.",
       },
       {
         title: "12달 초안이 나와요",
-        body: "3월부터 다음 해 2월까지 달마다 생활주제와 주별 소주제가 채워져요. 아직 초안이라 마음껏 고칠 수 있어요.",
+        body: "3월부터 다음 해 2월까지 달마다 생활주제와 주별 소주제가 채워져요. 아직 초안이니 편하게 고쳐도 돼요.",
       },
       {
-        title: "칸을 눌러 고쳐요",
-        body: "문서에서 고칠 칸을 누르면 왼쪽에서 생활주제 · 소주제를 바로 고쳐요. 되돌리기 · 다시 하기도 있어요.",
+        title: "칸을 눌러 바로 고쳐요",
+        body: "문서에서 칸을 누르면 왼쪽에 그 달 생활주제와 소주제가 열려요. 잘못 고쳤으면 되돌리기로 돌아가요.",
       },
       {
         title: "다 고쳤으면 확정해요",
-        body: "「확정하기」를 누르고 한 번 더 확정하면 끝나요. 소주제는 그 달 주 수만큼 있어야 확정돼요. 더 고칠 게 있으면 「더 다듬기」를 눌러요.",
+        body: "「확정하기」를 누르면 「이대로 확정할까요?」가 떠요. 한 번 더 누르면 끝나요. 달마다 소주제가 그 달 주 수만큼 있어야 확정돼요.",
       },
       {
-        title: "내려받고 월간으로",
-        body: "PDF · 한글 파일로 내려받을 수 있어요. 확정본은 여기서 고칠 수 없어요. 다시 고치려면 문서 보관함의 「수정하기」를 눌러요. 확정한 연간으로 「월간계획안 만들기 →」를 이어가요.",
+        title: "내려받고 월간으로 넘어가요",
+        body: "확정본은 PDF · 한글 파일로 내려받아요. 여기서는 고칠 수 없으니, 다시 고치려면 문서 보관함에서 「수정하기」를 눌러요. 이어서 「월간계획안 만들기」로 넘어가요.",
       },
       {
-        title: "월간은 연간에서 이어받아요",
-        body: "달을 고르면 연간의 그 달 생활주제 · 소주제로 주마다 초안이 나와요. 안전교육 빈칸은 「AI 후보」에서 「+ 넣기」로 채워요. 확정할 때 남은 빈칸을 한 번 더 보여 줘요.",
+        title: "월간은 연간을 이어받아요",
+        body: "달을 고르면 연간의 그 달 생활주제 · 소주제로 주마다 초안이 나와요. 빈 안전교육 칸은 「AI 후보」에서 「+」로 채워요. 확정할 때 남은 빈칸을 한 번 더 알려 줘요.",
       },
       {
-        title: "주간은 월간에서 이어받아요",
-        body: "주를 고르면 초안이 나와요. 빈칸을 누르면 「AI 후보」가 떠요. 「+ 넣기」를 누르면 채우고 다음 요일로 넘어가요. 끌어다 놓아도 돼요. 글을 고칠 땐 「칸 편집」을 눌러요.",
+        title: "주간은 월간을 이어받아요",
+        body: "주를 고르면 요일마다 초안이 나와요. 빈칸을 누르고 「AI 후보」에서 「+」를 누르면 채운 뒤 다음 요일로 넘어가요. 끌어다 놓아도 돼요. 글을 직접 고칠 땐 「칸 편집」을 눌러요.",
       },
     ],
   },
@@ -189,32 +190,32 @@ const SLIDES: Record<"MONTHLY_THEME" | "PLAY_PROJECT", { dir: string; slides: Sl
     dir: "play",
     slides: [
       {
-        title: "요청 사항을 적고 만들어요",
-        body: "바라는 놀이를 적거나 아래 단추로 넣고 「연간계획안 만들기」를 눌러요.",
+        title: "요청 사항을 적고 시작해요",
+        body: "바라는 놀이를 적거나 아래 쪽지를 눌러 넣고 「연간계획안 만들기」를 눌러요. 같은 쪽지는 한 번만 들어가요.",
       },
       {
-        title: "계절마다 놀이를 골라요",
-        body: "후보를 누르면 가운데에 자세히 보여요. 「이 놀이 고르기」로 봄 · 여름 · 가을 · 겨울마다 5개씩 골라요.",
+        title: "계절마다 놀이 5개를 골라요",
+        body: "후보를 누르면 가운데에 자세히 보여요. 「+ 고르기」로 칠판에 담고, 다 담으면 다음 계절로 넘어가요. 「지금까지 고른 것으로 문서 만들기」로 먼저 문서를 볼 수도 있어요.",
       },
       {
         title: "문서에서 다듬어요",
-        body: "다 고르면 「문서 만들기 →」. 칸을 눌러 「칸 편집」에서 고치고, 「AI 후보」에서 놀이를 빼거나 다른 후보를 끌어 놓아 바꿔요.",
+        body: "칸을 누르고 「칸 편집」에서 글을 고쳐요. 「AI 후보」에서는 놀이를 빼거나, 다른 후보를 넣거나 끌어다 놓아 바꿔요.",
       },
       {
         title: "다 고쳤으면 확정해요",
-        body: "「확정하기」를 누르고 한 번 더 확정하면 끝나요. 계절마다 5개를 다 고르고 빈칸을 채워야 확정돼요.",
+        body: "「확정하기」를 누르면 「이대로 확정할까요?」가 떠요. 한 번 더 누르면 끝나요. 계절마다 5개를 다 고르고 빈칸을 채워야 확정돼요.",
       },
       {
-        title: "내려받고 월간으로",
-        body: "PDF · 한글 파일로 내려받을 수 있어요. 다시 고치려면 문서 보관함의 「수정하기」를 눌러요. 확정한 연간으로 「월간계획안 만들기 →」를 이어가요.",
+        title: "내려받고 월간으로 넘어가요",
+        body: "확정본은 PDF · 한글 파일로 내려받아요. 다시 고치려면 문서 보관함에서 「수정하기」를 눌러요. 이어서 「월간계획안 만들기」로 넘어가요.",
       },
       {
-        title: "월간은 연간에서 이어받아요",
-        body: "달을 고르고, 그 달에 더 집중할 놀이를 골라요(안 골라도 돼요). 놀이 중심형은 주간이 없어요.",
+        title: "월간은 연간을 이어받아요",
+        body: "달을 고르고, 그 달에 더 집중할 놀이를 골라요. 고르지 않아도 돼요. 놀이 중심형에는 주간계획안이 없어요.",
       },
       {
-        title: "활동을 골라 문서로",
-        body: "함께 하는 활동 · 유아 예상 자유놀이를 후보 8개 중 5개씩 골라 「문서 만들기 →」. 안전교육 빈칸은 「AI 후보」에서 「+ 넣기」로 채우고 연간처럼 확정해요.",
+        title: "활동을 골라 문서로 만들어요",
+        body: "함께 하는 활동과 유아 예상 자유놀이를 후보 8개 중 5개씩 골라요. 문서가 나오면 빈 안전교육 칸을 「AI 후보」에서 채우고, 연간처럼 확정해요.",
       },
     ],
   },
@@ -245,14 +246,6 @@ function markSeen(path: string) {
     if (!seen.includes(path)) localStorage.setItem(SEEN, JSON.stringify([...seen, path]));
   } catch {
     /* 못 적으면 다음에 한 번 더 뜰 뿐이다 */
-  }
-}
-
-function turnOffAll() {
-  try {
-    localStorage.setItem(OFF, "1");
-  } catch {
-    /* 못 적어도 이번에는 닫힌다 */
   }
 }
 
@@ -288,10 +281,6 @@ export default function Tour() {
     markSeen(path);
     shut();
   }, [path, shut]);
-  const turnOff = useCallback(() => {
-    turnOffAll();
-    shut();
-  }, [shut]);
 
   // 화면이 바뀌면 그 화면 안내를 새로 연다. 지난 화면 안내는 `open.path` 가 달라 이미 닫혀 있다.
   useEffect(() => {
@@ -424,9 +413,6 @@ export default function Tour() {
             {last ? "다 봤어요" : "다음 →"}
           </button>
         </div>
-        <button type="button" className={styles.off} onClick={turnOff}>
-          다시 보지 않기
-        </button>
       </div>
     </div>
   );
@@ -434,7 +420,7 @@ export default function Tour() {
 
 /**
  * 만드는 순서를 화면 그림으로 넘겨 본다. 처음 한 번 저절로 뜨고, 「만드는 순서 보기」로 다시 연다.
- * 본 것 · 다시 보지 않기는 위 안내와 같은 자리에 적는다(설정의 「튜토리얼 다시 보기」로 되살아난다).
+ * 본 것은 위 안내와 같은 자리에 적는다(설정의 「튜토리얼 다시 보기」로 되살아난다).
  */
 export function SlideTour({ format }: { format: keyof typeof SLIDES }) {
   const { dir, slides } = SLIDES[format];
@@ -475,13 +461,23 @@ export function SlideTour({ format }: { format: keyof typeof SLIDES }) {
   const again = (
     <button
       type="button"
-      className={styles.again}
+      className={styles.corner}
+      title="만드는 순서 보기"
       onClick={() => {
         setIndex(0);
         setOpen(true);
       }}
     >
-      만드는 순서 보기
+      {/* 접혀 잘린 자리(책상 빛) + 접힌 종이 뒷면. 뒷면에만 그림자가 진다. */}
+      <span aria-hidden="true" className={styles.cut} />
+      <span aria-hidden="true" className={styles.flapShadow}>
+        <span className={styles.flap}>
+          <svg width="9" height="9" viewBox="0 0 24 24" className={styles.play}>
+            <path d="M7 4.5v15l13-7.5-13-7.5Z" fill="currentColor" />
+          </svg>
+        </span>
+      </span>
+      <span className="sr-only">만드는 순서 보기</span>
     </button>
   );
   if (!open) return again;
@@ -541,16 +537,6 @@ export function SlideTour({ format }: { format: keyof typeof SLIDES }) {
               {last ? "만들러 가기" : "다음 →"}
             </button>
           </div>
-          <button
-            type="button"
-            className={styles.off}
-            onClick={() => {
-              turnOffAll();
-              setOpen(false);
-            }}
-          >
-            다시 보지 않기
-          </button>
         </div>
       </div>
     </>
