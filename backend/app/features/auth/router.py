@@ -3,16 +3,21 @@
 **이 라우터만 인증 없이 열린다.** 나머지는 main.py 가 전부 막는다.
 """
 
+import secrets
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_session
+from app.features.auth import kakao
 from app.features.auth.models import User
 from app.features.auth.schemas import (
+    KakaoAuthorizeResponse,
+    KakaoLoginRequest,
+    KakaoState,
     LoginRequest,
     MeResponse,
     PasswordChangeRequest,
@@ -111,6 +116,95 @@ def change_password(body: PasswordChangeRequest, user: CurrentUser, session: DbS
 def me(user: CurrentUser) -> User:
     """새로고침한 브라우저가 「나 아직 로그인돼 있나」를 묻는 자리다."""
     return user
+
+
+_KAKAO_NOT_READY = {
+    "code": "DEPENDENCY_UNAVAILABLE",
+    "message": "지금은 카카오로 로그인할 수 없습니다. 이메일로 로그인해 주세요.",
+    "fields": [],
+}
+
+
+@router.get("/kakao/authorize", response_model=KakaoAuthorizeResponse)
+def kakao_authorize(state: Annotated[KakaoState, Query()]) -> KakaoAuthorizeResponse:
+    """카카오 동의 화면 주소를 만든다.
+
+    **REST API 키를 화면 번들에 넣지 않으려고 서버가 만든다**(`NEXT_PUBLIC_` 금지). 주소에 키가
+    보이는 것은 카카오 방식이라 어쩔 수 없지만, 키를 바꿀 때 화면을 다시 빌드할 일은 없다.
+    """
+    try:
+        return KakaoAuthorizeResponse(url=kakao.authorize_url(state))
+    except kakao.KakaoNotConfigured:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=_KAKAO_NOT_READY) from None
+
+
+@router.post("/kakao", response_model=TokenResponse)
+def kakao_login(body: KakaoLoginRequest, session: DbSession) -> TokenResponse:
+    """카카오 인가 코드로 로그인한다. 처음이면 계정을 만든다 (ADR-069).
+
+    ```
+    카카오 회원번호로 이어진 계정   → 그 계정
+    없고, 같은 이메일 계정이 있다   → 그 계정에 회원번호를 잇는다
+    둘 다 없다                    → 새 계정
+    ```
+
+    **이메일이 없으면 받지 않는다.** 화면의 계정 기록 · 반 설정이 모두 이메일을 열쇠로 쓴다.
+    """
+    try:
+        profile = kakao.fetch_profile(body.code)
+    except kakao.KakaoNotConfigured:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=_KAKAO_NOT_READY) from None
+    except kakao.KakaoCodeRejected:
+        # 401 이 아니다 — 401 은 「토큰을 못 믿겠다」라 화면이 로그인 만료로 읽는다.
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "VALIDATION_FAILED",
+                "message": "카카오 로그인 시간이 지났습니다. 처음부터 다시 시도해 주세요.",
+                "fields": ["code"],
+            },
+        ) from None
+    except kakao.KakaoUnavailable:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=_KAKAO_NOT_READY) from None
+
+    user = session.scalar(select(User).where(User.kakao_id == profile.kakao_id))
+    if user is None:
+        if profile.email is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "VALIDATION_FAILED",
+                    "message": "카카오 계정 이메일 제공에 동의해야 가입할 수 있습니다.",
+                    "fields": ["email"],
+                },
+            )
+        user = session.scalar(select(User).where(User.email == profile.email))
+        if user is not None and user.kakao_id is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "ALREADY_EXISTS",
+                    "message": (
+                        "이 이메일은 다른 카카오 계정에 연결돼 있습니다. 이메일로 로그인해 주세요."
+                    ),
+                    "fields": ["email"],
+                },
+            )
+        if user is None:
+            # 카카오로만 들어온 계정은 비밀번호를 모른다. 아무도 모르는 값을 넣어
+            # 비밀번호 로그인을 막는다 — 칸을 nullable 로 바꾸면 검사하는 곳이 다 바뀐다.
+            password_hash, salt = hash_password(secrets.token_urlsafe(32))
+            user = User(
+                email=profile.email,
+                name=(profile.nickname or profile.email.split("@")[0])[:50],
+                password_hash=password_hash,
+                password_salt=salt,
+            )
+            session.add(user)
+        user.kakao_id = profile.kakao_id
+        session.commit()
+        session.refresh(user)
+    return _token_for(user)
 
 
 def _token_for(user: User) -> TokenResponse:

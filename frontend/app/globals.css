@@ -439,3 +439,39 @@ body {
   background-repeat: repeat-x;
   background-position: center;
 }
+
+/* 로그인 ↔ 회원가입 — 공책 한 장이 길이만 바뀐다. 글은 늘어나지 않게 위에 붙여 겹쳐 바꾼다
+   (components/auth/AuthFrame.tsx 의 ViewTransition). 클래스 이름은 CSS 모듈이 바꾸지 못하게 여기 둔다 */
+::view-transition-group(.auth-sheet) {
+  animation-duration: 0.35s;
+  animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+::view-transition-old(.auth-sheet),
+::view-transition-new(.auth-sheet) {
+  height: 100%;
+  object-fit: none;
+  object-position: top;
+}
+::view-transition-old(.auth-sheet) {
+  animation: auth-sheet-out 0.15s ease-in both;
+}
+::view-transition-new(.auth-sheet) {
+  animation: auth-sheet-in 0.25s 0.1s ease-out both;
+}
+@keyframes auth-sheet-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes auth-sheet-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(.auth-sheet),
+  ::view-transition-old(.auth-sheet),
+  ::view-transition-new(.auth-sheet) {
+    animation: none;
+  }
+}

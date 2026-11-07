@@ -49,3 +49,21 @@ class TokenResponse(BaseModel):
 
     token: str
     user: MeResponse
+
+
+# 브라우저가 만든 무작위 값. 카카오가 그대로 돌려주고, 화면이 자기가 만든 값과 맞춰 본다(CSRF).
+KakaoState = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{16,128}$")]
+# 카카오 인가 코드. 길이는 문서에 없다 — 실제 값은 80자 안팎이라 넉넉히 512 로 막는다.
+KakaoCode = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512)]
+
+
+class KakaoAuthorizeResponse(BaseModel):
+    """이 주소로 브라우저를 보낸다. 카카오 동의 화면이 뜬다."""
+
+    url: str
+
+
+class KakaoLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: KakaoCode

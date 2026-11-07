@@ -295,6 +295,21 @@ export const handlers = [
     for (const k of ["email", "password"]) if (!text(b[k])) return bad(k);
     return HttpResponse.json(mockAuth(String(b.email), "교사"));
   }),
+  // 카카오 (docs/api-spec.md §0-1). 목업은 카카오로 가지 않고 콜백으로 바로 돌려보낸다 —
+  // 키 없이도 「단추 → 콜백 → 메인」 흐름을 끝까지 눌러 볼 수 있다. 목업 계정은 이메일 하나로 고정.
+  http.get("*/api/auth/kakao/authorize", ({ request }) => {
+    const state = new URL(request.url).searchParams.get("state") ?? "";
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(state)) return bad("state");
+    return HttpResponse.json({
+      url: `/login/kakao?code=mock-kakao-code&state=${encodeURIComponent(state)}`,
+    });
+  }),
+  http.post("*/api/auth/kakao", async ({ request }) => {
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (!text(b.code)) return bad("code");
+    return HttpResponse.json(mockAuth("kakao-teacher@example.com", "카카오 선생님"));
+  }),
   http.get("*/api/auth/me", ({ request }) => {
     const token = request.headers.get("Authorization")?.replace(/^Bearer /, "");
     if (!token?.startsWith("mock.")) return failure("UNAUTHENTICATED", "다시 로그인해주세요.");

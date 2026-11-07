@@ -38,6 +38,10 @@ services:
       NAVER_CLIENT_ID: ${NAVER_CLIENT_ID:-}
       NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET:-}
       LIBRARY_AUTH_KEY: ${LIBRARY_AUTH_KEY:-}
+      # 카카오 로그인 (ADR-063). 비어 있으면 카카오 경로만 503 — 기동은 막지 않는다.
+      KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
+      KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI:-}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
       LLM_MODE: ${LLM_MODE:-mock}
       # 주간 실제 LLM (W7). 기본 꺼짐 — LLM_MODE=real 이어도 0 이면 주간은 503 (.env.example).
       WEEKLY_LLM_ENABLED: ${WEEKLY_LLM_ENABLED:-0}
