@@ -11,6 +11,7 @@ import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { accountName } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import {
+  chosenClassFor,
   loadClassSettings,
   primaryClassFor,
   saveClassSettings,
@@ -116,7 +117,7 @@ const NO_ROOM = {
   orgName: "",
   className: "",
   age: "",
-  classId: "",
+  chosenId: "",
   classes: [] as ClassroomEntry[],
 };
 
@@ -128,7 +129,9 @@ function readRoom() {
     orgName: settings?.orgName ?? "",
     className: klass?.className ?? "",
     age: klass?.ageGroup ? AGE_LABEL[klass.ageGroup as AgeGroup] : "",
-    classId: klass?.id ?? "",
+    // 교사가 실제로 고른 반. 비어 있으면 고르개도 빈칸에서 시작한다 — 보이는 첫 반을 그대로
+    // 다시 골라도 값이 안 바뀌어 아무 일도 안 일어나던 것을 막는다(13주차 멘토 리뷰).
+    chosenId: chosenClassFor(settings)?.id ?? "",
     classes: settings?.classes ?? [],
   };
 }
@@ -266,10 +269,15 @@ export default function AppSidebar() {
           {classes.length > 1 ? (
             <select
               aria-label="반 바꾸기"
-              value={room.classId}
+              value={room.chosenId}
               onChange={(e) => switchClass(e.target.value)}
               className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             >
+              {!room.chosenId && (
+                <option value="" disabled>
+                  반 고르기
+                </option>
+              )}
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.className}
@@ -509,10 +517,15 @@ function MoreMenu({
                 반 바꾸기
                 <select
                   aria-label="반 바꾸기"
-                  value={room.classId}
+                  value={room.chosenId}
                   onChange={(e) => switchClass(e.target.value)}
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                 >
+                  {!room.chosenId && (
+                    <option value="" disabled>
+                      반 고르기
+                    </option>
+                  )}
                   {classes.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.className}

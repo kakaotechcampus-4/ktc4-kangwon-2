@@ -98,7 +98,7 @@ function focusField(id: string) {
 /** 줄마다 고유한 입력 칸 id. 요약에서 바로 그 칸으로 보낸다. */
 const nameFieldId = (rowKey: string) => `routine-name-${rowKey}`;
 const SAVED = "저장했어요.";
-const UNKNOWN_CLASS = "주소에 적힌 반을 찾을 수 없어요. 왼쪽 위에서 반을 골라주세요.";
+const UNKNOWN_CLASS = "주소에 적힌 반을 찾을 수 없어요. 왼쪽 위 반 이름을 눌러 반을 골라주세요.";
 
 function messageFor(error: unknown) {
   if (isUnauthenticated(error)) return "로그인이 필요해요. 다시 로그인한 뒤 이용해주세요.";
@@ -939,7 +939,7 @@ function ListEmpty({ dateOk, unknownClass }: { dateOk: boolean; unknownClass: bo
   if (!dateOk) return <Empty title="날짜를 선택해주세요" />;
   return (
     <Empty title="반을 골라주세요">
-      {unknownClass ? UNKNOWN_CLASS : "왼쪽 위에서 어느 반의 하루를 적을지 골라주세요."}
+      {unknownClass ? UNKNOWN_CLASS : "왼쪽 위 반 이름을 눌러 하루를 적을 반을 골라주세요."}
     </Empty>
   );
 }
