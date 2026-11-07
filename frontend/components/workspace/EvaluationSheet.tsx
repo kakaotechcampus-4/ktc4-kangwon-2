@@ -200,6 +200,21 @@ export function sheetRows(autos: AutoIndicator[], scan: Scan | null, checks: str
 }
 
 /**
+ * 폴더를 고른 뒤 무엇이 일어났는지 — 몇 개를 봤고, 몇 가지를 찾았고, 어디에 표시했는지.
+ * 「봤어요, 저장하지 않아요」만으로는 무엇을 한 건지 알 수 없었다(멘토 11-05).
+ */
+function ScanResult({ scan }: { scan: Scan }) {
+  const found = scan.results.filter((r) => r.status !== "missing").length;
+  return (
+    <p role="status" className={styles.folderLead}>
+      파일 이름 {scan.total}개를 살펴 서류 <strong>{found}가지</strong>를 찾았어요. 찾은 서류는
+      「평가 때 낼 서류」 줄마다 「내 컴퓨터」 칸에 표시했어요. 이름은 저장하지 않아서 새로 고치면
+      다시 골라야 해요.
+    </p>
+  );
+}
+
+/**
  * 왼쪽 칸 — 오늘 평가를 받는다면 몇 가지가 비었나, 그리고 폴더 고르기.
  *
  * 화면 머리 · 서류 표 머리 · 노란 띠가 세 겹으로 쌓여 표가 화면 아래로 밀렸고, 단추 둘이
@@ -265,7 +280,7 @@ export function EvaluationToday({
           {counted.length}가지 중 <b>{counted.length - left}가지</b> 챙김
         </p>
         <p className={styles.leadNote}>
-          쌤플이 셀 수 있는 것만 셉니다. 센 것이 내용까지 확인해 준 것은 아닙니다.
+          쌤플은 서류가 있는지만 세요. 내용은 선생님께서 한 번 더 확인해 주세요.
         </p>
         <div className={styles.todayFoot}>
           <span>{basis}</span>
@@ -278,8 +293,13 @@ export function EvaluationToday({
       <section className={`${ws.card} ${styles.folder}`}>
         <h2 className={styles.folderTitle}>내 컴퓨터 폴더</h2>
         <p className={styles.folderLead}>
-          서류를 모아 둔 폴더를 고르면 파일 <strong>이름만</strong> 읽어 있는지 찾아요. 열지도,
-          올리지도 않아요.
+          서류를 모아 둔 폴더를 고르면 파일 <strong>이름만</strong> 읽어 있는지 찾아요. 파일을
+          열거나 서버로 보내지 않아요.
+        </p>
+        {/* 브라우저 확인창은 「업로드」라고 묻는다 — 우리가 바꿀 수 없는 보안 창이라 미리 알린다(멘토 11-05). */}
+        <p className={styles.folderLead}>
+          브라우저가 「업로드할까요?」 하고 물으면 <strong>업로드</strong>를 눌러 주세요. 이름을
+          읽는 허락일 뿐, 파일은 이 컴퓨터를 떠나지 않아요.
         </p>
         <button
           type="button"
@@ -288,11 +308,7 @@ export function EvaluationToday({
         >
           {scan ? "폴더 다시 고르기" : "폴더 고르기"}
         </button>
-        {scan && (
-          <p className={styles.folderLead}>
-            파일 {scan.total}개를 봤어요 · 새로 고치면 사라지고 이름은 저장하지 않아요.
-          </p>
-        )}
+        {scan && <ScanResult scan={scan} />}
         {/* webkitdirectory 는 React 타입에 없어 직접 단다. 아이폰 사파리는 폴더 선택을 못 한다. */}
         <input
           type="file"
