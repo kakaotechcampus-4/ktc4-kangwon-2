@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -12,11 +13,12 @@ import { useClientState } from "@/lib/hooks/use-client-state";
 
 /*
  * 시작 설정(온보딩) 화면 조각. 생김새는 승인한 시안 A(한 화면에 질문 하나)를 그대로 따른다 —
- * 큰 손글씨 제목, 밑줄만 있는 입력칸, 지금 질문의 글자는 크고 답한 칸은 작게, 아래 넓은 주 버튼.
+ * 큰 손글씨 제목, 밑줄만 있는 입력칸, 칸 밑 안내(FieldHint), 답한 칸은 요약 줄(AnsweredList), 아래 넓은 주 버튼.
  */
 
 /**
  * 한 화면의 질문. 제목은 손글씨체(display)로, 입력한 글자는 본문체로 둔다.
+ * `hint` 는 화면 전체에 대한 안내만 받는다. 칸 하나를 설명하는 안내는 그 칸 밑(FieldHint)에 둔다.
  *
  * `focus` — 입력칸이 없는 질문(연령 · 동의 · 지역)은 「다음」을 누른 뒤 포커스가 아래 버튼에 남아
  * 키보드 · 화면 읽기 프로그램 사용자가 새 질문을 모른 채 지나간다. 제목으로 옮기면 새 질문을 읽어 주고,
@@ -40,14 +42,12 @@ export function Question({
       <h1
         ref={ref}
         tabIndex={-1}
-        className="whitespace-pre-line font-display text-[31px] font-bold leading-[1.4] text-ink outline-none sm:text-[36px]"
+        className="whitespace-pre-line font-display text-[32px] font-bold leading-[1.35] text-ink outline-none sm:text-[40px]"
         style={{ wordBreak: "keep-all" }}
       >
         {title}
       </h1>
-      {hint && (
-        <p className="mt-2.5 font-display text-[25px] leading-[1.5] text-ink-soft">{hint}</p>
-      )}
+      {hint && <p className="mt-3 text-[16px] leading-[1.6] text-ink-soft">{hint}</p>}
     </div>
   );
 }
@@ -81,8 +81,8 @@ export function LoadingLine() {
 
 /** 밑줄 칸의 글자 크기. 지금 묻는 칸은 크고, 이미 답한 칸은 작다. 밑줄은 ChalkLine 이 긋는다. */
 const lineClass = (active: boolean) =>
-  "w-full border-0 bg-transparent pb-2.5 pt-1.5 font-semibold outline-none " +
-  (active ? "text-[22px] sm:text-[24px]" : "text-[17px]");
+  "w-full border-0 bg-transparent pb-2.5 pt-1.5 outline-none " +
+  (active ? "text-[24px] font-bold sm:text-[28px]" : "text-[17px] font-medium");
 
 /** 밑줄 색. 지금 묻는 칸은 노란 분필, 이미 답한 칸은 흐린 분필(누르면 노란 분필). 감싸는 쪽에 group 이 있어야 한다. */
 const lineColor = (active: boolean) =>
@@ -114,30 +114,61 @@ export function ChalkLine({ className = "" }: { className?: string }) {
   );
 }
 
-/** 칸 이름. 칠판에 손으로 적은 글씨(손글씨체)다. */
+/** 칸 이름. 손글씨는 질문 제목에만 쓰고, 칸 이름은 작은 기본 글씨로 둔다 — 입력한 글자와 갈린다. */
+export const fieldLabelClass =
+  "text-[14px] font-bold leading-[1.4] tracking-[0.02em] text-ink-soft";
+
 export function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: ReactNode }) {
   return (
-    <label htmlFor={htmlFor} className="font-display text-[26px] font-bold leading-tight text-ink">
+    <label htmlFor={htmlFor} className={fieldLabelClass}>
       {children}
     </label>
   );
 }
 
-/** 밑줄만 있는 입력칸 한 줄 — 칸 이름 · 입력 · 오류. */
+/** 칸 바로 밑 안내 한 줄. 그 칸이 무엇을 받는지 설명한다(질문 제목 아래 안내와 따로 둔다). */
+export function FieldHint({ id, children }: { id?: string; children: ReactNode }) {
+  return (
+    <p id={id} className="mt-1.5 flex items-start gap-2 text-[14px] leading-[1.55] text-ink-soft">
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className="mt-0.5 flex-none"
+      >
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 11v5" />
+        <path d="M12 8h.01" />
+      </svg>
+      <span>{children}</span>
+    </p>
+  );
+}
+
+/** 밑줄만 있는 입력칸 한 줄 — 칸 이름 · 입력 · 오류 · 안내. */
 export function LineField({
   id,
   label,
   active,
   error,
+  hint,
   ...input
 }: {
   id: string;
   label: string;
   active: boolean;
   error?: string;
+  hint?: string;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "id">) {
+  const hintId = `${id}-hint`;
   return (
-    <div className="mb-7 flex flex-col gap-1.5">
+    <div className="mb-7 flex flex-col gap-2">
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <div className="group relative">
         <input
@@ -145,13 +176,97 @@ export function LineField({
           type="text"
           autoComplete="off"
           aria-invalid={error ? true : undefined}
+          aria-describedby={hint ? hintId : undefined}
           {...input}
           className={`${lineClass(active)} text-ink placeholder:text-ink-hint`}
         />
         <ChalkLine className={lineColor(active)} />
       </div>
       <ErrorLine>{error}</ErrorLine>
+      {hint && <FieldHint id={hintId}>{hint}</FieldHint>}
     </div>
+  );
+}
+
+/** 앞에서 답한 칸 한 줄. `onEdit` 이 없으면 고칠 수 없는 줄이다. */
+export type Answered = { label: string; value: string; onEdit?: () => void };
+
+/**
+ * 앞에서 답한 칸 — 지금 질문 아래에 칸째 쌓지 않고 요약 줄로 접는다. 최근에 답한 것이 위.
+ * 칸 이름은 `<label>` 이 아니다 — 지금 칸의 이름과 겹쳐 「담임 이름」 같은 이름표가 둘이 되지 않게.
+ */
+export function AnsweredList({ items }: { items: Answered[] }) {
+  const headingId = useId();
+  if (!items.length) return null;
+  return (
+    <section aria-labelledby={headingId} className="mb-7">
+      <h2
+        id={headingId}
+        className="mb-2 flex items-center gap-1.5 text-[13px] font-bold text-ink-soft"
+      >
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M5 12l5 5L20 7" />
+        </svg>
+        앞에서 답했어요
+      </h2>
+      <dl className="divide-y divide-shell squircle [--r:14px] border border-shell bg-ivory">
+        {items.map((item) => (
+          <AnsweredRow key={item.label} item={item} />
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function AnsweredRow({ item }: { item: Answered }) {
+  return (
+    <div className="grid min-h-12 grid-cols-[84px_minmax(0,1fr)] items-center gap-3 pl-4 pr-1.5">
+      <dt className="text-[13px] font-medium text-ink-soft">{item.label}</dt>
+      <dd className="flex min-w-0 items-center gap-2 text-[15.5px] font-semibold text-ink">
+        <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{item.value || "-"}</span>
+        {item.onEdit && (
+          <button
+            type="button"
+            onClick={item.onEdit}
+            aria-label={`${item.label} 고치기`}
+            title={`${item.label} 고치기`}
+            className="inline-flex h-11 w-11 flex-none items-center justify-center squircle [--r:12px] text-ink-soft hover:bg-primary-tint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+          >
+            <EditIcon />
+          </button>
+        )}
+      </dd>
+    </div>
+  );
+}
+
+/** 고치기 — 귀퉁이가 열린 네모 위에 연필. */
+function EditIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5" />
+      <path d="M17.5 3.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" />
+    </svg>
   );
 }
 

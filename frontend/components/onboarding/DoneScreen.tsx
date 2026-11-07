@@ -131,19 +131,17 @@ export default function DoneScreen({
           </div>
         </div>
 
-        <h1 className="font-display text-[31px] font-bold leading-[1.4] text-ink sm:text-[36px]">
+        <h1 className="font-display text-[32px] font-bold leading-[1.35] text-ink sm:text-[40px]">
           준비 끝났어요!
         </h1>
-        <p className="font-display text-[25px] leading-[1.5] text-ink-soft">
+        <p className="text-[16px] leading-[1.6] text-ink-soft">
           이제 메인 화면에서 쌤플을 시작할 수 있어요.
         </p>
 
         <dl className="mt-2 grid w-full grid-cols-3 gap-2">
           {rows.map(([k, v]) => (
             <div key={k} className="squircle [--r:14px] bg-cream px-2 py-3.5">
-              <dt className="font-display text-[21px] font-bold leading-tight text-ink-soft">
-                {k}
-              </dt>
+              <dt className="text-[13px] font-medium leading-tight text-ink-soft">{k}</dt>
               <dd className="mt-1 text-[15px] font-bold text-ink" style={{ wordBreak: "keep-all" }}>
                 {v}
               </dd>

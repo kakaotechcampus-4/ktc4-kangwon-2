@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import OnboardingLayout, { type PostySay } from "./OnboardingLayout";
 import RegionSheet from "./RegionSheet";
 import {
+  AnsweredList,
   Cascade,
   CtaButton,
   ErrorLine,
+  FieldHint,
   FieldLabel,
   LineField,
   LoadingLine,
@@ -15,6 +17,7 @@ import {
   Question,
   TextAction,
   onEnter,
+  type Answered,
 } from "./FlowParts";
 import { useOnboardingData } from "./useOnboardingData";
 import { saveClassSettings } from "@/lib/onboarding/settings";
@@ -73,6 +76,9 @@ export default function CenterFlow() {
   const { settings, edit, error, setError } = data;
   // 이미 등록한 원이면 답이 다 찬 채로 마지막 질문에서 시작한다.
   const [step, setStep] = useState<Step>(() => (centerSet(settings) ? "director" : "region"));
+  // 그렇게 들어온 원은 서버에 이미 있어 지역 · 이름을 고쳐도 chooseCenter 가 서버 값을 돌려준다.
+  // 고친 것처럼 보이고 저장되지 않으니 요약 줄에 「고치기」를 두지 않는다.
+  const [centerLocked] = useState(() => centerSet(settings));
   const [sheet, setSheet] = useState(false);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
@@ -174,6 +180,12 @@ export default function CenterFlow() {
     setSheet(false);
   }
 
+  /** 요약 줄의 「고치기」 — 그 질문으로 돌아간다. */
+  function revisit(target: Step) {
+    setError("");
+    setStep(target);
+  }
+
   if (!data.ready) return <LoadingLine />;
 
   const place = PLACE[step];
@@ -181,43 +193,57 @@ export default function CenterFlow() {
     ? `${settings.regionProvince} ${settings.regionDistrict}`
     : "";
   const results = found?.key === searchKey ? found.items : null;
-  const fields = [
-    <div key="region" className="mb-7 flex flex-col gap-1.5">
-      <FieldLabel htmlFor="region">지역</FieldLabel>
-      <PickButton
-        id="region"
-        active={step === "region"}
-        value={regionText}
-        placeholder="시·도 선택"
-        onClick={() => setSheet(true)}
-      />
-    </div>,
-    step === "find" ? (
-      <FindField
-        key="org"
-        query={query}
-        onQuery={setQuery}
-        results={results}
-        settings={settings}
-        onPick={pick}
-      />
-    ) : (
+  // 안내는 질문 제목 아래가 아니라 지금 칸 밑에 둔다(FieldHint).
+  const hint = step === "find" ? `${regionText}에서 찾아요. 이름 일부만 쳐도 돼요.` : HINTS[step];
+  const orgStep: Step = settings.registryKey ? "find" : "manual";
+  const answered: Answered[] = [
+    {
+      label: "지역",
+      value: regionText,
+      onEdit: centerLocked ? undefined : () => revisit("region"),
+    },
+    {
+      label: "어린이집 이름",
+      value: settings.orgName,
+      onEdit: centerLocked ? undefined : () => revisit(orgStep),
+    },
+  ]
+    .slice(0, place)
+    .reverse();
+
+  function orgField() {
+    if (step === "find")
+      return (
+        <FindField
+          key="org"
+          query={query}
+          onQuery={setQuery}
+          results={results}
+          settings={settings}
+          hint={hint}
+          onPick={pick}
+        />
+      );
+    return (
       <LineField
         key="org"
         id="orgName"
         label="어린이집 이름"
         active={step === "manual"}
         readOnly={step !== "manual"}
+        hint={step === "manual" ? hint : undefined}
         value={settings.orgName}
         autoFocus={step === "manual"}
         placeholder="예: 쌤플어린이집"
         onChange={(e) => edit({ orgName: e.target.value })}
         onKeyDown={(e) => onEnter(e, advance)}
       />
-    ),
-    step === "join" ? (
-      <JoinCard key="director" daycare={picked} settings={settings} />
-    ) : (
+    );
+  }
+
+  function directorField() {
+    if (step === "join") return <JoinCard key="director" daycare={picked} settings={settings} />;
+    return (
       <LineField
         key="director"
         id="directorName"
@@ -229,13 +255,28 @@ export default function CenterFlow() {
         onChange={(e) => edit({ directorName: e.target.value })}
         onKeyDown={(e) => onEnter(e, advance)}
       />
-    ),
+    );
+  }
+
+  const fields = [
+    <div key="region" className="mb-7 flex flex-col gap-1.5">
+      <FieldLabel htmlFor="region">지역</FieldLabel>
+      <PickButton
+        id="region"
+        active={step === "region"}
+        value={regionText}
+        placeholder="시·도 선택"
+        onClick={() => setSheet(true)}
+      />
+      {step === "region" && hint && <FieldHint>{hint}</FieldHint>}
+    </div>,
+    orgField(),
+    directorField(),
+    <AnsweredList key="answered" items={answered} />,
   ];
-  // 지금 질문이 맨 위, 이미 답한 칸은 그 아래에 최근 것부터 쌓는다.
-  // 찾기만은 예외 — 결과 쪽지가 길어 지역 칸까지 쌓으면 칠판이 화면 밖으로 길어진다. 지역은 힌트 줄에 적는다.
-  const order =
-    step === "find" ? [place] : [place, ...Array.from({ length: place }, (_, i) => place - 1 - i)];
-  const hint = step === "find" ? `${regionText}에서 찾아요. 이름 일부만 쳐도 돼요.` : HINTS[step];
+  // 지금 질문이 맨 위, 그 아래에 앞에서 답한 요약(3번 칸).
+  // 찾기만은 예외 — 결과 쪽지가 길어 요약까지 쌓으면 칠판이 화면 밖으로 길어진다. 지역은 안내 줄에 적는다.
+  const order = step === "find" || place === 0 ? [place] : [place, 3];
 
   return (
     <OnboardingLayout
@@ -247,7 +288,7 @@ export default function CenterFlow() {
         <Footer step={step} busy={busy} valid={valid[step]} onNext={advance} onManual={manual} />
       }
     >
-      <Question title={TITLES[step]} hint={hint} focus={step === "region"} />
+      <Question title={TITLES[step]} focus={step === "region"} />
       <Cascade fields={fields} order={order} />
       <ErrorLine>{error}</ErrorLine>
       {sheet && <RegionSheet onPick={pickRegion} onClose={() => setSheet(false)} />}
@@ -261,12 +302,14 @@ function FindField({
   onQuery,
   results: items,
   settings: s,
+  hint,
   onPick,
 }: {
   query: string;
   onQuery: (q: string) => void;
   results: Daycare[] | null;
   settings: ClassSettings;
+  hint?: string;
   onPick: (d: Daycare) => void;
 }) {
   return (
@@ -276,6 +319,7 @@ function FindField({
         label="어린이집 이름"
         active
         autoFocus
+        hint={hint}
         value={q}
         placeholder="예: 햇살"
         onChange={(e) => onQuery(e.target.value)}

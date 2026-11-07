@@ -5,13 +5,16 @@ import { useRouter } from "next/navigation";
 import AgeSelection from "./AgeSelection";
 import OnboardingLayout, { type PostySay } from "./OnboardingLayout";
 import {
+  AnsweredList,
   Cascade,
   CtaButton,
   ErrorLine,
+  FieldHint,
   LineField,
   LoadingLine,
   Question,
   onEnter,
+  type Answered,
 } from "./FlowParts";
 import { useOnboardingData } from "./useOnboardingData";
 import { saveClassSettings } from "@/lib/onboarding/settings";
@@ -20,6 +23,7 @@ import { isAlreadyExists } from "@/lib/api/client";
 import { syncClass, rememberConsent } from "@/lib/api/onboarding";
 import { childrenPathAfterAdd, isCompleteClass } from "@/lib/onboarding/flow";
 import {
+  ageSelectionLabel,
   createEmptyClassroom,
   selectedAgesFor,
   type AgeGroup,
@@ -41,6 +45,7 @@ const SAY: PostySay[] = [
   { title: "잘하고 있어요!", body: "반 정보는 두 개 남았어요." },
   { title: "거의 다 왔어요!", body: "이것만 확인하면 반 정보는 끝이에요." },
 ];
+/** 질문마다 그 칸 밑에 두는 안내. */
 const HINTS = [
   undefined,
   "여러 연령이 함께 지내면 모두 골라주세요.",
@@ -135,6 +140,16 @@ export default function ClassFlow() {
 
   if (!data.ready) return <LoadingLine />;
 
+  // 앞에서 답한 칸은 요약 줄로 접는다. 최근에 답한 것이 위, 「고치기」는 그 질문으로 돌아간다.
+  const answered: Answered[] = [
+    { label: "반 이름", value: draft.className, onEdit: () => setQ(0) },
+    { label: "연령", value: ages.length ? ageSelectionLabel(ages) : "", onEdit: () => setQ(1) },
+    { label: "담임 이름", value: draft.teacherName, onEdit: () => setQ(2) },
+  ]
+    .slice(0, q)
+    .reverse();
+  const hint = HINTS[q];
+
   const fields = [
     <LineField
       key="name"
@@ -154,6 +169,7 @@ export default function ClassFlow() {
     <div key="age">
       <AgeSelection
         active={q === 1}
+        hint={q === 1 ? hint : undefined}
         value={ages}
         onChange={(selectedAges) =>
           patch({
@@ -173,6 +189,7 @@ export default function ClassFlow() {
       id="teacherName"
       label="담임 이름"
       active={q === 2}
+      hint={q === 2 ? hint : undefined}
       value={draft.teacherName}
       autoFocus={q === 2}
       placeholder="예: 김하늘"
@@ -189,10 +206,12 @@ export default function ClassFlow() {
           ? "다음 단계에서 이 반 아이 이름을 넣을 수 있어요."
           : "체크하지 않아도 반은 등록돼요. 동의를 받으면 마지막 확인 화면에서 체크하고 아이 이름을 넣을 수 있어요."}
       </p>
+      {q === 3 && hint && <FieldHint>{hint}</FieldHint>}
     </div>,
+    <AnsweredList key="answered" items={answered} />,
   ];
-  // 지금 질문이 맨 위, 이미 답한 칸은 그 아래에 최근 것부터 쌓는다.
-  const order = [q, ...Array.from({ length: q }, (_, i) => q - 1 - i)];
+  // 지금 질문이 맨 위, 그 아래에 앞에서 답한 요약(4번 칸).
+  const order = q === 0 ? [0] : [q, 4];
 
   return (
     <OnboardingLayout
@@ -206,7 +225,7 @@ export default function ClassFlow() {
         </CtaButton>
       }
     >
-      <Question title={TITLES[q]} hint={HINTS[q]} focus={q === 1 || q === 3} />
+      <Question title={TITLES[q]} focus={q === 1 || q === 3} />
       <Cascade fields={fields} order={order} />
       <ErrorLine>{error}</ErrorLine>
     </OnboardingLayout>
