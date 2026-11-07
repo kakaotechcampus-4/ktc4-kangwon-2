@@ -6,6 +6,9 @@ export default defineConfig({
   // CI 는 둘씩 돌린다 — e2e 가 CI 에서 가장 늦게 끝나는 잡이다. 테스트마다 새 계정과
   // 자기 원을 만들어서(e2e/onboarding.ts 「목록에 없어요」) 서로 같은 행을 안 본다.
   workers: process.env.CI ? 2 : 1,
+  // 파일 안의 테스트도 나눈다. 안 나누면 가장 긴 routines.spec.ts 가 한 워커에 통째로 몰린다.
+  // 테스트끼리 순서나 상태를 공유하지 않는다 — 각자 계정을 만든다.
+  fullyParallel: !!process.env.CI,
   forbidOnly: !!process.env.CI,
   timeout: 90_000,
   expect: { timeout: 15_000 },
