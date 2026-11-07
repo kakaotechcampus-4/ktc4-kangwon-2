@@ -132,11 +132,11 @@ export default function ChildrenFlow() {
             classroom={classroom}
             onAdd={add}
           />
-          <p className="mt-6 font-display text-[27px] font-bold leading-tight text-ink">
+          <p className="mt-6 text-[17px] font-bold leading-tight text-ink">
             {classroom.className} · {count}명
           </p>
           {/* 이름을 누르면 지워진다는 것을 칠판 귀퉁이에 미리 적어 둔다 — 지우는 단추(✕)가 따로 없다. */}
-          <p className="mb-2 font-display text-[24px] text-ink-soft">이름을 누르면 지워져요</p>
+          <p className="mb-2 mt-1 text-[14px] text-ink-soft">이름을 누르면 지워져요</p>
           {/* key 는 위 KidInput 과 겹치면 안 된다 — 같은 묶음 안에서 key 가 같으면 React 가 칸을
               헷갈려, 반을 넘길 때마다 옛 입력칸이 남아 하나씩 늘어난다. */}
           <KidChips key={`chips-${classroom.id}`} items={classroom.children} onRemove={remove} />
@@ -258,7 +258,7 @@ function KidInput({
                 setError("");
               }}
               onKeyDown={(e) => onEnter(e, () => void submit())}
-              className="w-full border-0 bg-transparent pb-2.5 pt-1.5 text-[22px] font-semibold text-ink outline-none placeholder:text-ink-hint"
+              className="w-full border-0 bg-transparent pb-2.5 pt-1.5 text-[24px] font-bold text-ink outline-none placeholder:text-ink-hint sm:text-[28px]"
             />
             <ChalkLine className="text-primary" />
           </div>

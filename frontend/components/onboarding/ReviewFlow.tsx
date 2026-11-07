@@ -159,22 +159,22 @@ export default function ReviewFlow() {
 
 function SectionTitle({ children }: { children: string }) {
   return (
-    <h2 className="mb-2 font-display text-[28px] font-bold leading-tight text-ink">{children}</h2>
+    <h2 className="mb-2 text-[15px] font-bold leading-tight tracking-[0.02em] text-ink-soft">
+      {children}
+    </h2>
   );
 }
 
 const rowClass =
   "flex min-h-14 w-full items-center gap-3 bg-paper py-3 pl-[18px] pr-4 text-left text-ink hover:bg-ivory focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary";
 
-/** 반 카드 안의 칸 이름 — 칠판에 손으로 적은 글씨. */
-const dtClass = "font-display text-[23px] font-bold leading-tight text-ink";
+/** 반 카드 · 원 정보 줄의 칸 이름 — 답한 값을 요약하는 줄이라 작은 기본 글씨(온보딩 「앞에서 답했어요」와 같다). */
+const dtClass = "text-[13.5px] font-medium leading-tight text-ink-soft";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex min-h-14 w-full items-center gap-3 bg-paper py-3 pl-[18px] pr-4 text-left text-ink">
-      <span className="w-[112px] flex-none font-display text-[24px] font-bold leading-tight text-ink">
-        {label}
-      </span>
+      <span className={`w-[112px] flex-none ${dtClass}`}>{label}</span>
       <span className="flex-1 text-[18px] font-semibold">{value || "-"}</span>
     </div>
   );
