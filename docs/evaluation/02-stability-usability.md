@@ -60,6 +60,7 @@
 | 서버 시각이 9시간 틀림 | `created_at` 이 UTC 인데 문자열을 잘랐다 | [CLAUDE.md](../../CLAUDE.md) §날짜·시각 |
 | 목업이 PATCH 를 받아줘 통과, 진짜 서버는 PUT | 코드를 보고 짐작하고 값을 안 봤다 | [CLAUDE.md](../../CLAUDE.md) §서버 값은 타입 말고 실제 응답을 본다 |
 | 휴대폰(390px) 보관함에서 반 목록 아래 빈 칸 · 종류 카드 아이콘이 점으로 보임 | 넓은 화면의 최소 높이 360px 와 아이콘 안 여백 13px 을 그대로 물려받았다 | `frontend/components/workspace/DocumentArchive.module.css` |
+| 소개 화면 「선생님의 하루」 창에 여섯 장면이 한꺼번에 쌓이고 안쪽 여백이 없음 · 위 메뉴를 누르면 뚝 끊겨 이동 | CSS 를 `.lp` 안에 가두며 선택자의 `body` · `html` 이 빠졌다(`.win-.view` · `.lp html`) | `frontend/components/landing/landing.css` |
 | 1024~1439 폭 소개 화면(/welcome)에서 스크롤 장면 아래가 빈 크림 띠로 남음 | 앱 전체 배율(1440 기준 zoom)이 소개 화면에도 걸려, 창 높이로 맞춘 고정 장면이 창보다 짧아졌다 | `frontend/app/globals.css` `html:has(.lp)` |
 | 주소만 치고 들어온 첫 방문이 로그인 화면으로 감 | 로그인 안 한 사람은 어느 주소든 `/login` 으로 보냈다 — 첫 방문(`/`)만 소개 화면으로 | `frontend/lib/auth/local-account.ts` `accessRedirect` · `frontend/tests/auth-access.test.mjs` |
 | 휴대폰에서 두 자리 날짜(「11.18」)가 보육일지 주간 칸을 넘침 | 칸 최소 폭 52px 이 글자 46px 에 여백을 못 담았다 | `frontend/components/workspace/DocumentArchive.module.css` · `frontend/e2e/document-archive-layout.spec.ts` |
