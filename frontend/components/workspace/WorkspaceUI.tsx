@@ -49,7 +49,7 @@ export function JournalTabs({
   weekly: string;
 }) {
   return (
-    <nav aria-label="보육일지 종류" className={styles.journalTabs}>
+    <nav aria-label="보육일지 종류" className={styles.journalTabs} data-tour="journal-tabs">
       <Link href={daily} aria-current={at === "daily" ? "page" : undefined}>
         일일 보육일지
       </Link>

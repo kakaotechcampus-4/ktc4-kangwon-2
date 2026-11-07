@@ -881,7 +881,7 @@ export default function DocumentArchiveView({
   /** 문서 종류 다섯 칸. 상세 화면에서는 그리지 않는다. */
   function typeGrid() {
     return (
-      <div className={styles.typeGrid}>
+      <div className={styles.typeGrid} data-tour="archive-types">
         {TYPES.map((t) => (
           <button
             type="button"
@@ -1203,7 +1203,7 @@ function ClassRail({
 }) {
   const waiting = received.filter((r) => r.status === "PENDING").length;
   return (
-    <aside className={styles.classRail} aria-label="반 선택">
+    <aside className={styles.classRail} aria-label="반 선택" data-tour="archive-rail">
       <div className={styles.railHead}>우리 반</div>
       {classes.length ? (
         <div className={styles.classList}>

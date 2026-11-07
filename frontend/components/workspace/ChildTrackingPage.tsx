@@ -158,7 +158,7 @@ function Body({
   const className = classes.find((item) => item.id === classId)?.name ?? "";
   return (
     <div className={styles.workspace}>
-      <aside className={styles.selector} aria-label="아이 고르기">
+      <aside className={styles.selector} aria-label="아이 고르기" data-tour="child-picker">
         {/* 반은 사이드바 맨 위에서 고른다. 여기에 또 두면 두 곳에서 같은 것을 고르게 된다. */}
         <div className={styles.selectorHead}>
           <h2>아이 고르기</h2>
@@ -279,7 +279,11 @@ function ChildDetail({
   }, [classId, child.child_id]);
 
   return (
-    <section className={styles.detail} aria-label={`${child.name} 관찰 기록`}>
+    <section
+      className={styles.detail}
+      aria-label={`${child.name} 관찰 기록`}
+      data-tour="child-detail"
+    >
       <div className={styles.summary}>
         <div className={styles.summaryText}>
           <span className={styles.eyebrow}>{className}</span>

@@ -362,8 +362,8 @@ export default function SettingsPage() {
           >
             <div className={styles.two}>
               <PasswordCard />
-              <Note title="화면 안내" icon="compass" tone="sage" tilt={1}>
-                <p>화면마다 처음 한 번 뜨는 안내를 다시 볼 수 있습니다.</p>
+              <Note title="튜토리얼" icon="compass" tone="sage" tilt={1}>
+                <p>화면마다 처음 한 번 뜨는 튜토리얼을 다시 볼 수 있습니다.</p>
                 {/* 끈 안내도 본 안내도 되살리고 첫 화면으로 간다 — 홈에서 바로 다시 뜬다. */}
                 <button
                   type="button"
@@ -373,7 +373,7 @@ export default function SettingsPage() {
                     router.push("/");
                   }}
                 >
-                  화면 안내 다시 보기
+                  튜토리얼 다시 보기
                 </button>
               </Note>
             </div>
