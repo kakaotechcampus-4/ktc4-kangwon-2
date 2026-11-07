@@ -50,6 +50,9 @@ async function login(email) {
 test("common guard handles unauthenticated access, unfinished onboarding and returning login", async () => {
   setup();
   assert.equal(auth.accessRedirect(), "/login");
+  // 주소만 치고 온 첫 방문은 소개 화면, 다른 화면 주소는 로그인.
+  assert.equal(auth.accessRedirect("/"), "/welcome");
+  assert.equal(auth.accessRedirect("/plans"), "/login");
   await auth.registerAccount("노덕철", "first@example.com", "test-password-123");
   await login("first@example.com");
   // 공통 guard 는 세션만 본다. 원·반이 없으면 메인 밖 화면만 안내 카드로 막는다.
