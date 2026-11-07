@@ -27,9 +27,12 @@ import type { WeeklyCell, WeeklyPlan } from "@/lib/api/types";
 import { DAY_NAMES, sectionName } from "@/lib/weekly/section-labels";
 import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
 import { findingLines } from "@/lib/monthly/findings";
+import DraftSave from "@/components/plan-ui/DraftSave";
 import PlayMonthlyConfirm, {
   BLANK_LEAD,
   BlankRows,
+  CONFIRM_TITLE,
+  PickCellHint,
 } from "@/components/plan-generator/PlayMonthlyConfirm";
 import AnnualFrame, {
   BACK_BUTTON,
@@ -419,7 +422,7 @@ export default function WeeklyEditor({
 
   const editTab = (
     <div className="flex flex-col gap-4">
-      {!picked && <p className="m-0 text-sm text-[#5c5243]">문서에서 고칠 칸을 눌러 주세요.</p>}
+      {!picked && <PickCellHint>문서에서 고칠 칸을 눌러 주세요.</PickCellHint>}
       {picked && (
         <>
           <div className="flex items-end justify-between gap-3">
@@ -453,11 +456,6 @@ export default function WeeklyEditor({
               }
             />
           </div>
-          {picked.cell.teacher_input && (
-            <p className="m-0 text-[13px] text-[#5c5243]">
-              선생님이 직접 쓰는 칸이에요. AI가 쓰지 않아요 — 비워 두어도 확정할 수 있어요.
-            </p>
-          )}
           {note && (
             <section
               aria-labelledby="weekly-cell-note"
@@ -559,15 +557,11 @@ export default function WeeklyEditor({
       onSelect={select}
     />
   ) : (
-    <p className="m-0 text-sm text-[#5c5243]">
-      {grids.length && candidates.length && indoorSelection
-        ? "대·소집단활동이나 이번 주 놀이 칸을 누르면 넣을 후보가 보여요."
-        : grids.length && candidates.length
-          ? "대·소집단활동 칸을 누르면 넣을 활동 후보가 보여요."
-          : indoorSelection
-            ? "이번 주 놀이 칸을 누르면 넣을 놀이 후보가 보여요."
-            : "이 주에는 넣을 후보가 없어요. 「칸 편집」에서 고쳐 주세요."}
-    </p>
+    <PickCellHint>
+      {(grids.length && candidates.length) || indoorSelection
+        ? "칸을 누르면 후보가 보여요."
+        : "이 주에는 넣을 후보가 없어요. 「칸 편집」에서 고쳐 주세요."}
+    </PickCellHint>
   );
 
   const hasAi = (grids.length > 0 && candidates.length > 0) || indoorSelection;
@@ -578,7 +572,7 @@ export default function WeeklyEditor({
         <div
           role="tablist"
           aria-label="고치는 방법"
-          className="flex gap-5 border-b border-[#efeae2] px-6 pt-2"
+          className="flex gap-1 border-b border-line px-6 pt-3"
         >
           {(["ai", "edit"] as const).map((key) => (
             <button
@@ -635,15 +629,14 @@ export default function WeeklyEditor({
   if (confirmed)
     return (
       <PlanDone
-        title={`${title}을 확정했어요`}
+        title={title}
         docLabel="확정된 주간계획안"
         format="MONTHLY_THEME"
         pages={[docOf(still)]}
         download={(format) => downloadWeeklyHwpx(plan.id, format)}
         next={{
           href: `/plans/weekly?month=${month}`,
-          label: "다음 주 계획안 만들기 →",
-          hint: `${month}월 월간에서 아직 만들지 않은 주를 이어서 만들어요`,
+          label: "다음 주 계획안 만들기",
           onClick: onBack,
         }}
         notes={
@@ -697,6 +690,7 @@ export default function WeeklyEditor({
       }
       actions={
         <>
+          <DraftSave disabled={locked} save={flush} />
           <div className="relative">
             <button
               type="button"
@@ -711,8 +705,7 @@ export default function WeeklyEditor({
             {asking === "confirm" && (
               <div className={POPOVER}>
                 <PlayMonthlyConfirm
-                  title="주간계획안을 확정할까요?"
-                  message="확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요."
+                  title={CONFIRM_TITLE}
                   yes="확정하기"
                   no="더 다듬기"
                   disabled={locked}

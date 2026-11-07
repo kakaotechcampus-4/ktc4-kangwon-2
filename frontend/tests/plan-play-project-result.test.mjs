@@ -158,10 +158,16 @@ function renderer(planValue, props = {}) {
       "./GenerationFlow.module.css": esModule(new Proxy({}, { get: (_, k) => k })),
       "./PlayProjectResult.module.css": esModule(new Proxy({}, { get: (_, k) => k })),
       "./PlayProjectPicking": esModule((p) => jsx("picking", p)),
+      "./SeasonIcon": esModule((p) => jsx("season-icon", p)),
       "@/components/plan-ui/PlayPickBoard": { MemoMark: () => jsx("memo-mark", {}) },
+      "@/components/plan-ui/DraftSave": esModule((props) => jsx("draft-save", props)),
       "./PlayProjectSheet": esModule(Sheet),
       "./PlayCellEditor": esModule(CellEditor),
-      "./PlayMonthlyConfirm": esModule((p) => jsx("confirm-dialog", p)),
+      "./PlayMonthlyConfirm": {
+        ...esModule((p) => jsx("confirm-dialog", p)),
+        CONFIRM_TITLE: "이대로 확정할까요?",
+        PickCellHint: (p) => jsx("pick-hint", p),
+      },
       "./AnnualFrame": { __esModule: true, default: Frame, ...frameRest },
       "@/lib/plan-generator/playEditHistory": compile(
         "../lib/plan-generator/playEditHistory.ts",
@@ -258,12 +264,8 @@ test("a short plan opens ④ picking; arranging opens ⑤ with AI 후보 · 칸 
   assert.ok(selectedTab(tree, "AI 후보"));
   assert.ok(all(tree).some((n) => n.props?.role === "tab" && text(n) === "칸 편집"));
   assert.match(text(tree), /3월~5월 0\/5/);
-  // ⑤ 에서 ④ 로 돌아가는 길이 있다 — 뒤로 갔다 다시 들어오지 않아도 된다.
-  button(tree, "놀이 다시 고르기").props.onClick();
-  assert.ok(
-    all(render()).some((n) => n.type === "picking"),
-    "놀이 고르기로 돌아간다",
-  );
+  // 「놀이 다시 고르기」 단추는 없다(11-08) — 놀이는 「AI 후보」 탭에서 바꾼다.
+  assert.ok(!all(tree).some((n) => n.type === "button" && text(n) === "놀이 다시 고르기"));
 });
 
 test("⑤: a document cell opens 칸 편집 and the editor saves that cell; 빼기 saves four periods", () => {
@@ -315,10 +317,7 @@ test("confirm asks first, waits for the queue, then confirms with its revision",
   const render = renderer(fullPlan(), { onConfirmed: (next) => done.push(next) });
   button(render(), "확정하기").props.onClick();
   const dialog = all(render()).find((n) => n.type === "confirm-dialog");
-  assert.equal(
-    dialog.props.message,
-    "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요.\n이 내용으로 월간계획안을 만들게 돼요.",
-  );
+  assert.equal(dialog.props.message, undefined);
   assert.equal(dialog.props.no, "더 다듬기");
   await dialog.props.onYes();
   assert.deepEqual(saveStub.log, ["whenIdle", "confirm"]);
@@ -475,7 +474,7 @@ test("④ uses the same season tabs as ⑤; ⑤ drags 다른 후보 in and out; 
     dataTransfer: { getData: () => rowKey },
   });
   const pickedRow = all(render()).find(
-    (n) => n.type === "li" && n.props.onDrop && text(n).startsWith("놀이 1종이 상자"),
+    (n) => n.type === "li" && n.props.onDrop && text(n).startsWith("놀이 1−"),
   );
   pickedRow.props.onDrop(drag("cand7"));
   assert.deepEqual(saveStub.calls.at(-1).period0, ["cand0", "cand7", "cand2", "cand3", "cand4"]);

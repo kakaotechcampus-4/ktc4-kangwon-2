@@ -38,9 +38,13 @@ export const getWeeklyPlan = (id: number, signal?: AbortSignal) =>
  * 연도는 반의 학년도가 정한다 (월간 생성과 같은 규칙). `month` 는 `classId` 와 함께만 간다.
  */
 /** `month` 를 빼면 그 반의 모든 달이다 — 승인받은 반을 한 번에 훑을 때 쓴다. */
-export const listWeeklyPlans = (classId: number, month?: number, signal?: AbortSignal) =>
+/** 둘 다 없으면 원 전체(백엔드 규칙). `month` 는 `classId` 와 함께만. */
+export const listWeeklyPlans = (classId?: number, month?: number, signal?: AbortSignal) =>
   apiRequest<{ items: WeeklyPlanSummary[] }>(
-    "/api/plans/weekly?class_id=" + classId + (month === undefined ? "" : "&month=" + month),
+    "/api/plans/weekly" +
+      (classId === undefined
+        ? ""
+        : "?class_id=" + classId + (month === undefined ? "" : "&month=" + month)),
     { signal },
   );
 /**

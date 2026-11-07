@@ -5,14 +5,16 @@ import { usePathname, useRouter } from "next/navigation";
 import { accessRedirect } from "@/lib/auth/local-account";
 
 // 화면 이동을 위한 데모 전용 가드. 실제 인증은 서버에서 별도로 검증해야 한다.
+// 세션은 주소와 상관없으니, 한 번 통과하면 화면을 옮겨도 안내 문장으로 갈아 끼우지 않는다 —
+// 갈아 끼우면 사이드바까지 통째로 사라졌다 다시 붙어 화면이 끊긴다. 옮길 때마다 다시 확인은 한다.
 export default function DemoSessionGate({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [readyPath, setReadyPath] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
   useEffect(() => {
     const check = () => {
       const destination = accessRedirect(pathname);
-      setReadyPath(destination ? null : pathname);
+      setReady(!destination);
       if (destination) router.replace(destination);
     };
     check();
@@ -25,7 +27,7 @@ export default function DemoSessionGate({ children }: { children: ReactNode }) {
       window.removeEventListener("storage", check);
     };
   }, [router, pathname]);
-  return readyPath === pathname ? (
+  return ready ? (
     children
   ) : (
     <p role="status" className="p-10 text-center text-ink-soft">

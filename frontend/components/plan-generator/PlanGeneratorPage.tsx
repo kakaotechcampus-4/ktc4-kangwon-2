@@ -65,12 +65,12 @@ export default function PlanGeneratorPage({ format }: { format: Format | null })
 function NoFormat() {
   return (
     <div className="flex w-full flex-col gap-3 px-10 pb-12 pt-[26px] text-[#2b2826]">
-      <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+      <h1 className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
         연간계획안 만들기
       </h1>
       <p className="m-0 text-base text-[#5c5243]">어떤 방식으로 만들지 먼저 골라 주세요.</p>
       <Link href="/plans" className="text-base font-bold text-[#5e4b96]">
-        방식 고르러 가기 →
+        방식 고르러 가기
       </Link>
     </div>
   );
@@ -213,7 +213,9 @@ function AnnualGenerator({ format }: { format: Format }) {
       {/* 월간 · 주간 만들기와 같은 틀 — 왼쪽 고르기 1 : 오른쪽 양식 1.15, 화면 높이에 맞춤. */}
       <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <Tape />
-        <section className="flex min-h-0 flex-col gap-6 overflow-y-auto border border-line bg-paper rounded-md p-7">
+        <section className="relative flex min-h-0 flex-col gap-6 overflow-y-auto bg-paper shadow-pg p-7">
+          {/* 왼쪽 위 접힌 귀퉁이 — 올리면 조금 더 들리고, 누르면 「만드는 순서」 슬라이드가 열린다. */}
+          <SlideTour format={format} />
           {/* 왼쪽 판 맨 위: 제목 앞 「←」 돌아가기(편집 화면과 같은 버튼) · 방식. */}
           <div className="flex shrink-0 flex-col">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -225,14 +227,13 @@ function AnnualGenerator({ format }: { format: Format }) {
               >
                 {BACK_ICON}
               </Link>
-              <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+              <h1 className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
                 {year} 연간계획안 만들기
               </h1>
-              <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
+              <span
+                className={`-rotate-2 border border-black/10 px-3 py-0.5 font-display text-[18px] font-bold shadow-pg-card ${look.chip}`}
+              >
                 {look.name}
-              </span>
-              <span className="ml-auto">
-                <SlideTour format={format} />
               </span>
             </div>
           </div>

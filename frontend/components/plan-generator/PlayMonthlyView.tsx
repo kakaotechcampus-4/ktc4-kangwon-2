@@ -32,7 +32,8 @@ import PlayMonthlyActivityPanel, {
   SECTION_LABEL,
   sectionCandidates,
 } from "./PlayMonthlyActivityPanel";
-import PlayMonthlyConfirm, { BLANK_LEAD, BlankRows } from "./PlayMonthlyConfirm";
+import DraftSave from "@/components/plan-ui/DraftSave";
+import PlayMonthlyConfirm, { BLANK_LEAD, BlankRows, PickCellHint } from "./PlayMonthlyConfirm";
 import PlayMonthlyConfirmBar from "./PlayMonthlyConfirmBar";
 import PlayMonthlyDrillPanel from "./PlayMonthlyDrillPanel";
 import PlayMonthlyRowRemove from "./PlayMonthlyRowRemove";
@@ -382,7 +383,7 @@ function PlayMonthlyBody({
 
   const editTab = (
     <div className="flex flex-col gap-4">
-      {!selected && <p className="m-0 text-sm text-[#5c5243]">문서에서 고칠 칸을 눌러 주세요.</p>}
+      {!selected && <PickCellHint>문서에서 고칠 칸을 눌러 주세요.</PickCellHint>}
       {selected && (
         <h2 className="m-0 text-[20px] font-bold leading-tight">
           {/* 놀이 행은 문서 순서(함께 하는 활동 위→아래, 그다음 자유놀이)로 「n 번째 칸」. */}
@@ -460,10 +461,6 @@ function PlayMonthlyBody({
               onNo={() => setAsking(false)}
             />
           )}
-          <p className="m-0 text-[13px] text-[#5c5243]">
-            칸 경계선을 끌어도 크기가 바뀌어요. 요일 머리의 오른쪽 선은 열 너비, 표 맨 아래 선은
-            전체 높이예요.
-          </p>
         </div>
       )}
       {row && (
@@ -478,7 +475,7 @@ function PlayMonthlyBody({
       )}
       {row && candidateRow && (
         <p className="m-0 border-t border-[#efeae2] pt-4 text-[13px] text-[#5c5243]">
-          AI 후보에서 고른 활동이에요. 빼려면 「AI 후보」에서 [빼기]를 눌러요 — 후보로 돌아가요.
+          「AI 후보」에서 − 를 누르면 후보로 돌아가요.
         </p>
       )}
       {row && !candidateRow && (
@@ -518,21 +515,23 @@ function PlayMonthlyBody({
       candidates={plan.drill_candidates}
       current={plan.teacher_inputs.find((t) => t.key === "fire_disaster_drill")?.cell.value ?? ""}
       onCopy={copyDrill}
+      onClear={() => {
+        if (drillId && save.editCell(drillId, "")) {
+          clearLive(drillId);
+          bump(drillId);
+        }
+      }}
       disabled={locked}
     />
   ) : (
-    <p className="m-0 text-sm text-[#5c5243]">
-      {picking
-        ? "함께 하는 활동 · 자유놀이 · 안전교육 · 소방대피/재난대비 칸을 누르면 넣을 후보가 보여요."
-        : "안전교육이나 소방대피/재난대비 칸을 누르면 넣을 후보가 보여요."}
-    </p>
+    <PickCellHint>칸을 누르면 후보가 보여요.</PickCellHint>
   );
   const aside = (
     <>
       <div
         role="tablist"
         aria-label="고치는 방법"
-        className="flex gap-5 border-b border-[#efeae2] px-6 pt-2"
+        className="flex gap-1 border-b border-line px-6 pt-3"
       >
         {(["ai", "edit"] as const).map((key) => (
           <button
@@ -566,15 +565,14 @@ function PlayMonthlyBody({
   if (confirmed)
     return (
       <PlanDone
-        title={`${plan.month}월 월간계획안을 확정했어요`}
+        title={`${plan.month}월 월간계획안`}
         download={(format) => downloadPlayMonthlyHwpx(plan.id, format)}
         docLabel="확정된 월간계획안"
         format="PLAY_PROJECT"
         pages={[<PlayMonthlySheet key="sheet" plan={plan} />]}
         next={{
           href: "/plans/monthly",
-          label: `${(plan.month % 12) + 1}월 월간 만들기 →`,
-          hint: "놀이 중심형은 주간 없이 다음 달로 가요",
+          label: `${(plan.month % 12) + 1}월 월간 만들기`,
         }}
         notes={
           <>
@@ -602,10 +600,10 @@ function PlayMonthlyBody({
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
             {back}
-            <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+            <h1 className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
               활동 고르기
             </h1>
-            <span className="rounded-full bg-[#eee4f4] px-3 py-1 text-[13px] font-bold text-[#5e4b96]">
+            <span className="-rotate-2 border border-black/10 bg-[#eee4f4] px-3 py-0.5 font-display text-[18px] font-bold text-[#5e4b96] shadow-pg-card">
               놀이 중심형
             </span>
             <span role="status" className="text-[13px] text-ink-soft">
@@ -646,7 +644,6 @@ function PlayMonthlyBody({
         )}
         <PlayPickBoard
           subject={SECTION_LABEL[choosing]}
-          pickLabel="이 활동 고르기"
           max={max}
           candidates={sectionCandidates(plan, choosing).map(({ row }) => ({
             key: row.activity_id,
@@ -665,7 +662,7 @@ function PlayMonthlyBody({
           }}
           onNext={() => goTo(choosing === "together" ? "free_play" : null)}
           nextLabel={
-            choosing === "together" ? `${SECTION_LABEL.free_play} 고르러 가기 →` : "문서 만들기 →"
+            choosing === "together" ? `${SECTION_LABEL.free_play} 고르러 가기` : "문서 만들기"
           }
           onFinishEarly={choosing === "together" ? () => goTo(null) : undefined}
         />
@@ -695,14 +692,15 @@ function PlayMonthlyBody({
       }
       actions={
         <>
+          {!confirmed && (
+            <DraftSave disabled={locked} save={async () => (await save.whenIdle()).saved} />
+          )}
           <PlayMonthlyConfirmBar
             plan={plan}
             ask={
-              (short.length
-                ? `함께 하는 활동 · 자유놀이는 AI 후보에서 ${plan.activity_pick}개씩 골라야 확정할 수 있어요.\n`
-                : "") +
-              (plan.notices.length ? `확인할 것 ${plan.notices.length}개가 남았어요.\n` : "") +
-              "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요."
+              short.length
+                ? `함께 하는 활동 · 자유놀이는 AI 후보에서 ${plan.activity_pick}개씩 골라야 확정할 수 있어요.`
+                : ""
             }
             // 빈칸으로 가면 확정 창을 닫는다(주제형 월간 · 주간과 같다).
             blanks={(close) => (
@@ -766,6 +764,7 @@ function PlayMonthlyBody({
           onSize={locked ? undefined : save.resizeTable}
           onMoveSafety={locked ? undefined : moveSafety}
           onPlaceSafety={locked ? undefined : save.placeSafety}
+          onDropDrill={locked ? undefined : copyDrill}
           onMoveHabit={locked ? undefined : moveHabit}
           onMoveRow={locked ? undefined : moveRow}
         />
@@ -808,7 +807,6 @@ function RowOrder({
         {step(-1)}
         {step(1)}
       </div>
-      <span className="text-[13px] text-[#5c5243]">문서에서 행 왼쪽 위 손잡이를 끌어도 돼요.</span>
     </div>
   );
 }

@@ -30,6 +30,8 @@ export const safetyTopic = (c: SafetyCandidate) =>
 
 /** 후보 카드를 끌 때 넘기는 글의 앞부분 — 뒤는 후보 item_id. 문서의 안전교육 칸 · 「넣은 안전교육」 줄이 받는다. */
 export const SAFETY_DRAG = "safety-candidate:";
+/** 훈련 후보 카드를 끌 때 — 문서의 소방대피/재난대비 칸 · 패널의 넣은 것 상자가 받는다. */
+export const DRILL_DRAG = "drill-candidate:";
 /** 후보 카드를 놓을 수 있는 곳 — `prefix` 로 시작하는 끌기만 받는다(안전교육은 놓으면 그 주에 둔다). */
 export const dropTo = (onDrop: (candidateItemId: string) => void, prefix = SAFETY_DRAG) => ({
   onDragOver: (event: DragEvent<HTMLElement>) => {
@@ -46,14 +48,12 @@ export const dropTo = (onDrop: (candidateItemId: string) => void, prefix = SAFET
 });
 
 export const DROP = "[&[data-drop]]:bg-[#efe7f8]";
-export const CARD = "flex items-center gap-3 rounded-md border px-4 py-2.5";
-/** 넣은 후보 카드 — 안전교육 · 훈련 · 주간 후보가 같이 쓴다. */
-export const PICKED = "border-[#7053a0] bg-[#f6f1fb]";
-export const PUT =
-  "min-h-[36px] shrink-0 rounded-lg border border-[#ddd6ca] bg-white px-3 text-sm font-bold text-[#5e4b96] disabled:opacity-40";
-/** 연간 「AI 후보」 패널의 작은 [+ 넣기] 단추. */
+/** 후보 줄의 동그란 [+] 넣기 단추(연간 「AI 후보」와 같다). 이름은 aria-label 로. */
 export const SMALL =
-  "min-h-[36px] shrink-0 rounded-lg border border-[#ddd6ca] px-3 text-xs font-bold text-[#5e4b96] disabled:opacity-40";
+  "pgPlus h-[34px] w-[34px] shrink-0 rounded-[10px] border-2 border-[#cdbfe3] bg-white text-[#5e4b96] shadow-[0_2px_0_#cdbfe3] transition-transform hover:bg-[#f6f1fb] active:translate-y-[2px] active:shadow-none disabled:opacity-40 disabled:shadow-none";
+/** 넣은 줄의 동그란 [−] 빼기 단추. */
+export const REMOVE =
+  "pgMinus h-[34px] w-[34px] shrink-0 rounded-[10px] border-2 border-[#ecc8c2] bg-white text-[#b3261e] shadow-[0_2px_0_#ecc8c2] transition-transform hover:bg-[#fdf3f1] active:translate-y-[2px] active:shadow-none disabled:opacity-40 disabled:shadow-none";
 /** 끌 수 있다는 손잡이(점 여섯 개) — 연간 「AI 후보」 패널과 같다. */
 export const GRIP = (
   <svg
@@ -89,7 +89,6 @@ export default function PlayMonthlySafetyPanel({
   disabled: boolean;
 }) {
   const label = (id: string) => plan.weeks.find((w) => w.week_id === id)?.label ?? id;
-  const here = plan.safety_weeks.find((w) => w.week_id === weekId)?.candidate_item_id ?? null;
   // 어느 주에든 넣은 후보는 위 주 줄에만 보이고 후보 목록에서는 숨는다(원래 순서 그대로).
   const placed = new Set(plan.safety_weeks.map((w) => w.candidate_item_id));
   const rest = plan.safety_candidates.filter((c) => !placed.has(c.cell.item_id));
@@ -99,17 +98,11 @@ export default function PlayMonthlySafetyPanel({
     // 1주에 넣으면 2주로 — 마지막 주면 그대로 둔다.
     if (onWeek && next) onWeek(next);
   };
-  const filled = plan.weeks.filter((w) =>
-    plan.safety_weeks.some((s) => s.week_id === w.week_id && s.candidate_item_id),
-  ).length;
   return (
     <section aria-label="안전교육" className="flex flex-col gap-5">
       <section className="flex flex-col gap-2">
-        <h2 className="m-0 flex items-baseline justify-between text-[18px] font-bold leading-tight">
+        <h2 className="penMark m-0 font-display text-[24px] font-bold leading-tight text-ink">
           안전교육
-          <span className="text-[13px] font-normal text-ink-soft">
-            {filled}/{plan.weeks.length}주 채웠어요
-          </span>
         </h2>
         <PlacedWeeks
           plan={plan}
@@ -120,20 +113,7 @@ export default function PlayMonthlySafetyPanel({
         />
       </section>
       <section className="flex flex-col gap-1">
-        <h3 className="m-0 flex items-center justify-between gap-2 text-[15px] font-bold text-ink">
-          {label(weekId)} 안전교육 후보
-          {/* 우리 반 화면의 복숭아색 쪽지 안내처럼. */}
-          {!here && (
-            <span className="shrink-0 rounded-full bg-peach-tint px-2.5 py-0.5 font-body text-[12px] font-semibold text-peach-ink">
-              아직 비어 있어요
-            </span>
-          )}
-        </h3>
-        <p className="m-0 mb-1 text-[13px] text-ink-soft">
-          {rest.length === 0
-            ? "후보를 다 넣었어요. 위 주의 [빼기]로 되돌릴 수 있어요."
-            : `${onWeek && next ? "넣으면 다음 주로 넘어가요. " : ""}끌어서 위 주나 문서 칸에 놓아도 돼요.`}
-        </p>
+        <h3 className="m-0 text-[15px] font-bold text-ink">{label(weekId)} 안전교육 후보</h3>
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {rest.map((c) => {
             const id = c.cell.item_id;
@@ -163,7 +143,7 @@ export default function PlayMonthlySafetyPanel({
                   disabled={disabled}
                   onClick={() => put(id)}
                 >
-                  + 넣기
+                  +
                 </button>
               </li>
             );
@@ -257,9 +237,10 @@ function PlacedWeeks({
                 aria-label={`${week.label}에서 빼기: ${sentence}`}
                 disabled={disabled}
                 onClick={() => onPlace(week.week_id, null)}
-                className="min-h-[36px] shrink-0 rounded-md px-2.5 text-[13px] text-ink-soft hover:bg-[#f3efe8] hover:text-ink disabled:opacity-40"
+                title="빼기"
+                className={REMOVE}
               >
-                빼기
+                −
               </button>
             )}
           </li>

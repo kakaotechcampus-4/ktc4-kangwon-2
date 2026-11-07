@@ -2,7 +2,7 @@
 import type { PlayMonthlyActivity, PlayMonthlyPlan } from "@/lib/api/types";
 import type { PlaySection } from "@/lib/plan-generator/playMonthlyQueue";
 import type { DragEvent } from "react";
-import { DROP, GRIP, SMALL, dropTo } from "./PlayMonthlySafetyPanel";
+import { DROP, GRIP, REMOVE, SMALL, dropTo } from "./PlayMonthlySafetyPanel";
 
 export const SECTION_LABEL = {
   together: "함께 하는 활동",
@@ -61,15 +61,12 @@ export default function PlayMonthlyActivityPanel({
   return (
     <section aria-label={`${SECTION_LABEL[section]} 후보`} className="flex flex-col gap-5">
       <section {...pickDrop} className={`-m-1.5 flex flex-col gap-2 rounded-md p-1.5 ${DROP}`}>
-        <h2 className="m-0 flex items-baseline justify-between text-[18px] font-bold leading-tight">
+        <h2 className="penMark m-0 font-display text-[24px] font-bold leading-tight text-ink">
           {SECTION_LABEL[section]}
-          <span
-            role="status"
-            className={`text-[13px] font-normal ${kept.length === max ? "text-ink-soft" : "text-peach-ink"}`}
-          >
-            {kept.length}/{max} 골랐어요
-          </span>
         </h2>
+        <span role="status" className="sr-only">
+          {kept.length}/{max} 골랐어요
+        </span>
         {kept.length > 0 ? (
           <ol className="m-0 list-none divide-y divide-[#ece6dc] rounded-md border border-line bg-paper p-0">
             {kept.map((row, index) => (
@@ -101,9 +98,10 @@ export default function PlayMonthlyActivityPanel({
                   aria-label={`${SECTION_LABEL[section]}에 빼기: ${name(row)}`}
                   disabled={disabled}
                   onClick={() => onRemove(row.activity_id)}
-                  className="min-h-[36px] shrink-0 rounded-md px-2.5 text-[13px] text-ink-soft hover:bg-[#f3efe8] hover:text-ink disabled:opacity-40"
+                  title="빼기"
+                  className={REMOVE}
                 >
-                  빼기
+                  −
                 </button>
               </li>
             ))}
@@ -116,12 +114,7 @@ export default function PlayMonthlyActivityPanel({
       </section>
       {rest.length > 0 && (
         <section {...restDrop} className={`-m-1.5 flex flex-col gap-1 rounded-md p-1.5 ${DROP}`}>
-          <h3 className="m-0 text-[15px] font-bold text-ink">다른 후보 {rest.length}개</h3>
-          <p className="m-0 mb-1 text-[13px] text-ink-soft">
-            {full
-              ? "다 골랐어요. 바꾸려면 위에서 하나를 빼 주세요."
-              : `${max}개를 골라야 확정할 수 있어요. 끌어서 위에 놓아도 돼요.`}
-          </p>
+          <h3 className="m-0 text-[15px] font-bold text-ink">다른 후보</h3>
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {rest.map(({ row }) => (
               <li
@@ -148,7 +141,7 @@ export default function PlayMonthlyActivityPanel({
                   disabled={disabled || full}
                   onClick={() => onPick(row.activity_id)}
                 >
-                  + 넣기
+                  +
                 </button>
               </li>
             ))}

@@ -9,6 +9,7 @@
  * - 다 만들면 부모가 `done` 을 켜고 `ringFinished()` 만큼 기다린 뒤 화면을 바꾼다 — 링이 끝까지 차는 걸 보여준다.
  */
 import { useEffect, useState } from "react";
+import { Tape } from "@/components/workspace/WorkspaceUI";
 
 const R = 120;
 const C = 2 * Math.PI * R; // ≈ 754
@@ -48,7 +49,7 @@ export const ringFinished = () => new Promise<void>((resolve) => setTimeout(reso
  * 끝나는 다른 생성은 이미 보낸 요청을 서버가 끝까지 처리할 수 있다.
  */
 export const STOPPED_NOTE = (
-  <p role="status" className="m-0 rounded-md bg-[#f7f4ee] px-4 py-3 text-sm text-[#5c5243]">
+  <p role="status" className="m-0 rounded-md bg-cream px-4 py-3 text-sm text-ink-soft">
     생성을 멈췄어요.
   </p>
 );
@@ -90,12 +91,13 @@ export default function GenerationRing({
     : Math.min(steps.length - 1, Math.floor((t / guess) * steps.length));
 
   return (
-    <div className="flex flex-1 items-center justify-center p-8 text-[#2b2826]">
+    <div className="flex flex-1 items-center justify-center p-8 text-ink">
       <section
         aria-live="polite"
         aria-busy={!done}
-        className="flex w-[720px] max-w-full flex-col items-center gap-7 rounded-[28px] border border-[#e8e2d8] bg-white px-12 py-14"
+        className="relative flex w-[720px] max-w-full flex-col items-center gap-7 bg-paper px-12 py-14 shadow-pg"
       >
+        <Tape />
         <div className="relative h-[280px] w-[280px]">
           <svg
             viewBox="0 0 280 280"
@@ -104,13 +106,13 @@ export default function GenerationRing({
             aria-hidden="true"
             className="absolute inset-0 -rotate-90"
           >
-            <circle cx="140" cy="140" r={R} fill="none" stroke="#f1ece4" strokeWidth="14" />
+            <circle cx="140" cy="140" r={R} fill="none" stroke="var(--pg-cream)" strokeWidth="14" />
             <circle
               cx="140"
               cy="140"
               r={R}
               fill="none"
-              stroke="#7053a0"
+              stroke="var(--pg-primary)"
               strokeWidth="14"
               strokeLinecap="round"
               strokeDasharray={C}
@@ -129,7 +131,7 @@ export default function GenerationRing({
           </div>
         </div>
         <div className="flex flex-col items-center gap-2">
-          <h1 className="m-0 text-[26px] font-bold tracking-[-0.5px]">{title}</h1>
+          <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">{title}</h1>
         </div>
         <ol className="m-0 flex list-none gap-7 p-0 text-[15px]">
           {steps.map((s, i) => (
@@ -137,11 +139,7 @@ export default function GenerationRing({
               key={s}
               aria-current={i === cur ? "step" : undefined}
               className={
-                i === cur
-                  ? "font-bold text-[#7053a0]"
-                  : i < cur
-                    ? "text-ink-soft"
-                    : "text-[#c9c1b6]"
+                i === cur ? "font-bold text-primary" : i < cur ? "text-ink-soft" : "text-ink-hint"
               }
             >
               {i + 1} {s}
@@ -152,7 +150,7 @@ export default function GenerationRing({
           <button
             type="button"
             onClick={onCancel}
-            className="flex min-h-[44px] items-center gap-2 rounded-md border border-line bg-paper px-4 text-sm text-[#5c5243] hover:bg-[#f7f4ee] hover:text-ink"
+            className="flex min-h-[44px] items-center gap-2 rounded-md border border-line bg-paper px-4 text-sm text-ink-soft hover:bg-cream hover:text-ink"
           >
             <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] bg-current" />
             생성 멈추기

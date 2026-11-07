@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { PageContainer } from "@/components/app/AppLayout";
 import { Posty } from "@/components/app/Posty";
@@ -21,6 +21,17 @@ export default function RoomSetupGate({ children }: { children: ReactNode }) {
 function Gate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [ready, setReady] = useClientState<boolean | null>(roomReady, null);
+  // 화면을 옮기면 새 화면이 주소창이 바뀌기 **전에** 한 번 그려진다. 그때 `window.location` 을 읽는 화면
+  // (주간 · 월간 · 일과 · 문서 보관함 …)이 옛 주소의 plan_id 를 읽지 않게, 주소창이 따라올 때까지(한 프레임)
+  // 본문만 비워 둔다. 사이드바는 그대로이고, 새 화면은 RouteFade 가 어차피 숨겼다 띄운다.
+  const [urlSynced, setUrlSynced] = useState(
+    () => typeof window !== "undefined" && window.location.pathname === pathname,
+  );
+  useEffect(() => {
+    if (urlSynced) return;
+    const frame = requestAnimationFrame(() => setUrlSynced(true));
+    return () => cancelAnimationFrame(frame);
+  }, [urlSynced]);
   useEffect(() => {
     const check = () => setReady(roomReady());
     window.addEventListener("pageshow", check);
@@ -32,6 +43,7 @@ function Gate({ children }: { children: ReactNode }) {
       window.removeEventListener("storage", check);
     };
   }, [setReady]);
+  if (!urlSynced) return null;
   if (OPEN_PATHS.includes(pathname) || ready) return children;
   if (ready === null)
     return (

@@ -147,10 +147,9 @@ test("안전교육: 넣은 후보는 후보 목록에서 숨고, 남은 후보�
   // s2 는 1주 · 3주에 넣었다 — 후보 8개 중 7개만 남는다.
   assert.deepEqual(ids(tree), ["s1", "s3", "s4", "s5", "s6", "s7", "s8"]);
   assert.ok(text(tree).includes("2주 안전교육 후보"));
-  assert.ok(text(tree).includes("아직 비어 있어요"));
   assert.equal(all(tree).filter(act("place")).length, 7);
   tree = h.render(C, { plan: plan(), weekId: "w1", onPlace() {}, disabled: false });
-  assert.ok(!text(tree).includes("넣었어요") && !text(tree).includes("아직 비어 있어요"));
+  assert.ok(!text(tree).includes("넣었어요"));
   assert.ok(!ids(tree).includes("s2"));
 });
 
@@ -209,17 +208,28 @@ test("소방대피: 쓴 글이 있어도 묻지 않고 바로 복사한다", () 
   assert.ok(!text(tree).includes("바꿀까요"));
 });
 
-test("소방대피: 넣은 후보는 안전교육처럼 맨 위 · 「넣음」", () => {
+test("소방대피: 넣은 후보는 안전교육처럼 위 상자로 올라가 [−]로 빼고, 후보 목록에서는 숨는다", () => {
   const { C, h } = load("PlayMonthlyDrillPanel.tsx");
   const candidates = plan().drill_candidates.map((d) =>
     d.cell.item_id === "d2" ? { ...d, cell: { ...d.cell, value: "숨어요" } } : d,
   );
-  const copy = all(
-    h.render(C, { candidates, current: "숨어요", onCopy() {}, disabled: false }),
-  ).filter(act("copy"));
-  assert.equal(copy[0].props["data-candidate"], "d2");
-  assert.equal(copy[0].props.disabled, true);
-  assert.equal(text(copy[0]), "넣음");
+  let cleared = 0;
+  const tree = h.render(C, {
+    candidates,
+    current: "숨어요",
+    onCopy() {},
+    onClear: () => cleared++,
+    disabled: false,
+  });
+  assert.deepEqual(
+    all(tree)
+      .filter(act("copy"))
+      .map((n) => n.props["data-candidate"]),
+    ["d1"],
+  );
+  click(tree, act("clear"));
+  assert.equal(cleared, 1);
+  assert.ok(text(tree).includes("숨어요"));
 });
 
 test("소방대피: 빈 후보와 disabled 는 버튼이 꺼진다", () => {

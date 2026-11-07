@@ -3,6 +3,7 @@
 import type { PlayProjectAnnualPlan } from "@/lib/api/types";
 import PlayPickBoard from "@/components/plan-ui/PlayPickBoard";
 import { playSeason } from "./playProjectPagination";
+import SeasonIcon from "./SeasonIcon";
 
 type Period = PlayProjectAnnualPlan["periods"][number];
 
@@ -46,9 +47,7 @@ export default function PlayProjectPicking({
   const candidates = period.candidates.map((c) => ({
     key: c.row_key,
     name: c.play_name.value,
-    summary: c.materials.value,
     fields: [
-      { label: "지원매체", lines: [c.materials.value] },
       { label: "내용 및 지원 방향", lines: [c.support_direction.value] },
       {
         label: "놀이를 통한 배움",
@@ -60,6 +59,7 @@ export default function PlayProjectPicking({
   return (
     <PlayPickBoard
       subject={`${playSeason(period).name} 놀이`}
+      icon={<SeasonIcon periodKey={period.period_key} />}
       max={max}
       candidates={candidates}
       picked={picks[period.period_key] ?? []}
@@ -69,9 +69,7 @@ export default function PlayProjectPicking({
       onToggle={onToggle}
       onRemove={onRemove}
       onNext={next === null ? onArrange : () => onPeriod(next)}
-      nextLabel={
-        next === null ? "문서 만들기 →" : `${playSeason(periods[next]).name} 고르러 가기 →`
-      }
+      nextLabel={next === null ? "문서 만들기" : `${playSeason(periods[next]).name} 고르러 가기`}
       onFinishEarly={next === null ? undefined : onArrange}
     />
   );
