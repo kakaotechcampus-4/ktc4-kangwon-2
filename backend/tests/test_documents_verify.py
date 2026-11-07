@@ -372,3 +372,19 @@ def test_support_question_is_asked_once_across_chunks():
     )
     # 해석 8문장 + 지원 1문장 = 9문장 → 6 · 3 두 번. 지원 칸 전체 질문은 첫 번에만.
     assert asked == [True, False]
+
+
+def test_new_fact_bar_is_higher_for_class_logs():
+    """관찰일지는 0.5, 일일 · 주간은 0.7 (ADR-069 실측 4 · 5회차)."""
+    sentences = [("해석", "아이들이 신문지 결을 따라 찢는 느낌을 경험했다.")]
+    _state, questions = J.build_questions("일일 보육일지", sentences, {"r1": "신문지 찢기"})
+    answers = _all_clear(questions)
+    answers["s1.대조"]["probabilities"] = {
+        J.CONFLICT: 0.0,
+        J.SAME: 0.0,
+        J.NEW_FACT: 0.6,
+        J.INTERPRETATION: 0.4,
+    }
+    assert J.read_issues(sentences, answers, {"r1": 1}, None, "dailyLog") == []
+    flagged = J.read_issues(sentences, answers, {"r1": 1}, None, "observation")
+    assert [i.code for i in flagged] == ["UNSUPPORTED_FACT"]

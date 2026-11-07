@@ -37,7 +37,10 @@ CONFLICT, SAME, NEW_FACT, INTERPRETATION = "어긋남", "같음", "새 사실", 
 
 # 판정 기준값. 실측 3회(지어낸 예시 회차마다 210문항)로 정했다 — 바꾸면 다시 잰다(ADR-069).
 P_CONFLICT = 0.5
-P_NEW_FACT = 0.5
+# 「새 사실」은 일지 종류마다 다르게 본다(실측 4 · 5회차). 관찰일지는 아이 한 명을 평가하는 근거라
+# 관찰하지 않은 사실을 하나도 놓치면 안 된다. 일일 · 주간은 반 전체의 짧은 기록을 문장으로 풀어 써서
+# 자세한 묘사가 붙기 쉽다 — 0.5 면 깨끗한 문장의 약 7% 에 알림이 떴다.
+P_NEW_FACT = {"observation": 0.5, "dailyLog": 0.7, "weeklyLog": 0.7}
 P_FLAG = 0.6
 
 WEEKDAYS = "월화수목금토일"
@@ -248,6 +251,7 @@ def read_issues(
     answers: Mapping[str, Mapping],
     record_ids: Mapping[str, int],
     support: str | None,
+    kind: str = "observation",
 ) -> list[Issue]:
     """jev 답을 issue 로 읽는다. 답의 모양은 `check_answers` 가 먼저 본다."""
     issues: list[Issue] = []
@@ -269,7 +273,7 @@ def read_issues(
                     "기록에 적힌 대로 고치거나, 기록이 틀렸다면 기록을 먼저 고쳐 주세요.",
                 )
             )
-        elif heading == "해석" and probs[NEW_FACT] >= P_NEW_FACT:
+        elif heading == "해석" and probs[NEW_FACT] >= P_NEW_FACT.get(kind, 0.5):
             issues.append(
                 Issue(
                     heading,
@@ -331,5 +335,5 @@ def judge(
             questions["지원.구체"] = support_question(support)
         answers = decide(state, questions)
         check_answers(questions, answers)
-        issues += read_issues(part, answers, record_ids, support if first else None)
+        issues += read_issues(part, answers, record_ids, support if first else None, kind)
     return issues
