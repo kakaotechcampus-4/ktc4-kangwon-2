@@ -325,14 +325,15 @@ function FindField({
         onChange={(e) => onQuery(e.target.value)}
       />
       <DaycareResults items={items} settings={s} onPick={onPick} />
-      <p className="mt-3 text-[13px] text-board-ink-soft">
-        어린이집 목록: 어린이집정보공개포털 (매달 새로 받아요)
-      </p>
+      <p className="mt-3 text-[13px] text-board-ink-soft">어린이집 목록: 어린이집정보공개포털</p>
     </div>
   );
 }
 
-/** 찾은 어린이집 — 칠판 위에 붙인 흰 쪽지. 쌤플을 쓰는 원이면 선생님 수를 단다(이름은 안 보인다). */
+/**
+ * 찾은 어린이집 — 칠판에 번호를 매겨 적은 목록. 쌤플을 쓰는 원이면 선생님 수를 단다(이름은 안 보인다).
+ * 마우스를 올리면(키보드로 가도) 이름에 노란 분필로 동그라미를 치고 체크를 그린다. 누르면 바로 고른다.
+ */
 function DaycareResults({
   items,
   settings,
@@ -351,40 +352,88 @@ function DaycareResults({
       </p>
     );
   return (
-    <ul
+    <ol
       aria-label="찾은 어린이집"
-      className="paper -mt-3 grid max-h-[232px] gap-2 overflow-y-auto pr-1"
+      className="-mt-2 flex max-h-[272px] flex-col gap-1 overflow-y-auto overflow-x-hidden"
     >
-      {items.map((d) => (
+      {items.map((d, i) => (
         <li key={d.key}>
           <button
             type="button"
             onClick={() => onPick(d)}
-            className="squircle [--r:12px] grid w-full grid-cols-[1fr_auto] items-center gap-3 bg-paper px-4 py-3 text-left text-ink shadow-[2px_3px_0_rgba(0,0,0,0.25)] hover:bg-ivory"
+            className="group grid min-h-[62px] w-full grid-cols-[34px_minmax(0,1fr)_40px] items-center gap-2.5 px-1 py-1.5 text-left text-ink focus-visible:outline-none"
           >
-            <span className="min-w-0">
-              <b className="text-[15.5px]">{d.name}</b>
+            <span
+              aria-hidden="true"
+              className="text-center font-display text-[26px] font-bold text-ink-soft group-hover:text-primary group-focus-visible:text-primary"
+            >
+              {i + 1}
+            </span>
+            <span className="relative min-w-0 justify-self-start py-1 pl-3 pr-3.5">
+              <ChalkRing />
+              <b className="text-[18px]">{d.name}</b>
               {d.teacher_count > 0 && (
-                <span className="ml-1.5 inline-block rounded-full bg-sage-tint px-2 align-[2px] text-[11.5px] font-bold text-sage-ink">
+                <span className="ml-2 font-display text-[19px] font-bold text-primary">
                   쌤플 선생님 {d.teacher_count}명
                 </span>
               )}
               {d.status === "휴지" && (
-                <span className="ml-1.5 inline-block rounded-full bg-cream px-2 align-[2px] text-[11.5px] font-bold text-ink-soft">
-                  휴지
-                </span>
+                <span className="ml-2 font-display text-[19px] font-bold text-ink-soft">휴지</span>
               )}
-              <small className="block truncate text-[12.5px] text-ink-soft">
+              <small className="mt-0.5 block truncate text-[13px] text-ink-soft">
                 {d.kind} · {street(d, settings)}
               </small>
             </span>
-            <span className="squircle [--r:8px] whitespace-nowrap border-[1.5px] border-primary-deep px-3 py-1.5 text-[13px] font-bold text-primary-deep">
-              이 원이에요
-            </span>
+            <ChalkCheck />
           </button>
         </li>
       ))}
-    </ul>
+    </ol>
+  );
+}
+
+/** 이름에 친 분필 동그라미 — 한 획으로 돌리고 시작한 자리를 조금 지나쳐 끝난다. 결은 OnboardingLayout 의 #chalk 필터. */
+function ChalkRing() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 100 40"
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute -inset-x-2.5 -inset-y-2 h-[calc(100%+16px)] w-[calc(100%+20px)] overflow-visible text-primary opacity-0 transition-opacity duration-150 group-hover:opacity-90 group-focus-visible:opacity-100 motion-reduce:transition-none"
+    >
+      <path
+        d="M50 3.5 C78.7 1.5 99 8 98 20 C97 32 70 38 48.7 37 C24.7 36 1.7 31.5 2.3 19.5 C3 7.5 26 2.5 57.3 5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.6}
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+        filter="url(#chalk)"
+      />
+    </svg>
+  );
+}
+
+/** 동그라미와 같이 나타나는 분필 체크. */
+function ChalkCheck() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="34"
+      height="34"
+      viewBox="0 0 34 34"
+      className="text-primary opacity-0 transition-opacity duration-150 group-hover:opacity-90 group-focus-visible:opacity-100 motion-reduce:transition-none"
+    >
+      <path
+        d="M6 18 L14 26 L29 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={3.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        filter="url(#chalk)"
+      />
+    </svg>
   );
 }
 
