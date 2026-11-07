@@ -28,7 +28,7 @@ import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { today, validDate } from "@/lib/workspace/model";
 import { routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
 import { Posty } from "@/components/app/Posty";
-import { WorkspacePage, Empty, Message, Notice, Tape, ws } from "./WorkspaceUI";
+import { WorkspacePage, Empty, JournalTabs, Message, Notice, Tape, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
 import RoutineCalendar, { koreanDay, monthRange } from "./RoutineCalendar";
 import RoutineClock from "./RoutineClock";
@@ -789,7 +789,7 @@ export default function RoutinesPage() {
 
   return (
     <WorkspacePage
-      title="일과 기록"
+      title="보육일지"
       /* 「일일 보육일지가 이 기록을 근거로 쓴다」는 설명은 뺐다. 화면에 들어온 교사는
          이미 일과를 적으러 온 것이고, 제목 밑 한 줄은 매일 읽히지 않는다. */
       description=""
@@ -821,6 +821,7 @@ export default function RoutinesPage() {
         ) : undefined
       }
     >
+      <JournalTabs at="daily" daily="/routines" weekly="/weekly-records" />
       <WorkspaceViewState
         status={classStatus}
         loading="반 목록을 불러오는 중이에요…"

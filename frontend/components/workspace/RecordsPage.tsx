@@ -245,7 +245,7 @@ export default function RecordsPage() {
   if (classError) {
     return (
       <WorkspacePage
-        title="관찰 기록"
+        title="관찰일지"
         description="아이의 말과 행동을 적어 둡니다. 적은 것으로 일지를 만듭니다."
       >
         <Message error>{classError}</Message>
@@ -254,7 +254,7 @@ export default function RecordsPage() {
   }
   return (
     <WorkspacePage
-      title="관찰 기록"
+      title="관찰일지"
       description="아이의 말과 행동을 적어 둡니다. 적은 것으로 일지를 만듭니다."
       action={
         <Link href="/records/children" className={ws.secondary}>
@@ -469,7 +469,7 @@ function RoutinesLink({ classId, date }: { classId: string; date: string }) {
   if (!href) return <small className={ws.hint}>{ROUTINES_UNMAPPED}</small>;
   return (
     <Link href={href} className={ws.recordWay}>
-      일과 기록 →
+      보육일지 →
     </Link>
   );
 }

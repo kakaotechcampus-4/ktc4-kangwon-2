@@ -45,26 +45,22 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
     items: [
       {
         key: "records",
-        label: "관찰 기록",
+        // 메뉴 이름은 선생님이 쓰는 문서 이름 — 보육일지와 짝(PM 11-07).
+        label: "관찰일지",
         short: "관찰",
         href: "/records",
         icon: "users",
         match: (p) => p.startsWith("/records") || p === "/compare",
       },
       {
+        // 일과를 적고 그 자리에서 일일 보육일지를 만든다. 주간 보육일지는 같은 메뉴의 주간 탭이다
+        // (13주차 멘토 리뷰 — 메뉴 이름은 선생님이 쓰는 말로 · 주간 기록 메뉴는 합친다).
         key: "routines",
-        label: "일과 기록",
-        short: "일과",
+        label: "보육일지",
+        short: "일지",
         href: "/routines",
         icon: "edit",
-        match: (p) => p.startsWith("/routines"),
-      },
-      {
-        key: "quick",
-        label: "주간 기록",
-        short: "주간",
-        href: "/weekly-records",
-        icon: "record",
+        match: (p) => p.startsWith("/routines") || p.startsWith("/weekly-records"),
       },
     ],
   },

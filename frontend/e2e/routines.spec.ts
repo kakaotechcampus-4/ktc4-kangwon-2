@@ -448,14 +448,14 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
       fact,
     });
   }
-  await page.getByRole("link", { name: "관찰 기록", exact: true }).click();
+  await page.getByRole("link", { name: "관찰일지", exact: true }).click();
   await expect(page.getByText("햇살반 관찰 사실", { exact: true })).toBeVisible();
   await expect(page.getByText("달님반 관찰 사실", { exact: true })).toHaveCount(0);
   await switchClass(page, "달님반");
   await expect(page.getByText("달님반 관찰 사실", { exact: true })).toBeVisible();
   await expect(page.getByText("햇살반 관찰 사실", { exact: true })).toHaveCount(0);
-  // 사이드바 메뉴에도 「일과 기록」이 있다. 본문의 길만 본다.
-  const write = page.getByRole("main").getByRole("link", { name: "일과 기록 →", exact: true });
+  // 사이드바 메뉴에도 「보육일지」가 있다. 본문의 길만 본다.
+  const write = page.getByRole("main").getByRole("link", { name: "보육일지 →", exact: true });
   await expect(write).toHaveAttribute("href", `/routines?date=${date}&class_id=${other.id}`);
   await write.click();
   await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
@@ -473,10 +473,11 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
     classB: other.id,
     preservedDate: "2026-10-16",
   });
-  await page.getByRole("link", { name: "주간 기록", exact: true }).click();
+  // 주간 기록 메뉴는 보육일지 메뉴의 주간 탭으로 합쳤다(13주차 멘토 리뷰).
+  await page.getByRole("link", { name: "주간 보육일지", exact: true }).click();
   await expect(page).toHaveURL(/\/weekly-records$/);
   await expect(
-    page.getByRole("heading", { name: "주간 기록", exact: true, level: 1 }),
+    page.getByRole("heading", { name: "보육일지", exact: true, level: 1 }),
   ).toBeVisible();
   await expect(page.getByLabel("상단 현재 반", { exact: true })).toHaveText("달님반");
   await expect(page.getByText("달님반 관찰 사실", { exact: true })).toBeVisible();

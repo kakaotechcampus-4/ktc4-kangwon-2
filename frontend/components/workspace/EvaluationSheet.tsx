@@ -98,7 +98,7 @@ function madeInSsample(docId: string, autos: AutoIndicator[]): Made | null {
     return {
       text: `확정 ${item.document_ids.length}건`,
       done: item.document_ids.length > 0,
-      go: { href: "/routines", label: "일과 기록 쓰기" },
+      go: { href: "/routines", label: "보육일지 쓰기" },
       importKind: "dailyLog",
     };
   }

@@ -385,7 +385,7 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
 }, info) => {
   await enterPilot(page);
   const fact = "블록 세 개를 쌓은 뒤 친구에게 같이 만들자고 말했다.";
-  await page.getByRole("link", { name: "관찰 기록", exact: true }).click();
+  await page.getByRole("link", { name: "관찰일지", exact: true }).click();
   // 적는 칸은 늘 펴져 있고, 반은 사이드바가 고른다.
   await page.getByRole("combobox", { name: "아이", exact: true }).selectOption({ label: "가나다" });
   await page.getByLabel("본 대로 적기").fill(fact);
