@@ -74,8 +74,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  /* 반이 많아지면 목록만 구른다. 잎사귀 그림은 아래에 그대로 남는다. */
-  flex: 1 1 auto;
+  /* 반이 많아지면 목록만 구른다. 포스티는 목록 바로 아래에 선다(시안) — 늘어나지 않고 줄어들기만 한다. */
+  flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -152,12 +152,10 @@
 }
 .decor {
   pointer-events: none;
-  position: relative;
-  flex: 0 0 202px;
-  width: calc(100% + 28px);
-  height: 202px;
-  margin: 12px -14px 0;
-  opacity: 1;
+  display: flex;
+  flex: none;
+  justify-content: center;
+  margin: 24px 0 20px;
 }
 
 .archiveHeading {

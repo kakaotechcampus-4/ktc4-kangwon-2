@@ -232,11 +232,11 @@ test("폰트 보존·미선택 화면·반응형 배치", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /반 추가하기/ })).toHaveCount(0);
   const rail = page.getByRole("complementary", { name: "반 선택", exact: true });
-  await expect(rail.locator('svg[data-art="class-garden"]')).toBeVisible();
+  await expect(rail.locator('[data-art="rail-posty"]')).toBeVisible();
   await expect(
     page
       .getByRole("complementary", { name: "주 메뉴", exact: true })
-      .locator('svg[data-art="class-garden"]'),
+      .locator('[data-art="rail-posty"]'),
   ).toHaveCount(0);
   await page.screenshot({ path: `${evidenceRoot}/archive-desktop.png`, fullPage: true });
   for (const width of [1024, 768, 390, 375]) {
@@ -306,7 +306,7 @@ test("반 목록이 많아도 하단 캐릭터와 겹치지 않고 목록만 스
   const rail = page.getByRole("complementary", { name: "반 선택", exact: true });
   const metrics = await rail.evaluate((element) => {
     const list = element.querySelector('div[class*="classList"]')!;
-    const art = element.querySelector('svg[data-art="class-garden"]')!;
+    const art = element.querySelector('[data-art="rail-posty"]')!;
     return {
       scrolls: list.scrollHeight > list.clientHeight,
       listBottom: list.getBoundingClientRect().bottom,

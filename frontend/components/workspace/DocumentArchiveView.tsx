@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/app/icons";
+import { Posty } from "@/components/app/Posty";
 import { DOCUMENT_KINDS, localDate, today, type DocumentKind } from "@/lib/workspace/model";
 import {
   ARCHIVE_STATUS_LABEL,
@@ -39,7 +40,6 @@ import {
   MonthlyCover,
   ObservationArt,
   OverviewArt,
-  SidebarDecor,
   StartArt,
   WeeklyCover,
 } from "./DocumentArchiveArt";
@@ -1177,7 +1177,8 @@ const weeklyHref = (p: { id: number; class_id: number; week_id: string }) =>
 /** 내 반 쪽지 둘째 줄 — 「만 5세 · 아이 6명」. 아이 이름은 브라우저에 없어 수만 센다(ADR-013). */
 function classLine(c: ClassroomEntry) {
   const kids = c.children.length || c.childIds?.length || 0;
-  return `${ageSelectionLabel(selectedAgesFor(c))} · 아이 ${kids}명`;
+  // 반 이름 바로 아래라 「만 5세반」의 「반」은 겹친다 — 「만 5세」로(시안).
+  return `${ageSelectionLabel(selectedAgesFor(c)).replace(/세반$/, "세")} · 아이 ${kids}명`;
 }
 
 /** 문서 보관함 안쪽 반 선택. **전역 사이드바(AppSidebar)를 대신하지 않는다.** */
@@ -1278,7 +1279,10 @@ function ClassRail({
           </div>
         </>
       )}
-      <SidebarDecor className={styles.decor} />
+      {/* 아래 그림은 두 팔을 든 포스티 하나 — 홈 · 첫 설정과 같은 그림 말투(PM 11-07 시안). */}
+      <div className={styles.decor} data-art="rail-posty">
+        <Posty pose="cheer" tone="note" size={104} tape label={null} />
+      </div>
     </aside>
   );
 }
