@@ -22,6 +22,23 @@ export function playSeason(
   return { name, months };
 }
 
+/**
+ * 확정본 쪽 탭 이름 — 한 쪽에 두 구간씩이라 「봄·여름」 「가을·겨울」. 숫자만 있으면 둘째 쪽이 있는 줄 모른다(멘토 11-05).
+ */
+export function playPageLabels(
+  periods: Pick<PlayProjectAnnualPlan["periods"][number], "period_key" | "label">[],
+) {
+  const labels: string[] = [];
+  for (let i = 0; i < periods.length; i += 2)
+    labels.push(
+      periods
+        .slice(i, i + 2)
+        .map((p) => playSeason(p).name)
+        .join("·"),
+    );
+  return labels;
+}
+
 export type PlayField = (typeof fields)[number]["key"];
 /** auto = 100%, 칸이 좁을 때만 줄임(놀이형 연간 편집 기본). fit = 칸 폭에 맞춤. manual = −/+ 로 고른 배율. */
 export type SheetZoom = { mode: "auto" | "fit" | "manual"; percent: number };

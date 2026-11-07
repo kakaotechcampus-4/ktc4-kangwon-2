@@ -7,6 +7,7 @@ import { AnnualDone } from "./AnnualFrame";
 import AnnualThemeSheet from "./AnnualThemeSheet";
 import PlayProjectResult, { picksFromPlan } from "./PlayProjectResult";
 import PlayProjectSheet from "./PlayProjectSheet";
+import { playPageLabels } from "./playProjectPagination";
 import ThemeAnnualResult from "./ThemeAnnualResult";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { loadClassSettings } from "@/lib/onboarding/settings";
@@ -128,6 +129,7 @@ export default function AnnualResult({ id }: { id: number }) {
       <AnnualDone
         key={view}
         plan={plan}
+        pageLabels={plan.format === "PLAY_PROJECT" ? playPageLabels(plan.periods) : undefined}
         pages={
           plan.format === "PLAY_PROJECT"
             ? [0, 2].map((i) => (
