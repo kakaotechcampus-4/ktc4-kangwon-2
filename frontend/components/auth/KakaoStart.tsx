@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { errorCode } from "@/lib/api/client";
 import { startKakaoLogin } from "@/lib/auth/kakao";
+import { ErrorNote } from "./AuthFrame";
 
 /**
  * 카카오로 시작하기 (ADR-069). 이메일 폼 아래 「또는」 뒤 두 번째 길이다.
@@ -9,7 +10,7 @@ import { startKakaoLogin } from "@/lib/auth/kakao";
  *
  * 색 · 심볼은 카카오 로그인 디자인 가이드를 따른다 — 바탕 #FEE500, 글자 · 심볼 검정 85%,
  * 말풍선 심볼은 모양을 바꾸지 않는다. 그래서 이 단추만 디자인 토큰 밖의 색을 쓴다.
- * 모서리 · 도장 그림자는 우리 단추와 맞춘다(가이드가 허용하는 범위).
+ * 모양 · 높이 · 그림자는 위 로그인 단추와 맞춘다(가이드가 허용하는 범위).
  */
 export default function KakaoStart() {
   const [busy, setBusy] = useState(false);
@@ -25,8 +26,8 @@ export default function KakaoStart() {
       // 망이 끊긴 경우의 TypeError 같은 영어 문구를 그대로 띄우지 않는다.
       setError(
         errorCode(e) === "DEPENDENCY_UNAVAILABLE"
-          ? "지금은 카카오로 로그인할 수 없어요. 이메일로 로그인해 주세요."
-          : "카카오 로그인을 열지 못했어요. 잠시 뒤 다시 해 주세요.",
+          ? "지금은 카카오로 로그인할 수 없어요. 이메일로 로그인해주세요."
+          : "카카오 로그인 화면을 열지 못했어요. 잠시 후 다시 시도해주세요.",
       );
       setBusy(false);
     }
@@ -38,18 +39,15 @@ export default function KakaoStart() {
         type="button"
         onClick={start}
         disabled={busy}
-        className="flex min-h-12 w-full items-center justify-center gap-2.5 rounded-md border border-[#e5cf00] bg-[#FEE500] px-4 text-sm font-semibold text-black/85 shadow-pg-hard transition-transform hover:-translate-x-px hover:-translate-y-px active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:cursor-progress disabled:opacity-80"
+        className="flex h-[50px] w-full items-center justify-center gap-2.5 rounded-full border border-[#e5cf00] bg-[#FEE500] px-5 text-[15px] font-bold text-black/85 shadow-pg-card transition-transform hover:-translate-x-px hover:-translate-y-px active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:cursor-progress disabled:opacity-80"
       >
         {busy ? <Spinner /> : <KakaoSymbol />}
-        {busy ? "카카오로 이동하는 중…" : "카카오로 시작하기"}
+        {busy ? "카카오로 이동 중…" : "카카오로 시작하기"}
       </button>
       {error && (
-        <p
-          role="alert"
-          className="mt-3 rounded-md border border-note-line bg-note-soft p-3 text-xs leading-relaxed text-sun-ink"
-        >
-          {error}
-        </p>
+        <div className="mt-4">
+          <ErrorNote>{error}</ErrorNote>
+        </div>
       )}
     </div>
   );
