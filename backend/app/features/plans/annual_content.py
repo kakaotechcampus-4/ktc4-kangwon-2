@@ -5,6 +5,7 @@ from dataclasses import replace
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
+from ssuksak import timing
 from ssuksak.planning import YearlyPlan
 from ssuksak.planning.domain.errors import InvalidDomainValueError
 from ssuksak.planning.domain.teacher_memo import MemoNotice
@@ -107,6 +108,7 @@ def generate_subthemes_with_memo(
     plan: YearlyPlan, memo: str, *, transport=None
 ) -> tuple[dict[str, list[str]], frozenset[int], tuple[MemoNotice, ...]]:
     """소주제 + 요청 사항을 반영한 달 + 반영 못한 요청. 메모가 없으면 요청이 메모 이전과 같다."""
+    timing.phase("prompt")
     months = tuple(period.period.calendar_month for period in plan.periods)
     addresses = tuple(str(month) for month in months) if memo else None
     payload = {
@@ -149,6 +151,7 @@ def generate_subthemes_with_memo(
             json.dumps(payload, ensure_ascii=False),
             transport=transport,
         )
+    timing.phase("validate")
     try:
         content, applied, notices = split_memo_applied(content, addresses)
     except (InvalidDomainValueError, ValueError) as error:

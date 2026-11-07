@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
+from .. import timing
 from ..planning.domain.activity_reference import ActivityCatalog
 from .activity_reference_schema import parse_activity_reference_payload
 
@@ -25,7 +25,7 @@ class JsonActivityReferenceRepository:
     def _load(self, path: Path) -> ActivityCatalog:
         if path not in self._cache:
             self._cache[path] = parse_activity_reference_payload(
-                json.loads(path.read_text(encoding="utf-8"))
+                timing.read_json(path)
             )
         return self._cache[path]
 

@@ -14,6 +14,7 @@ from fastapi import APIRouter, Body, Depends, Query, Response, status
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from ssuksak import timing
 from ssuksak.adapters.elice_openai_monthly import (
     MonthlyLlmConfigurationError,
     MonthlyLlmProviderError,
@@ -183,6 +184,7 @@ def _generation_error(error: Exception):
 
 
 @router.post("", response_model=s.PlayMonthlyPlanOut, status_code=status.HTTP_201_CREATED)
+@timing.timed("monthly_play", logging.getLogger("app.server.timing").info)
 def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, user: CurrentUser):
     """한 달치를 만들어 DRAFT 로 저장한다. 실패하면 아무것도 남지 않는다(기존 월간과 같다)."""
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
@@ -249,6 +251,7 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
         raise mapped from error
 
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
+    timing.phase("save")
     _lock_parent(session, parent_id, "연간계획안을 먼저 만들어 확정해주세요.")
     if _existing(session, center_id, class_id, month) is not None:
         raise _ALREADY_EXISTS

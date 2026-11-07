@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ... import timing
 from ..domain.plan import PlanItem, PlanStatus
 from ..domain.provenance import (
     AuditEvent,
@@ -60,6 +61,7 @@ class GenerateYearlyPlan:
     def execute(
         self, command: GenerateYearlyPlanCommand
     ) -> GenerateYearlyPlanResult:
+        timing.phase("select")
         periods = academic_year_periods(command.school_year)
         ages = validate_age_set(command.target_ages)
         catalog = require_resolved_catalog(
@@ -103,6 +105,7 @@ class GenerateYearlyPlan:
             for period, selection in zip(periods, selections, strict=True)
         )
         text_results = generate_theme_text(self._text, requests)
+        timing.phase("assemble")
 
         plan_id = self._ids.new_plan_id()
         now = self._clock.now()

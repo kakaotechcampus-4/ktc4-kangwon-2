@@ -11,6 +11,7 @@ institution isolation belongs to the parent repository's scope and the backend p
 
 from __future__ import annotations
 
+from ... import timing
 import calendar
 from dataclasses import dataclass, replace
 from typing import Protocol
@@ -242,6 +243,7 @@ class GeneratePlayMonthlyPlan:
         self._ids = id_generator
 
     def execute(self, command: GeneratePlayMonthlyPlanCommand) -> PlayMonthlyPlan:
+        timing.phase("select")
         parent, snapshot = self._parent(command)
         catalog, daily = self._daily_life_references(command)
         drills, drill_topics = self._drill_topics(command, catalog)
@@ -251,6 +253,7 @@ class GeneratePlayMonthlyPlan:
         period = next(p for p in parent.periods if p.period.key == snapshot.period_key)
         layout = PLAY_MONTHLY_LAYOUT_V0_3
         counts = {"together": layout.together_count, "free_play": layout.free_play_count}
+        timing.phase("prompt")
         request = build_play_monthly_request(
             target_month=month.value,
             month_label=f"{month.calendar_month}월",
@@ -296,12 +299,14 @@ class GeneratePlayMonthlyPlan:
         )
 
         response = self._provider.generate_play_monthly(request)
+        timing.phase("validate")
         content, memo_applied, memo_skipped = split_memo_applied(response.content, request.memo_addresses)
         content, safety_requests = split_safety_requests(content, request.safety_request_slots, request.week_ids)
         proposal = parse_play_monthly_proposal(content)
         issues = validate_play_monthly(proposal, request)
         changed: frozenset[str] = frozenset()
         if issues:
+            timing.phase("repair")
             repair = build_repair_request(request, content, issues)
             repaired = parse_play_monthly_proposal(self._provider.generate_play_monthly(repair).content)
             if any(issue.code == "UNREQUESTED_VENUE" for issue in issues) and venue_name_only_repair(proposal, repaired):
@@ -312,6 +317,7 @@ class GeneratePlayMonthlyPlan:
                 raise _rejected(remaining)
             proposal = repaired
 
+        timing.phase("assemble")
         plan_id = self._ids.new_plan_id()
         now = self._clock.now()
 

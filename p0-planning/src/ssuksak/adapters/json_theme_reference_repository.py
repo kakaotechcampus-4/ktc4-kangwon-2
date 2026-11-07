@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .. import timing
 from ..planning.domain.theme_reference import ThemeCatalog
 from .theme_reference_schema import (
     ThemeReferenceSchemaError,
@@ -40,7 +41,7 @@ class JsonThemeReferenceRepository:
     def _load(self) -> ThemeCatalog:
         if self._catalog is None:
             try:
-                payload = json.loads(self._path.read_text(encoding="utf-8"))
+                payload = timing.read_json(self._path)
             except json.JSONDecodeError as exc:
                 raise ThemeReferenceSchemaError(
                     f"Theme Reference is not valid JSON: {exc}"
