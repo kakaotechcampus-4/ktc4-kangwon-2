@@ -12,14 +12,18 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from app.db import SessionLocal
 from app.features.auth.models import User
 from app.features.auth.router import router as auth_router
+from app.features.centers.router import classes_router, daycares_router
 from app.features.centers.router import router as centers_router
 from app.features.children.router import router as children_router
+from app.features.class_access.router import router as class_access_router
 from app.features.documents.export import router as documents_export_router
 from app.features.documents.router import router as documents_router
 from app.features.evaluation.router import router as evaluation_router
 from app.features.forms.router import center_router as center_forms_router
 from app.features.forms.router import router as forms_router
 from app.features.observations.router import router as observations_router
+from app.features.plans.annual_extract import router as annual_extract_router
+from app.features.plans.annual_import import router as annual_import_router
 from app.features.plans.export import router as plans_export_router
 from app.features.plans.monthly_router import router as monthly_plans_router
 from app.features.plans.play_monthly_router import router as play_monthly_plans_router
@@ -177,13 +181,18 @@ _authenticated = [Depends(_authenticated_user)]
 app.include_router(auth_router, prefix="/api")
 app.include_router(forms_router, prefix="/api")
 app.include_router(centers_router, prefix="/api", dependencies=_authenticated)
+app.include_router(classes_router, prefix="/api", dependencies=_authenticated)
+app.include_router(daycares_router, prefix="/api", dependencies=_authenticated)
 app.include_router(children_router, prefix="/api", dependencies=_authenticated)
+app.include_router(class_access_router, prefix="/api", dependencies=_authenticated)
 app.include_router(documents_router, prefix="/api", dependencies=_authenticated)
 app.include_router(documents_export_router, prefix="/api", dependencies=_authenticated)
 app.include_router(evaluation_router, prefix="/api", dependencies=_authenticated)
 app.include_router(observations_router, prefix="/api", dependencies=_authenticated)
 app.include_router(routines_router, prefix="/api", dependencies=_authenticated)
 app.include_router(plans_router, prefix="/api", dependencies=_authenticated)
+app.include_router(annual_import_router, prefix="/api", dependencies=_authenticated)
+app.include_router(annual_extract_router, prefix="/api", dependencies=_authenticated)
 # play 고정 경로가 monthly 의 GET /{plan_id} 보다 먼저여야 한다(api-spec §9-7)
 app.include_router(play_monthly_plans_router, prefix="/api", dependencies=_authenticated)
 app.include_router(monthly_plans_router, prefix="/api", dependencies=_authenticated)

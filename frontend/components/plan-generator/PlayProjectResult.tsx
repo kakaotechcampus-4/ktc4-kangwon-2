@@ -1,21 +1,25 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type DragEvent,
-  type KeyboardEvent,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import type { PlayProjectAnnualPlan } from "@/lib/api/types";
 import workspace from "@/components/workspace/Workspace.module.css";
-import tabs from "./GenerationFlow.module.css";
-import styles from "./PlayProjectResult.module.css";
 import PlayProjectPicking from "./PlayProjectPicking";
-import PlayProjectSheet, { type PlayDnd } from "./PlayProjectSheet";
+import PlayProjectSheet from "./PlayProjectSheet";
+import { MemoMark } from "@/components/plan-ui/PlayPickBoard";
 import PlayCellEditor from "./PlayCellEditor";
+import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
+import Link from "next/link";
+import AnnualFrame, {
+  BACK_BUTTON,
+  BACK_ICON,
+  BigView,
+  BUTTON,
+  POPOVER,
+  pageClass,
+  tabClass,
+  UndoRedo,
+  useSheetZoom,
+} from "./AnnualFrame";
 import {
   EMPTY_HISTORY,
   popRedo,
@@ -26,17 +30,17 @@ import {
   type EditStep,
 } from "@/lib/plan-generator/playEditHistory";
 import { ApiError } from "@/lib/api/client";
-import { confirmPlayProject, downloadAnnualHwpx, isSaveConflict } from "@/lib/api/plans";
-import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
+import { confirmPlayProject, errorFields, isSaveConflict } from "@/lib/api/plans";
 import { usePlaySelectionSave } from "@/lib/hooks/use-play-selection-save";
 import type { Rejected } from "@/lib/plan-generator/playSelectionQueue";
 import {
-  cellButtonId,
   eulReul,
   fields,
+  playPageLabels,
+  playSeason,
   type PlayField,
-  type SheetZoom,
 } from "./playProjectPagination";
+import { PlanMemoNote } from "./PlanMemo";
 export { buildPlayProjectPreviewRows } from "./playProjectPagination";
 
 const MAX_PICKS = 5;
@@ -114,12 +118,6 @@ function serverCellValue(plan: PlayProjectAnnualPlan, itemId: string) {
   return "";
 }
 
-// 422 `fields` — 서버가 준 칸 이름 목록(문자열이 아닌 것은 버린다).
-function serverFields(error: ApiError): string[] {
-  const fields = (error.body as { error?: { fields?: unknown } } | null)?.error?.fields;
-  return Array.isArray(fields) ? fields.filter((f): f is string => typeof f === "string") : [];
-}
-
 export function togglePlayPick(picks: string[], rowKey: string) {
   return picks.includes(rowKey)
     ? picks.filter((key) => key !== rowKey)
@@ -128,76 +126,29 @@ export function togglePlayPick(picks: string[], rowKey: string) {
       : picks;
 }
 
-export function movePlayPick(picks: string[], rowKey: string, delta: -1 | 1): string[] {
-  const index = picks.indexOf(rowKey);
-  const next = index + delta;
-  if (index < 0 || next < 0 || next >= picks.length) return picks;
-  const moved = [...picks];
-  [moved[index], moved[next]] = [moved[next], moved[index]];
-  return moved;
+// 끌어놓기: 끈 놀이가 놓은 줄의 자리로 간다. 고른 놀이면 순서만 바꾸고,
+// 다른 후보면 다 찼을 때는 그 줄과 바꾸고(그 줄은 다른 후보로) 자리가 남으면 그 줄 앞에 넣는다.
+export function placePlayPick(picks: string[], rowKey: string, targetKey: string): string[] {
+  const to = picks.indexOf(targetKey);
+  if (to < 0 || rowKey === targetKey) return picks;
+  if (!picks.includes(rowKey))
+    return picks.length >= MAX_PICKS
+      ? picks.map((key) => (key === targetKey ? rowKey : key))
+      : [...picks.slice(0, to), rowKey, ...picks.slice(to)];
+  const rest = picks.filter((key) => key !== rowKey);
+  return [...rest.slice(0, to), rowKey, ...rest.slice(to)];
 }
 
-// 같은 구간 목록에서 rowKey 를 toIndex 번째 자리로 옮기고 나머지를 민다.
-export function placePlayPick(picks: string[], rowKey: string, toIndex: number): string[] {
-  const from = picks.indexOf(rowKey);
-  const to = Math.max(0, Math.min(picks.length - 1, toIndex));
-  if (from < 0 || from === to) return picks;
-  const placed = picks.filter((key) => key !== rowKey);
-  placed.splice(to, 0, rowKey);
-  return placed;
-}
-
-// ① 오른쪽 목록에서 slot 을 뺀 뒤 포커스: 뒤 자리가 위로 당겨지므로 같은 자리의 ×, 마지막이었으면 제목(null).
+// ④ 고른 놀이 목록에서 slot 을 뺀 뒤 포커스: 뒤 자리가 위로 당겨지므로 같은 자리의 ×, 마지막이었으면 제목(null).
 export function removeFocusSlot(count: number, slot: number): number | null {
   return slot < count - 1 ? slot : null;
 }
 
+// 왼쪽 탭은 「AI 후보」 → 「칸 편집」 순서다.
 export function leftTabTarget(key: string, current: LeftTab): LeftTab | null {
   if (key === "ArrowRight" || key === "ArrowLeft") return current === "edit" ? "picked" : "edit";
-  if (key === "Home") return "edit";
-  if (key === "End") return "picked";
-  return null;
-}
-
-// 문서 행을 끌었으면 옮긴 놀이의 같은 칸(고른 칸이 그 놀이가 아니면 첫 칸), 목록 줄이면 null(목록 버튼).
-export function dropFocusField(
-  source: "list" | "doc",
-  rowKey: string,
-  selected: { rowKey: string; field: PlayField } | null,
-): PlayField | null {
-  if (source === "list") return null;
-  return selected?.rowKey === rowKey ? selected.field : "play_name";
-}
-
-const wideQuery = "(min-width: 1024px)";
-function subscribeWide(callback: () => void) {
-  const query = window.matchMedia(wideQuery);
-  query.addEventListener("change", callback);
-  return () => query.removeEventListener("change", callback);
-}
-const isWide = () => typeof window !== "undefined" && window.matchMedia(wideQuery).matches;
-
-type LeftTab = "edit" | "picked";
-type DragState = {
-  periodKey: string;
-  rowKey: string;
-  from: "list" | "doc";
-  over: number | null;
-};
-
-export function floatingNextBottom(rect: { top: number; height: number }): number | null {
-  return rect.top > 0 ? rect.height + 12 : null;
-}
-
-export function nextPlayProjectPeriod(
-  plan: PlayProjectAnnualPlan,
-  picks: Record<string, string[]>,
-  activePeriod: number,
-) {
-  for (let offset = 1; offset < plan.periods.length; offset++) {
-    const index = (activePeriod + offset) % plan.periods.length;
-    if ((picks[plan.periods[index].period_key]?.length ?? 0) < MAX_PICKS) return index;
-  }
+  if (key === "Home") return "picked";
+  if (key === "End") return "edit";
   return null;
 }
 
@@ -210,122 +161,86 @@ function movedNotice(name: string, index: number) {
   return `「${name}」${eulReul(name)} ${index + 1}번째로 옮겼어요`;
 }
 
-function PickedListRow({
-  candidate,
-  index,
-  count,
-  periodKey,
-  buttonId,
-  selected,
-  drag,
-  draggable,
-  dnd,
-  onSelect,
-  onMove,
-  onRemove,
-}: {
-  candidate: PlayProjectAnnualPlan["periods"][number]["candidates"][number];
-  index: number;
-  count: number;
-  periodKey: string;
-  buttonId: string;
-  selected: boolean;
-  drag: DragState | null;
-  draggable: boolean;
-  dnd: PlayDnd;
-  onSelect: () => void;
-  onMove: (delta: -1 | 1) => void;
-  onRemove: () => void;
-}) {
-  // 끌던 줄이 먼저다 — 자기 자리에는 놓을 자리 표시를 켜지 않는다.
-  const rowClass =
-    drag?.rowKey === candidate.row_key
-      ? styles.dragging
-      : drag?.over === index
-        ? styles.dropOver
-        : "";
-  const dragProps = draggable
-    ? {
-        draggable: true,
-        onDragStart: (event: DragEvent) => dnd.start(periodKey, candidate.row_key, event, "list"),
-        onDragOver: (event: DragEvent) => dnd.over(periodKey, index, event),
-        onDrop: (event: DragEvent) => dnd.drop(periodKey, index, event),
-        onDragEnd: dnd.end,
-      }
-    : {};
-  return (
-    <div className={`${styles.pickedRow} ${rowClass}`} {...dragProps}>
-      {draggable && (
-        <span className={styles.grip} aria-hidden="true">
-          ⠿
-        </span>
-      )}
-      <button
-        type="button"
-        id={buttonId}
-        aria-pressed={selected}
-        className={`${workspace.item} ${styles.playButton}`}
-        onClick={onSelect}
-      >
-        {candidate.play_name.value}
-      </button>
-      <div className={styles.rowControls}>
-        {([-1, 1] as const).map((delta) => (
-          <button
-            type="button"
-            key={delta}
-            id={`${buttonId}-${delta}`}
-            aria-label={`${index + 1}번째 놀이 ${delta === -1 ? "위로" : "아래로"}`}
-            disabled={delta === -1 ? index === 0 : index === count - 1}
-            onClick={() => onMove(delta)}
-          >
-            {delta === -1 ? "↑" : "↓"}
-          </button>
-        ))}
-        <button type="button" aria-label={`${candidate.play_name.value} 빼기`} onClick={onRemove}>
-          빼기
-        </button>
-      </div>
-    </div>
-  );
+type LeftTab = "edit" | "picked";
+// 문서 기준 폭(A4 세로 비율). 「맞춤」은 이 폭을 문서 칸 폭에 맞춰 키우거나 줄인다.
+const SHEET_WIDTH = 794;
+const SMALL =
+  "min-h-[36px] shrink-0 rounded-lg border border-[#ddd6ca] px-3 text-xs font-bold text-[#5e4b96] disabled:opacity-40";
+/** 끌어서 순서를 바꾸는 손잡이(점 여섯 개). */
+const GRIP = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 10 16"
+    width="10"
+    height="16"
+    className="shrink-0 text-[#b8ae9f]"
+    fill="currentColor"
+  >
+    {[2, 8, 14].map((y) => [2, 8].map((x) => <circle key={`${x}${y}`} cx={x} cy={y} r="1.5" />))}
+  </svg>
+);
+const DROP_ON = "[&[data-drop]]:bg-[#efe7f8]";
+
+// 끌어 온 놀이를 받는 곳. 받을 곳 강조는 data-drop 으로만 — 문서 줄과 같은 방식.
+const DROP_HOVER = {
+  onDragOver: (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.currentTarget.dataset.drop = "";
+  },
+  onDragLeave: (event: DragEvent<HTMLElement>) => {
+    delete event.currentTarget.dataset.drop;
+  },
+};
+
+/** 놓은 놀이의 row_key. 바깥 받는 곳(묶음)이 한 번 더 받지 않게 여기서 멈춘다. */
+function takeDrop(event: DragEvent<HTMLElement>) {
+  event.preventDefault();
+  event.stopPropagation();
+  delete event.currentTarget.dataset.drop;
+  return event.dataTransfer.getData("text/plain");
 }
 
-// 보기 설정은 화면 상태에만 둔다. 고른 놀이는 바뀔 때마다 바로 저장한다(ADR-044).
+/**
+ * 놀이 중심형 연간: ④ 놀이 고르기 → ⑤ 다듬기(왼쪽 AI 후보 · 칸 편집, 오른쪽 문서). 확정본은 부모가 ⑥ 으로 그린다.
+ * 고른 놀이와 칸 글은 바뀔 때마다 바로 저장한다(ADR-044).
+ */
 export default function PlayProjectResult({
   plan,
+  className = "",
   notice,
   onConflict,
   onDismissNotice,
   onConfirmed,
 }: {
   plan: PlayProjectAnnualPlan;
+  /** 문서 제목에 붙는 반 이름. 브라우저에 반 정보가 없으면 빈 값. */
+  className?: string;
   /** 다시 불러온 직후에 보이는 안내. */
   notice?: string;
   /** 다른 곳에서 바뀌어 저장이 막혔을 때. 부모가 최신 계획안을 다시 불러오고, 끝나면 돌려준다. */
   onConflict: () => Promise<void>;
   /** 고르기가 바뀌거나 저장이 성공하면 다시 불러온 안내를 지우도록 부모에게 알린다. */
   onDismissNotice?: () => void;
-  /** 확정이 끝났다. 부모가 응답 계획안으로 화면을 다시 그린다. */
+  /** 확정이 끝났다. 부모가 응답 계획안으로 ⑥ 을 그린다. */
   onConfirmed: (plan: PlayProjectAnnualPlan) => void;
 }) {
   const [activePeriod, setActivePeriod] = useState(0);
-  const [pickedStep, setStep] = useState(0);
   const [picks, setPicks] = useState(() => picksFromPlan(plan));
+  // 네 구간이 다 차 있으면 ⑤ 부터 연다.
+  const [step, setStep] = useState(() =>
+    plan.periods.every((p) => p.selected.length === MAX_PICKS) ? 1 : 0,
+  );
   const [selectedCell, setSelectedCell] = useState<{
     periodKey: string;
     rowKey: string;
     field: PlayField;
   } | null>(null);
-  const [zoom, setZoom] = useState<SheetZoom>({ mode: "fit", percent: 100 });
-  const [scrollPeriod, setScrollPeriod] = useState<{
-    periodKey: string;
-    request: number;
-    cell?: { rowKey: string; field: PlayField };
-  } | null>(null);
-  const [editorTab, setEditorTab] = useState<LeftTab>("edit");
+  const [editorTab, setEditorTab] = useState<LeftTab>("picked");
   const [detailKey, setDetailKey] = useState<string | null>(null);
   const [moveNotice, setMoveNotice] = useState("");
-  const [drag, setDrag] = useState<DragState | null>(null);
+  // 문서 크게 보기 창 — 확정이 막혀 패널로 보낼 때 닫는다.
+  const bigDialog = useRef<HTMLDialogElement>(null);
+  const [asking, setAsking] = useState(false);
   // 입력 중 글(문서 미리보기용) · 마지막으로 저장한 칸 값과 되돌리기 목록 · 되돌렸다는 안내.
   const [live, setLive] = useState<Record<string, string>>({});
   const [edit, setEdit] = useState<EditState>(EMPTY_EDIT);
@@ -334,13 +249,8 @@ export default function PlayProjectResult({
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState("");
   const [lacking, setLacking] = useState<string[]>([]);
-  // 확정본의 한글 파일 내려받기 — 월별 주제형과 같은 훅 · 같은 함수다.
-  const [exportMessage, setExportMessage] = useState("");
-  const hwpx = useHwpxDownload(setExportMessage);
-  // 확정본은 ③ 읽기 전용 표뿐이다 — 단계 표시 · ① ② 는 그리지 않는다.
-  const confirmed = plan.status === "CONFIRMED";
-  const step = confirmed ? 2 : pickedStep;
-  const wide = useSyncExternalStore(subscribeWide, isWide, () => false);
+  const docBox = useRef<HTMLDivElement>(null);
+  const sheetZoom = useSheetZoom(docBox, SHEET_WIDTH, step);
   const saving = usePlaySelectionSave(
     plan.id,
     plan.revision,
@@ -353,8 +263,6 @@ export default function PlayProjectResult({
   // 고르기의 최신 값. 이벤트 핸들러에서만 읽고 쓴다 — 같은 렌더에서 두 번 바뀌어도 앞 변경을 잃지 않는다.
   const latestPicks = useRef(picks);
   const latestEdit = useRef(edit);
-  const tabListRef = useRef<HTMLDivElement>(null);
-  const floatingRef = useRef<HTMLButtonElement>(null);
   const confirmLock = useRef(false);
   // 확정이 큐를 기다리기 시작한 뒤에는 새 변경을 받지 않는다(그 사이 PUT 과 confirm 이 겹치지 않게).
   const frozen = useRef(false);
@@ -369,13 +277,9 @@ export default function PlayProjectResult({
   const shown = useMemo(() => withCellValues(plan, edit.saved, live), [plan, edit.saved, live]);
   const period = shown.periods[activePeriod];
   const periodPicks = picks[period.period_key] ?? [];
-  const nextPeriod = nextPlayProjectPeriod(plan, picks, activePeriod);
-  const total = plan.periods.reduce((sum, item) => sum + (picks[item.period_key]?.length ?? 0), 0);
-  // ② 에서는 네 구간이 모두 5개일 때만 ③ 으로 가는 버튼을 띄운다.
-  const showFloating =
-    step === 0
-      ? periodPicks.length === MAX_PICKS
-      : step === 1 && total === plan.periods.length * MAX_PICKS;
+  const seasonLabel = [playSeason(period).name, playSeason(period).months]
+    .filter(Boolean)
+    .join(" ");
   const pickedCandidates = periodPicks.map((key) =>
     period.candidates.find((candidate) => candidate.row_key === key)!,
   );
@@ -385,33 +289,30 @@ export default function PlayProjectResult({
     (candidate) => candidate.row_key === selectedCell?.rowKey,
   );
   const selectedField = selectedCell && fields.find((field) => field.key === selectedCell.field);
-
-  useEffect(() => {
-    if (!showFloating || typeof ResizeObserver === "undefined") return;
-    const nav = document.querySelector('aside[aria-label="주 메뉴"]');
-    const button = floatingRef.current;
-    if (!nav || !button) return;
-    const update = () => {
-      const bottom = floatingNextBottom(nav.getBoundingClientRect());
-      button.style.bottom = bottom === null ? "" : `${bottom}px`;
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(nav);
-    return () => observer.disconnect();
-  }, [showFloating]);
+  // 확정 전에 채울 첫 곳 — 놀이를 5개 다 고르지 않은 구간, 또는 고른 놀이의 빈 칸(배움은 서버 원문이라 뺀다).
+  const gap = (() => {
+    for (const [index, item] of shown.periods.entries()) {
+      const keys = picks[item.period_key] ?? [];
+      if (keys.length < MAX_PICKS) return { index, rowKey: null, field: null };
+      for (const rowKey of keys) {
+        const row = item.candidates.find((candidate) => candidate.row_key === rowKey);
+        const field = row && fields.find((f) => f.key !== "learning" && !row[f.key].value.trim());
+        if (field) return { index, rowKey, field: field.key };
+      }
+    }
+    return null;
+  })();
+  // 빈 곳 알림 — 0 이면 닫힘. 다시 누를 때마다 올려 새로 그려 다시 흔든다.
+  const [nudge, setNudge] = useState(0);
 
   function toggleCandidate(rowKey: string) {
     setMoveNotice("");
-    if (periodPicks.includes(rowKey)) {
-      if (selectedCell?.periodKey === period.period_key && selectedCell.rowKey === rowKey)
-        setSelectedCell(null);
-      setScrollPeriod((current) =>
-        current?.periodKey === period.period_key && current.cell?.rowKey === rowKey
-          ? null
-          : current,
-      );
-    }
+    if (
+      periodPicks.includes(rowKey) &&
+      selectedCell?.periodKey === period.period_key &&
+      selectedCell.rowKey === rowKey
+    )
+      setSelectedCell(null);
     applyPicks(period.period_key, (list) => togglePlayPick(list, rowKey));
   }
 
@@ -491,7 +392,7 @@ export default function PlayProjectResult({
 
   // 같은 문장을 연달아 내도 다시 읽히도록 끝에 보이지 않는 글자를 번갈아 붙인다.
   function announce(message: string) {
-    setHistoryNotice((previous) => (previous === message ? message + "\u200b" : message));
+    setHistoryNotice((previous) => (previous === message ? message + "​" : message));
   }
 
   function savedCellValue(itemId: string) {
@@ -523,91 +424,39 @@ export default function PlayProjectResult({
           ? bumped(latestEdit.current.epochs, step.itemId)
           : latestEdit.current.epochs,
     });
-    announce(direction === "undo" ? "되돌렸어요" : "다시 했어요");
   }
 
-  // 목록의 놀이명을 눌러 고를 때(keepTab)는 넓은 화면에서만 목록 탭에 머문다. 좁은 화면은 문서 강조가 안 보인다.
-  function selectCell(periodIndex: number, rowKey: string, field: PlayField, keepTab = false) {
-    if (!(keepTab && wide)) setEditorTab("edit");
+  // 문서 칸이나 목록의 놀이명을 누르면 그 칸을 「칸 편집」에서 연다.
+  function selectCell(periodIndex: number, rowKey: string, field: PlayField) {
+    setEditorTab("edit");
     setMoveNotice("");
     setActivePeriod(periodIndex);
-    const periodKey = plan.periods[periodIndex].period_key;
-    setSelectedCell({ periodKey, rowKey, field });
-    if (window.matchMedia("(min-width: 1024px)").matches)
-      setScrollPeriod((current) => ({
-        periodKey,
-        request: (current?.request ?? 0) + 1,
-        cell: { rowKey, field },
-      }));
+    setSelectedCell({ periodKey: plan.periods[periodIndex].period_key, rowKey, field });
   }
 
-  function moveCandidate(rowKey: string, delta: -1 | 1) {
-    setMoveNotice(movedNotice(candidateName(period, rowKey), periodPicks.indexOf(rowKey) + delta));
-    applyPicks(period.period_key, (list) => movePlayPick(list, rowKey, delta));
-    requestAnimationFrame(() => {
-      const arrow = document.getElementById(
-        `${pickId(rowKey)}-${delta}`,
-      ) as HTMLButtonElement | null;
-      (arrow?.disabled ? document.getElementById(pickId(rowKey)) : arrow)?.focus();
-    });
-  }
-
-  function dropPlay(periodKey: string, toIndex: number) {
-    const from = drag;
-    setDrag(null);
-    if (!from || from.periodKey !== periodKey) return;
-    const placed = applyPicks(periodKey, (list) => placePlayPick(list, from.rowKey, toIndex));
-    if (!placed) return;
-    const periodIndex = plan.periods.findIndex((item) => item.period_key === periodKey);
-    // 다른 구간의 문서 행을 옮겼으면 왼쪽 목록과 안내가 그 구간을 가리키게 한다.
-    if (periodIndex !== activePeriod) setActivePeriod(periodIndex);
+  // 목록이나 문서의 놀이(고른 것 · 다른 후보)를 고른 놀이 줄에 끌어놓았다.
+  function dropPick(rowKey: string, targetKey: string) {
+    if (!period.candidates.some((c) => c.row_key === rowKey)) return;
+    const name = candidateName(period, rowKey);
+    const picked = periodPicks.includes(rowKey);
+    const next = applyPicks(period.period_key, (list) => placePlayPick(list, rowKey, targetKey));
+    if (!next) return;
+    if (!next.includes(targetKey) && selectedCell?.rowKey === targetKey) setSelectedCell(null);
+    const index = next.indexOf(rowKey);
     setMoveNotice(
-      movedNotice(
-        candidateName(plan.periods[periodIndex], from.rowKey),
-        placed.indexOf(from.rowKey),
-      ),
-    );
-    // 자리 번호로 고정한 표 줄이라 옛 자리 버튼에 포커스가 남지 않게 옮긴 놀이로 보낸다.
-    const field = dropFocusField(from.from, from.rowKey, selectedCell);
-    requestAnimationFrame(() =>
-      document
-        .getElementById(
-          field ? cellButtonId(periodKey, from.rowKey, field) : pickId(from.rowKey, periodKey),
-        )
-        ?.focus(),
+      picked ? movedNotice(name, index) : `「${name}」${eulReul(name)} ${index + 1}번째에 넣었어요`,
     );
   }
 
-  // 같은 구간 안에서만 놓을 수 있다. 다른 구간 위에서는 preventDefault 를 안 해 놓기가 막힌다.
-  const dnd: PlayDnd = {
-    dragging: drag,
-    start(periodKey, rowKey, event: DragEvent, from) {
-      event.dataTransfer.setData("text/plain", rowKey);
-      event.dataTransfer.effectAllowed = "move";
-      setDrag({ periodKey, rowKey, from, over: null });
-    },
-    over(periodKey, index, event: DragEvent) {
-      if (drag?.periodKey !== periodKey) {
-        setDrag((current) =>
-          current && current.over !== null ? { ...current, over: null } : current,
-        );
-        return;
-      }
-      event.preventDefault();
-      setDrag((current) =>
-        current && current.over !== index ? { ...current, over: index } : current,
-      );
-    },
-    drop(periodKey, index, event: DragEvent) {
-      event.preventDefault();
-      dropPlay(periodKey, index);
-    },
-    end: () => setDrag(null),
-  };
+  // 고른 놀이를 「다른 후보」로 끌어 왔다 — 문서에서 뺀다.
+  function dropToRest(rowKey: string) {
+    if (periodPicks.includes(rowKey)) toggleCandidate(rowKey);
+  }
 
-  function removeCandidate(rowKey: string) {
-    toggleCandidate(rowKey);
-    requestAnimationFrame(() => document.getElementById(pickedHeadingId)?.focus());
+  // 다른 후보를 고른 놀이 묶음(줄 밖)에 끌어 왔다 — 자리가 남으면 맨 아래에 넣는다.
+  function dropToPicked(rowKey: string) {
+    if (!periodPicks.includes(rowKey) && period.candidates.some((c) => c.row_key === rowKey))
+      toggleCandidate(rowKey);
   }
 
   function selectLeftTab(tab: LeftTab) {
@@ -635,47 +484,11 @@ export default function PlayProjectResult({
     );
   }
 
-  function addCandidate(rowKey: string) {
-    toggleCandidate(rowKey);
-    requestAnimationFrame(() => document.getElementById(pickId(rowKey))?.focus());
-  }
-
-  function goToStep(index: number) {
-    if (index === step) return;
-    setScrollPeriod(null);
-    setMoveNotice("");
-    setDetailKey(null);
-    setDrag(null);
-    setStep(index);
-    requestAnimationFrame(() => window.scrollTo({ top: 0 }));
-  }
-
   function goToPeriod(index: number) {
     setMoveNotice("");
     setDetailKey(null);
-    setDrag(null);
     setActivePeriod(index);
     setSelectedCell(null);
-    if (step > 0)
-      setScrollPeriod((current) => ({
-        periodKey: plan.periods[index].period_key,
-        request: (current?.request ?? 0) + 1,
-      }));
-  }
-
-  function advance() {
-    if (nextPeriod === null) {
-      goToStep(step === 1 ? 2 : 1);
-      document.getElementById(panelId)?.focus({ preventScroll: true });
-      return;
-    }
-    setMoveNotice("");
-    setDetailKey(null);
-    setDrag(null);
-    setActivePeriod(nextPeriod);
-    setSelectedCell(null);
-    tabListRef.current?.scrollIntoView?.({ block: "start" });
-    document.getElementById(tabId(nextPeriod))?.focus();
   }
 
   function renderPicking() {
@@ -690,34 +503,50 @@ export default function PlayProjectResult({
         onToggle={toggleCandidate}
         onRemove={removeFromPickList}
         onDetail={setDetailKey}
-        onArrange={() => goToStep(1)}
+        onArrange={() => setStep(1)}
+        onPeriod={goToPeriod}
       />
     );
   }
 
+  // 칸 편집: 칸 칩 · 입력창 · 문서에서 빼기. 순서는 문서에서 끌어 옮긴다.
   function renderViewer() {
     if (!selectedCandidate || !selectedCell || !selectedField)
       return (
-        <p className={`${workspace.muted} ${styles.hint}`}>
-          오른쪽 문서의 칸을 누르면 여기에서 볼 수 있어요.
+        <p className="m-0 text-[15px] text-[#5c5243]">
+          오른쪽 문서의 칸을 누르면 여기에서 고칠 수 있어요.
         </p>
       );
     return (
-      <div className={`${workspace.field} ${styles.viewer}`}>
-        <div className={workspace.pills} aria-label="미리 볼 칸">
+      <div className="flex flex-col gap-4">
+        <h2 className="m-0 text-[20px] font-bold leading-tight">
+          {selectedCandidate.play_name.value}
+        </h2>
+        <div className="flex flex-wrap gap-1.5" aria-label="고칠 칸">
           {fields.map((field) => (
             <button
               type="button"
               key={field.key}
               aria-pressed={selectedCell.field === field.key}
-              className={selectedCell.field === field.key ? workspace.selected : undefined}
+              className={`min-h-[36px] rounded-full border px-3 text-sm ${selectedCell.field === field.key ? "border-[#7053a0] bg-[#f6f1fb] font-bold text-[#5e4b96]" : "border-[#e8e2d8] text-[#5c5243]"}`}
               onClick={() => selectCell(activePeriod, selectedCell.rowKey, field.key)}
             >
-              {field.label}
+              {field.key === "learning" ? "배움" : field.label}
             </button>
           ))}
         </div>
-        {renderCellField(selectedCandidate[selectedField.key], selectedField)}
+        <div className={workspace.field}>
+          {renderCellField(selectedCandidate[selectedField.key], selectedField)}
+        </div>
+        <div className="flex gap-2 border-t border-[#efeae2] pt-4">
+          <button
+            type="button"
+            className={BUTTON.quiet}
+            onClick={() => toggleCandidate(selectedCandidate.row_key)}
+          >
+            문서에서 빼기
+          </button>
+        </div>
       </div>
     );
   }
@@ -750,137 +579,120 @@ export default function PlayProjectResult({
     );
   }
 
-  function renderPickedList() {
+  // AI 후보: 문서에 넣은 놀이(순서 · 빼기)와 넣을 수 있는 나머지 후보(넣기).
+  // 고른 놀이는 번호 붙은 한 묶음, 나머지는 한 장씩 테두리 카드. 둘 다 끌어서 서로 옮긴다(문서 줄에도 놓을 수 있다).
+  function renderCandidates() {
+    const rest = period.candidates.filter((c) => !periodPicks.includes(c.row_key));
+    const full = periodPicks.length >= MAX_PICKS;
     return (
-      <div className={workspace.stack}>
-        <h2 id={pickedHeadingId} tabIndex={-1}>
-          고른 놀이 {periodPicks.length}
-        </h2>
-        <div className={workspace.stack}>
-          {pickedCandidates.map((candidate, index) => (
-            <PickedListRow
-              key={candidate.row_key}
-              candidate={candidate}
-              index={index}
-              count={pickedCandidates.length}
-              periodKey={period.period_key}
-              buttonId={pickId(candidate.row_key)}
-              selected={
-                selectedCell?.periodKey === period.period_key &&
-                selectedCell.rowKey === candidate.row_key
-              }
-              drag={drag?.periodKey === period.period_key ? drag : null}
-              draggable={wide}
-              dnd={dnd}
-              onSelect={() => selectCell(activePeriod, candidate.row_key, "play_name", true)}
-              onMove={(delta) => moveCandidate(candidate.row_key, delta)}
-              onRemove={() => removeCandidate(candidate.row_key)}
-            />
-          ))}
-        </div>
+      <div className="flex flex-col gap-5">
         <section
-          className={`${workspace.card} ${styles.availableCard}`}
-          aria-label="넣을 수 있는 놀이"
+          className="flex flex-col gap-2"
+          {...DROP_HOVER}
+          onDrop={(event) => dropToPicked(takeDrop(event))}
         >
-          <h2>넣을 수 있는 놀이 {period.candidates.length - periodPicks.length}</h2>
-          <div className={workspace.stack}>
-            {period.candidates.map((candidate, index) => {
-              if (periodPicks.includes(candidate.row_key)) return null;
-              return (
-                <div key={candidate.row_key} className={styles.pickedRow}>
-                  <div className={styles.availableName}>
-                    <p className={workspace.eyebrow}>후보 {index + 1}</p>
-                    <p>{candidate.play_name.value}</p>
-                  </div>
+          <h2
+            id={pickedHeadingId}
+            tabIndex={-1}
+            className="m-0 flex items-baseline justify-between text-[18px] font-bold leading-tight"
+          >
+            {seasonLabel} 놀이
+            <span className="text-[13px] font-normal text-ink-soft">
+              {periodPicks.length}/{MAX_PICKS} 골랐어요
+            </span>
+          </h2>
+          {pickedCandidates.length > 0 && (
+            <ol className="m-0 list-none divide-y divide-[#ece6dc] rounded-md border border-line bg-paper p-0">
+              {pickedCandidates.map((candidate, index) => (
+                <li
+                  key={candidate.row_key}
+                  className={`flex cursor-grab items-center gap-2.5 py-2.5 pl-2 pr-3 hover:bg-[#fbf9f5] ${DROP_ON}`}
+                  draggable
+                  onDragStart={(event) =>
+                    event.dataTransfer.setData("text/plain", candidate.row_key)
+                  }
+                  {...DROP_HOVER}
+                  onDrop={(event) => dropPick(takeDrop(event), candidate.row_key)}
+                >
+                  {GRIP}
+                  <span
+                    aria-hidden="true"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#efe8f7] text-xs font-bold text-primary-ink"
+                  >
+                    {index + 1}
+                  </span>
                   <button
                     type="button"
-                    className={workspace.secondary}
-                    aria-label={`${candidate.play_name.value} 넣기`}
-                    disabled={periodPicks.length >= MAX_PICKS}
-                    onClick={() => addCandidate(candidate.row_key)}
+                    className="flex min-w-0 flex-1 flex-col text-left"
+                    onClick={() => selectCell(activePeriod, candidate.row_key, "play_name")}
                   >
-                    넣기
+                    <span className="truncate text-[15px] font-bold">
+                      {candidate.play_name.value}
+                    </span>
+                    <span className="truncate text-[13px] text-ink-soft">
+                      {candidate.materials.value}
+                    </span>
                   </button>
-                </div>
-              );
-            })}
-          </div>
-          {periodPicks.length === MAX_PICKS && (
-            <p
-              role="status"
-              className={`${workspace.muted} ${styles.limitMessage} ${styles.availableLimit}`}
-            >
-              5개를 모두 골랐어요. 바꾸려면 하나를 빼 주세요.
-            </p>
+                  {candidate.memo_applied && <MemoMark />}
+                  <button
+                    type="button"
+                    className="min-h-[36px] shrink-0 rounded-md px-2.5 text-[13px] text-ink-soft hover:bg-[#f3efe8] hover:text-ink"
+                    aria-label={`${candidate.play_name.value} 빼기`}
+                    onClick={() => toggleCandidate(candidate.row_key)}
+                  >
+                    빼기
+                  </button>
+                </li>
+              ))}
+            </ol>
           )}
         </section>
-      </div>
-    );
-  }
-
-  function renderArrangement(interactive = true) {
-    return (
-      <div className={interactive ? styles.arrangementGrid : styles.draftArrangement}>
-        {interactive && (
-          <div className={workspace.stack}>
-            <section
-              className={`${workspace.card} ${styles.leftPanel}`}
-              aria-label="고른 놀이와 선택한 칸"
-            >
-              <div
-                role="tablist"
-                aria-label="왼쪽 패널"
-                className={styles.leftTabs}
-                onKeyDown={onLeftTabKey}
-              >
-                {(["edit", "picked"] as const).map((tab) => (
+        {rest.length > 0 && (
+          <section
+            className={`-m-1.5 flex flex-col gap-1 rounded-md p-1.5 ${DROP_ON}`}
+            {...DROP_HOVER}
+            onDrop={(event) => dropToRest(takeDrop(event))}
+          >
+            <h3 className="m-0 text-[15px] font-bold text-ink">다른 후보 {rest.length}개</h3>
+            <p className="m-0 mb-1 text-[13px] text-ink-soft">
+              {full
+                ? "위 놀이나 문서 줄에 끌어 놓으면 그 놀이와 바뀌어요."
+                : "넣으면 고른 놀이 맨 아래에 붙어요. 끌어 놓으면 그 자리에 들어가요."}
+            </p>
+            <ul className="m-0 flex list-none flex-col gap-2 p-0">
+              {rest.map((candidate) => (
+                <li
+                  key={candidate.row_key}
+                  className="flex cursor-grab items-center gap-2.5 rounded-md border border-line bg-[#faf8f4] py-2.5 pl-2 pr-3 hover:bg-[#f5f1e9]"
+                  draggable
+                  onDragStart={(event) =>
+                    event.dataTransfer.setData("text/plain", candidate.row_key)
+                  }
+                >
+                  {GRIP}
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-[15px] font-bold">
+                      {candidate.play_name.value}
+                    </span>
+                    <span className="truncate text-[13px] text-ink-soft">
+                      {candidate.materials.value}
+                    </span>
+                  </span>
+                  {candidate.memo_applied && <MemoMark />}
                   <button
-                    key={tab}
                     type="button"
-                    role="tab"
-                    id={leftTabId(tab)}
-                    aria-selected={editorTab === tab}
-                    aria-controls={leftPanelId(tab)}
-                    tabIndex={editorTab === tab ? 0 : -1}
-                    onClick={() => selectLeftTab(tab)}
+                    className={SMALL}
+                    aria-label={`${candidate.play_name.value} 넣기`}
+                    disabled={full}
+                    onClick={() => toggleCandidate(candidate.row_key)}
                   >
-                    {tab === "edit" ? "내용 편집" : `선택한 놀이 ${periodPicks.length}`}
+                    + 넣기
                   </button>
-                ))}
-              </div>
-              <div
-                role="tabpanel"
-                id={leftPanelId("edit")}
-                aria-labelledby={leftTabId("edit")}
-                hidden={editorTab !== "edit"}
-              >
-                {renderViewer()}
-              </div>
-              <div
-                role="tabpanel"
-                id={leftPanelId("picked")}
-                aria-labelledby={leftTabId("picked")}
-                hidden={editorTab !== "picked"}
-              >
-                {renderPickedList()}
-              </div>
-              <p role="status" className={`${workspace.muted} ${styles.moveNotice}`}>
-                {moveNotice}
-              </p>
-            </section>
-          </div>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
-        <PlayProjectSheet
-          plan={shown}
-          picks={picks}
-          interactive={interactive}
-          selectedCell={selectedCell}
-          onSelectCell={selectCell}
-          zoom={zoom}
-          onZoomChange={setZoom}
-          scrollPeriod={scrollPeriod}
-          dnd={interactive && wide ? dnd : undefined}
-        />
       </div>
     );
   }
@@ -909,57 +721,24 @@ export default function PlayProjectResult({
         await onConflict();
         return;
       }
-      const keys = error instanceof ApiError && error.status === 422 ? serverFields(error) : [];
+      const keys = error instanceof ApiError && error.status === 422 ? errorFields(error) : [];
       const short = plan.periods.filter((item) => keys.includes(item.period_key));
       if (short.length) {
+        // 5개가 안 찬 첫 구간으로 보내고 AI 후보 탭을 연다 — 거기서 넣으면 된다.
         setLacking(short.map((item) => item.period_key));
-        setConfirmError(
-          `${short.map((item) => item.label).join(" · ")} 구간이 5개가 안 돼요. 모두 5개를 골라 주세요.`,
-        );
+        goToPeriod(plan.periods.indexOf(short[0]));
+        setEditorTab("picked");
+        bigDialog.current?.close();
+        setConfirmError(`${short.map((item) => item.label).join(" · ")} 놀이를 5개 골라 주세요.`);
       } else setConfirmError(error instanceof Error ? error.message : "확정하지 못했어요.");
     } finally {
       confirmLock.current = false;
       frozen.current = false;
-      if (mounted.current) setConfirming(false);
+      if (mounted.current) {
+        setConfirming(false);
+        setAsking(false);
+      }
     }
-  }
-
-  function renderDraft() {
-    const shortages = plan.periods
-      .filter((item) => (picks[item.period_key]?.length ?? 0) < MAX_PICKS)
-      .map((item) => `${item.label}이 ${picks[item.period_key]?.length ?? 0}개`);
-    return (
-      <div className={workspace.stack}>
-        {!confirmed && shortages.length > 0 && (
-          <p role="status" className={workspace.muted}>
-            {shortages.join(", ")}예요. 확정하려면 구간마다 5개가 필요해요.
-          </p>
-        )}
-        {!confirmed && (
-          <div className={styles.meta}>
-            <button
-              type="button"
-              className={workspace.secondary}
-              disabled={confirming}
-              onClick={() => goToStep(1)}
-            >
-              ← 배치하고 다듬기로
-            </button>
-            <button
-              type="button"
-              className={workspace.primary}
-              disabled={shortages.length > 0 || confirming}
-              onClick={confirm}
-            >
-              {confirming ? "확정하는 중…" : "확정하기"}
-            </button>
-            <span className={workspace.muted}>확정하면 고칠 수 없어요</span>
-          </div>
-        )}
-        {confirmError && <p role="alert">{confirmError}</p>}
-        {renderArrangement(false)}
-      </div>
-    );
   }
 
   const cellFieldId = "play-project-selected-cell";
@@ -968,135 +747,279 @@ export default function PlayProjectResult({
   const pickedHeadingId = `${panelId}-picked`;
   const leftTabId = (tab: string) => `${panelId}-left-${tab}`;
   const leftPanelId = (tab: string) => `${panelId}-left-${tab}-panel`;
-  const pickId = (rowKey: string, periodKey = period.period_key) =>
-    `${panelId}-${periodKey}-${rowKey}`;
   const pickPrefix = `${panelId}-pick`;
-  return (
-    <main className={workspace.page}>
-      <div className={styles.meta}>
-        <span className={workspace.badge}>{confirmed ? "확정됨" : "초안"}</span>
-        <span>{plan.school_year}학년도</span>
-        <span role="status">{SAVE_LABEL[saving.status]}</span>
-        {!confirmed && saving.status === "failed" && (
-          <button type="button" className={workspace.secondary} onClick={saving.retry}>
-            다시 저장
-          </button>
-        )}
-        {(confirmed ? [] : (["undo", "redo"] as const)).map((direction) => (
-          <button
-            key={direction}
-            type="button"
-            className={workspace.secondary}
-            disabled={confirming || edit.history[direction].length === 0}
-            onClick={() => stepThrough(direction)}
-          >
-            <span aria-hidden="true">{direction === "undo" ? "⟲" : "⟳"}</span>{" "}
-            {direction === "undo" ? "되돌리기" : "다시 하기"}
-          </button>
-        ))}
-        <span role="status">{historyNotice}</span>
-      </div>
-      <ol
-        className={`${tabs.steps} ${styles.steps}`}
-        aria-label="놀이 프로젝트 결과 단계"
-        hidden={confirmed}
-      >
-        {["① 놀이 고르기", "② 배치하고 다듬기", "③ 전체 초안 보기"].map((label, index) => (
-          <li key={label} className={step === index ? tabs.reached : undefined}>
-            <span>0{index + 1}</span>
-            <button
-              type="button"
-              className={styles.stepButton}
-              aria-current={step === index ? "step" : undefined}
-              disabled={confirming}
-              onClick={() => goToStep(index)}
-            >
-              {label}
-            </button>
-          </li>
-        ))}
-      </ol>
-      {notice && (
-        <p role="status" className={workspace.notice}>
-          {notice}
-        </p>
-      )}
-      <div className={workspace.notice}>
-        {confirmed && <p>확정했어요. 확정한 계획안은 고치거나 지울 수 없어요.</p>}
-        {confirmed ? (
-          <>
-            <button
-              type="button"
-              className={workspace.secondary}
-              disabled={hwpx.exporting}
-              onClick={() => void hwpx.download(() => downloadAnnualHwpx(plan.id))}
-            >
-              {hwpx.exporting ? "내려받는 중…" : "한글 파일로 내려받기"}
-            </button>
-            {exportMessage && <p role="status">{exportMessage}</p>}
-          </>
-        ) : (
-          <p>확정하면 한글 파일로 내려받을 수 있어요.</p>
-        )}
-      </div>
-      <div className={styles.tabRow}>
-        <div
-          ref={tabListRef}
-          role="tablist"
-          aria-label="놀이 프로젝트 기간"
-          className={`${tabs.tabs} ${tabs.wrappingTabs} ${styles.periodTabs}`}
-        >
-          {plan.periods.map((item, index) => (
-            <button
-              key={item.period_key}
-              id={tabId(index)}
-              type="button"
-              role="tab"
-              aria-selected={activePeriod === index}
-              aria-controls={panelId}
-              className={
-                [
-                  activePeriod === index && tabs.activeTab,
-                  lacking.includes(item.period_key) && styles.lack,
-                ]
-                  .filter(Boolean)
-                  .join(" ") || undefined
-              }
-              onClick={() => goToPeriod(index)}
-            >
-              {item.label} · {picks[item.period_key]?.length ?? 0}/{MAX_PICKS}
-            </button>
-          ))}
-        </div>
-        <p className={styles.total}>
-          전체 <strong>{total}</strong>/{plan.periods.length * MAX_PICKS}개 선택
-        </p>
-      </div>
-      <section
-        id={panelId}
-        role="tabpanel"
-        aria-labelledby={tabId(activePeriod)}
-        tabIndex={0}
-        className={`${styles.panel} ${showFloating ? styles.panelWithFloating : ""}`}
-      >
-        {step === 0 && renderPicking()}
-        {step === 1 && renderArrangement()}
-        {step === 2 && renderDraft()}
-      </section>
-      {showFloating && (
+  const periodTabs = (
+    <div
+      role="tablist"
+      aria-label="놀이 프로젝트 기간"
+      className="flex flex-wrap gap-0.5 rounded-md border border-line bg-paper p-0.5"
+    >
+      {plan.periods.map((item, index) => (
         <button
-          ref={floatingRef}
+          key={item.period_key}
+          id={tabId(index)}
           type="button"
-          className={`${workspace.primary} ${styles.floatingNext}`}
-          onClick={advance}
+          role="tab"
+          aria-selected={activePeriod === index}
+          aria-controls={panelId}
+          className={`${pageClass(activePeriod === index)} inline-flex items-center gap-1.5 ${lacking.includes(item.period_key) ? "text-[#b3261e]" : ""}`}
+          onClick={() => goToPeriod(index)}
         >
-          {step === 1
-            ? "전체 초안 보기로 →"
-            : nextPeriod === null
-              ? "배치하고 다듬기로 →"
-              : `다음: ${plan.periods[nextPeriod].label} 고르기 →`}
+          {/* 문서 위 도구줄에 들어가 좁다 — 계절 이름이 있으면 달은 마우스를 올리면 보인다. */}
+          {playSeason(item).name ? (
+            <span title={playSeason(item).months}>{playSeason(item).name}</span>
+          ) : (
+            <span className="text-[13px] font-normal">{playSeason(item).months}</span>
+          )}{" "}
+          <span
+            className={`rounded-full px-1.5 text-xs font-bold ${lacking.includes(item.period_key) ? "bg-[#fdecea]" : "bg-[#f3efe8]"}`}
+          >
+            {picks[item.period_key]?.length ?? 0}/{MAX_PICKS}
+          </span>
         </button>
-      )}
-    </main>
+      ))}
+    </div>
+  );
+
+  // ④ 놀이 고르기.
+  if (step === 0)
+    return (
+      <main className={workspace.page}>
+        {/* 정답지 ④: 제목 · 칩 · 안내 · 저장 상태 | 계절 탭 — 한 줄. */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* 편집 화면과 같은 ← 돌아가기. */}
+            <Link
+              href="/plans"
+              aria-label="돌아가기: 계획안"
+              title="계획안"
+              className={BACK_BUTTON}
+            >
+              {BACK_ICON}
+            </Link>
+            <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+              놀이 고르기
+            </h1>
+            <span className="rounded-full bg-[#eee4f4] px-3 py-1 text-[13px] font-bold text-[#5e4b96]">
+              놀이 중심형
+            </span>
+            <span role="status" className="text-[13px] text-ink-soft">
+              {SAVE_LABEL[saving.status]}
+            </span>
+            {saving.status === "failed" && (
+              <button type="button" className={workspace.secondary} onClick={saving.retry}>
+                다시 저장
+              </button>
+            )}
+          </div>
+          {/* 계절 탭은 ⑤ 문서 머리줄과 같은 것 — 넘치면 다음 줄로 내려가서 휴대전화에서도 가로로 넘치지 않는다. */}
+          {periodTabs}
+        </div>
+        {notice && (
+          <p role="status" className={workspace.notice}>
+            {notice}
+          </p>
+        )}
+        <section id={panelId} role="tabpanel" aria-labelledby={tabId(activePeriod)} tabIndex={0}>
+          {renderPicking()}
+        </section>
+      </main>
+    );
+
+  const aside = (
+    <>
+      <div
+        role="tablist"
+        aria-label="왼쪽 패널"
+        className="flex gap-5 border-b border-[#efeae2] px-6 pt-2"
+        onKeyDown={onLeftTabKey}
+      >
+        {(["picked", "edit"] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            id={leftTabId(tab)}
+            aria-selected={editorTab === tab}
+            aria-controls={leftPanelId(tab)}
+            tabIndex={editorTab === tab ? 0 : -1}
+            className={tabClass(editorTab === tab)}
+            onClick={() => selectLeftTab(tab)}
+          >
+            {tab === "edit" ? "칸 편집" : "AI 후보"}
+          </button>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        <div
+          role="tabpanel"
+          id={leftPanelId("picked")}
+          aria-labelledby={leftTabId("picked")}
+          hidden={editorTab !== "picked"}
+        >
+          {renderCandidates()}
+        </div>
+        <div
+          role="tabpanel"
+          id={leftPanelId("edit")}
+          aria-labelledby={leftTabId("edit")}
+          hidden={editorTab !== "edit"}
+        >
+          {renderViewer()}
+        </div>
+        <p role="status" className="m-0 mt-3 text-[13px] text-[#5c5243]">
+          {moveNotice}
+        </p>
+      </div>
+    </>
+  );
+  return (
+    <AnnualFrame
+      title={`${plan.school_year} 연간계획안`}
+      format={plan.format}
+      lead={
+        <Link href="/plans" aria-label="돌아가기: 계획안" title="계획안" className={BACK_BUTTON}>
+          {BACK_ICON}
+        </Link>
+      }
+      saved={SAVE_LABEL[saving.status]}
+      status={
+        <span className="flex items-center gap-3">
+          <PlanMemoNote plan={plan} />
+          {/* ⑤ 에서 ④ 로 돌아가는 길. 없어서 멘토가 뒤로 갔다 다시 들어와야 놀이 고르기가 보였다(11-05). */}
+          <button type="button" className={BUTTON.outline} onClick={() => setStep(0)}>
+            놀이 다시 고르기
+          </button>
+        </span>
+      }
+      notice={
+        <>
+          {notice && (
+            <p role="status" className="m-0 text-sm text-[#5c5243]">
+              {notice}
+            </p>
+          )}
+          {saving.status === "failed" && (
+            <button type="button" className={BUTTON.outline + " self-start"} onClick={saving.retry}>
+              다시 저장
+            </button>
+          )}
+          <span role="status" className="sr-only">
+            {historyNotice}
+          </span>
+          {confirmError && (
+            <p role="alert" className="m-0 text-sm font-bold text-[#b3261e]">
+              {confirmError}
+            </p>
+          )}
+        </>
+      }
+      actions={
+        <>
+          <div className="relative">
+            <button
+              type="button"
+              className={BUTTON.primary}
+              disabled={confirming}
+              onClick={() => {
+                if (!gap) return setAsking(true);
+                setAsking(false);
+                setNudge((n) => n + 1);
+              }}
+            >
+              확정하기
+            </button>
+            {nudge > 0 && gap && (
+              <div className={POPOVER}>
+                <PlayMonthlyConfirm
+                  key={nudge}
+                  shake
+                  message={
+                    gap.rowKey
+                      ? "아직 빈칸이 남아있어요. 빈칸을 채운 뒤 확정해 주세요."
+                      : `아직 고르지 않은 놀이가 남아있어요. 기간마다 ${MAX_PICKS}개를 고른 뒤 확정해 주세요.`
+                  }
+                  no={gap.rowKey ? "빈칸 채우기" : "놀이 고르기"}
+                  onNo={() => {
+                    setNudge(0);
+                    if (gap.rowKey) selectCell(gap.index, gap.rowKey, gap.field);
+                    else {
+                      goToPeriod(gap.index);
+                      setEditorTab("picked");
+                    }
+                  }}
+                />
+              </div>
+            )}
+            {asking && (
+              <div className={POPOVER}>
+                <PlayMonthlyConfirm
+                  title="연간계획안을 확정할까요?"
+                  message={
+                    "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요.\n이 내용으로 월간계획안을 만들게 돼요."
+                  }
+                  yes={confirming ? "확정하는 중…" : "확정하기"}
+                  no="더 다듬기"
+                  disabled={confirming}
+                  onYes={confirm}
+                  onNo={() => setAsking(false)}
+                />
+              </div>
+            )}
+          </div>
+        </>
+      }
+      aside={aside}
+      docLabel={periodTabs}
+      docHint={
+        <div className="flex items-center gap-2">
+          <UndoRedo
+            disabled={confirming}
+            canUndo={edit.history.undo.length > 0}
+            onUndo={() => stepThrough("undo")}
+            canRedo={edit.history.redo.length > 0}
+            onRedo={() => stepThrough("redo")}
+          />
+          {sheetZoom.tools}
+          <span>
+            <BigView
+              pages={Math.ceil(plan.periods.length / 2)}
+              labels={playPageLabels(plan.periods)}
+              width={SHEET_WIDTH}
+              dialog={bigDialog}
+              render={(page) => (
+                <PlayProjectSheet
+                  plan={shown}
+                  className={className}
+                  picks={picks}
+                  periods={[page * 2, page * 2 + 1].filter((i) => i < plan.periods.length)}
+                  perPage={2}
+                />
+              )}
+            />
+          </span>
+        </div>
+      }
+    >
+      <div ref={docBox}>
+        <section
+          id={panelId}
+          role="tabpanel"
+          aria-labelledby={tabId(activePeriod)}
+          style={{ zoom: sheetZoom.percent / 100, width: SHEET_WIDTH }}
+          className="mx-auto"
+        >
+          <PlayProjectSheet
+            plan={shown}
+            className={className}
+            picks={picks}
+            periods={[activePeriod]}
+            selectedCell={selectedCell}
+            onSelectCell={selectCell}
+            onDropPick={dropPick}
+          />
+        </section>
+      </div>
+    </AnnualFrame>
   );
 }

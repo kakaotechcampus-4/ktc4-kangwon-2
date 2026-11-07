@@ -131,7 +131,10 @@ def test_PUT_중에_온_확정은_기다렸다가_고친_본문을_확정한다(
         return _confirm(plan_id)
 
     put, confirm, blocked = _race(
-        lambda: _put(plan_id, 3, "고친 3월 주제", ["첫 주"]), confirm_after_peek, reached, release
+        lambda: _put(plan_id, 3, "고친 3월 주제", ["첫 주", "둘째 주", "셋째 주", "넷째 주"]),
+        confirm_after_peek,
+        reached,
+        release,
     )
 
     assert seen_during_hold == [200]
@@ -142,7 +145,7 @@ def test_PUT_중에_온_확정은_기다렸다가_고친_본문을_확정한다(
     assert events.count("CONFIRMED") == 1
     assert themes[3] == "고친 3월 주제"  # 확정된 본문에 교사 수정이 들어 있다
     assert "TEACHER_EDITED" in _month_events(plan_id, 3)
-    assert row.sub_themes["3"] == ["첫 주"]
+    assert row.sub_themes["3"] == ["첫 주", "둘째 주", "셋째 주", "넷째 주"]
 
 
 def test_확정_중에_온_PUT_은_기다렸다가_409_이고_사라지는_수정이_없다(live, monkeypatch):
@@ -184,7 +187,7 @@ def test_다른_달을_동시에_고친_PUT_둘은_둘_다_남는다(live, monke
     assert "TEACHER_EDITED" in _month_events(plan_id, 4)
 
 
-def test_확정_중에_온_삭제는_기다렸다가_409_이고_확정본이_남는다(live, monkeypatch):
+def test_확정_중에_온_삭제는_기다렸다가_확정이_끝난_뒤_지운다(live, monkeypatch):
     plan_id = live["plan"]
     reached, release = _paused(monkeypatch, "ConfirmYearlyPlan")
 
@@ -196,13 +199,10 @@ def test_확정_중에_온_삭제는_기다렸다가_409_이고_확정본이_남
     )
 
     assert blocked  # 삭제가 확정의 잠금을 기다렸다
+    # 확정본도 지운다(ADR-064). 확정이 먼저 끝나고, 그 뒤에 삭제가 확정본을 지운다.
     assert confirm.status_code == 200
-    # 잠그지 않으면 DRAFT 를 보고 지나간 DELETE 가 확정 뒤에 실행돼 204 · 확정본이 사라진다.
-    assert removed.status_code == 409, removed.text
-    assert removed.json()["error"]["code"] == "GATE_BLOCKED"
-    row, events, _ = _stored(plan_id)
-    assert row.status == "CONFIRMED"
-    assert events.count("CONFIRMED") == 1
+    assert removed.status_code == 204, removed.text
+    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 404
 
 
 def test_확정을_두_번_동시에_보내도_확정은_한_번이고_둘_다_200(live, monkeypatch):

@@ -1,15 +1,17 @@
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getMe } from "@/lib/api/auth";
-import { getClasses } from "@/lib/api/classes";
+import { getClasses, isMyClass } from "@/lib/api/classes";
 import { isUnauthenticated } from "@/lib/api/client";
+import { useUnsavedWarning } from "@/lib/hooks/use-unsaved-warning";
 import { classServerId } from "@/lib/api/onboarding";
 import {
   createRoutine,
   deleteRoutine,
+  listRoutineDates,
   listRoutines,
+  routineLocalId,
   routineTime,
   routineTimeValue,
   sortRoutinesByTime,
@@ -25,21 +27,65 @@ import { useClientState } from "@/lib/hooks/use-client-state";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { today, validDate } from "@/lib/workspace/model";
 import { routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
-import { WorkspacePage, Empty, Message, ws } from "./WorkspaceUI";
+import { Posty } from "@/components/app/Posty";
+import { WorkspacePage, Empty, JournalTabs, Message, Notice, Tape, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
-import RoutineTimePicker from "./RoutineTimePicker";
+import RoutineCalendar, { koreanDay, monthRange } from "./RoutineCalendar";
+import RoutineClock from "./RoutineClock";
+import DailyJournalCard, { DailyJournalEditor, useDailyJournal } from "./DailyJournalCard";
 
 const CLASSES_FAILED = "반 목록을 불러오지 못했어요. 잠시 뒤 다시 열어주세요.";
 // 서버 routine_records.name 이 50자다. 더 보내면 422 다 (§10-1).
 const NAME_MAX = 50;
-/** 그날 적은 게 하나도 없을 때 깔아 두는 줄 수 (S-J1). */
-const BLANK_ROWS = 5;
+
+/**
+ * 그날 적은 게 하나도 없을 때 깔아 두는 하루 (S-J1).
+ *
+ * 빈 줄 다섯을 깔던 자리다. 어린이집 하루는 반마다 거의 같은데 교사가 매일 그 이름을
+ * 열 번 다시 쳤다. 깔아 두고 **실제로 한 것만** 적게 한다 — 키즈노트 · 한그루가 그렇게 한다.
+ * 어제 적은 하루가 있으면 이 표 대신 어제의 이름 · 시간을 깐다.
+ *
+ * 이름과 시간은 국가 공식 양식의 유아 10행형 그대로다
+ * (`docs/references/보육일지-공식양식.md` — 중앙육아종합지원센터 배포, 무료 공개 자료).
+ *
+ * **깔아 둔 줄은 교사가 손대기 전까지 저장하지 않는다.** 손대지 않은 하루가 서버에 쌓이면
+ * 일일 보육일지가 빈 일과를 근거로 삼는다.
+ */
+const DEFAULT_ROUTINES: [name: string, start: string, end: string][] = [
+  ["등원 및 통합보육", "07:30", "09:00"],
+  ["오전간식", "09:00", "09:20"],
+  ["오전 실내놀이", "09:20", "10:40"],
+  ["활동", "10:40", "11:00"],
+  ["바깥놀이(대체)", "11:00", "12:20"],
+  ["점심식사", "12:20", "13:20"],
+  ["낮잠 및 휴식", "13:20", "14:20"],
+  ["오후 놀이", "14:20", "15:40"],
+  ["오후간식", "15:40", "16:00"],
+  ["귀가 및 통합보육", "16:00", "17:00"],
+];
 const NAME_REQUIRED = "일과 이름을 적어 주세요.";
 const TIME_BACKWARDS = "끝나는 시간이 시작보다 빨라요.";
 const HAS_PROBLEM = "입력하지 않은 필수 항목이 있어요. 표시된 일과를 확인해 주세요.";
 
-/** 교사가 고쳐야 할 줄을 **몇 번째인지까지** 말한다 — 카드 안 빨간 글씨만으로는 못 찾는다. */
-const problemSummary = (lines: string[]) => `${HAS_PROBLEM}\n${lines.join("\n")}`;
+/** 교사가 고쳐야 할 줄 한 건. 번호로 세고, 눌러서 그 칸으로 간다. */
+interface Problem {
+  rowKey: string;
+  /** 화면에서 몇 번째 줄인가 (1부터). */
+  at: number;
+  text: string;
+}
+
+/**
+ * 「간식」과 · 「바깥놀이」와 — 받침에 따라 조사를 고른다.
+ *
+ * 전에는 이름 뒤에 늘 「와」를 붙여 「간식 와 시간이 겹쳐요」가 나왔다. 교사가 읽는 글이다.
+ */
+function withParticle(name: string) {
+  const text = name.trim();
+  const last = text.charCodeAt(text.length - 1);
+  const hangul = last >= 0xac00 && last <= 0xd7a3;
+  return `「${text}」${hangul && (last - 0xac00) % 28 !== 0 ? "과" : "와"}`;
+}
 
 /** 화면 맨 위로 끌어올리고 그 칸에 커서를 둔다. 테스트 harness 에는 DOM 이 없다. */
 function focusField(id: string) {
@@ -52,8 +98,7 @@ function focusField(id: string) {
 /** 줄마다 고유한 입력 칸 id. 요약에서 바로 그 칸으로 보낸다. */
 const nameFieldId = (rowKey: string) => `routine-name-${rowKey}`;
 const SAVED = "저장했어요.";
-const NO_YESTERDAY = "어제 적은 일과가 없어요.";
-const UNKNOWN_CLASS = "주소에 적힌 반을 찾을 수 없어요. 반을 골라주세요.";
+const UNKNOWN_CLASS = "주소에 적힌 반을 찾을 수 없어요. 왼쪽 위 반 이름을 눌러 반을 골라주세요.";
 
 function messageFor(error: unknown) {
   if (isUnauthenticated(error)) return "로그인이 필요해요. 다시 로그인한 뒤 이용해주세요.";
@@ -70,9 +115,20 @@ interface Row {
   name: string;
   plan: string;
   execution: string;
+  /** 교사가 이 줄을 건드렸나. 깔아 둔 기본 일과를 「적은 줄」로 세지 않으려고 둔다. */
+  touched: boolean;
+  /** 깔아 둔 처음 모습. 서버에 없는 줄의 「되돌리기」가 여기로 돌아간다. */
+  base: { name: string; start: string; end: string } | null;
+  /**
+   * 쪽지 색 · 기울기 (0~3). **줄이 만들어질 때 정해지고 그 줄을 따라다닌다.**
+   *
+   * 자리(`index % 4`)로 정했더니 시간순으로 줄을 세울 때 글자만 바뀌고 색은 그 자리에
+   * 남았다 — 쪽지 한 장이 통째로 움직이는 것으로 보이지 않는다.
+   */
+  tone: number;
 }
 
-type Field = Exclude<keyof Row, "key" | "id">;
+type Field = Exclude<keyof Row, "key" | "id" | "tone">;
 
 /**
  * 이 화면의 초안 전체 (FR-402).
@@ -95,6 +151,8 @@ interface Draft {
 interface Loaded {
   key: string;
   rows: ApiRoutine[];
+  /** 그날이 비었을 때 깔 어제 하루. 비어 있으면 기본 하루를 깐다. */
+  preset: ApiRoutine[];
   error: string;
 }
 
@@ -102,14 +160,26 @@ interface Loaded {
 let nextRowKey = 0;
 const blankRow = (): Row => ({
   key: `new:${(nextRowKey += 1)}`,
+  tone: nextRowKey % 4,
   id: null,
   start: "",
   end: "",
   name: "",
   plan: "",
   execution: "",
+  touched: false,
+  base: null,
+});
+/** 깔아 두는 줄. 이름 · 시간은 있지만 교사가 손대기 전까지 저장하지 않는다. */
+const presetRow = (name: string, start: string, end: string): Row => ({
+  ...blankRow(),
+  name,
+  start,
+  end,
+  base: { name, start, end },
 });
 const serverRow = (row: ApiRoutine): Row => ({
+  ...blankRow(),
   key: `server:${row.id}`,
   id: row.id,
   start: routineTime(row.start),
@@ -117,18 +187,31 @@ const serverRow = (row: ApiRoutine): Row => ({
   name: row.name,
   plan: row.plan,
   execution: row.execution,
+  touched: true,
+  base: null,
 });
 
-const draftFrom = (key: string, rows: ApiRoutine[]): Draft => ({
+const draftFrom = (key: string, rows: ApiRoutine[], preset?: ApiRoutine[]): Draft => ({
   key,
-  // 그날 적은 게 없으면 빈 줄 다섯. **있으면 거기에 빈 줄을 더하지 않는다** (S-J1).
-  rows: rows.length ? rows.map(serverRow) : Array.from({ length: BLANK_ROWS }, blankRow),
+  // 그날 적은 게 없으면 어제 하루를, 어제도 없으면 기본 하루를 깐다 (S-J1 · FR-403).
+  // 읽자마자 시간순으로 세운다 — 번호가 겹친 지난 데이터도 교사 눈에는 시간 순이어야 한다.
+  rows: sortRoutinesByTime(
+    rows.length
+      ? rows.map(serverRow)
+      : preset?.length
+        ? preset.map((row) => presetRow(row.name, routineTime(row.start), routineTime(row.end)))
+        : DEFAULT_ROUTINES.map(([name, start, end]) => presetRow(name, start, end)),
+  ),
   removed: [],
   saved: Object.fromEntries(rows.map((row) => [row.id, row])),
 });
 
-/** 한 칸이라도 적혀 있으면 「쓰던 줄」이다. 통째로 빈 줄만 보내지 않는다 (FR-402 예외). */
+/**
+ * 한 칸이라도 적혀 있으면 「쓰던 줄」이다. 통째로 빈 줄만 보내지 않는다 (FR-402 예외).
+ * 깔아 둔 기본 일과는 교사가 손대기 전까지 세지 않는다 — 손대지 않은 하루를 저장하지 않는다.
+ */
 const filled = (row: Row) =>
+  (row.touched || row.id !== null) &&
   Boolean(row.start || row.end || row.name.trim() || row.plan.trim() || row.execution.trim());
 
 /** 서버가 막는 것과 같은 것만 미리 본다 — 나머지는 서버 문구를 그대로 보여준다. */
@@ -137,6 +220,35 @@ function problemWith(row: Row): string {
   if (row.name.trim().length > NAME_MAX) return `일과 이름은 ${NAME_MAX}자까지예요.`;
   if (row.start && row.end && row.start >= row.end) return TIME_BACKWARDS;
   return "";
+}
+
+/** 시작과 끝이 둘 다 있고 앞뒤가 맞는 줄. 겹침은 이런 줄끼리만 따질 수 있다. */
+const spans = (row: Row) => Boolean(row.start && row.end) && row.start < row.end;
+
+/** `09:20 ~ 10:40` */
+const spanText = (row: Row) => `${row.start} ~ ${row.end}`;
+
+/**
+ * 이 줄과 같은 시간을 쓰고 있는 다른 일과. 없으면 `null`.
+ *
+ * 하루 일과는 줄을 서는 것이다 — 등원이 끝나야 실내놀이가 시작한다. 일일 보육일지도
+ * 시간 순으로 한 줄씩 받으므로 겹친 두 칸을 넣을 자리가 없다.
+ *
+ * **저장될 줄끼리만 본다.** 깔아 둔 기본 하루는 손대기 전까지 서버로 가지 않는다 —
+ * 그걸 겹침으로 세면, 교사가 고른 몇 줄이 아직 손대지 않은 줄과 부딪혀 저장이 막힌다.
+ */
+function clashWith(rows: Row[], row: Row): Row | null {
+  if (!spans(row) || !filled(row)) return null;
+  return (
+    rows.find(
+      (other) =>
+        other.key !== row.key &&
+        spans(other) &&
+        filled(other) &&
+        other.start < row.end &&
+        row.start < other.end,
+    ) ?? null
+  );
 }
 
 /** 분 단위 입력을 건드리지 않았다면 서버의 초도 보존한다 — 같은 position의 정렬 근거다. */
@@ -161,14 +273,6 @@ const sameInput = (a: RoutineInput, b: RoutineInput) =>
 
 const savedInput = (row: ApiRoutine) => inputOf(serverRow(row), row.position, row.date, row);
 
-/** 끌어 놓은 자리로 한 줄을 옮긴다. */
-function moved(rows: Row[], from: number, to: number) {
-  if (from === to || from < 0 || to < 0 || from >= rows.length || to >= rows.length) return rows;
-  const next = [...rows];
-  next.splice(to, 0, next.splice(from, 1)[0]);
-  return next;
-}
-
 const without = (saved: Draft["saved"], id: number) => {
   const next = { ...saved };
   delete next[id];
@@ -187,114 +291,22 @@ const NO_QUERY = { date: "", classId: null };
 const fromQuery = () =>
   typeof window === "undefined" ? NO_QUERY : routinesScope(window.location.search);
 
-/** 서버가 하루 안에서 쓰는 순서 그대로다 — `position` · 시작 시간(없으면 뒤) · `id` (§10-1). */
-function byServerOrder(a: ApiRoutine, b: ApiRoutine) {
-  if (a.position !== b.position) return a.position - b.position;
-  if (a.start !== b.start) {
-    if (a.start === null) return 1;
-    if (b.start === null) return -1;
-    return a.start < b.start ? -1 : 1;
-  }
-  return a.id - b.id;
-}
-
 /**
- * 보낼 `position`.
+ * 보낼 `position`. 화면 순서가 곧 시간순이다.
  *
- * **번호 자체로 판단하지 않는다.** 서버 번호는 `0,0,0` 처럼 겹칠 수 있고(지난 데이터가 그렇다),
- * 그걸 `0,1,2` 로 고쳐 쓰면 교사가 건드리지도 않은 줄이 전부 `PUT` 대상이 된다. 판단은
- * **줄의 앞뒤**로 한다 — 서버가 준 순서와 화면 순서가 같으면 번호를 그대로 둔다.
+ * **번호를 되도록 고쳐 쓰지 않는다.** 서버 번호는 `0,0,0` 처럼 겹칠 수 있고(지난 데이터가
+ * 그렇다), 그걸 `0,1,2` 로 다듬으면 교사가 건드리지도 않은 줄이 전부 `PUT` 대상이 된다.
+ * 기존 줄의 번호는 그대로 두고 새 줄만 마지막 번호 뒤로 이어 붙인다.
  *
- * 맨 뒤에 새 줄만 붙었으면 기존 줄은 그대로 두고 마지막 번호 뒤로 이어 붙인다.
- * 중간 삽입·끌기에서는 그대로 둘 수 있는 서버 줄을 최대한 남기고 그 사이만 채운다.
- * 새 줄끼리 시작 시간이 같으면 서로 다른 번호를 예약한다 — 앞 POST만 실패해도,
- * 나중에 생긴 더 큰 id 때문에 재시도한 줄이 성공한 줄 뒤로 밀리지 않아야 한다.
+ * 그렇게 얻은 번호가 **화면 순서와 거꾸로 서면** 그때만 처음부터 다시 매긴다. 시간을
+ * 고쳐 줄이 자리를 바꾼 경우다 — 안 그러면 다시 읽을 때 서버가 준 옛 순서로 돌아간다.
  */
 function positionsFor(rows: Row[], saved: Draft["saved"]): number[] {
   const known = rows.map((row) => (row.id === null ? null : (saved[row.id] ?? null)));
-  const servers = known.filter((row): row is ApiRoutine => row !== null);
-  const inOrder = known
-    .flatMap((was, i) =>
-      was
-        ? [
-            {
-              ...was,
-              start: timeInput(rows[i].start, was.start),
-              end: timeInput(rows[i].end, was.end),
-            },
-          ]
-        : [],
-    )
-    .sort(byServerOrder);
-  const kept =
-    servers.every((row, i) => row.id === inOrder[i].id) &&
-    known.every((row, i) => row !== null || i >= servers.length);
-  const last = servers.length ? inOrder[servers.length - 1].position : -1;
-  if (kept && Number.isSafeInteger(last + rows.length - servers.length)) {
-    let next = last;
-    return known.map((row) => (row ? row.position : (next += 1)));
-  }
-
-  // 같은 position에 둘 수 있는지는 start(NULLS LAST) → id로 정한다.
-  // 새 id는 기존 id보다 크다. 같은 시간의 새 줄끼리는 실패 순서와 무관한 번호를 예약한다.
-  const starts = rows.map((row, i) => {
-    const value = timeInput(row.start, known[i]?.start);
-    return value?.length === 5 ? `${value}:00` : value;
-  });
-  const gaps = [0];
-  for (let i = 1; i < rows.length; i++) {
-    const before = rows[i - 1];
-    const after = rows[i];
-    const a = starts[i - 1];
-    const b = starts[i];
-    const tieFits =
-      a !== b
-        ? b === null || (a !== null && a < b)
-        : before.id !== null && (after.id === null || before.id < after.id);
-    gaps[i] = gaps[i - 1] + (tieFits ? 0 : 1);
-  }
-
-  // position - gaps가 줄 순서대로 줄어들지 않으면 Backend 정렬을 만족한다.
-  // 그대로 둘 수 있는 baseline을 최대한 유지한다. 이미 글자를 고쳐 PUT이 필요한 줄보다
-  // 아무것도 고치지 않은 줄을 우선 남기고, 그 사이의 번호만 조정한다.
-  const ceiling = Number.MAX_SAFE_INTEGER - (gaps.at(-1) ?? 0);
-  const levels = known.map((row, i) => (row ? row.position - gaps[i] : -1));
-  const scores = rows.map(() => 0);
-  const previous = rows.map(() => -1);
-  let best = -1;
-  for (let i = 0; i < rows.length; i++) {
-    const was = known[i];
-    if (!was || levels[i] < 0 || levels[i] > ceiling) continue;
-    const unchanged = sameInput(inputOf(rows[i], was.position, was.date, was), savedInput(was));
-    const weight = (unchanged ? rows.length + 1 : 0) + 1;
-    scores[i] = weight;
-    for (let j = 0; j < i; j++) {
-      if (scores[j] && levels[j] <= levels[i] && scores[j] + weight > scores[i]) {
-        scores[i] = scores[j] + weight;
-        previous[i] = j;
-      }
-    }
-    if (best === -1 || scores[i] > scores[best]) best = i;
-  }
-  const anchors: number[] = [];
-  for (let i = best; i !== -1; i = previous[i]) anchors.unshift(i);
-
-  let anchor = 0;
-  let level = 0;
-  const positions: number[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    const limit = anchor < anchors.length ? levels[anchors[anchor]] : ceiling;
-    if (i === anchors[anchor]) {
-      level = levels[i];
-      anchor += 1;
-    } else {
-      // 빈 번호가 있으면 쓰고, 없으면 start/id로 안전하게 정렬되는 같은 번호를 쓴다.
-      const preferred = known[i]?.position ?? (i ? positions[i - 1] + 1 : 0);
-      level = Math.min(limit, Math.max(level, preferred - gaps[i]));
-    }
-    positions.push(level + gaps[i]);
-  }
-  return positions;
+  let next = known.reduce((max, row) => (row ? Math.max(max, row.position) : max), -1);
+  const kept = known.map((row) => (row ? row.position : (next += 1)));
+  const settled = kept.every((value, index) => index === 0 || kept[index - 1] <= value);
+  return settled ? kept : rows.map((_, index) => index);
 }
 
 /**
@@ -308,7 +320,6 @@ function positionsFor(rows: Row[], saved: Draft["saved"]): number[] {
  * 한 번에 보낸다.
  */
 export default function RoutinesPage() {
-  const router = useRouter();
   // hydration 전에는 주소를 읽지 않는다 — 서버 HTML 과 어긋나지 않게 한다.
   const [query] = useClientState(fromQuery, NO_QUERY);
   // **교사가 고른 반만** 쓴다. 고른 적이 없으면 첫 반을 대신 고르지 않는다 (FR-402 · FR-405).
@@ -320,10 +331,12 @@ export default function RoutinesPage() {
   const [classList, setClassList] = useState<{ items: ApiClass[]; error: string } | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [pickedClass, setPickedClass] = useState<number | null>(null);
   const [pickedDate, setPickedDate] = useState<string | null>(null);
+  /** 달력이 펴 놓은 달. `null` 이면 고른 날이 든 달이다 — 날짜를 바꾸면 따라간다. */
+  const [pickedMonth, setPickedMonth] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  /** 화면 아래에 잠깐 떴다 사라지는 알림. 시간이 겹쳤다는 말을 적던 자리에서 본다. */
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   /**
    * 지금 요청이 도는 중인가. `busy` 는 **다시 그려져야** 버튼이 잠기므로, 그 사이에 한 번 더
@@ -331,9 +344,13 @@ export default function RoutinesPage() {
    */
   const running = useRef(false);
   // 문구에 「어느 화면에서 났나」를 붙여 둔다. 지난 날짜의 실패가 지금 날짜에 뜨면 안 된다.
-  const [message, setMessage] = useState<{ at: string; text: string; error?: boolean } | null>(
-    null,
-  );
+  const [message, setMessage] = useState<{
+    at: string;
+    text: string;
+    error?: boolean;
+    /** 고칠 줄 목록. 있으면 글 한 덩어리 대신 짚어 주는 칸으로 그린다. */
+    problems?: Problem[];
+  } | null>(null);
   /**
    * 이 화면에 몇 번째로 들어왔나. 반 · 날짜를 바꾸거나 다시 읽을 때마다 올린다.
    *
@@ -349,13 +366,17 @@ export default function RoutinesPage() {
   // 주소가 모르는 반을 가리켰다. **첫 반으로 조용히 바꾸지 않는다** — 고르라고 한다.
   const unknownClass = query.classId !== null && !!classes && known(query.classId) === null;
   /**
-   * 이 화면이 보는 반. 교사가 고른 반 → 주소 → 주 반 순이고, **반 목록에 있는 번호만** 쓴다.
-   * 셋 다 없으면 `null` 이다 — 첫 반을 대신 고르지 않는다 (FR-405).
+   * 이 화면이 보는 반. 주소 → 사이드바가 정한 반 순이고, **반 목록에 있는 번호만** 쓴다.
+   * 둘 다 없으면 `null` 이다 — 첫 반을 대신 고르지 않는다 (FR-405).
    */
-  const classId =
-    known(pickedClass) ?? (unknownClass ? null : (known(query.classId) ?? known(primaryClass)));
+  const classId = unknownClass ? null : (known(query.classId) ?? known(primaryClass));
   // 주소에 날짜가 없으면 오늘이다 (S-J1).
   const date = pickedDate ?? (query.date || today());
+  const todayDate = today();
+  // 펴 놓은 달. 날짜를 직접 쳤으면 그 달로 따라가고, 달력에서 넘겼으면 그 달에 머문다.
+  const month = pickedMonth ?? (validDate(date) ? date.slice(0, 7) : todayDate.slice(0, 7));
+  const marked = useMonthMarks(classId, month, visit);
+  const journal = useDailyJournal({ classId, date: validDate(date) ? date : "" });
 
   /** 이 반·이 날짜. 방문이 달라도 **같은 자료**를 가리킨다 — 저장 대기줄의 칸이다. */
   const scope = `${classId}|${date}`;
@@ -375,7 +396,7 @@ export default function RoutinesPage() {
     let stale = false;
     getMe()
       .then((me) => (me.center_id ? getClasses(me.center_id) : { items: [] }))
-      .then(({ items }) => !stale && setClassList({ items, error: "" }))
+      .then(({ items }) => !stale && setClassList({ items: items.filter(isMyClass), error: "" }))
       .catch(() => !stale && setClassList({ items: [], error: CLASSES_FAILED }));
     return () => {
       stale = true;
@@ -391,10 +412,23 @@ export default function RoutinesPage() {
       try {
         await waitForRoutineScope(scope);
         if (stale) return;
-        const items = await listRoutines({ class_id: classId, from: date, to: date });
-        if (!stale) setLoaded({ key, rows: items, error: "" });
+        // 어제와 오늘을 한 번에 읽는다. 오늘이 비었으면 어제의 이름 · 시간을 깔아 준다
+        // (FR-403). 「어제 일과 불러오기」 단추가 하던 일을 교사가 누르지 않아도 한다.
+        const items = await listRoutines({
+          class_id: classId,
+          from: previousDay(date),
+          to: date,
+        });
+        const rows = items.filter((row) => row.date === date);
+        if (!stale)
+          setLoaded({
+            key,
+            rows,
+            preset: rows.length ? [] : items.filter((row) => row.date !== date),
+            error: "",
+          });
       } catch (e) {
-        if (!stale) setLoaded({ key, rows: [], error: messageFor(e) });
+        if (!stale) setLoaded({ key, rows: [], preset: [], error: messageFor(e) });
       }
     })();
     return () => {
@@ -424,13 +458,17 @@ export default function RoutinesPage() {
   // 새로 읽어 온 하루가 있으면 그 위에 초안을 세운다. **같은 열쇠면 손대지 않는다** —
   // 다시 그릴 때마다 세우면 교사가 적던 글이 날아간다.
   if (current && !current.error && draft?.key !== key) {
-    setDraft(draftFrom(key, current.rows));
+    setDraft(draftFrom(key, current.rows, current.preset));
     // 새 서버 snapshot 이다 — 지난 반·날짜에서 띄운 안내는 이 줄들과 상관이 없다.
     // (같은 화면에서 저장이 실패한 경우는 여기로 오지 않는다. 그때 안내는 그대로 남는다.)
     setErrors({});
   }
   const now = draft?.key === key ? draft : null;
   const rows = now?.rows ?? [];
+  // 반은 사이드바에서 바꾼다. 바꾸면 화면을 다시 읽으므로 적어 둔 줄이 사라질 수 있다.
+  useUnsavedWarning(unsavedRows());
+
+  // 읽을 만큼만 두고 치운다. 교사가 닫을 단추를 찾게 만들 안내가 아니다.
 
   /** 저장을 시작한 화면(`at`)이 아직 그 화면일 때만 초안을 고친다. */
   const patch = (at: string, change: (draft: Draft) => Draft) =>
@@ -439,8 +477,29 @@ export default function RoutinesPage() {
   const editRow = (rowKey: string, field: Field, value: string) =>
     patch(key, (d) => ({
       ...d,
-      rows: d.rows.map((row) => (row.key === rowKey ? { ...row, [field]: value } : row)),
+      rows: d.rows.map((row) =>
+        row.key === rowKey ? { ...row, [field]: value, touched: true } : row,
+      ),
     }));
+
+  /**
+   * 시계를 닫았다 — 이 줄의 시간이 정해졌다.
+   *
+   * 다른 일과와 겹치면 **줄을 세우지 않고** 알린다. 겹친 채로 자리를 바꾸면 어느 줄이
+   * 잘못됐는지 더 못 찾는다. 겹치지 않으면 그 자리에서 시간순으로 다시 세운다.
+   */
+  const timeSet = (rowKey: string) => {
+    const row = rows.find((r) => r.key === rowKey);
+    if (!row) return;
+    const clash = clashWith(rows, row);
+    if (clash) {
+      setNotice(
+        `${withParticle(clash.name.trim() || "다른 일과")} 시간이 겹쳐요. (${spanText(clash)})`,
+      );
+      return;
+    }
+    patch(key, (d) => ({ ...d, rows: sortRoutinesByTime(d.rows) }));
+  };
 
   /** 「+ 줄 추가」는 화면에만 더한다. 서버는 저장할 때 안다 (S-J1 동작표). */
   const addRow = () => patch(key, (d) => ({ ...d, rows: [...d.rows, blankRow()] }));
@@ -463,7 +522,16 @@ export default function RoutinesPage() {
       rows: d.rows.map((row) => {
         if (row.key !== rowKey) return row;
         const was = row.id === null ? null : d.saved[row.id];
-        return { ...(was ? serverRow(was) : blankRow()), key: row.key, id: row.id };
+        if (was) return { ...serverRow(was), key: row.key, id: row.id };
+        // 깔아 둔 줄은 깔았을 때로, 교사가 더한 빈 줄은 빈 줄로 돌아간다.
+        const base = row.base;
+        return {
+          ...blankRow(),
+          key: row.key,
+          id: null,
+          base,
+          ...(base ? { name: base.name, start: base.start, end: base.end } : {}),
+        };
       }),
     }));
     setErrors((prev) => ({ ...prev, [rowKey]: "" }));
@@ -477,23 +545,6 @@ export default function RoutinesPage() {
       : filled(row);
   };
 
-  const reorder = (from: number | null, to: number) => {
-    if (from === null) return;
-    patch(key, (d) => ({ ...d, rows: moved(d.rows, from, to) }));
-  };
-
-  const sortByTime = () =>
-    patch(key, (d) => ({
-      ...d,
-      rows: sortRoutinesByTime(
-        d.rows.map((row) => ({
-          row,
-          start: timeInput(row.start, row.id === null ? undefined : d.saved[row.id]?.start),
-          end: timeInput(row.end, row.id === null ? undefined : d.saved[row.id]?.end),
-        })),
-      ).map(({ row }) => row),
-    }));
-
   /**
    * 보낼 수 있는 줄인가. 쓰던 줄인데 이름이 없으면 **아무것도 보내지 않고** 그 줄에
    * 안내를 띄운다 (FR-402 예외).
@@ -505,7 +556,7 @@ export default function RoutinesPage() {
     const at = key;
     if (classId === null || !now) return false;
     const problems: Record<string, string> = {};
-    const lines: string[] = [];
+    const found: Problem[] = [];
     let first = "";
     now.rows.forEach((row, index) => {
       // 손대지 않은 빈 줄은 검사하지 않는다 — 기본 다섯 줄이 전부 오류가 되면 안 된다.
@@ -513,16 +564,37 @@ export default function RoutinesPage() {
       const problem = problemWith(row);
       if (!problem) return;
       problems[row.key] = problem;
-      lines.push(`${index + 1}번째 일과 · ${problem}`);
+      found.push({ rowKey: row.key, at: index + 1, text: problem });
+      if (!first) first = row.key;
+    });
+    /**
+     * 겹친 시간은 **이번에 시간을 바꾼 줄**에서만 막는다.
+     *
+     * 지난 데이터에는 겹친 날이 이미 있다 — 서버가 막은 적이 없다. 그런 날을 통째로
+     * 저장 불가로 만들면 교사가 글자 하나 고치려고 남의 줄부터 손봐야 한다. 지금
+     * 만들어진 겹침만 돌려보내고, 예전 것은 그대로 둔다.
+     */
+    now.rows.forEach((row, index) => {
+      if (problems[row.key]) return;
+      const was = row.id === null ? null : now.saved[row.id];
+      const moved = was
+        ? routineTime(was.start) !== row.start || routineTime(was.end) !== row.end
+        : spans(row);
+      if (!moved) return;
+      const clash = clashWith(now.rows, row);
+      if (!clash) return;
+      const other = withParticle(clash.name.trim() || "다른 일과");
+      problems[row.key] = `${other} 시간이 겹쳐요. (${spanText(clash)})`;
+      found.push({ rowKey: row.key, at: index + 1, text: `${other} 시간이 겹쳐요` });
       if (!first) first = row.key;
     });
     setErrors(problems);
-    if (!lines.length) {
+    if (!found.length) {
       setMessage(null);
       return true;
     }
     // 서버가 돌려준 문구가 아니라 **보내기 전에 화면이 잡은 것**이다 (§11 거절 처리와 구분).
-    setMessage({ at, text: problemSummary(lines), error: true });
+    setMessage({ at, text: HAS_PROBLEM, error: true, problems: found });
     focusField(nameFieldId(first));
     return false;
   }
@@ -533,10 +605,14 @@ export default function RoutinesPage() {
    *
    * 돌려주는 값은 「보내야 할 요청이 전부 성공했나」다. 일부가 실패하면 **초안을 비우지
    * 않는다** — 성공한 것만 초안에 반영해 두어, 다시 눌러도 같은 줄을 두 번 만들지 않는다.
+   *
+   * 함께 돌려주는 `evidence` 는 **실제로 한 것을 적은 줄의 서버 번호**다. 바로 뒤에
+   * 오늘 일지를 만들 때 근거(`source_ids`)가 된다 — 다시 조회해서 찾지 않는다.
    */
-  async function commit(): Promise<RoutineReviewImpact | null> {
+  async function commit(): Promise<{ impact: RoutineReviewImpact; evidence: string[] } | null> {
     const at = key;
     if (classId === null || !now) return null;
+    const evidence: string[] = [];
 
     let ok = true;
     const affected = new Set(now.reviewImpact?.affected_document_ids);
@@ -586,8 +662,10 @@ export default function RoutinesPage() {
             rows: d.rows.map((r) => (r.key === row.key ? { ...r, id: made.id } : r)),
             saved: { ...d.saved, [made.id]: made },
           }));
+          if (row.execution.trim()) evidence.push(routineLocalId(made.id));
           continue;
         }
+        if (row.execution.trim()) evidence.push(routineLocalId(row.id));
         if (was && sameInput(body, savedInput(was))) continue;
         const next = await trackRoutineMutation(
           scope,
@@ -599,7 +677,7 @@ export default function RoutinesPage() {
         fail(e);
       }
     }
-    return ok ? impact() : null;
+    return ok ? { impact: impact(), evidence } : null;
   }
 
   /**
@@ -628,8 +706,9 @@ export default function RoutinesPage() {
     const next = `${scope}|${visit + 1}`;
     if (!checkRows()) return;
     return run("save", async () => {
-      const impact = await commit();
-      if (!impact || !stillHere(at)) return;
+      const done = await commit();
+      if (!done || !stillHere(at)) return;
+      const impact = done.impact;
       // 서버가 정한 순서와 다듬은 값을 다시 읽는다. 문구는 **다음 방문**에 붙인다.
       const count = impact.newly_stale_document_ids.length;
       const already = impact.affected_document_ids.filter(
@@ -645,16 +724,22 @@ export default function RoutinesPage() {
   };
 
   /**
-   * 「오늘 일지 만들기」 — **저장을 먼저 하고** S-J2 로 간다 (S-J1 수락 기준 3-1).
-   * 저장이 실패하면 가지 않는다. 적은 글자는 그대로 남는다.
+   * 「오늘 일지 만들기」 — **저장을 먼저 하고 이 화면에서 연다** (S-J1 수락 기준 3-1).
+   *
+   * 전에는 문서 보관함으로 보냈다. 보관함은 다 쓴 문서가 쌓이는 곳이지 쓰는 곳이
+   * 아니고, 교사는 방금 적은 일과를 눈앞에 두고 일지를 손봐야 한다.
+   *
+   * 저장이 실패하면 만들지 않는다. 적은 글자는 그대로 남는다.
    */
   const openDailyLog = () => {
     const at = key;
-    const to = `/documents?kind=dailyLog&class_id=${classId}&date=${date}`;
     if (!checkRows()) return;
     return run("open", async () => {
-      if (classId === null || !(await commit()) || !stillHere(at)) return;
-      router.push(to);
+      if (classId === null) return;
+      const done = await commit();
+      if (!done || !stillHere(at)) return;
+      await journal.make(done.evidence);
+      revisit();
     });
   };
 
@@ -684,40 +769,6 @@ export default function RoutinesPage() {
     return !unsavedRows() || window.confirm("저장하지 않은 줄이 사라져요. 옮길까요?");
   }
 
-  /**
-   * 어제 일과 불러오기 (FR-403). **시간과 이름만** 가져온다 — 활동계획 · 활동실행을
-   * 옮기면 어제 한 일이 오늘 한 일로 적힌다. 조회일 뿐이라 아무것도 저장하지 않는다.
-   */
-  function importYesterday() {
-    if (running.current || classId === null || !validDate(date)) return;
-    if (rows.some(filled) && !window.confirm("지금 적은 줄을 지우고 어제 일과를 불러올까요?"))
-      return;
-    const at = key;
-    const from = previousDay(date);
-    void run("import", async () => {
-      setMessage(null);
-      try {
-        const items = await listRoutines({ class_id: classId, from, to: from });
-        if (!items.length) {
-          setMessage({ at, text: NO_YESTERDAY });
-          return;
-        }
-        patch(at, (d) => ({
-          ...d,
-          rows: items.map((row) => ({
-            ...blankRow(),
-            start: routineTime(row.start),
-            end: routineTime(row.end),
-            name: row.name,
-          })),
-        }));
-        setErrors({});
-      } catch (e) {
-        setMessage({ at, text: messageFor(e), error: true });
-      }
-    });
-  }
-
   const classStatus: ViewStatus = classList ? (classList.error ? "error" : "ready") : "loading";
   const noClasses = classStatus === "ready" && !classes?.length;
   const dateOk = validDate(date);
@@ -728,14 +779,49 @@ export default function RoutinesPage() {
   const ready = listStatus === "ready" && dateOk && !needClass;
   // 활동실행을 적은 줄 수 (FR-402 출력). **화면에 적힌 것으로 센다** — 저장 전이어도 센다.
   const doneCount = rows.filter((row) => row.execution.trim()).length;
-  // 그날 서버에 이미 있는 줄이 없을 때만 어제를 덮어쓸 수 있다 — 저장된 줄을 잃지 않는다.
-  const canImport = ready && !Object.keys(now?.saved ?? {}).length;
+  /** 날짜를 옮긴다. 적어 둔 줄이 있으면 먼저 묻는다. */
+  const moveTo = (next: string, month: string | null) => {
+    if (!leaveRows()) return;
+    setPickedDate(next);
+    setPickedMonth(month);
+    revisit();
+  };
 
   return (
     <WorkspacePage
-      title="일과 기록"
-      description="반 하루의 일과를 적어요. 일일 보육일지가 이 기록을 근거로 써요."
+      title="보육일지"
+      /* 「일일 보육일지가 이 기록을 근거로 쓴다」는 설명은 뺐다. 화면에 들어온 교사는
+         이미 일과를 적으러 온 것이고, 제목 밑 한 줄은 매일 읽히지 않는다. */
+      description=""
+      /*
+        저장과 「오늘 일지 만들기」는 화면 맨 아래에 있었다. 줄이 열 개라 적고 나면
+        단추가 접힌 화면 밖으로 밀려 내려간다. 제목 옆으로 올려 둔다.
+        「+ 줄 추가」는 목록 끝에 남긴다 — 새 줄이 생기는 자리가 거기다.
+      */
+      action={
+        ready ? (
+          <div className={ws.actions} data-tour="routines-actions">
+            <button type="button" className={ws.secondary} disabled={!!busy} onClick={save}>
+              {busy === "save" ? "저장 중…" : "저장"}
+            </button>
+            {/*
+              적은 줄이 하나라도 있으면 켠다 — **저장 여부로 판단하지 않는다** (수락 기준 3).
+              누르면 먼저 저장하고, 성공해야 S-J2 로 간다.
+            */}
+            <button
+              type="button"
+              className={ws.primary}
+              disabled={!!busy || !doneCount}
+              title={doneCount ? undefined : "실제로 한 것을 한 줄이라도 적어 주세요."}
+              onClick={openDailyLog}
+            >
+              {busy === "open" ? "저장하는 중…" : "오늘 일지 만들기 →"}
+            </button>
+          </div>
+        ) : undefined
+      }
     >
+      <JournalTabs at="daily" daily="/routines" weekly="/weekly-records" />
       <WorkspaceViewState
         status={classStatus}
         loading="반 목록을 불러오는 중이에요…"
@@ -748,126 +834,100 @@ export default function RoutinesPage() {
           )
         }
       >
-        <section className={ws.stack}>
-          <div className={`${ws.card} ${ws.row}`}>
-            <label className={ws.field}>
-              반
-              <select
-                value={classId ?? ""}
+        {/* 왼쪽에서 날을 고르고 오른쪽에 그날을 적는다 — 계획안 만들기와 같은 짜임이다. */}
+        <div className={ws.grid}>
+          <div className={ws.side}>
+            <aside className={`${ws.card} ${ws.calendarCard}`} data-tour="routines-calendar">
+              <Tape />
+              <RoutineCalendar
+                date={dateOk ? date : todayDate}
+                month={month}
+                today={todayDate}
+                marked={marked}
                 disabled={!!busy}
-                onChange={(e) => {
-                  if (!leaveRows()) return;
-                  setPickedClass(e.target.value ? Number(e.target.value) : null);
-                  revisit();
-                }}
-              >
-                <option value="">반 선택</option>
-                {classes?.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={ws.field}>
-              날짜
-              <input
-                name="date"
-                type="date"
-                value={date}
-                disabled={!!busy}
-                onChange={(e) => {
-                  if (!leaveRows()) return;
-                  setPickedDate(e.target.value);
-                  revisit();
-                }}
+                onMonth={setPickedMonth}
+                onPick={(next) => moveTo(next, null)}
               />
-            </label>
-          </div>
-          {/* 그 화면에서 난 일만 보여준다 — 날짜를 옮기면 따라가지 않는다. */}
-          <Message error={message?.error}>{message?.at === key ? message.text : ""}</Message>
-          <WorkspaceViewState
-            status={listStatus}
-            loading="이 날짜의 일과를 불러오는 중이에요…"
-            error={current?.error}
-            empty={
-              (!dateOk || needClass) && <ListEmpty dateOk={dateOk} unknownClass={unknownClass} />
-            }
-          >
-            <div className={ws.list} aria-label="일과 목록">
-              {rows.map((row, index) => (
-                <RowCard
-                  key={row.key}
-                  row={row}
-                  index={index}
-                  total={rows.length}
-                  error={errors[row.key] ?? ""}
-                  busy={!!busy}
-                  dirty={dirtyRow(row)}
-                  onEdit={editRow}
-                  onRevert={revertRow}
-                  onRemove={removeRow}
-                  onMove={reorder}
-                  onGrab={setDragFrom}
-                  dragFrom={dragFrom}
-                />
-              ))}
-            </div>
-          </WorkspaceViewState>
-          {listStatus === "error" && (
-            <button type="button" className={ws.secondary} onClick={revisit}>
-              다시 시도
-            </button>
-          )}
-          {ready && (
-            <div className={ws.stack}>
-              {/* 줄 수·작성 수를 세어 주던 안내는 없앴다. 교사가 화면을 보면 아는 숫자다.
-                  `doneCount` 는 「오늘 일지 만들기」를 열고 닫는 조건으로 그대로 쓴다. */}
-              {!doneCount && (
-                <p className={ws.hint}>활동실행을 적으면 오늘 일지를 만들 수 있어요.</p>
-              )}
-              <div className={ws.actions}>
-                <button
-                  type="button"
-                  className={ws.secondary}
+              {/* 먼 날짜로 한 번에 뛰는 길. 달력이 이미 날을 보여 주므로 칸은 작게 둔다. */}
+              <label className={ws.calendarJump}>
+                날짜
+                <input
+                  name="date"
+                  type="date"
+                  value={date}
                   disabled={!!busy}
-                  onClick={sortByTime}
-                >
-                  시간순 정렬
-                </button>
-                <button type="button" className={ws.secondary} disabled={!!busy} onClick={addRow}>
-                  + 줄 추가
-                </button>
-                {canImport && (
-                  <button
-                    type="button"
-                    className={ws.secondary}
-                    disabled={!!busy}
-                    onClick={importYesterday}
-                  >
-                    어제 일과 불러오기
+                  onChange={(e) => moveTo(e.target.value, null)}
+                />
+              </label>
+            </aside>
+            {/* 「오늘 일지가 어디까지 됐나」는 날짜와 같이 본다 — 달력 바로 밑에 둔다.
+                일지를 펴면 편집기는 오른쪽 칠판 밑으로 나온다. 좁은 칸에서 쓸 글이 아니다. */}
+            {ready && <DailyJournalCard state={journal} day={koreanDay(date).day} />}
+          </div>
+
+          <section className={ws.stack}>
+            {/* 그 화면에서 난 일만 보여준다 — 날짜를 옮기면 따라가지 않는다. */}
+            {message?.at === key && message.problems?.length ? (
+              <ProblemBoard items={message.problems} />
+            ) : (
+              <Message error={message?.error}>{message?.at === key ? message.text : ""}</Message>
+            )}
+            <WorkspaceViewState
+              status={listStatus}
+              loading="이 날짜의 일과를 불러오는 중이에요…"
+              error={current?.error}
+              empty={
+                (!dateOk || needClass) && <ListEmpty dateOk={dateOk} unknownClass={unknownClass} />
+              }
+            >
+              {/* 안내문을 지우고 그 자리에 날짜를 손글씨로 둔다. 「오늘 쓰고 있다」는
+                  것만 알면 되고, 어느 날인지는 오른쪽을 볼 때마다 필요하다. */}
+              <h2 className={ws.sheetDay}>
+                {koreanDay(dateOk ? date : todayDate).day}
+                <span>
+                  {koreanDay(dateOk ? date : todayDate).dow}
+                  <CircleMark />
+                </span>
+              </h2>
+              {/* 교실 칠판에 일과 쪽지를 붙인 모습 (첫 화면 오른쪽 줄과 같은 판이다).
+                  줄마다 종이 한 장이라 어디서 한 일과가 끝나는지 선을 안 그어도 보인다. */}
+              <div
+                className={`${ws.routineSheet} chalkboard`}
+                aria-label="일과 목록"
+                data-tour="routines-board"
+              >
+                {rows.map((row, index) => (
+                  <RowCard
+                    key={row.key}
+                    row={row}
+                    index={index}
+                    error={errors[row.key] ?? ""}
+                    busy={!!busy}
+                    dirty={dirtyRow(row)}
+                    onEdit={editRow}
+                    onTimeSet={timeSet}
+                    onRevert={revertRow}
+                    onRemove={removeRow}
+                  />
+                ))}
+                <div className={ws.rowTools}>
+                  <button type="button" className={ws.rowTool} disabled={!!busy} onClick={addRow}>
+                    + 줄 추가
                   </button>
-                )}
-                <button type="button" className={ws.primary} disabled={!!busy} onClick={save}>
-                  {busy === "save" ? "저장 중…" : "저장"}
-                </button>
-                {/*
-                  적은 줄이 하나라도 있으면 켠다 — **저장 여부로 판단하지 않는다** (수락 기준 3).
-                  누르면 먼저 저장하고, 성공해야 S-J2 로 간다.
-                */}
-                <button
-                  type="button"
-                  className={ws.primary}
-                  disabled={!!busy || !doneCount}
-                  onClick={openDailyLog}
-                >
-                  {busy === "open" ? "저장하는 중…" : "오늘 일지 만들기 →"}
-                </button>
+                </div>
               </div>
-            </div>
-          )}
-        </section>
+            </WorkspaceViewState>
+            {listStatus === "error" && (
+              <button type="button" className={ws.secondary} onClick={revisit}>
+                다시 시도
+              </button>
+            )}
+            {/* 편집기는 칠판 바로 아래다 — 방금 적은 일과를 보며 손봐야 한다. */}
+            {ready && <DailyJournalEditor state={journal} day={koreanDay(date).day} />}
+          </section>
+        </div>
       </WorkspaceViewState>
+      <Notice onDone={() => setNotice("")}>{notice}</Notice>
     </WorkspacePage>
   );
 }
@@ -880,7 +940,7 @@ function ListEmpty({ dateOk, unknownClass }: { dateOk: boolean; unknownClass: bo
   if (!dateOk) return <Empty title="날짜를 선택해주세요" />;
   return (
     <Empty title="반을 골라주세요">
-      {unknownClass ? UNKNOWN_CLASS : "어느 반의 하루를 적을지 골라주세요."}
+      {unknownClass ? UNKNOWN_CLASS : "왼쪽 위 반 이름을 눌러 하루를 적을 반을 골라주세요."}
     </Empty>
   );
 }
@@ -888,187 +948,217 @@ function ListEmpty({ dateOk, unknownClass }: { dateOk: boolean; unknownClass: bo
 /**
  * 한 줄. 계약의 다섯 칸 그대로다 — 시작 · 종료 · 일과 이름 · 활동계획 · 활동실행 (§10-1).
  *
- * 순서는 끌어서 바꾸고, 키보드만 쓰는 교사를 위해 ↑ ↓ 도 같이 둔다.
+ * **교사가 매일 적는 것은 「실제로 한 것」 하나뿐이다.** 이름 · 시간은 깔려 있고, 「계획한 것」은
+ * 접어 둔다 — 쓰는 원이 있고 안 쓰는 원이 있다. 순서는 시간이 정하므로 끌기 · ↑ ↓ 는 없다.
  */
 function RowCard({
   row,
   index,
-  total,
   error,
   busy,
   dirty,
   onEdit,
+  onTimeSet,
   onRevert,
   onRemove,
-  onMove,
-  onGrab,
-  dragFrom,
 }: {
   row: Row;
   index: number;
-  total: number;
   error: string;
   busy: boolean;
   dirty: boolean;
   onEdit: (rowKey: string, field: Field, value: string) => void;
+  onTimeSet: (rowKey: string) => void;
   onRevert: (rowKey: string) => void;
   onRemove: (rowKey: string) => void;
-  onMove: (from: number | null, to: number) => void;
-  onGrab: (from: number | null) => void;
-  dragFrom: number | null;
 }) {
   const set = (field: Field) => (value: string) => onEdit(row.key, field, value);
-  const [insertion, setInsertion] = useState<"before" | "after" | null>(null);
-  const side = (e: React.DragEvent<HTMLElement>) => {
-    const box = e.currentTarget.getBoundingClientRect();
-    return e.clientY < box.top + box.height / 2 ? "before" : "after";
-  };
   return (
-    <article
-      className={`${ws.item} ${ws.routineCard} ${dragFrom === index ? ws.dragging : ""} ${
-        dragFrom !== null && dragFrom !== index && insertion
-          ? insertion === "before"
-            ? ws.insertBefore
-            : ws.insertAfter
-          : ""
-      }`}
-      data-dragging={dragFrom === index || undefined}
-      data-insertion={dragFrom !== null && dragFrom !== index ? insertion : undefined}
-      onDragOver={(e) => {
-        if (busy || dragFrom === null) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        setInsertion(side(e));
-      }}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setInsertion(null);
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        if (busy || dragFrom === null) return;
-        // 브라우저 네이티브 드래그 중 React 상태 갱신이 늦어도 전송한 원래 줄을 찾는다.
-        const raw = e.dataTransfer.getData("text/plain");
-        const from = /^\d+$/.test(raw) ? Number(raw) : dragFrom;
-        const slot = index + (side(e) === "after" ? 1 : 0);
-        onMove(from, from !== null && slot > from ? slot - 1 : slot);
-        setInsertion(null);
-        onGrab(null);
-      }}
-    >
-      <div className={ws.nameTab}>
-        <input
-          id={nameFieldId(row.key)}
-          aria-label="일과 이름 (필수)"
-          required
-          maxLength={NAME_MAX}
-          placeholder="오전 실내놀이"
-          disabled={busy}
-          // 요약에서 이 칸으로 보낼 수 있어야 하고, 읽어 주는 도구도 오류를 알아야 한다.
-          aria-invalid={error ? true : undefined}
-          aria-errormessage={error ? `${nameFieldId(row.key)}-error` : undefined}
-          value={row.name}
-          onChange={(e) => set("name")(e.target.value)}
-        />
-        {/* placeholder 는 글자를 넣는 순간 사라져서 필수 표시로 못 쓴다. 읽어 주는 도구에는
-            input 의 aria-label 이 이미 「필수」를 담고 있어 여기는 숨긴다. */}
-        <span aria-hidden="true" className={ws.nameRequired}>
-          필수
-        </span>
-      </div>
-      <div className={`${ws.routineGrid} ${ws.routineHead}`}>
-        <div className={ws.routineStart}>
-          <span
-            className={ws.badge}
-            role="button"
-            draggable={!busy}
-            aria-label={`${index + 1}번째 줄 끌어서 옮기기`}
-            onDragStart={(e) => {
-              // Firefox 는 dragstart 에서 데이터를 담지 않으면 끌기를 아예 시작하지 않는다.
-              e.dataTransfer.setData("text/plain", String(index));
-              e.dataTransfer.effectAllowed = "move";
-              // 핸들은 잡는 곳이고 프리뷰는 시간·이름·계획·실행이 담긴 카드 전체다.
-              const card = e.currentTarget.closest("article");
-              if (card) {
-                const box = card.getBoundingClientRect();
-                e.dataTransfer.setDragImage(card, e.clientX - box.left, e.clientY - box.top);
-              }
-              onGrab(index);
-            }}
-            onDragEnd={() => {
-              onGrab(null);
-              setInsertion(null);
-            }}
-          >
-            ⠿
-          </span>
-          <button
-            type="button"
-            className={ws.secondary}
-            aria-label={`${index + 1}번째 줄 위로`}
-            disabled={busy || index === 0}
-            onClick={() => onMove(index, index - 1)}
-          >
-            ↑
-          </button>
-          <button
-            type="button"
-            className={ws.secondary}
-            aria-label={`${index + 1}번째 줄 아래로`}
-            disabled={busy || index === total - 1}
-            onClick={() => onMove(index, index + 1)}
-          >
-            ↓
-          </button>
-          <RoutineTimePicker
-            label="시작"
+    <article className={ws.routineRow} data-tone={row.tone} data-lean={row.tone % 2}>
+      <div className={ws.routineHead}>
+        <div className={ws.rowName}>
+          <input
+            id={nameFieldId(row.key)}
+            aria-label="일과 이름 (필수)"
+            required
+            maxLength={NAME_MAX}
+            placeholder="오전 실내놀이"
             disabled={busy}
-            value={row.start}
-            onChange={set("start")}
+            // 요약에서 이 칸으로 보낼 수 있어야 하고, 읽어 주는 도구도 오류를 알아야 한다.
+            aria-invalid={error ? true : undefined}
+            aria-errormessage={error ? `${nameFieldId(row.key)}-error` : undefined}
+            value={row.name}
+            onChange={(e) => set("name")(e.target.value)}
           />
         </div>
-        <RoutineTimePicker label="종료" disabled={busy} value={row.end} onChange={set("end")} />
-      </div>
-      <div className={`${ws.routineGrid} ${ws.routineBody}`}>
-        <label className={ws.field}>
-          활동계획
-          <small>계획한 활동 내용을 간단히 적어주세요.</small>
-          <textarea
+        <div className={ws.rowMeta}>
+          {/* 시작 · 종료 칸 둘이던 자리다. 한 칸에 「오전 09:20 ~ 10:40」로 적고,
+            누르면 시계판에서 구간을 끌어 고친다. */}
+          <RoutineClock
+            start={row.start}
+            end={row.end}
             disabled={busy}
-            value={row.plan}
-            onChange={(e) => set("plan")(e.target.value)}
+            onStart={set("start")}
+            onEnd={set("end")}
+            onDone={() => onTimeSet(row.key)}
           />
-        </label>
-        <label className={ws.field}>
-          활동실행
-          <small>있었던 일을 그대로 적어주세요. 일일 보육일지의 근거가 돼요.</small>
-          <textarea
+          <button
+            type="button"
+            className={ws.rowTool}
+            aria-label={`${index + 1}번째 일과 지우기`}
+            title="이 일과 지우기"
             disabled={busy}
-            value={row.execution}
-            onChange={(e) => set("execution")(e.target.value)}
-          />
-        </label>
+            onClick={() => onRemove(row.key)}
+          >
+            ×
+          </button>
+        </div>
       </div>
+
+      <textarea
+        className={ws.rowDone}
+        aria-label="실제로 한 것"
+        placeholder="실제로 한 것"
+        disabled={busy}
+        value={row.execution}
+        onChange={(e) => set("execution")(e.target.value)}
+      />
+
+      {/* 「계획한 것」은 안 쓰는 원이 많다. 적은 줄만 펴 두고 나머지는 접는다. */}
+      {/* 이름은 안의 글칸 하나만 갖는다. 접는 칸에도 같은 이름을 달면 「계획한 것」을 찾는
+          보조기기 · 테스트가 둘을 만나 어느 쪽인지 모른다. 접는 칸은 summary 글자로 읽힌다. */}
+      <details className={ws.rowPlan} open={row.plan ? true : undefined}>
+        <summary>{row.plan ? "계획한 것" : "계획한 것 적기"} ▾</summary>
+        <textarea
+          aria-label="계획한 것"
+          placeholder="계획한 것"
+          disabled={busy}
+          value={row.plan}
+          onChange={(e) => set("plan")(e.target.value)}
+        />
+      </details>
+
       <Message error id={`${nameFieldId(row.key)}-error`}>
         {error}
       </Message>
-      <div className={ws.actions}>
-        <button
-          type="button"
-          className={ws.secondary}
-          disabled={busy || !dirty}
-          onClick={() => onRevert(row.key)}
-        >
-          되돌리기
-        </button>
-        <button
-          type="button"
-          className={ws.secondary}
-          disabled={busy}
-          onClick={() => onRemove(row.key)}
-        >
-          줄 지우기
-        </button>
-      </div>
+      {dirty && (
+        <div className={ws.rowTools}>
+          <button
+            type="button"
+            className={ws.revert}
+            disabled={busy}
+            onClick={() => onRevert(row.key)}
+          >
+            <UndoMark />
+            되돌리기
+          </button>
+        </div>
+      )}
     </article>
+  );
+}
+
+/**
+ * 고칠 곳을 포스티가 짚어 준다 (A 안).
+ *
+ * 전에는 베이지 띠 안에 줄바꿈으로 이어 붙인 글 한 덩어리였다. 크림 바탕에 갈색 글씨라
+ * 떠오르지 않았고, 몇 군데인지도 세어 봐야 알았다. 포스티가 말을 거는 자리는 메인 ·
+ * 주간 기록에서 이미 쓰는 짜임이라 교사가 「서비스가 하는 말」로 바로 읽는다.
+ */
+function ProblemBoard({ items }: { items: Problem[] }) {
+  return (
+    <section className={ws.problemBoard} role="alert">
+      <Posty pose="point" face="fix" tone="caution" size={72} label={null} />
+      <div className={ws.problemBody}>
+        <p className={ws.problemHead}>고칠 곳이 {items.length}군데 있어요</p>
+        <p className={ws.problemLead}>아래를 고치면 바로 저장돼요.</p>
+        <ul className={ws.problemList}>
+          {items.map((item) => (
+            <li key={item.rowKey}>
+              <span className={ws.problemNo}>{item.at}</span>
+              <span className={ws.problemText}>
+                {item.at}번째 일과 — {item.text}
+              </span>
+              <button
+                type="button"
+                className={ws.problemGo}
+                onClick={() => focusField(nameFieldId(item.rowKey))}
+              >
+                가기 →
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+const NO_MARKS: string[] = [];
+
+/**
+ * 달력에 찍을 점 — 그 달에 일과를 적어 둔 날.
+ *
+ * 달을 넘길 때와 저장한 뒤에만 묻는다. 적는 화면의 하루치 조회와 섞이지 않게
+ * `listRoutineDates` 를 따로 쓴다 — 섞이면 「하루만 읽는다」를 지킬 수 없다.
+ */
+function useMonthMarks(classId: number | null, month: string, visit: number) {
+  const [marked, setMarked] = useState<string[]>(NO_MARKS);
+  useEffect(() => {
+    if (classId === null) return;
+    let stale = false;
+    const { from, to } = monthRange(month);
+    void (async () => {
+      // 점은 거들 뿐이다. 못 받아 와도 적는 일을 막지 않는다.
+      const days = await listRoutineDates(classId, from, to).catch(() => NO_MARKS);
+      if (!stale) setMarked(days);
+    })();
+    return () => {
+      stale = true;
+    };
+  }, [classId, month, visit]);
+  return marked;
+}
+
+/** 달력에서 오늘에 치는 동그라미. 한 바퀴를 덜 닫아 손으로 그은 자국으로 보인다. */
+function CircleMark() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 150 70"
+      preserveAspectRatio="none"
+      className={ws.circleMark}
+    >
+      <path
+        d="M74 6 C112 4 146 18 143 36 C140 56 100 66 68 64 C32 62 6 50 8 32 C10 14 42 6 78 7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** 되돌리기 — 왼쪽으로 돌아가는 화살표. 글자만 두면 무슨 단추인지 멀리서 안 보인다. */
+function UndoMark() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className={ws.revertMark}>
+      <path
+        d="M4 9h9.5a5.5 5.5 0 1 1 0 11H8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+      />
+      <path
+        d="M7.6 5 3.6 9l4 4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

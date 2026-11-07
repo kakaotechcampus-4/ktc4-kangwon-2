@@ -6,8 +6,42 @@ export const fields = [
   { key: "support_direction", label: "지원 방향", heading: "내용 및 지원 방향 예상하기" },
   { key: "learning", label: "놀이를 통한 배움", heading: "놀이를 통한 배움" },
 ] as const;
+// 화면 표시용 계절 이름. Core layout label(「3월~5월」)은 그대로 두고, HWP 내려받기
+// (backend export.py PLAY_PERIOD_LABELS)와 같은 구간 키 표를 쓴다. 모르는 키면 label 그대로.
+const SEASONS: Record<string, [string, string]> = {
+  m03_m05: ["봄", "3~5월"],
+  m06_m08: ["여름", "6~8월"],
+  m09_m11: ["가을", "9~11월"],
+  m12_m02: ["겨울", "12~2월"],
+};
+
+export function playSeason(
+  period: Pick<PlayProjectAnnualPlan["periods"][number], "period_key" | "label">,
+) {
+  const [name, months] = SEASONS[period.period_key] ?? [period.label, ""];
+  return { name, months };
+}
+
+/**
+ * 확정본 쪽 탭 이름 — 한 쪽에 두 구간씩이라 「봄·여름」 「가을·겨울」. 숫자만 있으면 둘째 쪽이 있는 줄 모른다(멘토 11-05).
+ */
+export function playPageLabels(
+  periods: Pick<PlayProjectAnnualPlan["periods"][number], "period_key" | "label">[],
+) {
+  const labels: string[] = [];
+  for (let i = 0; i < periods.length; i += 2)
+    labels.push(
+      periods
+        .slice(i, i + 2)
+        .map((p) => playSeason(p).name)
+        .join("·"),
+    );
+  return labels;
+}
+
 export type PlayField = (typeof fields)[number]["key"];
-export type SheetZoom = { mode: "fit" | "manual"; percent: number };
+/** auto = 100%, 칸이 좁을 때만 줄임(놀이형 연간 편집 기본). fit = 칸 폭에 맞춤. manual = −/+ 로 고른 배율. */
+export type SheetZoom = { mode: "auto" | "fit" | "manual"; percent: number };
 export type PreviewRow = {
   key: string;
   period: PlayProjectAnnualPlan["periods"][number];

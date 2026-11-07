@@ -42,6 +42,7 @@ test("P0 clients use real URLs: center, mixed class, children, annual, patch, co
       age_min: 3,
       age_max: 5,
       child_count: null,
+      consent_confirmed: true, // 동의 전 반에는 아동을 못 넣는다 (§2-1)
     });
     assert.equal(klass.age_min, 3);
     assert.equal(klass.age_max, 5);
@@ -68,6 +69,16 @@ test("P0 clients use real URLs: center, mixed class, children, annual, patch, co
     assert.equal(month.source_type, undefined);
     assert.equal(month.month, 3);
     assert.equal(month.months, undefined);
+    // 소주제 수가 주 수와 다르면 확정은 422 이고 fields 는 그 달 번호다(I-A).
+    await assert.rejects(
+      confirmAnnualPlan(plan.id),
+      (e) => e.status === 422 && e.body.error.fields.includes("3"),
+    );
+    for (const m of plan.months)
+      await putAnnualMonth(plan.id, m.month, {
+        theme: m.month === 3 ? "수정" : m.theme,
+        sub_themes: Array.from({ length: m.week_count }, (_, i) => i + 1 + "주 놀이"),
+      });
     assert.equal((await confirmAnnualPlan(plan.id)).status, "CONFIRMED");
     await assert.rejects(
       putAnnualMonth(plan.id, 3, { theme: "금지", sub_themes: [] }),
@@ -284,7 +295,7 @@ test("보낼 때는 범위로 바뀌고, 라벨도 그 범위로 적는다", asy
     });
     for (const ages of [[3], [3, 4], [3, 5], [3, 4, 5]]) {
       const created = await createClass(center.id, {
-        name: "반",
+        name: "반" + ages.join(""), // 같은 원 · 학년도에 같은 이름은 409
         teacher_name: "교사",
         ...ageRangePayload({ selectedAges: ages }),
         child_count: null,
@@ -351,7 +362,8 @@ test("single-page annual retry keeps server data unchanged on first failure and 
       "plans/annual/" +
       plan.id +
       "/months/3?mockDelay=0&mockError=GENERATION_FAILED&mockFailures=1";
-    const change = { theme: "재시도한 제목", sub_themes: ["재시도 활동"] };
+    const weeks = plan.months.find((m) => m.month === 3).week_count;
+    const change = { theme: "재시도한 제목", sub_themes: Array(weeks).fill("재시도 활동") };
     assert.equal((await request(url, change, "PUT")).status, 500);
     assert.deepEqual(read().plans[0].months, plan.months);
     const response = await request(url, change, "PUT");

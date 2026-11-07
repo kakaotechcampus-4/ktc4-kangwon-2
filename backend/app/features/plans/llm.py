@@ -15,14 +15,19 @@ from collections.abc import Mapping
 from ssuksak.adapters.v1_curriculum import v1_curriculum_catalog
 from ssuksak.planning.application.yearly_ports import ThemeTextRequest, ThemeTextResult
 from ssuksak.planning.planner.v1_guidance import V1_GUIDANCE, curriculum_context
+from ssuksak.planning.venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG, unrequested_venues
 
 from app.shared.llm import LlmFailed, complete_json, is_mock, require_config
+
+ANNUAL_THEME_PROMPT_VERSION = "annual-theme-text-v3" + VENUE_POLICY_TAG
 
 SYSTEM_PROMPT = """너는 어린이집 교사의 연간보육계획안 작성을 돕는다.
 
 주어진 달마다 **주제 문장 하나**를 쓴다. 규칙:
 
 1. 반드시 참고자료의 주제(reference_label)를 벗어나지 않는다. 새 주제를 지어내지 않는다.
+   원 주제의 주요 범위를 유지한다. \
+말은 쉽게 바꾸되, 넓은 주제를 쓰기 쉬운 일부 소재로 임의로 좁히지 않는다.
 2. 한국어로 쓴다. 15자 이내의 명사구로 끝낸다.
 3. 대상 연령(target_ages)이 알아들을 수 있는 말을 쓴다.
 4. 활동·교구·날짜를 쓰지 않는다. 그건 월간계획안이 정한다.
@@ -54,9 +59,11 @@ class EliceThemeTextGenerator:
         asked = {request.theme_id: request for request in requests}
         user_content = _user_content(requests)
         content = complete_json(
-            SYSTEM_PROMPT + V1_GUIDANCE, user_content, transport=self._transport
+            SYSTEM_PROMPT + V1_GUIDANCE + VENUE_GUIDANCE, user_content, transport=self._transport
         )
         results = tuple(_parse(content, asked))
+        if any(unrequested_venues(result.value) for result in results):
+            raise LlmFailed("교사가 지정하지 않은 지역·시설명이 연간 주제에 들어 있습니다")
         context = json.loads(user_content)["curriculum_context"]
         reject_curriculum_ids((result.value for result in results), context)
         return results
@@ -65,7 +72,7 @@ class EliceThemeTextGenerator:
 def _user_content(requests: tuple[ThemeTextRequest, ...]) -> str:
     return json.dumps(
         {
-            "prompt_version": "annual-theme-text-v2",
+            "prompt_version": ANNUAL_THEME_PROMPT_VERSION,
             "curriculum_context": approved_curriculum_context(),
             "months": [
                 {

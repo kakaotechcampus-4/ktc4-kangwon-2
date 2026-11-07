@@ -309,3 +309,24 @@ def test_a_confirmed_plan_is_not_regenerated():
     confirmed = harness.weekly_plans.get(plan.plan_id)
     with pytest.raises(InvalidStateTransitionError):
         harness.regenerate_weekly(confirmed, section_key="goals")
+
+
+def test_a_teacher_memo_reaches_the_prompt_marks_evidence_and_is_reused_on_regeneration():
+    from ssuksak.planning.planner.teacher_memo import TEACHER_MEMO_EVIDENCE, TEACHER_MEMO_PROMPT_TAG
+
+    harness = WeeklyHarness()
+    parent = harness.confirm_monthly(harness.monthly_parent(confirm=False, mode=LLM))
+    plan = harness.generate_weekly(parent, mode=LLM, teacher_memo="11월 20일 김장 행사가 있어요").plan
+    request = harness.weekly_provider.requests[0]
+    assert TEACHER_MEMO_PROMPT_TAG in request.prompt_version and request.prompt_version.startswith(WEEKLY_PROMPT_VERSION)
+    assert json.loads(request.user_content)["teacher_memo"]["text"] == "11월 20일 김장 행사가 있어요"
+    assert "theme" not in request.memo_addresses
+    assert "11월 20일" in request.allowed_fact_text  # the teacher's own fact (Q2)
+    assert plan.teacher_memo == "11월 20일 김장 행사가 있어요"
+    marked = [c.section_key for c in plan.cells if TEACHER_MEMO_EVIDENCE in c.evidence]
+    assert marked == [request.memo_addresses[0]]  # the mock marks only the first address
+
+    after = harness.regenerate_weekly(plan, section_key="goals")
+    cell_request = harness.weekly_provider.requests[-1]
+    assert cell_request.memo_addresses == ("goals",)
+    assert TEACHER_MEMO_EVIDENCE in after.cell("goals").evidence

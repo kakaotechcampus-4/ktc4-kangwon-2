@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Icon } from "@/components/app/icons";
 import { useRouter } from "next/navigation";
 import {
@@ -8,9 +8,11 @@ import {
   verifyAccount,
   verifyDevAccount,
   isDevLogin,
-  loginDestination,
+  completeAccountOnboarding,
 } from "@/lib/auth/local-account";
+import { restoreFromServer } from "@/lib/api/onboarding";
 import { startDemoSession } from "@/lib/auth/demo-session";
+import { Posty } from "@/components/app/Posty";
 import AuthFrame from "./AuthFrame";
 
 const input =
@@ -24,8 +26,8 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [done, setDone] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [done, setDone] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -62,136 +64,174 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
     try {
       if (signup) {
         await registerAccount(String(form.get("name")), email, password);
+        if (!startDemoSession())
+          throw new Error("가입은 됐어요. 로그인 화면에서 다시 로그인해주세요.");
         setDone(true);
         setBusy(false);
       } else {
+        let centerId: number | null = null;
         if (devLogin) await verifyDevAccount(email, password);
-        else await verifyAccount(email, password);
+        else centerId = await verifyAccount(email, password);
         if (!startDemoSession())
           throw new Error("로그인 정보를 저장할 수 없어요. 브라우저 설정을 확인해주세요.");
-        router.replace(loginDestination());
+        if (centerId !== null) await restoreRoom(centerId);
+        router.replace("/");
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "처리하지 못했어요. 다시 시도해주세요.");
       setBusy(false);
     }
   }
+  if (done) return <SignupDone />;
   return (
     <AuthFrame>
-      <span className="inline-block rounded-full bg-success-tint px-3 py-1.5 text-[12px] font-semibold text-success">
+      <span className="inline-block rounded-full bg-success-tint px-3 py-1.5 text-[13px] font-semibold text-success">
         {signup ? "쌤플과 함께 시작해요" : "다시 만나 반가워요"}
       </span>
       <h2 className="mt-4 font-display text-[30px] font-bold sm:text-[36px]">
-        {done ? "가입을 완료했어요" : signup ? "함께 시작해요" : "반가워요, 선생님"}
+        {signup ? "함께 시작해요" : "반가워요, 선생님"}
       </h2>
-      <p className="mt-1 text-xs text-ink-soft">
-        {done
-          ? "로그인하고 우리 반 초기 설정을 시작해보세요."
-          : "우리 반의 새로운 하루를 준비해 보세요."}
-      </p>
-      {done ? (
-        <Link href="/login" className={button}>
-          로그인하러 가기
-          <Icon name="arrow" className="h-4 w-4" />
-        </Link>
-      ) : (
-        <>
-          <form noValidate onSubmit={submit} className="mt-7 space-y-5">
-            {signup && (
-              <label className={label}>
-                선생님 이름
-                <input
-                  className={input}
-                  name="name"
-                  autoComplete="name"
-                  placeholder="이름을 입력해주세요"
-                  required
-                  maxLength={40}
-                  disabled={busy}
-                />
-              </label>
-            )}
-            <label className={label}>
-              이메일
-              <input
-                className={input}
-                name="email"
-                type="email"
-                autoComplete="username"
-                placeholder="teacher@example.com"
-                required
-                maxLength={254}
-                disabled={busy}
-              />
-            </label>
-            <div>
-              <label htmlFor="auth-password" className={label}>
-                비밀번호
-              </label>
-              <div className="relative">
-                <input
-                  id="auth-password"
-                  className={`${input} pr-14`}
-                  name="password"
-                  type={visible ? "text" : "password"}
-                  autoComplete={signup ? "new-password" : "current-password"}
-                  placeholder={signup ? "8자 이상 입력해주세요" : "비밀번호를 입력해주세요"}
-                  required
-                  minLength={signup ? 8 : undefined}
-                  maxLength={128}
-                  disabled={busy}
-                />
-                <button
-                  type="button"
-                  aria-label={visible ? "비밀번호 숨기기" : "비밀번호 보기"}
-                  aria-pressed={visible}
-                  onClick={() => setVisible(!visible)}
-                  className="absolute bottom-1 right-1 min-h-11 px-2 text-[12px] font-medium text-success"
-                >
-                  {visible ? "숨김" : "보기"}
-                </button>
-              </div>
-            </div>
-            {signup && (
-              <label className={label}>
-                비밀번호 확인
-                <input
-                  className={input}
-                  name="confirm"
-                  type={visible ? "text" : "password"}
-                  autoComplete="new-password"
-                  placeholder="비밀번호를 한 번 더 입력해주세요"
-                  required
-                  minLength={8}
-                  maxLength={128}
-                  disabled={busy}
-                />
-              </label>
-            )}
-            {error && (
-              <p
-                role="alert"
-                className="rounded-md border border-note-line bg-note-soft p-3 text-xs leading-relaxed text-sun-ink"
-              >
-                {error}
-              </p>
-            )}
-            <button className={button} disabled={busy}>
-              {busy ? "처리 중…" : signup ? "회원가입" : "로그인"}
-              {!busy && <Icon name="arrow" className="h-4 w-4" />}
-            </button>
-          </form>
-          <p className="mt-5 text-center text-xs text-ink-soft">
-            {signup ? "이미 계정이 있으신가요?" : "아직 계정이 없으신가요?"}
-            <Link
-              href={signup ? "/login" : "/signup"}
-              className="ml-2 font-semibold text-success underline underline-offset-4"
+      <p className="mt-1 text-xs text-ink-soft">우리 반의 새로운 하루를 준비해 보세요.</p>
+      <form noValidate onSubmit={submit} className="mt-7 space-y-5">
+        {signup && (
+          <label className={label}>
+            선생님 이름
+            <input
+              className={input}
+              name="name"
+              autoComplete="name"
+              placeholder="이름을 입력해주세요"
+              required
+              maxLength={40}
+              disabled={busy}
+            />
+          </label>
+        )}
+        <label className={label}>
+          이메일
+          <input
+            className={input}
+            name="email"
+            type="email"
+            autoComplete="username"
+            placeholder="teacher@example.com"
+            required
+            maxLength={254}
+            disabled={busy}
+          />
+        </label>
+        <div>
+          <label htmlFor="auth-password" className={label}>
+            비밀번호
+          </label>
+          <div className="relative">
+            <input
+              id="auth-password"
+              className={`${input} pr-14`}
+              name="password"
+              type={visible ? "text" : "password"}
+              autoComplete={signup ? "new-password" : "current-password"}
+              placeholder={signup ? "8자 이상 입력해주세요" : "비밀번호를 입력해주세요"}
+              required
+              minLength={signup ? 8 : undefined}
+              maxLength={128}
+              disabled={busy}
+            />
+            <button
+              type="button"
+              aria-label={visible ? "비밀번호 숨기기" : "비밀번호 보기"}
+              aria-pressed={visible}
+              onClick={() => setVisible(!visible)}
+              className="absolute bottom-1 right-1 min-h-11 px-2 text-[13px] font-medium text-success"
             >
-              {signup ? "로그인" : "회원가입"}
-            </Link>
+              {visible ? "숨김" : "보기"}
+            </button>
+          </div>
+        </div>
+        {signup && (
+          <label className={label}>
+            비밀번호 확인
+            <input
+              className={input}
+              name="confirm"
+              type={visible ? "text" : "password"}
+              autoComplete="new-password"
+              placeholder="비밀번호를 한 번 더 입력해주세요"
+              required
+              minLength={8}
+              maxLength={128}
+              disabled={busy}
+            />
+          </label>
+        )}
+        {error && (
+          <p
+            role="alert"
+            className="rounded-md border border-note-line bg-note-soft p-3 text-xs leading-relaxed text-sun-ink"
+          >
+            {error}
           </p>
-        </>
-      )}
+        )}
+        <button className={button} disabled={busy}>
+          {busy ? "처리 중…" : signup ? "회원가입" : "로그인"}
+          {!busy && <Icon name="arrow" className="h-4 w-4" />}
+        </button>
+      </form>
+      <p className="mt-5 text-center text-xs text-ink-soft">
+        {signup ? "이미 계정이 있으신가요?" : "아직 계정이 없으신가요?"}
+        <Link
+          href={signup ? "/login" : "/signup"}
+          className="ml-2 font-semibold text-success underline underline-offset-4"
+        >
+          {signup ? "로그인" : "회원가입"}
+        </Link>
+      </p>
+    </AuthFrame>
+  );
+}
+
+/**
+ * 다른 기기 · 브라우저에서 로그인한 교사의 원 · 반을 서버에서 채운다 (#291).
+ * 반까지 들어오면 첫 설정을 끝낸 것으로 적는다. 로그인은 늘 메인(/)으로 간다 — 실패해도 이어 가고,
+ * 그때는 메인에 닿아 다른 메뉴가 안내 카드를 보인다. 온보딩 1단계의 409 복구가 원을 다시 잇는다.
+ */
+async function restoreRoom(centerId: number) {
+  try {
+    if (await restoreFromServer(centerId)) completeAccountOnboarding();
+  } catch {}
+}
+
+/** 가입 직후 카드. 포스티는 큰 화면에서 카드 윗선에 걸터앉는다(몸통 밑이 테두리에 닿게 -99px). */
+function SignupDone() {
+  // 폼이 사라진 뒤 스크린리더가 제목을 읽게 한 번 포커스한다.
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => heading.current?.focus(), []);
+  return (
+    <AuthFrame>
+      <div className="flex justify-end lg:hidden">
+        <Posty pose="sitWave" size={72} label={null} />
+      </div>
+      <Posty
+        pose="sitWave"
+        size={110}
+        label={null}
+        className="absolute right-6 -top-[99px] hidden lg:block"
+      />
+      <span className="inline-block rounded-full bg-success-tint px-3 py-1.5 text-[13px] font-semibold text-success">
+        가입 완료
+      </span>
+      <h2
+        ref={heading}
+        tabIndex={-1}
+        className="mt-4 font-display text-[30px] font-bold outline-none sm:text-[36px]"
+      >
+        가입을 완료했어요
+      </h2>
+      <p className="mt-1 text-xs text-ink-soft">이제 쌤플과 함께 우리 반의 하루를 준비해 보세요.</p>
+      <Link href="/" className={button}>
+        메인화면으로 가기
+        <Icon name="arrow" className="h-4 w-4" />
+      </Link>
     </AuthFrame>
   );
 }

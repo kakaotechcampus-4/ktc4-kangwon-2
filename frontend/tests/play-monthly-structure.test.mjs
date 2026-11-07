@@ -24,6 +24,7 @@ function compile(path, modules) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (name === "react/jsx-runtime") return runtime;
+      if (name === "./PlanMemo") return { PlanMemoNote: () => null };
       assert.ok(name in modules, "unhandled import: " + name);
       return modules[name];
     },
@@ -55,7 +56,6 @@ const text = (node) =>
 const css = new Proxy({}, { get: (_, name) => String(name) });
 const withText = (tree, tag, wanted) =>
   all(tree).filter((n) => n.type === tag && text(n).includes(wanted));
-const withClass = (tree, name) => all(tree).filter((n) => n.props?.className?.includes?.(name));
 
 // 한 번 그릴 때마다 훅 칸을 순서대로 다시 읽는 대역. effect 는 deps 가 바뀔 때만 돈다.
 function harness() {
@@ -111,6 +111,7 @@ const load = (file) => {
     "./PlayMonthlyStructure.module.css": esModule(css),
     "./PlayMonthlyConfirm": esModule(confirmMod(h).default),
   };
+  mods["./PlayMonthlySafetyPanel"] = compile(dir + "PlayMonthlySafetyPanel.tsx", mods);
   return { C: compile(dir + file, mods).default, h };
 };
 const click = (tree, pred) =>
@@ -139,48 +140,54 @@ const plan = (over = {}) => ({
   ...over,
 });
 
-test("안전교육: 후보 8개와 주별 현재 배치를 보인다", () => {
+test("안전교육: 넣은 후보는 후보 목록에서 숨고, 남은 후보는 모두 [+ 넣기]", () => {
   const { C, h } = load("PlayMonthlySafetyPanel.tsx");
-  const tree = h.render(C, { plan: plan(), onPlace() {}, disabled: false });
-  assert.equal(all(tree).filter((n) => n.props?.["data-candidate"]).length, 8);
-  assert.equal(withClass(tree, "tag").filter((n) => text(n) === "법정").length, 6);
-  assert.equal(withClass(tree, "tag").filter((n) => text(n) === "생활안전").length, 2);
-  const w1 = all(tree).find((n) => n.props?.["data-week"] === "w1");
-  assert.ok(text(w1).includes("법정 2"));
-  const w2 = all(tree).find((n) => n.props?.["data-week"] === "w2");
-  assert.ok(text(w2).includes("아직 안 뒀어요"));
-  assert.equal(all(w2).filter(act("clear")).length, 0);
+  let tree = h.render(C, { plan: plan(), weekId: "w2", onPlace() {}, disabled: false });
+  const ids = (t) => all(t).flatMap((n) => n.props?.["data-candidate"] ?? []);
+  // s2 는 1주 · 3주에 넣었다 — 후보 8개 중 7개만 남는다.
+  assert.deepEqual(ids(tree), ["s1", "s3", "s4", "s5", "s6", "s7", "s8"]);
+  assert.ok(text(tree).includes("2주 안전교육 후보"));
+  assert.ok(text(tree).includes("아직 비어 있어요"));
+  assert.equal(all(tree).filter(act("place")).length, 7);
+  tree = h.render(C, { plan: plan(), weekId: "w1", onPlace() {}, disabled: false });
+  assert.ok(!text(tree).includes("넣었어요") && !text(tree).includes("아직 비어 있어요"));
+  assert.ok(!ids(tree).includes("s2"));
 });
 
-test("안전교육: 후보를 고르기 전엔 두기가 꺼져 있고, 고르면 주마다 같은 후보를 둘 수 있다", () => {
+test("안전교육: [넣기]는 고른 주에 그 후보를, [빼기]는 null 을 넘기고, disabled 면 모든 버튼이 꺼진다", () => {
   const { C, h } = load("PlayMonthlySafetyPanel.tsx");
   const calls = [];
-  const props = { plan: plan(), onPlace: (...a) => calls.push(a), disabled: false };
-  let tree = h.render(C, props);
-  assert.ok(
-    all(tree)
-      .filter(act("place"))
-      .every((n) => n.props.disabled),
+  const onPlace = (...a) => calls.push(a);
+  click(
+    h.render(C, { plan: plan(), weekId: "w2", onPlace, disabled: false }),
+    (n) => act("place")(n) && n.props["aria-label"].endsWith("법정 3"),
   );
-  click(tree, (n) => n.props["data-candidate"] === "s3");
-  tree = h.render(C, props);
-  const place = all(tree).filter(act("place"));
-  assert.ok(place.every((n) => !n.props.disabled));
-  place[1].props.onClick();
-  place[2].props.onClick();
+  click(
+    h.render(C, { plan: plan(), weekId: "w1", onPlace, disabled: false }),
+    (n) => act("unplace")(n) && n.props["aria-label"].startsWith("1주"),
+  );
+  // 넣은 안전교육(놀이 고르기의 「고른 놀이」처럼): 주마다 한 칸, 넣은 주는 [영역] · ✕ 로 뺀다.
+  const placed = h.render(C, {
+    plan: plan({
+      safety_candidates: [
+        { kind: "STATUTORY", category_id: "traffic_safety", cell: cell("s2", "건너요") },
+      ],
+    }),
+    weekId: "w2",
+    onPlace,
+    disabled: false,
+  });
+  const list = all(placed).find((n) => n.props?.["aria-label"] === "넣은 안전교육");
+  assert.equal(all(list).filter((n) => n.type === "li").length, 3);
+  assert.ok(text(list).includes("[교통안전]건너요"));
+  assert.equal(all(list).filter(act("unplace")).length, 2);
+  click(placed, (n) => act("unplace")(n) && n.props["aria-label"].startsWith("3주"));
   assert.deepEqual(calls, [
     ["w2", "s3"],
-    ["w3", "s3"],
+    ["w1", null],
+    ["w3", null],
   ]);
-});
-
-test("안전교육: 비우기는 null 을 넘기고, disabled 면 모든 버튼이 꺼진다", () => {
-  const { C, h } = load("PlayMonthlySafetyPanel.tsx");
-  const calls = [];
-  let tree = h.render(C, { plan: plan(), onPlace: (...a) => calls.push(a), disabled: false });
-  click(tree, (n) => act("clear")(n) && text(n) === "비우기");
-  assert.deepEqual(calls, [["w1", null]]);
-  tree = h.render(C, { plan: plan(), onPlace() {}, disabled: true });
+  const tree = h.render(C, { plan: plan(), weekId: "w1", onPlace() {}, disabled: true });
   assert.ok(
     all(tree)
       .filter((n) => n.type === "button")
@@ -188,42 +195,52 @@ test("안전교육: 비우기는 null 을 넘기고, disabled 면 모든 버튼�
   );
 });
 
-test("소방대피: 칸이 비었으면 확인 없이 바로 복사한다", () => {
+test("소방대피: 쓴 글이 있어도 묻지 않고 바로 복사한다", () => {
   const { C, h } = load("PlayMonthlyDrillPanel.tsx");
   const calls = [];
-  const tree = h.render(C, { plan: plan(), onCopy: (id) => calls.push(id), disabled: false });
+  const tree = h.render(C, {
+    candidates: plan().drill_candidates,
+    current: "쓴 글",
+    onCopy: (id) => calls.push(id),
+    disabled: false,
+  });
   click(tree, (n) => n.props["data-candidate"] === "d1");
   assert.deepEqual(calls, ["d1"]);
-  assert.equal(all(tree).filter((n) => n.props?.role === "group").length, 0);
+  assert.ok(!text(tree).includes("바꿀까요"));
 });
 
-test("소방대피: 쓴 글이 있으면 확인 상자를 거치고 아니요면 복사하지 않는다", () => {
+test("소방대피: 넣은 후보는 안전교육처럼 맨 위 · 「넣음」", () => {
   const { C, h } = load("PlayMonthlyDrillPanel.tsx");
-  const calls = [];
-  const p = plan({ teacher_inputs: [{ key: "fire_disaster_drill", cell: cell("t1", "내 글") }] });
-  const props = { plan: p, onCopy: (id) => calls.push(id), disabled: false };
-  click(h.render(C, props), (n) => n.props["data-candidate"] === "d1");
-  assert.deepEqual(calls, []);
-  let tree = h.render(C, props);
-  assert.ok(text(tree).includes("지금 쓴 글을 이 후보로 바꿀까요?"));
-  click(tree, (n) => n.props["data-act"] === "no");
-  tree = h.render(C, props);
-  assert.equal(all(tree).filter((n) => n.props?.role === "group").length, 0);
-  assert.deepEqual(calls, []);
-  click(tree, (n) => n.props["data-candidate"] === "d1");
-  click(h.render(C, props), (n) => n.props["data-act"] === "yes");
-  assert.deepEqual(calls, ["d1"]);
+  const candidates = plan().drill_candidates.map((d) =>
+    d.cell.item_id === "d2" ? { ...d, cell: { ...d.cell, value: "숨어요" } } : d,
+  );
+  const copy = all(
+    h.render(C, { candidates, current: "숨어요", onCopy() {}, disabled: false }),
+  ).filter(act("copy"));
+  assert.equal(copy[0].props["data-candidate"], "d2");
+  assert.equal(copy[0].props.disabled, true);
+  assert.equal(text(copy[0]), "넣음");
 });
 
 test("소방대피: 빈 후보와 disabled 는 버튼이 꺼진다", () => {
   const { C, h } = load("PlayMonthlyDrillPanel.tsx");
-  let tree = h.render(C, { plan: plan(), onCopy() {}, disabled: false });
+  let tree = h.render(C, {
+    candidates: plan().drill_candidates,
+    current: "",
+    onCopy() {},
+    disabled: false,
+  });
   const off = (t) =>
     all(t)
       .filter(act("copy"))
       .map((n) => n.props.disabled);
   assert.deepEqual(off(tree), [false, true]);
-  tree = h.render(C, { plan: plan(), onCopy() {}, disabled: true });
+  tree = h.render(C, {
+    candidates: plan().drill_candidates,
+    current: "",
+    onCopy() {},
+    disabled: true,
+  });
   assert.deepEqual(off(tree), [true, true]);
 });
 
@@ -264,42 +281,12 @@ test("행 빼기: 마지막 행이면 확정이 막힌다는 안내가 있고, d
   assert.ok(all(tree).find(act("remove")).props.disabled);
 });
 
-test("안전교육: 계획이 바뀌면 고른 후보를 버리고 두기가 꺼진다", () => {
-  const { C, h } = load("PlayMonthlySafetyPanel.tsx");
-  const calls = [];
-  const onPlace = (...a) => calls.push(a);
-  click(
-    h.render(C, { plan: plan(), onPlace, disabled: false }),
-    (n) => n.props["data-candidate"] === "s3",
-  );
-  const b = plan({
-    id: 2,
-    safety_candidates: [{ kind: "STATUTORY", cell: cell("x1", "다른 계획") }],
-  });
-  const tree = h.render(C, { plan: b, onPlace, disabled: false });
-  assert.ok(
-    all(tree)
-      .filter(act("place"))
-      .every((n) => n.props.disabled),
-  );
-  assert.equal(all(tree).filter((n) => n.props["aria-pressed"] === true).length, 0);
-  assert.deepEqual(calls, []);
-});
-
 test("확인 상자: 연 채 disabled 가 되면 상자가 닫히고 콜백은 0건이다", () => {
   for (const [file, props, opener] of [
     [
       "PlayMonthlyRowRemove.tsx",
       { activity: row, section: "자유놀이", onRemove: () => calls.push(1), isLastInSection: false },
       act("remove"),
-    ],
-    [
-      "PlayMonthlyDrillPanel.tsx",
-      {
-        plan: plan({ teacher_inputs: [{ key: "fire_disaster_drill", cell: cell("t1", "내 글") }] }),
-        onCopy: () => calls.push(1),
-      },
-      (n) => n.props["data-candidate"] === "d1",
     ],
   ]) {
     const calls = [];
@@ -373,19 +360,24 @@ test("복사 · 비우기 버튼 이름에 후보명 · 주 이름이 들어가�
   const s = load("PlayMonthlySafetyPanel.tsx");
   const p = plan();
   p.safety_candidates[0].cell.value = " ";
-  const tree = s.h.render(s.C, { plan: p, onPlace() {}, disabled: false });
+  const tree = s.h.render(s.C, { plan: p, weekId: "w1", onPlace() {}, disabled: false });
   const labels = (t, a) =>
     all(t)
       .filter(act(a))
       .map((n) => n.props["aria-label"]);
-  assert.deepEqual(labels(tree, "clear"), ["1주 비우기: 법정 2", "3주 비우기: 법정 2"]);
-  assert.equal(
-    all(tree).find((n) => n.props["data-candidate"] === "s1").props["aria-label"],
-    "법정 빈 후보",
-  );
+  assert.deepEqual(labels(tree, "unplace"), ["1주에서 빼기: 법정 2", "3주에서 빼기: 법정 2"]);
+  assert.equal(labels(tree, "place")[0], "1주에 넣기: 법정 빈 후보");
   const d = load("PlayMonthlyDrillPanel.tsx");
   assert.deepEqual(
-    labels(d.h.render(d.C, { plan: plan(), onCopy() {}, disabled: false }), "copy"),
+    labels(
+      d.h.render(d.C, {
+        candidates: plan().drill_candidates,
+        current: "",
+        onCopy() {},
+        disabled: false,
+      }),
+      "copy",
+    ),
     ["소방대피/재난대비 칸에 넣기: 화재", "소방대피/재난대비 칸에 넣기: 지진"],
   );
 });

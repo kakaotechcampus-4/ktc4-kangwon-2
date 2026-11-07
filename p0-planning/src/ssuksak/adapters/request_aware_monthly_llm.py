@@ -7,6 +7,7 @@ passing Core validation when the month, the weeks or the Section set change.
 
 It never calls a network and must never stand in for a failed real provider.
 Behaviour follows ``tests/finalization/harness.py`` ``RequestAwareMonthlyLlm``.
+It also writes one sentence per candidate key (safety, drill) when the request has them.
 """
 
 from __future__ import annotations
@@ -15,7 +16,9 @@ import json
 
 from ssuksak.planning.domain.monthly_template import RepeatBy, SectionRole
 from ssuksak.planning.planner.contracts import (
+    DRILL_CANDIDATE_PREFIX,
     MONTHLY_MODEL,
+    SAFETY_CANDIDATE_PREFIX,
     MonthlyCellPlanningRequest,
     MonthlyPlanningRequest,
     RawLlmResponse,
@@ -74,6 +77,12 @@ class RequestAwareMonthlyLlm:
             }
 
         def week_value(section_key: str, index: int) -> dict[str, object]:
+            value = _week_value(section_key, index)
+            if section_key in getattr(request, "detail_section_keys", ()):
+                value["detail"] = f"{index}주에는 친구들과 함께 몸을 움직이며 즐겁게 놀아요."  # ADR-066
+            return value
+
+        def _week_value(section_key: str, index: int) -> dict[str, object]:
             if section_key == "safety_education":
                 # No placement plan: leave it unresolved, never invent content.
                 return safety_value(index) or {
@@ -140,6 +149,29 @@ class RequestAwareMonthlyLlm:
             "month_sections": month_sections,
             "weeks": weeks,
         }
+        candidates = [
+            {
+                "section_key": key,
+                "value": (
+                    f"안전 약속 {n}번을 함께 지켜요."
+                    if key.startswith(SAFETY_CANDIDATE_PREFIX)
+                    else f"{n}번 상황을 떠올리며 선생님과 함께 대피해요."
+                ),
+                "unresolved": False,
+                "reference_id": None,
+                "grounding_refs": [refs[0]] if key.startswith(SAFETY_CANDIDATE_PREFIX) else [],
+            }
+            for n, (key, refs) in enumerate(request.allowed_grounding_refs_by_section, 1)
+            if key.startswith((SAFETY_CANDIDATE_PREFIX, DRILL_CANDIDATE_PREFIX))
+        ]
+        if candidates:
+            month_sections += candidates
+        if getattr(request, "memo_addresses", None) is not None:
+            # A teacher memo marks the first allowed cell, so the evidence path is exercised.
+            payload["memo_applied"] = list(request.memo_addresses[:1])
+            payload["memo_skipped"] = []
+        if getattr(request, "safety_request_slots", None) is not None:
+            payload["safety_requests"] = []  # no count / week request: the Rule places nothing
         return RawLlmResponse(
             json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "request-aware-monthly"
         )
@@ -156,6 +188,11 @@ class RequestAwareMonthlyLlm:
                 grounding_ref_for(request, request.target_section_key),
             ),
         }
+        if getattr(request, "detail_requested", False):  # ADR-066
+            payload["section"]["detail"] = "친구들과 새로운 방법으로 몸을 움직이며 놀아요."
+        if getattr(request, "memo_addresses", None) is not None:
+            payload["memo_applied"] = list(request.memo_addresses)
+            payload["memo_skipped"] = []
         return RawLlmResponse(
             json.dumps(payload, ensure_ascii=False), MONTHLY_MODEL, "request-aware-cell"
         )

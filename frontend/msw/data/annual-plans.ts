@@ -1,5 +1,6 @@
 import { read, commit, type Database, type MockAnnualPlan } from "./store";
 import { MOCK_USER_ID } from "./template-profiles";
+import { targetMonthOf, weeksOf } from "./monthly-plans";
 import type {
   AnnualAuditEvent,
   AnnualInput,
@@ -46,11 +47,19 @@ export const safetyCategories = [
   { category_id: "disaster_preparedness_safety", label: "재난대비 안전 교육" },
   { category_id: "traffic_safety", label: "교통안전 교육" },
 ];
-export const months = (): AnnualMonth[] =>
+/** 그 달 주 수. 서버는 `canonical_week_periods` 이고 목업은 월간과 같은 평일 달력으로 센다. */
+const weekCount = (schoolYear: number, month: number) =>
+  weeksOf(targetMonthOf(schoolYear, month)).length;
+/** 소주제는 주마다 하나 — 그대로 확정할 수 있다. */
+export const months = (schoolYear: number): AnnualMonth[] =>
   [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2].map((month, i) => ({
     month,
     theme: themes[i],
-    sub_themes: [`${themes[i]} 알아보기`, `${themes[i]} 함께 놀이하기`],
+    sub_themes: Array.from(
+      { length: weekCount(schoolYear, month) },
+      (_, w) => `${themes[i]} ${w + 1}주 놀이`,
+    ),
+    week_count: weekCount(schoolYear, month),
     safety_education: [],
     safety_education_state: "SOURCE_REQUIRED",
     safety_education_source: null,
@@ -97,6 +106,8 @@ const projectPeriods = (planId: number): PlayProjectAnnualPlan["periods"] =>
       const number = index + 1;
       return {
         row_key: "cand" + number,
+        // 일부 후보(1 · 5 · 9번)는 요청을 반영했다고 둔다 — 메모가 없으면 detail 이 false 로 읽는다.
+        memo_applied: number % 4 === 1,
         play_name: projectCell(
           itemId(planId, periodIndex, number, 1),
           `${period.months[0]}~${period.months[period.months.length - 1]}월 함께하는 놀이 ${number}`,
@@ -176,7 +187,17 @@ const detail = (p: MockAnnualPlan): AnnualPlanResponse => {
       status: p.status,
       format: p.format,
       format_version: p.format_version,
-      periods: p.periods.map((period) => ({ ...period, selected: period.selected ?? [] })),
+      periods: p.periods.map((period) => ({
+        ...period,
+        selected: period.selected ?? [],
+        // 서버처럼 메모가 없으면 항상 false. 이 키 전에 저장된 목업에는 없다.
+        candidates: period.candidates.map((c) => ({
+          ...c,
+          memo_applied: Boolean(p.memo) && (c.memo_applied ?? false),
+        })),
+      })),
+      memo: p.memo,
+      memo_notices: p.memo_notices,
     };
   return {
     id: p.id,
@@ -185,10 +206,13 @@ const detail = (p: MockAnnualPlan): AnnualPlanResponse => {
     format: "MONTHLY_THEME",
     school_year: p.school_year,
     status: p.status,
-    months: p.months,
+    // 옛 저장본에는 `week_count` 가 없다 — 달력에서 다시 센다.
+    months: p.months.map((m) => ({ ...m, week_count: weekCount(p.school_year, m.month) })),
     safety_categories: safetyCategories,
     checked_rules: p.checked_rules,
     checks: p.checks,
+    memo: p.memo,
+    memo_notices: p.memo_notices,
   };
 };
 export const findPlan = (id: number) => {
@@ -209,6 +233,37 @@ export const listPlans = (classId?: number): AnnualPlanSummary[] =>
       created_at: p.created_at,
       confirmed_at: p.confirmed_at,
     }));
+
+/** 서버 `DELETE` 와 같다 — 확정본도 지우고(ADR-064), 딸린 월간이 있으면 지우지 않고 「IN_USE」. */
+export const removePlan = (id: number) =>
+  commit((db): "IN_USE" | null => {
+    const plan = db.plans.find((p) => p.id === id);
+    if (!plan) return null;
+    const mine = (p: { class_id: number }) => p.class_id === plan.class_id;
+    if (db.monthlyPlans.some(mine) || db.playMonthlyPlans.some(mine)) return "IN_USE";
+    db.plans = db.plans.filter((p) => p !== plan);
+    delete db.annualAudit[id];
+    return null;
+  });
+
+/**
+ * 시험용 test-reset (서버 `ALLOW_TEST_RESET`). 확정 여부를 보지 않고 그 반의 월간 · 놀이 월간 · 주간과
+ * 이력까지 지운다. 목업은 반 하나가 학년도 하나라 반으로만 고른다.
+ */
+export const resetPlan = (id: number) =>
+  commit((db) => {
+    const plan = db.plans.find((p) => p.id === id);
+    if (!plan) return false;
+    const other = (p: { class_id: number }) => p.class_id !== plan.class_id;
+    for (const p of db.monthlyPlans.filter((p) => !other(p))) delete db.monthlyAudit[p.id];
+    for (const p of db.playMonthlyPlans.filter((p) => !other(p))) delete db.playMonthlyAudit[p.id];
+    db.monthlyPlans = db.monthlyPlans.filter(other);
+    db.playMonthlyPlans = db.playMonthlyPlans.filter(other);
+    db.weeklyPlans = db.weeklyPlans.filter(other);
+    db.plans = db.plans.filter((p) => p !== plan);
+    delete db.annualAudit[id];
+    return true;
+  });
 
 /** 학년도는 요청이 아니라 반이 정한다 (§4). */
 export const addPlan = (input: AnnualInput, schoolYear: number) =>
@@ -235,7 +290,7 @@ export const addPlan = (input: AnnualInput, schoolYear: number) =>
             format: "MONTHLY_THEME",
             school_year: schoolYear,
             status: "DRAFT",
-            months: months(),
+            months: months(schoolYear),
             checked_rules: ["legal_hours"],
             checks: checks(),
             created_at: at,
@@ -311,6 +366,25 @@ export const confirmPlan = (id: number): ConfirmResult =>
       record(db, id, event("CONFIRMED", at));
     }
     return { id, status: "CONFIRMED", confirmed_at: plan.confirmed_at! };
+  });
+/** 소주제 수가 그 달 주 수와 다른 달 (I-A). 확정 422 의 `fields` 다. */
+export const subThemeMismatch = (plan: AnnualPlan) =>
+  plan.months.filter((m) => m.sub_themes.length !== m.week_count).map((m) => String(m.month));
+/**
+ * 확정 취소 (U). 두 형식 다 상태 · 확정 시각을 풀고 `UNCONFIRMED` 를 남긴다. 놀이 프로젝트형은 revision + 1.
+ * 이미 초안이면 handler 가 먼저 그대로 돌려준다.
+ */
+export const unconfirmPlan = (id: number) =>
+  commit((db) => {
+    const plan = db.plans.find((p) => p.id === id)!;
+    const at = stamp(db, id);
+    plan.status = "DRAFT";
+    plan.confirmed_at = null;
+    if (plan.format === "PLAY_PROJECT") {
+      plan.revision = (plan.revision ?? 1) + 1;
+      record(db, id, playEvent("UNCONFIRMED", at));
+    } else record(db, id, event("UNCONFIRMED", at));
+    return detail(plan);
   });
 /**
  * 저장 순서가 곧 서버 정렬이다 — 시각은 계속 늘어나고(stamp), 같은 시각인 생성 이벤트는 계획안 →

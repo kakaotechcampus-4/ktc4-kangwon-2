@@ -37,7 +37,7 @@ DbSession = Annotated[Session, Depends(get_session)]
 
 # Template 의 칸 이름 → Profile 의 칸 이름 (M2 `_TEMPLATE_KEY` 의 반대 방향, habits → basic_habit).
 _PROFILE_KEY = {template_key: profile_key for profile_key, template_key in _TEMPLATE_KEY.items()}
-# 시작할 때 고를 수 있는 칸. 기관 입력 칸(event_schedule · drill)은 생성 계약이 아직 없어
+# 시작할 때 고를 수 있는 칸. 기관 입력 칸(event_schedule)은 생성 계약이 아직 없어
 # 뺀다(BE-1 결정 ③).
 SELECTABLE_KEYS = OPTIONAL_PROFILE_SECTION_KEYS - INSTITUTION_INPUT_SECTION_KEYS
 # Core: 켠 focus 는 NEUTRAL 을 쓸 수 없다(TemplateProfile._validate_sections).
@@ -187,7 +187,7 @@ def _profile_out(profile, created_at: datetime) -> ProfileOut:
 @router.get("/classes/{class_id}/template-profile", response_model=ResolutionOut)
 def resolve_class_profile(class_id: int, session: DbSession, user: CurrentUser):
     """반 override → 원 기본 → 「선택 필요」. 대상을 못 쓰면 내려가지 않는다(R3)."""
-    klass = require_own_class(session, user, class_id)
+    klass = require_own_class(session, user, class_id, read_only=True)
     resolution = PostgresTemplateProfileRepository(session, center_id=user.center_id).resolve(
         klass.id
     )
@@ -291,6 +291,14 @@ def start_profile(center_id: int, body: StartProfile, session: DbSession, user: 
         )
     except InvalidDomainValueError as error:
         raise _invalid("base_template_ref") from error
+    template = service.TEMPLATES.get_template(
+        template_ref.template_id, template_ref.template_version
+    )
+    if template is not None:
+        for key in body.selected_optional_keys:
+            section = template.section(_TEMPLATE_KEY.get(key, key))
+            if section is None or _selection(key, section) != "OPTIONAL":
+                raise _invalid("selected_optional_keys")
     repo = PostgresTemplateProfileRepository(session, center_id=center_id)
     try:
         ref = repo.start_from_reference(
@@ -384,7 +392,7 @@ def put_center_default(center_id: int, body: PointerIn, session: DbSession, user
 @router.get("/classes/{class_id}/template-profile-override", response_model=PointerOut)
 def get_class_override(class_id: int, session: DbSession, user: CurrentUser):
     """반 override 포인터 그대로. 대상을 못 쓰게 됐어도(R3) 보인다 — 해제하려면 이 값이 필요하다."""
-    klass = require_own_class(session, user, class_id)
+    klass = require_own_class(session, user, class_id, read_only=True)
     repo = PostgresTemplateProfileRepository(session, center_id=user.center_id)
     return _pointer_out(repo.get_override(klass.id))
 

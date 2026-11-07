@@ -11,6 +11,7 @@ import json
 
 from ssuksak.planning.planner.contracts import MONTHLY_MODEL, RawLlmResponse
 from ssuksak.planning.planner.weekly import WeeklyPlanningRequest
+from ssuksak.planning.planner.indoor_alternative import INDOOR_ALTERNATIVE_TAG
 
 
 class RequestAwareWeeklyLlm:
@@ -29,15 +30,37 @@ class RequestAwareWeeklyLlm:
         for target in body["targets"]:
             key, refs = target["section_key"], target["allowed_grounding_refs"]
             value, reference_id, grounding = f"{again}{theme} — 이번 주 {key} 계획", None, refs[:1]
-            if key == "theme":
+            if target.get("activity_type"):
+                noun = "자유놀이" if key.startswith("indoor_play.candidate.") else "활동"
+                required = " ".join(target.get("required_name_terms", ()))
+                prefix = required + " " if required else ""
+                value = f"{prefix}{target['activity_type']} {noun} {key.rsplit('.', 1)[-1]}: 자료 속 대상을 함께 탐색합니다."
+            elif key == "theme":
                 value, grounding = f"{again}{theme} 속 이번 주 놀이", []
             elif key == "outdoor_play":
-                reference_id, value = (target["reference_candidates"][0][k] for k in ("reference_id", "label"))
+                if target.get("parent_groundable"):
+                    value = f"{again}{parent[key]}" if refs else parent[key]
+                    grounding = refs[:1] if again else []
+                elif target["reference_candidates"]:
+                    reference_id, value = (target["reference_candidates"][0][k] for k in ("reference_id", "label"))
+                    grounding = []
             elif key == "safety_education":
                 value, grounding = f"{again}이번 주에도 {parent['safety_education']}", []
+            elif key == "indoor_alternative" and body.get("indoor_adaptation_policy") == INDOOR_ALTERNATIVE_TAG.lstrip("+"):
+                value += ": 허용된 실내 활동 방법으로 이번 주 경험을 이어 갑니다."
+            if target.get("days"):  # ADR-051: one distinct value per requested day
+                sections.append({"section_key": key, "reference_id": None, "days": [
+                    {"day": day, "value": f"{value} {day}", "unresolved": False, "grounding_refs": grounding}
+                    for day in target["days"]
+                ]})
+                continue
             sections.append({
                 "section_key": key, "value": value, "unresolved": False,
                 "grounding_refs": grounding, "reference_id": reference_id,
             })
-        content = json.dumps({"week_id": body["week"]["week_id"], "sections": sections}, ensure_ascii=False)
+        answer = {"week_id": body["week"]["week_id"], "sections": sections}
+        if getattr(request, "memo_addresses", None) is not None and not request.repair_targets:
+            answer["memo_applied"] = list(request.memo_addresses[:1])  # exercises the evidence path
+            answer["memo_skipped"] = []
+        content = json.dumps(answer, ensure_ascii=False)
         return RawLlmResponse(content=content, model=MONTHLY_MODEL)

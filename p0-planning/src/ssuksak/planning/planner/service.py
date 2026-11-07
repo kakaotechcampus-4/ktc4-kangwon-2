@@ -6,6 +6,7 @@ import logging
 
 from ..context.models import MonthlyContextPacket
 from ..domain.monthly_template_snapshot import TemplateSnapshot
+from ..venue_policy import venue_name_only_repair
 from .contracts import (
     is_compatible_monthly_model,
     MonthlyPlanningOutcome,
@@ -14,6 +15,7 @@ from .contracts import (
 )
 from .parser import parse_monthly_proposal, parse_repair_patches
 from .ports import MonthlyPlanningProvider
+from .teacher_memo import split_memo_applied, split_safety_requests
 from .prompt import build_monthly_planning_request, build_monthly_repair_request
 from .validation import (
     MonthlyProposalValidationResult,
@@ -22,6 +24,7 @@ from .validation import (
     hydrate_reference_values,
     merge_repair_patches,
     repair_targets,
+    sanitize_activity_details,
     validate_monthly_proposal,
 )
 
@@ -40,6 +43,7 @@ REPAIRABLE_CODES = frozenset(
         "SOURCE_TEXT_COPY", "TEXT_POLICY", "WRONG_SOURCE_GROUNDING", "SAFETY_GROUNDING_MISMATCH",
         "SAFETY_FOCUS_MISMATCH", "SAFETY_MULTIPLE_SENTENCES", "SAFETY_DUPLICATE_CONTENT", "SAFETY_DUPLICATE_REFERENCE",
         "REFERENCE_VALUE_MISMATCH",
+        "INDOOR_ALTERNATIVE_REQUIRED",
     }
 )
 
@@ -65,8 +69,12 @@ class MonthlyPlanner:
         request = build_monthly_planning_request(packet, snapshot)
         initial_prompt_version, repaired_cells = request.prompt_version, frozenset()
         response = self._generate(request)
+        content, memo_applied, memo_skipped = split_memo_applied(response.content, request.memo_addresses)
+        content, safety_requests = split_safety_requests(
+            content, request.safety_request_slots, tuple(w.value for w in request.expected_week_ids)
+        )
         # The schema pairs each reference id with its label; hydration re-asserts that pair.
-        content, _ = hydrate_reference_values(response.content, request)
+        content, _ = hydrate_reference_values(content, request)
         proposal = parse_monthly_proposal(content)
         validation = validate_monthly_proposal(proposal, packet, request)
         found = validation.issues
@@ -111,6 +119,8 @@ class MonthlyPlanner:
                 validate_monthly_proposal(proposal, packet, request).issues
                 + changed_reference_ids(rejected, proposal, found)
             )
+            if any(issue.detail == "UNREQUESTED_VENUE" for issue in found) and venue_name_only_repair(rejected, proposal):
+                raise ProposalRejectedError(("VENUE_NAME_ONLY_REMOVAL",))
             if validation.is_valid:
                 _log.info("Monthly LLM repair succeeded")
             else:
@@ -120,13 +130,16 @@ class MonthlyPlanner:
                 _log.warning("Monthly LLM proposal rejected: %s", finding_summary(validation.issues))
             raise ProposalRejectedError(validation.codes, validation.issues)
         return MonthlyPlanningOutcome(
-            proposal=proposal,
+            proposal=sanitize_activity_details(proposal, packet, request),
             model=response.model,
             prompt_version=request.prompt_version,
             packet_fingerprint=request.packet_fingerprint,
             request_id=response.request_id,
             initial_prompt_version=initial_prompt_version,
             repaired_cells=repaired_cells,
+            memo_applied=memo_applied,
+            memo_skipped=memo_skipped,
+            safety_requests=safety_requests,
         )
 
     def _generate(self, request: MonthlyPlanningRequest):

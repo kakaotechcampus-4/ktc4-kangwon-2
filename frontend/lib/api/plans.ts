@@ -1,5 +1,5 @@
 import { ApiError, apiRequest } from "./client";
-import { downloadHwpx } from "./export";
+import { downloadHwpx, type ExportFormat } from "./export";
 import { isAlreadyConfirmed, isStaleWrite } from "./documents";
 import type {
   AnnualInput,
@@ -77,9 +77,9 @@ export const isRejectedSave = (error: unknown) => error instanceof ApiError && e
 export const getAnnualPlanAudit = (id: number, signal?: AbortSignal) =>
   apiRequest<{ items: AnnualAuditEvent[] }>("/api/plans/annual/" + id + "/audit", { signal });
 /**
- * 확정 전 연간계획안을 지운다. 반 하나에 연간은 하나라, 다시 만들려면 먼저 지워야 한다.
+ * 연간계획안을 지운다(확정본도, ADR-064). 반 하나에 연간은 하나라, 다시 만들려면 먼저 지워야 한다.
  *
- * 확정본은 409 `GATE_BLOCKED`, 월간이 딸려 있으면 409 `IN_USE` 다. 둘 다 서버 문구를 띄운다.
+ * 월간이 딸려 있으면 409 `IN_USE` 다.
  */
 export const deleteAnnualPlan = (id: number) =>
   apiRequest<void>("/api/plans/annual/" + id, { method: "DELETE" });
@@ -89,15 +89,37 @@ export const deleteAnnualPlan = (id: number) =>
  * **파일럿 시작 전에 끈다.** 서버 `ALLOW_TEST_RESET` 과 화면 `NEXT_PUBLIC_ALLOW_TEST_RESET`
  * 둘 다 기본이 꺼짐이다. 서버가 꺼져 있으면 이 경로는 404 다.
  *
- * 확정하면 고칠 수도 지울 수도 없어서(계획안에는 `unconfirm` 이 없다) 시험할 때 막힌다.
- * 그 막다른 길을 열어 두는 것이고, 교사가 쓰는 `deleteAnnualPlan` 은 그대로 둔다.
+ * 딸린 월간이 있으면 `deleteAnnualPlan` 이 막아서 시험할 때 하나씩 지워야 한다.
+ * 그 길을 줄여 두는 것이고, 교사가 쓰는 `deleteAnnualPlan` 은 그대로 둔다.
  */
 export const testResetAnnualPlan = (id: number) =>
   apiRequest<void>("/api/plans/annual/" + id + "/test-reset", { method: "DELETE" });
 /** 시험용 지우기 단추를 띄울지. 켜는 곳이 둘이라 어긋나도 안전하다 — 서버가 최종이다. */
 export const TEST_RESET_ENABLED = process.env.NEXT_PUBLIC_ALLOW_TEST_RESET === "1";
+/** 월별 주제형 확정. 소주제 수가 그 달 `week_count` 와 다른 달이 있으면 422 이고 `fields` 가 그 달 번호(`["10", "2"]`)다. */
 export const confirmAnnualPlan = (id: number) =>
   apiRequest<ConfirmResult>("/api/plans/annual/" + id + "/confirm", { method: "POST" });
+/**
+ * 확정 취소 — CONFIRMED → DRAFT. 본문은 그 형식의 confirm 과 같다(월별 주제형은 없음, 놀이 프로젝트형은 revision).
+ * 이미 초안이면 200 · 그대로다. 딸린 월간이 있어도 풀린다. 응답은 상세와 같은 모양이다.
+ */
+export const unconfirmAnnualPlan = (id: number, expectedRevision?: number) =>
+  apiRequest<AnnualPlanResponse>(
+    "/api/plans/annual/" + id + "/unconfirm",
+    expectedRevision === undefined
+      ? { method: "POST" }
+      : {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expected_revision: expectedRevision }),
+        },
+  );
+/** 422 `fields` — 서버가 준 위치 목록(문자열이 아닌 것은 버린다). */
+export function errorFields(error: unknown): string[] {
+  if (!(error instanceof ApiError)) return [];
+  const fields = (error.body as { error?: { fields?: unknown } } | null)?.error?.fields;
+  return Array.isArray(fields) ? fields.filter((f): f is string => typeof f === "string") : [];
+}
 
 /**
  * 놀이 프로젝트형 확정 (§7). 읽은 revision 을 같이 보내고, 응답은 계획안 전체다.
@@ -111,6 +133,6 @@ export const confirmPlayProject = (id: number, expectedRevision: number) =>
     body: JSON.stringify({ expected_revision: expectedRevision }),
   });
 
-/** 확정한 연간계획안을 hwpx 로 내려받는다 (§9). */
-export const downloadAnnualHwpx = (id: number) =>
-  downloadHwpx(`/api/plans/${id}/export/hwp`, "연간계획안.hwpx");
+/** 확정한 연간계획안을 내려받는다 (§9). 기본 hwpx, `format` 으로 pdf · hwp. */
+export const downloadAnnualHwpx = (id: number, format: ExportFormat = "hwpx") =>
+  downloadHwpx(`/api/plans/${id}/export/hwp?format=${format}`, `연간계획안.${format}`);

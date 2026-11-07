@@ -52,7 +52,9 @@ def require_config() -> tuple[str, str]:
     return base_url, api_key
 
 
-def complete_json(system_prompt: str, user_content: str, *, transport=None) -> str:
+def complete_json(
+    system_prompt: str, user_content: str, *, transport=None, max_completion_tokens=None
+) -> str:
     """JSON 으로만 답하게 하고 그 글자를 그대로 돌려준다. 파싱은 부르는 쪽이 한다.
 
     **온도를 보내지 않는다.** `gpt-6.1-sol` 는 기본값(1)만 받고 0 을 거부한다
@@ -77,6 +79,8 @@ def complete_json(system_prompt: str, user_content: str, *, transport=None) -> s
                 {"role": "user", "content": user_content},
             ],
             "response_format": {"type": "json_object"},
+            # 출력 상한. 안 주는 기존 호출은 모델 기본값 그대로다.
+            **({"max_completion_tokens": max_completion_tokens} if max_completion_tokens else {}),
         },
         timeout=TIMEOUT_SECONDS,
     )

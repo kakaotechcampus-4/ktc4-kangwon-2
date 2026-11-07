@@ -109,7 +109,7 @@ def test_placement_fills_statutory_and_supplemental_safety_weeks(month, statutor
             assert cell.safety.kind is SafetyKind.STATUTORY
             assert official and all(is_official_ref(s.source_id, category) and s.source_version == LEGAL for s in official)
             # The Rule writes the label; the LLM wrote only what follows it.
-            assert cell.value.startswith(f"[{STATUTORY_SHORT_LABELS[category]}] - ")
+            assert cell.value.startswith(f"[{STATUTORY_SHORT_LABELS[category]}] ")
         else:
             assert cell.safety.kind is SafetyKind.SUPPLEMENTAL
             assert samples and not official
@@ -279,11 +279,11 @@ def test_quality_review_not_bound_to_this_store_and_classification_fails_before_
     assert harness.provider.monthly_requests == [] and harness.monthly_plans.save_count == 0
 
 
-def test_runtime_loads_the_approved_v0_2_0_classification():
+def test_runtime_loads_the_approved_v0_3_0_classification():
     loaded = JsonSafetyEvidenceClassificationRepository().get_classification()
 
     assert loaded.runtime_active and loaded.multi_tag_needs_review
-    assert loaded.classification_version == "safety-evidence-classification-v0.2.0"
+    assert loaded.classification_version == "safety-evidence-classification-v0.3.0"
 
 
 def test_supplemental_weeks_get_distinct_primary_topics_and_statutory_weeks_one_focus():
@@ -374,7 +374,7 @@ def test_statutory_only_placement_leaves_the_other_weeks_validly_empty(month, st
     for cell, category in zip(plan.section("safety_education").cells, statutory):
         if category:
             assert cell.safety.kind is SafetyKind.STATUTORY and cell.cell_state is CellState.FILLED
-            assert cell.value.startswith(f"[{STATUTORY_SHORT_LABELS[category]}] - ")
+            assert cell.value.startswith(f"[{STATUTORY_SHORT_LABELS[category]}] ")
         else:
             assert cell.safety is None and cell.cell_state is CellState.EMPTY_VALID and cell.value == ""
             assert cell.generation.method is GenerationMethod.RULE_ONLY
@@ -424,7 +424,7 @@ def test_a_statutory_value_carrying_a_label_is_repaired_and_labelled_once(label,
     week_id = next(key for key in clean if key != "response")
     traffic = plan.section("safety_education").cells[1]
 
-    assert traffic.value == f"[교통안전] - {clean[week_id]}" and traffic.value.count("[") == 1
+    assert traffic.value == f"[교통안전] {clean[week_id]}" and traffic.value.count("[") == 1
     assert [r.repair_targets for r in repairs] == [((week_id, "safety_education", ("value",)),)]
 
 

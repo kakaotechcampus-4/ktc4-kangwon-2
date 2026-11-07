@@ -1,12 +1,21 @@
 """연간 소주제 초안. 승인된 주제를 입력으로 받고 12개월을 한 번에 생성한다."""
 
 import json
+from dataclasses import replace
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 from ssuksak.planning import YearlyPlan
+from ssuksak.planning.domain.errors import InvalidDomainValueError
+from ssuksak.planning.domain.teacher_memo import MemoNotice
+from ssuksak.planning.planner.teacher_memo import (
+    TEACHER_MEMO_PROMPT,
+    TEACHER_MEMO_PROMPT_TAG,
+    split_memo_applied,
+)
 from ssuksak.planning.planner.v1_guidance import V1_GUIDANCE
 from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
+from ssuksak.planning.venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG, unrequested_venues
 
 from app.shared.llm import LlmFailed, complete_json, is_mock
 
@@ -27,12 +36,16 @@ class _Draft(BaseModel):
     months: list[_Month] = Field(min_length=12, max_length=12)
 
 
+ANNUAL_SUBTHEMES_PROMPT_VERSION = "annual-subthemes-v3" + VENUE_POLICY_TAG
+
 SYSTEM_PROMPT = """어린이집 만3~5세반의 연간계획안 소주제 초안을 쓴다.
 각 달의 주제(theme), 대상 월(month), 반 연령(target_ages) 범위 안에서 소주제를 쓴다.
 소주제 개수는 입력 week_count(4 또는 5)와 정확히 같아야 한다.
 짧은 한국어 명사구로 쓰고 각 소주제는 120자 이내로 제한한다.
 주제를 바꾸지 않는다. 달의 계절·생활 맥락을 살피되 날씨·행사 개최를 단정하지 않는다.
 같은 달의 소주제는 서로 다른 측면을 다루고, 월 주제를 그대로 반복하지 않는다.
+월 주제가 담은 주요 대상과 경험을 목록 전체에서 유지한다. \
+하나의 소재만 여러 개로 나누느라 다른 주요 내용을 빠뜨리지 않는다.
 월간으로 구체화할 수 있는 짧고 익숙한 대상·경험을 쓰며 추상적인 표어를 나열하지 않는다.
 소주제 목록은 예상 순서이며 실제 운영 일정·활동 순서·결과물을 확정하지 않는다.
 실행한 사실·아동 이름·날짜·안전교육 배치·법적 충족 판정을 만들지 않는다.
@@ -41,6 +54,15 @@ SYSTEM_PROMPT = """어린이집 만3~5세반의 연간계획안 소주제 초안
 JSON만 답한다: {"months":[{"month":3,
 "sub_themes":["소주제 하나","소주제 둘","소주제 셋","소주제 넷"]}, ...]}
 위 예시는 4주인 달이다. 5주인 달에는 소주제를 다섯 개 쓴다."""
+
+# 요청 사항이 있을 때만 붙는다(ADR-060). 주소는 달 번호 문자열("3")이다.
+MEMO_PROMPT = (
+    TEACHER_MEMO_PROMPT
+    + """- 각 달의 주제(theme)는 Rule 이 고른 것이라 바꾸지 않는다. 주제를 바꾸라는 요청은
+  memo_skipped 에 FIXED_CELL 로 적는다. 안전교육 배치 · 시수 요청은 RULE_CONFLICT 다.
+- 응답 JSON 최상위에 "memo_applied"(달 번호 문자열 배열)와 "memo_skipped" 를 함께 쓴다.
+"""
+)
 
 
 def parse_subthemes(content: str, months: tuple[int, ...]) -> dict[str, list[str]]:
@@ -66,10 +88,30 @@ def subthemes_for_month(stored, month: int) -> tuple[str, ...]:
     return tuple(values)
 
 
+def with_teacher_subthemes(plan: YearlyPlan, month: int, before, after) -> YearlyPlan:
+    """A no-op save/reorder does not relabel AI subthemes as teacher-written."""
+    trusted = dict(plan.teacher_subthemes)
+    retained = set(trusted.get(month, ())) & set(after)
+    written = set(after) - set(before)
+    trusted[month] = tuple(
+        value for value in after if value.strip() and value in retained | written
+    )
+    return replace(plan, teacher_subthemes=tuple(sorted(trusted.items())))
+
+
 def generate_subthemes(plan: YearlyPlan, *, transport=None) -> dict[str, list[str]]:
+    return generate_subthemes_with_memo(plan, "", transport=transport)[0]
+
+
+def generate_subthemes_with_memo(
+    plan: YearlyPlan, memo: str, *, transport=None
+) -> tuple[dict[str, list[str]], frozenset[int], tuple[MemoNotice, ...]]:
+    """소주제 + 요청 사항을 반영한 달 + 반영 못한 요청. 메모가 없으면 요청이 메모 이전과 같다."""
     months = tuple(period.period.calendar_month for period in plan.periods)
+    addresses = tuple(str(month) for month in months) if memo else None
     payload = {
-        "prompt_version": "annual-subthemes-v2",
+        "prompt_version": ANNUAL_SUBTHEMES_PROMPT_VERSION
+        + (TEACHER_MEMO_PROMPT_TAG if memo else ""),
         "curriculum_context": approved_curriculum_context(),
         "target_ages": sorted(plan.target_ages),
         "months": [
@@ -81,6 +123,8 @@ def generate_subthemes(plan: YearlyPlan, *, transport=None) -> dict[str, list[st
             for period in plan.periods
         ],
     }
+    if memo:
+        payload["teacher_memo"] = {"text": memo, "addresses": list(addresses)}
     if is_mock():
         content = json.dumps(
             {
@@ -93,20 +137,28 @@ def generate_subthemes(plan: YearlyPlan, *, transport=None) -> dict[str, list[st
                         ],
                     }
                     for item in payload["months"]
-                ]
+                ],
+                # mock 은 첫 달에 반영했다고 답한다.
+                **({"memo_applied": list(addresses[:1]), "memo_skipped": []} if memo else {}),
             },
             ensure_ascii=False,
         )
     else:
         content = complete_json(
-            SYSTEM_PROMPT + V1_GUIDANCE,
+            SYSTEM_PROMPT + V1_GUIDANCE + VENUE_GUIDANCE + (MEMO_PROMPT if memo else ""),
             json.dumps(payload, ensure_ascii=False),
             transport=transport,
         )
+    try:
+        content, applied, notices = split_memo_applied(content, addresses)
+    except (InvalidDomainValueError, ValueError) as error:
+        raise LlmFailed("연간 소주제의 요청 사항 응답 형식이 맞지 않습니다") from error
     result = parse_subthemes(content, months)
+    if any(unrequested_venues(value, memo) for values in result.values() for value in values):
+        raise LlmFailed("교사가 지정하지 않은 지역·시설명이 연간 소주제에 들어 있습니다")
     reject_curriculum_ids(
         (value for values in result.values() for value in values), payload["curriculum_context"]
     )
     if any(len(result[str(item["month"])]) != item["week_count"] for item in payload["months"]):
         raise LlmFailed("연간 소주제 개수가 해당 월의 주차 수와 맞지 않습니다")
-    return result
+    return result, frozenset(int(month) for month in applied), notices

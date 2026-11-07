@@ -15,10 +15,12 @@
 | 누가 쓰나 | [docs/페르소나.md](docs/페르소나.md) |
 | 이번 주 범위 | [docs/PRD.md](docs/PRD.md) §6 |
 | 화면이 어떻게 도나 | [docs/screen-spec.md](docs/screen-spec.md) — 일지 S-J1~7 · 계획안 S1~11 |
+| 포스티 · 마크 그림 | [docs/design/README.md](docs/design/README.md) — 색 · 포즈 · 조합마다 쓰는 때. 코드 값은 `Posty.tsx` 가 정답 |
 | 서버와 무슨 약속을 했나 | [docs/api-spec.md](docs/api-spec.md) |
 | 아직 안 정한 것 | [docs/미확정사항.md](docs/미확정사항.md) |
 | 왜 이렇게 했나 | [docs/adr/](docs/adr/) |
 | 평가 때 뭘 근거로 대나 | [docs/evaluation/](docs/evaluation/) — 항목 10개 |
+| 화면을 무엇으로 만드나 | [docs/design/종이와-판.md](docs/design/종이와-판.md) — 종이 · 쪽지 · 칠판 · 버튼 |
 | 디렉터리 · 브랜치 | [docs/structure.md](docs/structure.md) · [docs/branch-strategy.md](docs/branch-strategy.md) |
 
 **`p0-planning/` 안에는 더 좁은 규칙이 따로 있다** — [p0-planning/CLAUDE.md](p0-planning/CLAUDE.md).
@@ -255,6 +257,27 @@ hwpx       curl 로 받아보고 된다고 했다. 화면 버튼은 txt 를 만�
 - **「오늘」을 만들 때 `toISOString()` 을 쓰지 않는다.** 그건 UTC 날짜라 한국 아침 9시
   전에는 어제가 된다. `lib/workspace/model.ts` 의 `today()` 를 쓴다.
 
+## 화면 비율 — 1440 × 800 기준으로 줄인다
+
+창 폭이 1024 이상이면 화면 전체를 **`max(0.8, min(1, 창 폭 / 1440, 창 높이 / 800))`** 배로 줄인다
+(하민 2026-11-05, 높이는 2026-11-07). 폭이나 높이 중 모자란 쪽에 맞춘다 — 브라우저 안쪽이
+1536 × 760(1920 노트북 · 윈도우 125%)이면 0.95, 1366 × 650(1366 × 768 화면)이면 0.81 이다.
+0.8 보다 작게 줄이지 않고(글자가 안 읽힌다) 그 아래는 스크롤로 본다.
+넓은 화면은 키우지 않는다. 1024 미만(태블릿 · 폰)은 줄이지 않는다.
+800 은 1440 맥북에서 탭 · 주소창을 뺀 브라우저 안쪽 높이 정도다 — 창 크기 `1440 × 900` 과 다르다.
+값은 `app/layout.tsx` 의 스크립트가 `--app-zoom` 에 넣고 `app/globals.css` 가 `html` 에 건다.
+
+- 화면 높이 · 폭은 `vh` · `dvh` · `vw` 대신 `--app-vh` · `--app-dvh` · `--app-vw` 를 쓴다.
+  줄어든 `html` 안에서는 `100vh` 도 같이 줄어 화면 아래가 빈다.
+  ```
+  // ✗  h-[calc(100vh-60px)]
+  // ✓  h-[calc(calc(100*var(--app-vh))-60px)]
+  ```
+- `getBoundingClientRect` · `innerWidth` 로 잰 좌표를 CSS 위치로 다시 쓸 때는 `lib/appZoom.ts` 의
+  `appZoom()` 으로 나눈다(투어 강조 상자 · 끌기 복사본이 그렇게 한다).
+- 시안 · 캡처 기준 창은 그대로 1440 × 900 이다([docs/화면-기준.md](docs/화면-기준.md)).
+  더 좁은 창에서 크기를 재는 시험은 기대값에 배율을 곱한다(`e2e/document-archive-card-size.spec.ts`).
+
 ## 입력 검사 — 스키마에서 막는다
 
 라우터에 `if` 를 쓰지 않는다. **타입에 적어두면 라우터에 들어오기 전에 걸린다.**
@@ -308,9 +331,11 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic check   # CI �
 cd backend  && ruff check . && ruff format .
 cd frontend && npm run lint && npx prettier --write .
 
-# 서버 배포 (5주차 · 수동)
-ssh ktc-server
-cd ~/ktc4-kangwon-2 && git pull && docker compose up -d --build
+# 서버 배포 — 배포 브랜치에 머지되면 Actions 가 한다. 상세는 docs/deploy.md
+# 손으로: Actions → Deploy → Run workflow → ref 에 브랜치 · 커밋 SHA
+# 서버 안에서: Session Manager 로 들어가서 (SSH 22 는 닫혀 있다)
+sudo -iu ubuntu
+DEPLOY_REF=<커밋 SHA> bash ~/ktc4-kangwon-2/scripts/deploy.sh   # 서버에서 git pull 하지 않는다
 ```
 
 `.env` 의 `POSTGRES_PASSWORD` 와 `DATABASE_URL` 안의 비밀번호는 **같은 값**이어야 한다.

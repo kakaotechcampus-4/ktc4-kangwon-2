@@ -2,186 +2,342 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { PageContainer } from "@/components/app/AppLayout";
-import { Icon } from "@/components/app/icons";
-import { listAnnualPlans, testResetAnnualPlan, TEST_RESET_ENABLED } from "@/lib/api/plans";
-import type { AnnualPlanSummary } from "@/lib/api/types";
-import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
-import { AGE_LABEL, type AgeGroup } from "@/lib/plan-generator/types";
-import { useClientState } from "@/lib/hooks/use-client-state";
-import { localDate } from "@/lib/workspace/model";
-
-const PRIMARY =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-primary-line " +
-  "bg-primary px-4 text-xs font-semibold text-white shadow-pg-card transition-colors hover:bg-primary-hover";
+import { listAnnualPlans } from "@/lib/api/plans";
+import { listMonthlyPlans } from "@/lib/api/monthly";
+import { listPlayMonthly } from "@/lib/api/playMonthly";
+import type { AnnualPlanSummary, MonthlyPlanSummary, PlayMonthlySummary } from "@/lib/api/types";
+import AnnualImport from "./AnnualImport";
+import { Tape } from "@/components/workspace/WorkspaceUI";
 
 /**
- * 계획안 — 만들어 둔 계획안을 모아 본다. 만드는 곳은 /plans/annual/new 다.
- *
- * 이 화면이 없으면 사이드바의 「계획안」이 곧바로 생성 양식으로 떨어져서,
- * 이미 만든 계획안을 다시 찾을 길이 없다.
+ * 계획안 첫 화면 — 방식(월별 주제형 · 놀이 중심형)을 고르고, 확정 안 한 초안을 이어서 쓴다.
+ * 확정한 계획안은 문서 보관함(/documents)에서 본다.
  */
+
+const MODE = { MONTHLY_THEME: "월별 주제형", PLAY_PROJECT: "놀이 중심형" } as const;
+
+export type DraftCard = {
+  key: string;
+  date: string;
+  created: string;
+  mode: string;
+  title: string;
+  href: string;
+};
+
+/** 「이어서 하기」 카드. 확정 안 한 연간 · 월간 초안만, 최근 만든 것부터. */
+export function draftCards(
+  annual: AnnualPlanSummary[],
+  monthly: MonthlyPlanSummary[],
+  play: PlayMonthlySummary[],
+): DraftCard[] {
+  const cards = [
+    ...annual
+      .filter((p) => p.status === "DRAFT")
+      .map((p) => ({
+        key: "annual-" + p.id,
+        created: p.created_at,
+        mode: MODE[p.format],
+        title: `${p.school_year} 연간계획안`,
+        href: `/plans/annual/${p.id}`,
+      })),
+    ...monthly
+      .filter((p) => p.status === "DRAFT")
+      .map((p) => ({
+        key: "monthly-" + p.id,
+        created: p.created_at,
+        mode: MODE.MONTHLY_THEME,
+        title: `${p.month}월 월간계획안`,
+        href: `/plans/monthly?plan_id=${p.id}&class_id=${p.class_id}&month=${p.month}`,
+      })),
+    ...play
+      .filter((p) => p.status === "DRAFT")
+      .map((p) => ({
+        key: "play-" + p.id,
+        created: p.created_at,
+        mode: MODE.PLAY_PROJECT,
+        title: `${p.month}월 월간계획안`,
+        href: `/plans/monthly/play/${p.id}`,
+      })),
+  ];
+  return cards
+    .sort((a, b) => b.created.localeCompare(a.created))
+    .map((c) => ({ ...c, date: shortDate(c.created) }));
+}
+
+// 카드 날짜는 정답지처럼 「10월 30일」. 문서 보관함은 localDate(2026.10.30) 그대로.
+function shortDate(iso: string) {
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? "" : `${at.getMonth() + 1}월 ${at.getDate()}일`;
+}
+
 export default function PlanNotebookPage() {
-  const [plans, setPlans] = useState<AnnualPlanSummary[] | null>(null);
+  // 월간부터 시작: 파일을 골랐거나(File) 직접 입력(null)으로 가져오기 화면을 띄운다.
+  const [importing, setImporting] = useState<{ file: File | null } | null>(null);
+  const [skip, setSkip] = useState(false);
+  const [drafts, setDrafts] = useState<DraftCard[] | null>(null);
   const [error, setError] = useState("");
-  const [room] = useClientState(
-    () => {
-      const klass = primaryClassFor(loadClassSettings());
-      return {
-        className: klass?.className ?? "",
-        age: klass?.ageGroup ? AGE_LABEL[klass.ageGroup as AgeGroup] : "",
-      };
-    },
-    { className: "", age: "" },
-  );
 
   useEffect(() => {
     const abort = new AbortController();
-    listAnnualPlans(undefined, abort.signal)
-      .then((data) => setPlans(data.items))
-      .catch((e: unknown) => {
-        if (abort.signal.aborted) return;
-        setPlans([]);
-        setError(e instanceof Error ? e.message : "계획안 목록을 불러오지 못했어요.");
-      });
+    Promise.allSettled([
+      listAnnualPlans(undefined, abort.signal),
+      listMonthlyPlans(undefined, abort.signal),
+      listPlayMonthly(undefined, abort.signal),
+    ]).then(([annual, monthly, play]) => {
+      if (abort.signal.aborted) return;
+      const items = <T,>(r: PromiseSettledResult<{ items: T[] }>) =>
+        r.status === "fulfilled" ? r.value.items : [];
+      // 하나만 실패해도 나머지는 보여 준다 — 없는 초안을 없다고 말하지 않도록 알린다.
+      if ([annual, monthly, play].some((r) => r.status === "rejected"))
+        setError("계획안 일부를 불러오지 못했어요. 새로고침해 주세요.");
+      setDrafts(draftCards(items(annual), items(monthly), items(play)));
+    });
     return () => abort.abort();
   }, []);
 
-  /** **시험용.** 확정해서 막힌 계획안을 딸린 월간까지 지운다. 파일럿 전에 끈다. */
-  async function reset(plan: AnnualPlanSummary) {
-    if (!window.confirm(`${plan.school_year}학년도 계획안과 딸린 월간을 전부 지울까요?`)) return;
-    try {
-      await testResetAnnualPlan(plan.id);
-      setPlans((list) => (list ?? []).filter((p) => p.id !== plan.id));
-      setError("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "지우지 못했어요.");
-    }
-  }
+  if (importing) return <AnnualImport file={importing.file} onCancel={() => setImporting(null)} />;
 
-  const subtitle = [room.className, room.age, "연간부터 주간까지"].filter(Boolean).join(" · ");
-
+  // 화면 높이에 맞춘다 — 페이지는 굴러가지 않고, 초안이 많으면 「이어서 하기」 카드만 안에서 굴린다.
+  // 낮은 화면(높이 800 이하)에서는 여백을 줄여 카드 한 줄이 다 보이게 한다.
   return (
-    <PageContainer>
-      <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-[34px] font-bold text-ink lg:text-[44px]">계획안</h1>
-          <p className="mt-1 text-xs text-ink-soft">{subtitle}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Link href="/templates" className="text-xs underline text-ink-soft">
-            기관 양식
-          </Link>
-          <Link href="/trends" className="text-xs underline text-ink-soft">
-            트렌드봇
-          </Link>
-          {/* 월간은 연간과 흐름이 다르다 — 확정된 연간과 원 양식(TemplateProfile)이 있어야
-              만들 수 있어서 생성기 안에 두지 않고 따로 연다 (FR-303). */}
-          <Link href="/plans/monthly" className="text-xs underline text-ink-soft">
-            월간계획안
-          </Link>
-          <Link href="/plans/weekly" className="text-xs underline text-ink-soft">
-            주간계획안
-          </Link>
-          <Link href="/plans/template" className="text-xs underline text-ink-soft">
-            월간 양식 설정
-          </Link>
-          {plans && plans.length > 0 && (
-            <Link href="/plans/annual/new" className={PRIMARY}>
-              <Icon name="plus" className="h-4 w-4" />새 계획안 만들기
-            </Link>
-          )}
-        </div>
+    <div className="flex w-full flex-col gap-5 px-10 pb-12 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)] lg:pb-6 [@media(max-height:800px)]:gap-4 [@media(max-height:800px)]:pt-4">
+      <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink lg:text-[44px] [@media(max-height:800px)]:lg:text-[36px]">
+        어떤 계획안을 만들까요?
+      </h1>
+      <div
+        className="grid gap-4"
+        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))" }}
+      >
+        <Panel
+          format="MONTHLY_THEME"
+          skip={skip}
+          onSkip={setSkip}
+          onImport={(file) => setImporting({ file })}
+        />
+        <Panel format="PLAY_PROJECT" skip={false} onSkip={setSkip} onImport={() => {}} />
       </div>
 
-      {error && (
-        <p role="alert" className="mb-4 rounded-md border border-line bg-paper px-4 py-3 text-xs">
-          {error}
-        </p>
-      )}
-
-      {/* 목록을 받기 전에는 빈 화면을 보여주지 않는다 — 있는 계획안을 없다고 말하게 된다. */}
-      {plans === null ? (
-        <section className="min-h-[390px] border border-line bg-paper shadow-pg-card" />
-      ) : plans.length === 0 ? (
-        <EmptyNotebook />
-      ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {plans.map((plan) => (
-            <li key={plan.id}>
-              <PlanCard plan={plan} onReset={() => void reset(plan)} />
-            </li>
+      <section
+        data-tour="plans-continue"
+        className="mt-6 flex min-h-0 flex-col gap-[14px] border-t border-[#e3ddd2] pt-6 lg:flex-1 [@media(max-height:800px)]:mt-1 [@media(max-height:800px)]:gap-3 [@media(max-height:800px)]:pt-4"
+      >
+        <div className="flex items-baseline gap-3">
+          <h2 className="m-0 font-display text-[27px] font-bold leading-tight text-ink">
+            이어서 하기
+          </h2>
+          <span className="text-sm text-[#5c5243]">확정하지 않은 계획안이에요</span>
+        </div>
+        {error && (
+          <p role="alert" className="m-0 text-sm text-[#a0453a]">
+            {error}
+          </p>
+        )}
+        <div
+          className="grid content-start gap-4 lg:min-h-0 lg:overflow-y-auto"
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 180px), 180px))" }}
+        >
+          {/* 목록을 받기 전에는 「없어요」라고 말하지 않는다. */}
+          {drafts === null && (
+            <p role="status" className="m-0 text-sm text-[#5c5243]">
+              불러오는 중…
+            </p>
+          )}
+          {drafts?.map((card) => (
+            <PlanCard key={card.key} card={card} />
           ))}
-        </ul>
-      )}
-    </PageContainer>
+          <Link
+            href="/documents"
+            className={`${CARD_SIZE} flex flex-col items-center justify-center gap-1 break-keep rounded-2xl border border-dashed border-[#d7d0c7] px-4 py-[18px] text-center text-[#5e4b96] no-underline`}
+          >
+            <span className="text-[15px] font-bold">
+              문서 보관함에서
+              <br />
+              모두 보기&nbsp;→
+            </span>
+            <span className="text-[13px] text-[#5c5243]">
+              확정한 계획안도
+              <br />
+              여기 있어요
+            </span>
+          </Link>
+        </div>
+      </section>
+    </div>
   );
 }
 
-function EmptyNotebook() {
+/** 이어서 쓰기 카드와 「모두 보기」 카드는 쓰다 만 계획안이 없어도 같은 크기. */
+const CARD_SIZE = "min-h-[156px] [@media(max-height:800px)]:min-h-[136px]";
+
+const Chevron = () => (
+  <svg
+    aria-hidden="true"
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="#8a8178"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M9 6l6 6-6 6" />
+  </svg>
+);
+
+/**
+ * 방식 하나. 월별 주제형의 [월간부터 시작하기]는 연간계획안 가져오기로 들어간다.
+ * 놀이 중심형 가져오기는 아직 없다 — 단추를 잠가 둔다.
+ */
+function Panel({
+  format,
+  skip,
+  onSkip,
+  onImport,
+}: {
+  format: keyof typeof MODE;
+  skip: boolean;
+  onSkip: (skip: boolean) => void;
+  onImport: (file: File | null) => void;
+}) {
+  const v1 = format === "MONTHLY_THEME";
+  const chip = v1 ? "bg-[#e8f1ea] text-[#3b5441]" : "bg-[#eee4f4] text-[#5e4b96]";
+  const steps = v1 ? ["연간", "월간", "주간"] : ["연간", "월간"];
   return (
-    <section className="flex min-h-[390px] flex-col items-center justify-center border border-line bg-paper px-5 py-12 text-center shadow-pg-hard">
-      <span className="flex h-20 w-20 items-center justify-center rounded-[26px_20px_28px_18px] bg-primary-tint text-primary">
-        <Icon name="plan" className="h-11 w-11" strokeWidth={1.4} />
-      </span>
-      <h2 className="mt-6 font-display text-[26px] font-bold text-ink lg:text-[34px]">
-        우리 반의 첫 계획을 펼쳐볼까요?
-      </h2>
-      <p className="mt-3 max-w-md text-sm leading-relaxed text-ink-soft">
-        반 정보와 주제를 정하면 초안을 만들 수 있어요.
-        <br />
-        쌤의 생각을 더하고, 검토한 뒤 보관하세요.
-      </p>
-      <Link href="/plans/annual/new" className={`${PRIMARY} mt-6`}>
-        계획안 만들기
-        <Icon name="arrow" className="h-4 w-4" />
-      </Link>
+    <section
+      data-tour={v1 ? "plans-theme" : "plans-play"}
+      className="relative flex min-h-[340px] flex-col justify-between gap-5 border border-line bg-paper rounded-md px-8 py-7 [@media(max-height:800px)]:min-h-0 [@media(max-height:800px)]:gap-4 [@media(max-height:800px)]:py-5"
+    >
+      <Tape />
+      {/* 오른쪽 위 ⓘ — 누르면 어디서 시작하는지 설명이 열린다(다시 누르면 닫힌다). */}
+      <details className="group absolute right-5 top-5 z-10">
+        <summary
+          aria-label={`${MODE[format]} 시작 안내`}
+          title="시작 안내"
+          className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full border border-line bg-paper text-[#5e4b96] group-open:bg-[#f6f1fb] [&::-webkit-details-marker]:hidden"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M12 11v6" />
+            <path d="M12 7h.01" />
+          </svg>
+        </summary>
+        <p className="absolute right-0 top-full m-0 mt-2 w-[260px] rounded-md border border-line bg-paper px-4 py-3 text-[14px] leading-relaxed text-[#2b2826]">
+          {v1
+            ? "월간부터 시작하면 우리 원 연간계획안을 먼저 넣어요."
+            : "놀이 중심형은 연간부터 시작해요."}
+        </p>
+      </details>
+      <div className="flex flex-col gap-2">
+        <span className={`text-sm font-bold ${v1 ? "text-[#49654f]" : "text-[#5e4b96]"}`}>
+          {v1 ? "생활주제 따라" : "아이들 놀이 따라"}
+        </span>
+        <h2 className="m-0 font-display text-[34px] font-bold leading-tight">{MODE[format]}</h2>
+        <p className="m-0 text-base leading-relaxed text-[#5c5243]">
+          {v1
+            ? "연간에서 월간, 월간에서 주간으로 차근차근 내려가요."
+            : "놀이에서 출발해 프로젝트로 이어가요. 주간은 없어요."}
+        </p>
+      </div>
+      <div className="flex items-center gap-[10px]">
+        {steps.map((s, i) => (
+          <span key={s} className="contents">
+            {i > 0 && <Chevron />}
+            <span className={`flex-1 rounded-md py-4 text-center text-base font-bold ${chip}`}>
+              {s}
+            </span>
+          </span>
+        ))}
+        {!v1 && (
+          <span className="contents">
+            <span aria-hidden="true" className="w-[18px]" />
+            <span className="flex-1 rounded-md border border-dashed border-[#d7d0c7] py-[15px] text-center text-[15px] text-ink-soft">
+              주간 없음
+            </span>
+          </span>
+        )}
+      </div>
+      {skip ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* 파일 고르기는 브라우저 기본 창을 쓴다. 고르는 순간 가져오기 화면으로 넘어간다. */}
+            <label className="flex min-h-[54px] flex-[2] cursor-pointer items-center justify-center gap-2 rounded-md border-2 border-dashed border-[#7053a0] bg-[#f6f1fb] text-base font-bold text-[#5e4b96] focus-within:outline focus-within:outline-2 focus-within:outline-[#7053a0]">
+              연간계획안 파일 올리기
+              <input
+                type="file"
+                accept=".hwp,.hwpx,.docx,.pdf"
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) onImport(file);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => onImport(null)}
+              className="min-h-[54px] flex-1 rounded-md border border-[#ddd6ca] bg-white text-[15px] font-bold text-[#5e4b96]"
+            >
+              파일 없이 직접 입력
+            </button>
+            <button
+              type="button"
+              onClick={() => onSkip(false)}
+              className="min-h-[54px] px-3 text-[15px] text-[#5c5243]"
+            >
+              취소
+            </button>
+          </div>
+          <p className="m-0 text-right text-[13px] text-[#5c5243]">HWP · HWPX · DOCX · PDF</p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/plans/annual/new?format=${format}`}
+            className="flex min-h-[54px] flex-1 items-center justify-center rounded-md bg-primary hover:bg-primary-hover text-base font-bold text-white no-underline transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+          >
+            연간부터 시작하기
+          </Link>
+          <button
+            type="button"
+            onClick={() => onSkip(true)}
+            disabled={!v1}
+            className="min-h-[54px] flex-1 rounded-md border border-[#ddd6ca] bg-white text-base font-bold text-[#5e4b96] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {v1 ? "월간부터 시작하기" : "월간부터 시작하기 (준비 중)"}
+          </button>
+        </div>
+      )}
     </section>
   );
 }
 
-function PlanCard({ plan, onReset }: { plan: AnnualPlanSummary; onReset: () => void }) {
-  const confirmed = plan.status === "CONFIRMED";
+function PlanCard({ card }: { card: DraftCard }) {
   return (
-    <div className="flex h-full flex-col gap-3 rounded-md border border-line bg-paper p-5 shadow-pg-card">
-      <Link href={`/plans/annual/${plan.id}`} className="flex flex-1 flex-col gap-3">
-        <div className="flex items-start justify-between gap-3">
-          <span className="font-display text-[22px] font-bold text-ink">
-            {plan.school_year}학년도 연간계획안
-          </span>
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            <span
-              className={`shrink-0 rounded-full px-2.5 py-1 text-[12px] ${
-                confirmed ? "bg-sage-tint text-sage-ink" : "bg-sun-tint text-sun-ink"
-              }`}
-            >
-              {confirmed ? "확정" : "초안"}
-            </span>
-            {plan.format === "PLAY_PROJECT" && (
-              <span className="shrink-0 rounded-full bg-primary-tint px-2.5 py-1 text-[12px] text-primary-ink">
-                놀이 프로젝트형
-              </span>
-            )}
-          </div>
-        </div>
-        <p className="text-xs text-ink-soft">{localDate(plan.created_at)} 만듦</p>
-        <span className="mt-auto inline-flex items-center gap-1.5 text-xs font-medium text-primary">
-          펼쳐 보기
-          <Icon name="arrow" className="h-3.5 w-3.5" />
+    <Link
+      href={card.href}
+      className={`${CARD_SIZE} flex flex-col gap-3 border border-line bg-paper px-5 py-[18px] text-[#2b2826] no-underline`}
+    >
+      <span className="flex items-center justify-between">
+        <span className="rounded-full bg-[#f7edce] px-[10px] py-[3px] text-[13px] font-bold text-[#705936]">
+          작성 중
         </span>
-      </Link>
-      {/* **파일럿 전에 끈다.** 확정하면 고칠 수도 지울 수도 없어서 시험할 때 막힌다
-          (계획안에는 일지와 달리 `unconfirm` 이 없다). 서버도 같은 이름의 스위치가
-          꺼져 있으면 404 다 — 이 단추만 켜져도 아무것도 지워지지 않는다. */}
-      {TEST_RESET_ENABLED && (
-        <button
-          type="button"
-          onClick={onReset}
-          className="self-start text-[12px] font-mono text-ink-soft underline"
-        >
-          [테스트] 이 계획안과 딸린 월간 전부 지우기
-        </button>
-      )}
-    </div>
+        <span className="text-[13px] text-[#5c5243]">{card.date}</span>
+      </span>
+      <span className="flex flex-col gap-0.5">
+        <span className="text-[13px] text-[#5c5243]">{card.mode}</span>
+        <span className="text-[17px] font-bold">{card.title}</span>
+      </span>
+      <span className="text-sm font-bold text-[#5e4b96]">이어서 쓰기 →</span>
+    </Link>
   );
 }

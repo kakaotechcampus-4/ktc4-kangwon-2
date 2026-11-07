@@ -1,9 +1,36 @@
 """연간계획안 API 의 요청·응답. 계약은 docs/api-spec.md §4~§7 이다."""
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    field_validator,
+)
+from ssuksak.planning.planner.teacher_memo import TEACHER_MEMO_MAX_LENGTH
+
+# ── 요청 사항 (ADR-060) ─────────────────────────────────────────────────────
+# 생성 다섯 경로가 함께 받는다. 앞뒤 공백을 떼고 300자까지 — Core 의 정규화와 같다.
+# 본문이 JSONB 라 맞출 컬럼은 없다. 빈 값 = 메모 없음(요청 · 결과가 메모 이전과 같다).
+MemoIn = Annotated[
+    str, StringConstraints(strip_whitespace=True, max_length=TEACHER_MEMO_MAX_LENGTH)
+]
+
+
+class MemoNoticeOut(BaseModel):
+    """반영하지 못한 요청 하나. 생성을 막지 않는다."""
+
+    summary: str
+    reason: Literal["OUT_OF_RANGE", "RULE_CONFLICT", "FIXED_CELL"]
+
+
+def memo_notices_out(plan) -> list[MemoNoticeOut]:
+    return [MemoNoticeOut(summary=n.summary, reason=n.reason.value) for n in plan.memo_notices]
+
 
 SafetyCategory = Literal[
     "traffic_safety",
@@ -42,6 +69,8 @@ class MonthOut(BaseModel):
     month: int
     theme: str
     sub_themes: list[str]
+    # 그 달 주 수(canonical_week_periods). 확정 때 소주제 수가 이와 같아야 한다.
+    week_count: int
     safety_education: list[str]
     safety_education_state: str
     safety_education_source: Literal["TEACHER_INPUT"] | None = None
@@ -70,6 +99,8 @@ class AnnualPlanOut(BaseModel):
     # **빈 배열을 「통과」로 읽으면 안 된다.** 무엇을 검사했는지가 checked_rules 다.
     checked_rules: list[str]
     checks: list[CheckOut]
+    memo: str = ""
+    memo_notices: list[MemoNoticeOut] = []
 
 
 class PlayCellOut(BaseModel):
@@ -83,6 +114,7 @@ class PlayCellOut(BaseModel):
 
 class PlayCandidateOut(BaseModel):
     row_key: str
+    memo_applied: bool  # 이 후보가 요청 사항을 반영했는가 — 카드 표시용
     play_name: PlayCellOut
     materials: PlayCellOut
     support_direction: PlayCellOut
@@ -108,6 +140,8 @@ class PlayProjectPlanOut(BaseModel):
     format: Literal["PLAY_PROJECT"]
     format_version: str
     periods: list[PlayPeriodOut]
+    memo: str = ""
+    memo_notices: list[MemoNoticeOut] = []
 
 
 class AnnualPlanSummary(BaseModel):
@@ -134,6 +168,7 @@ class CreateAnnualPlan(BaseModel):
     format: Literal["MONTHLY_THEME", "PLAY_PROJECT"]
     class_id: int
     form_id: int | None = None
+    memo: MemoIn = ""
 
     @field_validator("form_id")
     @classmethod

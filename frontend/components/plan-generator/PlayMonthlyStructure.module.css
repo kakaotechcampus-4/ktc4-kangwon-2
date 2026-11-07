@@ -1,72 +1,77 @@
-.panel {
-  padding: 12px;
-  border: 1px solid var(--pg-line);
-  border-radius: 6px;
-  background: var(--pg-paper);
-  font-size: 13px;
-}
-.panel h2 {
-  margin: 0 0 8px;
-  font-size: 14px;
-}
-.panel ul {
-  margin: 0 0 12px;
-  padding: 0;
-  list-style: none;
-}
-.panel li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--pg-line);
-  overflow-wrap: anywhere;
-}
-.panel button,
-.confirm button,
-.remove button {
-  padding: 3px 8px;
-  border: 1px solid var(--pg-line);
-  border-radius: 4px;
-  background: var(--pg-paper);
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-.panel button:disabled,
-.confirm button:disabled,
-.remove button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.panel button[aria-pressed="true"] {
-  background: var(--pg-primary-tint);
-  color: var(--pg-primary-ink);
-}
-.tag {
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--pg-primary-tint);
-  color: var(--pg-primary-ink);
-  font-size: 11px;
-}
-.note {
-  margin: 4px 0 0;
-  color: var(--pg-ink-soft);
-  font-size: 12px;
-}
+/* 확인 상자 — 디자인 확정본의 흰 카드 + 44px 버튼. */
 .confirm {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid var(--pg-line);
-  border-radius: 6px;
-  background: var(--pg-cream);
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 20px;
+  border: 1px solid #e8e2d8;
+  border-radius: 20px;
+  background: #fff;
+}
+/* 빈 칸 알림 — 열릴 때 살짝 흔든다. 움직임 줄이기 설정이면 흔들지 않는다. */
+.shake {
+  animation: shake 0.45s ease-in-out;
+}
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shake {
+    animation: none;
+  }
 }
 .confirm p {
   flex-basis: 100%;
   margin: 0;
+  color: #2b2826;
+  font-size: 15px;
+  line-height: 1.6;
+}
+/* 제목 → (남은 빈칸) → 작은 안내 → 단추. 안내는 줄마다 끊어 쓴다. */
+.confirm .title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.confirm .note {
+  margin-bottom: 4px;
+  color: #5c5243;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+.confirm button[data-act] {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid #ddd6ca;
+  border-radius: 12px;
+  background: #fff;
+  color: #5e4b96;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.confirm button[data-act="yes"] {
+  padding: 0 20px;
+  border-color: #7053a0;
+  background: #7053a0;
+  color: #fff;
+}
+.confirm button[data-act]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

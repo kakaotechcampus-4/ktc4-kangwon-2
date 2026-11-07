@@ -58,7 +58,11 @@ from app.features.documents.stale import SourceImpact, document_changed
 from app.features.observations.models import Observation
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_child, require_own_class
+from app.shared.auth.ownership import (
+    own_class_clause,
+    require_own_child,
+    require_own_class,
+)
 from app.shared.gates.sections import check_sections, join_facts
 from app.shared.llm import LlmBudgetExceeded
 
@@ -126,9 +130,12 @@ def _invalid(fields: list[str]) -> HTTPException:
 
 
 def _own_document(
-    session: Session, user: User, document_id: int, *, lock: bool = False
+    session: Session, user: User, document_id: int, *, lock: bool = False, read_only: bool = False
 ) -> Document:
-    """남의 원 문서도 없는 문서와 같은 404 다 (shared/auth/ownership.py 와 같은 이유)."""
+    """남의 원 문서도 없는 문서와 같은 404 다 (shared/auth/ownership.py 와 같은 이유).
+
+    같은 원이어도 남의 반 문서면 반 검사를 거친다. 기본이 쓰기다 — 읽기만 `read_only=True`.
+    """
     query = (
         select(Document)
         .join(Class, Class.id == Document.class_id)
@@ -141,6 +148,7 @@ def _own_document(
         raise _error(
             status.HTTP_404_NOT_FOUND, "NOT_FOUND", "문서를 찾을 수 없습니다.", ["document_id"]
         )
+    require_own_class(session, user, doc.class_id, read_only=read_only)
     return doc
 
 
@@ -267,7 +275,11 @@ def list_documents(
     if kind is not None:
         query = query.where(Document.kind == kind)
     if class_id is not None:
+        require_own_class(session, user, class_id, read_only=True)
         query = query.where(Document.class_id == class_id)
+    else:
+        # 반을 안 짚은 목록은 내 반만 — 승인받은 반은 반을 짚어야 보인다.
+        query = query.where(own_class_clause(user))
     if child_id is not None:
         query = query.where(Document.child_id == child_id)
     if status is not None:
@@ -421,6 +433,8 @@ def create_document(
 
     # 근거를 불러와 사본 행을 만든다. 순서는 교사가 고른 순서 그대로다.
     copies: list[DocumentSource] = []
+    # 관찰 기록에 교사가 고른 누리과정 영역. 관찰일지 배움 칸을 그 영역의 내용에 잇는다.
+    domains: set[str] = set()
     if body.kind != "weeklyLog" and body.source_kind != "dailyLog":
         # 나머지 종류는 근거가 하나로 정해져 있다. 보낸 값이 반영되지 않는데 받으면
         # 교사는 고른 대로 만들어진 줄 안다.
@@ -551,6 +565,7 @@ def create_document(
             ):
                 fields.append(f"sources.{source_id}")
                 continue
+            domains.add(source.domain)
             copies.append(
                 DocumentSource(
                     source_kind="observation",
@@ -570,7 +585,7 @@ def create_document(
         for c in session.scalars(select(Child).where(Child.class_id == body.class_id))
     }
     try:
-        drafted = draft_sections(body.kind, facts, body.source_ids, children)
+        drafted = draft_sections(body.kind, facts, body.source_ids, children, sorted(domains))
     except LlmBudgetExceeded as exc:
         # 예산을 넘기면 키가 지워진다. 다시 눌러도 안 되니 「다시 시도」로 뭉치지 않는다 (§공통).
         raise _error(
@@ -642,7 +657,9 @@ def create_document(
 @router.get("/{document_id}", response_model=DocumentDetailResponse)
 def get_document(document_id: int, session: DbSession, user: CurrentUser) -> DocumentDetailResponse:
     """단건 조회. 목록과 달리 `sections` · `sources` 를 담는다 (docs/api-spec.md §11)."""
-    return _build_detail_response(session, _own_document(session, user, document_id))
+    return _build_detail_response(
+        session, _own_document(session, user, document_id, read_only=True)
+    )
 
 
 @router.put("/{document_id}", response_model=DocumentDetailResponse)
@@ -673,12 +690,22 @@ def update_document(
             ["updated_at"],
         )
 
-    sources = _sources(session, document_id)
-    fields = check_sections(
-        body.sections, [s.text for s in sources], {s.source_id for s in sources}, stage="edit"
-    )
-    if fields:
-        raise _invalid(fields)
+    imported = doc.origin == "IMPORT"
+    attached = [s.heading == "첨부 원문" for s in body.sections]
+    if imported:
+        # 증빙으로 올린 원문은 우리가 만든 문서가 아니다 — 사실 · 해석 · 지원 대조를 하지 않고,
+        # 칸은 올린 그대로 `첨부 원문` 하나다. 확정을 취소한 뒤 고치고 다시 확정하는 길이다.
+        if attached != [True] or not body.sections[0].body.strip():
+            raise _invalid(["sections"])
+    else:
+        if any(attached):
+            raise _invalid(["sections"])
+        sources = _sources(session, document_id)
+        fields = check_sections(
+            body.sections, [s.text for s in sources], {s.source_id for s in sources}, stage="edit"
+        )
+        if fields:
+            raise _invalid(fields)
 
     if body.title is not None:
         doc.title = body.title
@@ -762,6 +789,7 @@ def related_documents(
     if row is None:
         raise _error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", "문서를 찾을 수 없습니다.", ["id"])
     doc = row[0]
+    require_own_class(session, user, doc.class_id, read_only=True)
 
     expected = EXPECTED_PAIRS.get(doc.kind, DEFAULT_EXPECTED)
     query = _visible(user).where(
@@ -1041,7 +1069,7 @@ def refresh_document(
 
 @router.get("/{document_id}/source-comparison", response_model=DocumentSourceComparison)
 def compare_document_sources(document_id: int, session: DbSession, user: CurrentUser):
-    return locked_review(session, user, document_id)[4]
+    return locked_review(session, user, document_id, read_only=True)[4]
 
 
 @router.post("/{document_id}/reconfirm", response_model=DocumentDetailResponse)

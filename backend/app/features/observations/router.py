@@ -26,7 +26,11 @@ from app.features.observations.schemas import (
     ObservationUpdate,
 )
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_child, require_own_class
+from app.shared.auth.ownership import (
+    own_class_clause,
+    require_own_child,
+    require_own_class,
+)
 
 router = APIRouter(prefix="/observations", tags=["observations"])
 
@@ -137,7 +141,11 @@ def list_observations(
     """
     query = _visible(user)
     if class_id is not None:
+        require_own_class(session, user, class_id, read_only=True)
         query = query.where(Observation.class_id == class_id)
+    else:
+        # 반을 안 짚은 목록은 내 반만 — 승인받은 반은 반을 짚어야 보인다.
+        query = query.where(own_class_clause(user))
     if child_id is not None:
         query = query.where(Observation.child_id == child_id)
     if date_from is not None:
@@ -164,6 +172,7 @@ def update_observation(
 @router.delete("/{observation_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_observation(observation_id: int, session: DbSession, user: CurrentUser) -> None:
     observation = _own(session, user, observation_id)[0]
+    require_own_class(session, user, observation.class_id)
     observation_changed(session, observation_id, None, None)
     session.delete(observation)
     session.commit()

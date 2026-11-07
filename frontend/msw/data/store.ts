@@ -37,6 +37,7 @@ export interface Database {
   playMonthlyPlans: PlayMonthlyPlan[];
   /** 주간계획안 (weekly-plan-contract §13). 변경 이력은 아직 화면이 쓰지 않아 두지 않는다. */
   weeklyPlans: WeeklyPlan[];
+  weeklyIndoorCopies: Record<string, string>;
   /** 월간 변경 이력. 키는 plan id. 서버처럼 계획안 단위와 칸(item_id) 단위로 따로 쌓는다. */
   monthlyAudit: Record<number, MockPlanAudit>;
   /** 놀이 월간 변경 이력. 키는 plan id. 쌓은 순서가 곧 시간순이다(시각은 앞선 것보다 늘 뒤). */
@@ -48,17 +49,23 @@ export interface Database {
   /** 원 기본 포인터(키 = center id) · 반 override 포인터(키 = class id). */
   defaultPointers: Record<number, MockPointer>;
   overridePointers: Record<number, MockPointer>;
-  /** 테스트 · 개발 전용 승인 Fixture(`template_id@template_version`). 운영 Template 은 승인 대기다. */
+  /**
+   * 승인된 기반 Template(`template_id@template_version`). 서버 데이터와 같게 v0.2.1 ~ v0.2.3 은 승인,
+   * v0.1.1 은 검토 대기로 시작한다(p0-planning/data/templates `review.domain_owner_approval`).
+   */
   approvedTemplates: string[];
 }
+const SERVER_APPROVED = ["v0.2.1", "v0.2.2", "v0.2.3"].map(
+  (v) => "ssuksak.monthly-template-a@monthly-template-a-" + v,
+);
 /** 연간계획안 + 서버가 목록 · 확정 응답에만 주는 시각. 단건 응답에서는 뺀다. */
 export type MockAnnualPlan =
   | (AnnualPlan & { created_at: string; confirmed_at: string | null })
   | (PlayProjectAnnualPlan & { created_at: string; confirmed_at: string | null });
-/** 저장된 이벤트. 칸 위치(scope · item_id · section_key · week_id)는 읽을 때 칸에서 붙인다. */
+/** 저장된 이벤트. 칸 위치(scope · item_id · section_key · week_id · day)는 읽을 때 붙인다. */
 export type MockAuditEvent = Omit<
   MonthlyAuditEvent,
-  "scope" | "item_id" | "section_key" | "week_id"
+  "scope" | "item_id" | "section_key" | "week_id" | "day"
 >;
 export interface MockPlanAudit {
   plan: MockAuditEvent[];
@@ -86,13 +93,14 @@ const empty = (): Database => ({
   monthlyPlans: [],
   playMonthlyPlans: [],
   weeklyPlans: [],
+  weeklyIndoorCopies: {},
   monthlyAudit: {},
   playMonthlyAudit: {},
   annualAudit: {},
   profiles: [],
   defaultPointers: {},
   overridePointers: {},
-  approvedTemplates: [],
+  approvedTemplates: [...SERVER_APPROVED],
 });
 let memory = empty();
 function key() {
@@ -124,13 +132,14 @@ export function read(): Database {
     monthlyPlans: parsed.monthlyPlans ?? [],
     playMonthlyPlans: parsed.playMonthlyPlans ?? [],
     weeklyPlans: parsed.weeklyPlans ?? [],
+    weeklyIndoorCopies: parsed.weeklyIndoorCopies ?? {},
     monthlyAudit: parsed.monthlyAudit ?? {},
     playMonthlyAudit: parsed.playMonthlyAudit ?? {},
     annualAudit: parsed.annualAudit ?? {},
     profiles: parsed.profiles ?? [],
     defaultPointers: parsed.defaultPointers ?? {},
     overridePointers: parsed.overridePointers ?? {},
-    approvedTemplates: parsed.approvedTemplates ?? [],
+    approvedTemplates: parsed.approvedTemplates ?? [...SERVER_APPROVED],
   };
 }
 export function commit<T>(fn: (db: Database) => T): T {

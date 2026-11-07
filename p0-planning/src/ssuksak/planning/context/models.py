@@ -8,6 +8,7 @@ import re
 
 from ..domain.errors import InvalidDomainValueError
 from ..domain.curriculum_reference import CurriculumCatalog
+from ..domain.drill_topic_reference import DrillTopic
 from ..domain.safety_placement import SafetyCandidateSlot, SafetyKind
 from ..domain.year_month import YearMonth
 from ..evidence.classification import SemanticClass
@@ -286,10 +287,19 @@ class MonthlyContextPacket:
     parent_subthemes: tuple[str, ...] = ()
     # Candidate mode (S-1): the eight Rule-fixed slots the LLM words; () = none.
     safety_candidates: tuple[SafetyCandidateSlot, ...] = ()
+    # The drill Section's Rule-fixed topics the LLM words; () = no drill Section.
+    drill_topics: tuple[DrillTopic, ...] = ()
+    # ADR-060: the teacher's request note; "" = none (fingerprint unchanged).
+    teacher_memo: str = ""
+    teacher_venues: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.packet_version != CONTEXT_PACKET_VERSION:
             raise InvalidDomainValueError("Context Packet version is invalid")
+        if not isinstance(self.teacher_venues, tuple) or any(
+            not isinstance(name, str) or not name.strip() for name in self.teacher_venues
+        ):
+            raise InvalidDomainValueError("teacher_venues must contain non-blank strings")
         if self.curriculum is not None and (
             not isinstance(self.curriculum, CurriculumCatalog) or not self.curriculum.is_active
         ):

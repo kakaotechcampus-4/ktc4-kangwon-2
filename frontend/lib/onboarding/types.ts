@@ -2,9 +2,6 @@ import type { AgeGroup } from "@/lib/plan-generator/types";
 
 export type { AgeGroup };
 
-/** 온보딩 4단계 + 완료 */
-export type OnboardingStep = 1 | 2 | 3 | 4 | "done";
-
 export interface ChildEntry {
   code?: string;
   id: string;
@@ -58,6 +55,8 @@ export interface ClassSettings {
   directorName: string;
   regionProvince: string;
   regionDistrict: string;
+  /** 정부 어린이집 목록에서 고른 원의 열쇠(ADR-068). 직접 적은 원 · 옛 원은 비어 있다. */
+  registryKey?: string;
   classes: ClassroomEntry[];
   characterEducationEnabled: boolean;
   characterMessages: CharacterMessages;
@@ -95,13 +94,6 @@ export const AGE_OPTIONS: { value: AgeGroup; label: string }[] = [
   { value: "mixed", label: "혼합" },
 ];
 
-export const STEP_LABELS: Record<Exclude<OnboardingStep, "done">, string> = {
-  1: "원 정보",
-  2: "반 정보",
-  3: "아동 명단",
-  4: "성품인사",
-};
-
 /** Explicit empty selection stays empty; only legacy values use migration. */
 export function selectedAgesFor(value: {
   selectedAges?: unknown;
@@ -131,6 +123,22 @@ export function selectedAgesFor(value: {
  * 연령을 갖는 경우가 0건이다(docs/PRD.md 「연령 표기」). 교사가 만4 를 빼고 골랐다면
  * 오조작이므로 범위로 되돌려 보여주는 편이 낫다.
  */
+/**
+ * 계획안 문서의 반 줄 — 서버 한글 내보내기(`_ages_label`)와 같은 「만 3·4세 햇살반」.
+ * 서버는 연령을 범위로 저장하니 사이 연령도 적는다.
+ */
+export function planClassLine(c: {
+  className: string;
+  selectedAges?: unknown;
+  ageGroup?: unknown;
+}): string {
+  const ages = selectedAgesFor(c);
+  if (!ages.length) return c.className;
+  const low = Math.min(...ages);
+  const range = Array.from({ length: Math.max(...ages) - low + 1 }, (_, i) => low + i);
+  return `만 ${range.join("·")}세 ${c.className}`;
+}
+
 export function ageSelectionLabel(ages: readonly SelectedAge[]): string {
   if (!ages.length) return "연령 미선택";
   const low = Math.min(...ages),

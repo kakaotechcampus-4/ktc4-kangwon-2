@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
 
 # Content that never changes again. Every entry with a `review` approval block is
-# HUMAN_APPROVED; institution_evidence_v0_1_0 is a corpus observation without an
+# HUMAN_APPROVED; the institution_evidence files are corpus observations without an
 # approval gate and is frozen for integrity only. A changed SHA is a different
 # contract (ADR-027), so these values are never edited.
 FROZEN_ARTIFACTS = {
@@ -51,16 +51,20 @@ FROZEN_ARTIFACTS = {
     "templates/weekly_template_a_v0_1_0.json": (
         "60330124223859623a0f35b2e56d6058994e2b86b62146b8b40474a3b72747f9"
     ),
+    # Human-approved 2026-10-31 (reviewer_ai_lead_001). ADR-027 §5: approval metadata only.
+    "templates/weekly_template_a_v0_2_0.json": (
+        "1ec91b22d47fc04fb5f4b60f74282226dde47782141c69d6bef93d7d7c188c70"
+    ),
     # Human-approved 2026-10-29 (reviewer_ai_lead_01). ADR-027 §5: approval metadata only.
     "curriculum/nuri_curriculum_content_v0_1_0_draft.json": (
-        "60620932ee2dea9c326b27597d4c7fa18b501914fdd6c4fe55cf4513c6271a04"
+        "98ed907e70fae5030721df826eec3972544e21304195703279535854714f12b2"
     ),
     # Human-approved 2026-10-29 (reviewer_ai_lead_01). ADR-027 §5: approval metadata only.
     "daily-life/daily_life_reference_v0_1_0_draft.json": (
         "2fec7d85833ac940cc46cc0bf4bf4ae2ec26cd60d89a418dedcde8649c00771c"
     ),
     "drills/emergency_drill_topics_v0_1_0_draft.json": (
-        "147ca0537f96141279781f202edb012300dafbfdca88f07ecf5a48dfcff9d6b7"
+        "aa0e297825f984fbdd3169732ca84766beee6d7409a1ef978f04fa7a5e636521"
     ),
     # Human-approved 2026-10-20 (reviewer_pm_001). ADR-027 §5: approval metadata only.
     "templates/monthly_template_a_v0_2_1.json": (
@@ -69,6 +73,10 @@ FROZEN_ARTIFACTS = {
     # Human-approved 2026-10-31 (reviewer_ai_lead_001). ADR-050 D-3: approval metadata only.
     "templates/monthly_template_a_v0_2_2.json": (
         "f7b1ab1994de2114fb886cfb5aee270adc02cb6e5d64a1958b24cc70812e4ae1"
+    ),
+    # Human-approved 2026-10-31 (reviewer_ai_lead_001). Drill R-1 · R-2: approval metadata only.
+    "templates/monthly_template_a_v0_2_3.json": (
+        "6edfddca7165a4909a9513730371fe9d3d1e98367056e9b6b5a29e59ac8c80b5"
     ),
     "templates/monthly_template_a_v0_2_0.json": (
         "fcde73aee479dfe020a966a5e69b06b4a6829f2d4f51217a39762eeabe707de9"
@@ -85,9 +93,6 @@ FROZEN_ARTIFACTS = {
     "rules/safety_placement_policy_v1.json": (
         "f65bcfee463fb8d7ed1da9bc390f7d211249f4d82464af2c258e019729bc616e"
     ),
-    "evidence/institution_evidence_v0_1_0.json": (
-        "8479c0490a002d9336688c1b6cacf47f2d2c083201b15df01258336c07e0ba1a"
-    ),
     "evidence/safety_evidence_classification_v0_2_0.json": (
         "1daa6445b7ec3f9eae958cb2f09c5da77b00a97abea7a03a0036f3e1f023d650"
     ),
@@ -101,6 +106,22 @@ FROZEN_ARTIFACTS = {
     ),
     "evidence/monthly_evidence_semantic_classification_v0_1_0.json": (
         "8d9930211f3cc5b993f08b263bb08266391eab686606a369f5b8e6384cb1ceaf"
+    ),
+    # Human-approved 2026-11-02 (reviewer_ai_lead_001): privacy exclusions, unchanged entry decisions.
+    "evidence/institution_evidence_v0_2_0.json": (
+        "5bf84e5a59fd74880b040ea1e545b00f4ddbe8cd1cc07da11a416161dedc8bb4"
+    ),
+    "evidence/monthly_evidence_semantic_classification_v0_2_0.json": (
+        "464d8bcba8dd554264bc628b1a89e7b30c15183c31488836977dab530bd2dcda"
+    ),
+    "evidence/weekly_evidence_semantic_classification_v0_2_0.json": (
+        "3e9688120c14f07fe9d7ee55d8f1196bad53c32621975bcc174ab32786db6234"
+    ),
+    "evidence/safety_evidence_classification_v0_3_0.json": (
+        "9b14e38a9943a02d1bfdb4deb9c13e0e1376e9d693628b6f58dec1cd5a14b973"
+    ),
+    "evidence/safety_reference_quality_v0_2_0.json": (
+        "bc69551897b4940597e43f0e77a2b5cdac438a9eb6345c7825a15f6d5d68a3c4"
     ),
 }
 
@@ -139,15 +160,21 @@ PENDING_REVIEW_CONTENT = {
     "templates/monthly_template_a_v0_2_2.json": (
         "44d9be175995ea2668143a58966b8bb3969dd3dbdf860dc4925020c4ec999b5c"
     ),
+    "templates/monthly_template_a_v0_2_3.json": (
+        "86103af45d9294cadd2483b76b8e7d4c6ec8038f941f7e90aa7b68f141bd47e4"
+    ),
     "templates/weekly_template_a_v0_1_0.json": (
         "8762cdadc23420795608a8b67a123306c51447f1318aa26b4ceacfbae4aa8bf8"
+    ),
+    "templates/weekly_template_a_v0_2_0.json": (
+        "cabecd0c37bcc9ce2738e772455eaef2f8c8aec335e406ea1d14605a2e5c36ea"
     ),
     "daily-life/daily_life_reference_v0_1_0_draft.json": (
         "2ae1d32fd616409458705b6ebbfe8294cd50b733540716270309d55706fbe936"
     ),
-    # Added at approval; equals the content of the pending file on develop.
+    # Added at approval; content pin (approval metadata excluded).
     "drills/emergency_drill_topics_v0_1_0_draft.json": (
-        "2e99b512c80f9dd73d98f006ec39e9ff83b333f63a6c43e0c83afdb4460225a8"
+        "2d014b7682c7107de198da33d86a9b1cd6d91377820d2587d8e6ae8c95454768"
     ),
 }
 
@@ -237,9 +264,7 @@ def test_activity_reference_exact_versions_and_approval_are_frozen():
     repository = JsonActivityReferenceRepository()
 
     for version in ("activity-reference-v0.2.0", "activity-reference-v0.2.1"):
-        catalog = repository.get_catalog(
-            "ssuksak.outdoor-activity-reference", version
-        )
+        catalog = repository.get_catalog("ssuksak.outdoor-activity-reference", version)
         assert catalog is not None
         assert catalog.activation_status is ActivationStatus.HUMAN_APPROVED
         assert catalog.is_active
@@ -250,7 +275,9 @@ def test_pending_templates_are_served_but_inactive():
 
     # v0.2.1 was approved on 2026-10-20 (reviewer_pm_001); v0.1.1 was not. An approval
     # never carries over to another version, so v0.1.1 stays served but inactive.
-    template = repository.get_template("ssuksak.monthly-template-a", "monthly-template-a-v0.1.1")
+    template = repository.get_template(
+        "ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"
+    )
     assert template is not None
     assert not template.is_active
     with pytest.raises(MonthlyRuleError, match="HUMAN_APPROVED"):
@@ -260,7 +287,11 @@ def test_pending_templates_are_served_but_inactive():
 def test_the_approved_template_is_active_and_resolves():
     repository = JsonMonthlyTemplateRepository()
 
-    for version in ("monthly-template-a-v0.2.1", "monthly-template-a-v0.2.2"):
+    for version in (
+        "monthly-template-a-v0.2.1",
+        "monthly-template-a-v0.2.2",
+        "monthly-template-a-v0.2.3",
+    ):
         template = repository.get_template("ssuksak.monthly-template-a", version)
         assert template is not None
         assert template.is_active
@@ -276,7 +307,8 @@ def test_display_mode_era_templates_are_frozen_but_not_served():
 
 
 @pytest.mark.parametrize(
-    "legacy", ["templates/monthly_template_a.json", "templates/monthly_template_a_v0_2_0.json"]
+    "legacy",
+    ["templates/monthly_template_a.json", "templates/monthly_template_a_v0_2_0.json"],
 )
 def test_display_mode_template_files_are_rejected_not_translated(legacy):
     payload = json.loads((DATA / legacy).read_text(encoding="utf-8"))
@@ -296,16 +328,19 @@ def test_safety_reference_exact_version_and_six_categories_are_frozen():
     assert not rule.has_placement_policy
 
 
-def test_evidence_store_identity_content_hash_and_non_normative_role_are_frozen():
+@pytest.mark.parametrize(
+    ("filename", "version", "sha", "records"),
+    [
+        ("institution_evidence_v0_2_0.json", "institution-evidence-ingestion-v0.2.0",
+         "7d6d9bdb29dc5e84c024acc418a092c6e01d72134cf51043ab5dfd38a1332463", 12_325),
+    ],
+)
+def test_evidence_store_identity_content_hash_and_non_normative_role_are_frozen(filename, version, sha, records):
     store = JsonInstitutionEvidenceRepository(
-        expected_content_sha256=(
-            "52b409557d3503422aa0109664298976bd7f831ed18304b818aaad936916e5ea"
-        )
+        DATA / "evidence" / filename, expected_content_sha256=sha
     ).get_store()
 
-    assert store.ingestion_version == "institution-evidence-ingestion-v0.1.0"
+    assert store.ingestion_version == version
     assert store.schema_version == "institution-evidence.schema.v0"
-    assert store.content_sha256 == (
-        "52b409557d3503422aa0109664298976bd7f831ed18304b818aaad936916e5ea"
-    )
-    assert len(store.records) == 12_367
+    assert store.content_sha256 == sha
+    assert len(store.records) == records

@@ -14,12 +14,21 @@ from typing import Protocol
 
 from ..domain.curriculum_reference import CurriculumCatalog
 from ..domain.play_project_plan import PlayPeriod
+from ..domain.teacher_memo import MemoNotice
 from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
+from .teacher_memo import (
+    CANDIDATE_MEMO_PROMPT,
+    CANDIDATE_MEMO_PROMPT_TAG,
+    TEACHER_MEMO_PROMPT,
+    TEACHER_MEMO_PROMPT_TAG,
+    memo_properties,
+)
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 from .weekly import unsupported_facts
+from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG, venue_memo
 
-PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v6"  # v5: materials naming · v6: support text, learning ids
+PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v6" + VENUE_POLICY_TAG
 LEARNING_MIN, LEARNING_MAX = 2, 3  # 2026-10-24 decision
 TEXT_FIELDS = ("play_name", "materials", "support_direction")
 
@@ -63,6 +72,21 @@ SYSTEM_PROMPT = (
     "그 원만의 행사, 입력에 없는 날짜 · 사람 이름 · 기관 정보는 지어내지 않는다."
 )
 
+# Human Decision 2026-11-05(하민): the memo goes to all four periods, so each period answers only
+# its own season's requests and quotes them verbatim — the Application matches them across periods.
+PERIOD_MEMO_PROMPT_TAG = "+period-memo-v1"
+MEMO_REFLECTED = "memo_reflected"
+PERIOD_MEMO_PROMPT = """
+- 놀이 프로젝트형은 연간을 네 구간으로 나눠 구간마다 따로 쓴다. teacher_memo는 연간 전체에 적은 요청이고,
+  이번 응답은 period_label · months 구간 하나다.
+  계절 · 달을 짚은 요청은 이 구간의 계절 · 달에 맞을 때만 반영한다. 다른 구간(계절 · 달)을 짚은 요청은
+  이 구간에서 무시하고 memo_skipped에도 적지 않는다 — 그 구간을 쓸 때 따로 다룬다.
+  계절 · 달을 짚지 않은 요청은 이 구간에도 해당한다.
+- memo_reflected에는 이 구간에서 실제로 반영한 요청을 메모 원문에서 그대로 옮겨 적는다(바꿔 쓰지 않는다).
+  없으면 빈 배열이다.
+- 여기서는 memo_skipped의 summary도 줄여 쓰지 않고 메모 원문에서 그 요청 부분을 그대로 옮겨 적는다(80자 이내).
+"""
+
 RESPONSE_SCHEMA = _object_schema(
     {
         "period_key": _STRING,
@@ -91,6 +115,8 @@ class PlayProjectRequest:
     allowed_content_ids: frozenset[str]
     avoid_play_names: frozenset[str]
     packet_fingerprint: str
+    # ADR-060: row keys memo_applied may name; None = no teacher memo.
+    memo_addresses: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +133,18 @@ class PlayProjectProposal:
     rows: tuple[ProposedPlayRow, ...]
 
 
+def play_project_response_schema(request: PlayProjectRequest) -> dict:
+    if request.memo_addresses is None:
+        return RESPONSE_SCHEMA
+    return _object_schema(
+        dict(
+            RESPONSE_SCHEMA["properties"],
+            **memo_properties(request.memo_addresses),
+            **{MEMO_REFLECTED: {"type": "array", "items": _STRING}},
+        )
+    )
+
+
 class PlayProjectProvider(Protocol):
     def generate_play_project(self, request: PlayProjectRequest) -> RawLlmResponse: ...
 
@@ -118,6 +156,7 @@ def build_play_project_request(
     row_count: int,
     catalog: CurriculumCatalog,
     avoid_play_names: tuple[str, ...] = (),
+    teacher_memo: str = "",
 ) -> PlayProjectRequest:
     payload = {
         "period_key": period.key,
@@ -130,19 +169,70 @@ def build_play_project_request(
             {"content_id": c.content_id, "text": c.display} for c in catalog.contents
         ],
     }
+    memo = tuple(f"cand{i}" for i in range(1, row_count + 1)) if teacher_memo else None
+    prompt_version, system_prompt = PLAY_PROJECT_PROMPT_VERSION, SYSTEM_PROMPT + VENUE_GUIDANCE
+    if memo is not None:  # rows answer in order, so row i is cand{i}
+        payload["teacher_memo"] = {"text": teacher_memo, "addresses": list(memo)}
+        prompt_version += TEACHER_MEMO_PROMPT_TAG + PERIOD_MEMO_PROMPT_TAG + CANDIDATE_MEMO_PROMPT_TAG
+        system_prompt += TEACHER_MEMO_PROMPT + PERIOD_MEMO_PROMPT + CANDIDATE_MEMO_PROMPT
     user_content = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     return PlayProjectRequest(
-        prompt_version=PLAY_PROJECT_PROMPT_VERSION,
-        system_prompt=SYSTEM_PROMPT,
+        prompt_version=prompt_version,
+        system_prompt=system_prompt,
         user_content=user_content,
         period_key=period.key,
         row_count=row_count,
         allowed_content_ids=frozenset(c.content_id for c in catalog.contents),
         avoid_play_names=frozenset(" ".join(n.split()) for n in avoid_play_names),
         packet_fingerprint=hashlib.sha256(
-            (PLAY_PROJECT_PROMPT_VERSION + catalog.catalog_version + user_content).encode()
+            (prompt_version + catalog.catalog_version + user_content).encode()
         ).hexdigest(),
+        memo_addresses=memo,
     )
+
+
+def split_memo_reflected(content: str, request: PlayProjectRequest) -> tuple[str, tuple[str, ...]]:
+    """응답에서 `memo_reflected`(이 구간이 반영한 메모 원문 조각)를 떼어 낸다. 메모가 없으면 그대로."""
+
+    if request.memo_addresses is None:
+        return content, ()
+    try:
+        root = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise ProposalParseError("play-project response is not JSON") from exc
+    raw = root.pop(MEMO_REFLECTED, None) if isinstance(root, dict) else None
+    if not isinstance(raw, list) or not all(isinstance(quote, str) for quote in raw):
+        raise ProposalParseError("memo_reflected must be an array of strings")
+    return json.dumps(root, ensure_ascii=False), tuple(raw)
+
+
+def remaining_memo_notices(
+    memo: str, periods: tuple[tuple[tuple[MemoNotice, ...], tuple[str, ...]], ...]
+) -> tuple[MemoNotice, ...]:
+    """구간별 (반영 못한 요청, 반영한 원문 조각)을 모아, 어느 구간에서도 반영되지 않은 요청만 남긴다.
+
+    요청은 메모 원문 위치로 식별한다: 반영 못한 요청의 원문 조각이 다른 구간들이 반영한 조각으로
+    모두 덮이면 뺀다. 원문에서 찾지 못한 요약은 식별할 수 없으니 그대로 남긴다(조용히 숨기지 않는다).
+    """
+
+    # ponytail: verbatim span matching — a quote the LLM paraphrased stays as a notice.
+    text = _squash(memo)
+    covered: set[int] = set()
+    for _, reflected in periods:
+        for quote in reflected:
+            covered |= _span(text, quote)
+    notices = dict.fromkeys(notice for skipped, _ in periods for notice in skipped)
+    return tuple(n for n in notices if not (span := _span(text, n.summary)) or not span <= covered)
+
+
+def _squash(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _span(text: str, quote: str) -> set[int]:
+    quote = _squash(quote)
+    start = text.find(quote) if quote else -1
+    return set(range(start, start + len(quote))) if start >= 0 else set()
 
 
 def parse_play_project_proposal(content: str) -> PlayProjectProposal:
@@ -186,7 +276,8 @@ def validate_play_project(
         for name in TEXT_FIELDS:
             limit = MAX_RATIONALE_CHARS if name == "support_direction" else None
             found = visible_text_violations(
-                getattr(row, name), **({"max_chars": limit} if limit else {})
+                getattr(row, name), teacher_venue_text=venue_memo(request.user_content),
+                **({"max_chars": limit} if limit else {})
             )
             # 2026-10-24 decision: safety words (e.g. 교통안전) are ordinary play content here;
             # SAFETY_CONTENT_LEAKAGE guards monthly cells, not play-project text.

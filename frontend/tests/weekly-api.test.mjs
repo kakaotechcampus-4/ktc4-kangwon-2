@@ -23,8 +23,13 @@ const { createTemplateProfile } = await import("../lib/api/templateProfiles.ts")
 const { createCenter } = await import("../lib/api/centers.ts");
 const { createClass } = await import("../lib/api/classes.ts");
 const { createAnnualPlan, confirmAnnualPlan } = await import("../lib/api/plans.ts");
-const { createMonthlyPlan, confirmMonthlyPlan, getMonthlyPlan } =
-  await import("../lib/api/monthly.ts");
+const {
+  createMonthlyPlan,
+  confirmMonthlyPlan,
+  getMonthlyPlan,
+  placeMonthlySafety,
+  deleteMonthlyPlan,
+} = await import("../lib/api/monthly.ts");
 const weekly = await import("../lib/api/weekly.ts");
 const { ApiError } = await import("../lib/api/client.ts");
 const { SECTION_LABELS, sectionName } = await import("../lib/weekly/section-labels.ts");
@@ -149,15 +154,24 @@ test("응답 칸 이름이 화면이 읽는 것과 같다", () => {
   assert.ok(schemas.includes("teacher_input:"), "teacher_input");
 });
 
-test("클라이언트는 일곱 가지를 낸다 — 월간의 audit 은 아직 없다", () => {
+test("클라이언트는 후보 복사와 칸 분할·삭제 · 확정 취소까지 낸다", () => {
   assert.deepEqual(Object.keys(weekly).sort(), [
+    "addWeeklyIndoorPlay",
     "confirmWeeklyPlan",
+    "copyWeeklyActivity",
     "createWeeklyPlan",
     "deleteWeeklyPlan",
+    "downloadWeeklyHwpx",
     "editWeeklyCell",
     "getWeeklyPlan",
+    "getWeeklyPlanAudit",
     "listWeeklyPlans",
+    "orderWeeklyIndoorPlays",
     "regenerateWeeklyCell",
+    "removeWeeklyActivityCell",
+    "removeWeeklyIndoorPlay",
+    "splitWeeklyActivityCell",
+    "unconfirmWeeklyPlan",
   ]);
 });
 
@@ -170,6 +184,33 @@ test("G3 — 월간이 확정되기 전에는 주간을 만들 수 없다", asyn
   );
 });
 
+test("후보형 주간 — 빈 요일 칸에 유형별 후보를 넣고 나눈 칸을 다시 조회한다", async () => {
+  const { klass, monthly } = await classWithMonthly();
+  let plan = await weekly.createWeeklyPlan({
+    class_id: klass.id,
+    week_id: monthly.weeks[0].week_id,
+    activity_candidates: true,
+  });
+  assert.equal(plan.activity_candidates.length, 10);
+  const group = (p) => p.sections.find((section) => section.section_key === "group_activity").cells;
+  assert.ok(group(plan).every((cell) => !cell.value));
+  const itemId = group(plan)[0].item_id;
+  const candidate = plan.activity_candidates[0];
+  plan = await weekly.copyWeeklyActivity(plan.id, itemId, candidate.cell.item_id, plan.revision);
+  assert.equal(group(plan)[0].value, `[${candidate.activity_type}] ${candidate.name}`);
+  const revision = plan.revision;
+  plan = await weekly.copyWeeklyActivity(plan.id, itemId, candidate.cell.item_id, revision);
+  assert.equal(plan.revision, revision);
+  plan = await weekly.splitWeeklyActivityCell(plan.id, itemId, "VERTICAL", plan.revision);
+  const added = group(plan)[1].item_id;
+  assert.equal(group(plan)[0].item_id, itemId);
+  assert.equal(group(plan)[1].value, "");
+  assert.equal((await weekly.getWeeklyPlan(plan.id)).activity_grids[0].children.length, 2);
+  await rejects(weekly.removeWeeklyActivityCell(plan.id, added, 0), 422, "VALIDATION_FAILED");
+  plan = await weekly.removeWeeklyActivityCell(plan.id, added, plan.revision);
+  assert.equal(plan.activity_grids[0].cell_id, itemId);
+});
+
 test("G4 — 월간에 없는 주 주소는 거절한다. 주차를 주간이 다시 세지 않는다", async () => {
   const { klass } = await classWithMonthly();
   await rejects(
@@ -177,6 +218,297 @@ test("G4 — 월간에 없는 주 주소는 거절한다. 주차를 주간이 �
     422,
     "VALIDATION_FAILED",
   );
+});
+
+test("자유놀이 후보는 여러 개를 넣고 고치고 순서를 바꾼 뒤 마지막까지 뺄 수 있다", async () => {
+  const { klass, monthly } = await classWithMonthly();
+  let plan = await weekly.createWeeklyPlan({
+    class_id: klass.id,
+    week_id: monthly.weeks[0].week_id,
+    indoor_play_candidates: true,
+  });
+  const rows = (p) => p.sections.find((s) => s.section_key === "indoor_play").cells;
+  const candidates = plan.activity_candidates.filter((c) => c.section_key === "indoor_play");
+  assert.equal(plan.indoor_play_selection, true);
+  assert.equal(rows(plan)[0].value, "");
+  plan = await weekly.addWeeklyIndoorPlay(plan.id, candidates[0].cell.item_id, plan.revision);
+  const first = rows(plan)[0].item_id;
+  assert.equal(rows(plan)[0].value, `[${candidates[0].activity_type}] ${candidates[0].name}`);
+  plan = await weekly.addWeeklyIndoorPlay(plan.id, candidates[1].cell.item_id, plan.revision);
+  plan = await weekly.editWeeklyCell(plan.id, first, "고친 자유놀이", plan.revision);
+  const revision = plan.revision;
+  plan = await weekly.addWeeklyIndoorPlay(plan.id, candidates[0].cell.item_id, plan.revision);
+  assert.equal(plan.revision, revision);
+  assert.equal(rows(plan)[0].value, "고친 자유놀이");
+  const ids = rows(plan)
+    .map((cell) => cell.item_id)
+    .reverse();
+  plan = await weekly.orderWeeklyIndoorPlays(plan.id, ids, plan.revision);
+  assert.deepEqual(
+    rows(plan).map((cell) => cell.item_id),
+    ids,
+  );
+  await rejects(
+    weekly.orderWeeklyIndoorPlays(plan.id, [first, first], plan.revision),
+    422,
+    "VALIDATION_FAILED",
+  );
+  const group = plan.activity_candidates.find((c) => c.section_key !== "indoor_play");
+  await rejects(
+    weekly.addWeeklyIndoorPlay(plan.id, group.cell.item_id, plan.revision),
+    422,
+    "VALIDATION_FAILED",
+  );
+  await rejects(
+    weekly.regenerateWeeklyCell(plan.id, first, plan.revision),
+    422,
+    "VALIDATION_FAILED",
+  );
+  for (const id of ids) plan = await weekly.removeWeeklyIndoorPlay(plan.id, id, plan.revision);
+  assert.equal(rows(plan).length, 1);
+  assert.equal(rows(plan)[0].value, "");
+  assert.deepEqual(rows(await weekly.getWeeklyPlan(plan.id)), rows(plan));
+});
+
+test("자유놀이 패널은 종류별 후보와 선택 목록을 구분하고 저장 대기·확정 상태에서 잠긴다", async () => {
+  const { createRequire } = await import("node:module");
+  const require = createRequire(import.meta.url);
+  const source = readFileSync(
+    new URL("../components/workspace/WeeklyIndoorPlayPanel.tsx", import.meta.url),
+    "utf8",
+  );
+  const code = require("next/dist/compiled/babel/core").transformSync(source, {
+    filename: "WeeklyIndoorPlayPanel.tsx",
+    babelrc: false,
+    configFile: false,
+    presets: [
+      [require("next/dist/compiled/babel/preset-env"), { targets: { node: "current" } }],
+      [require("next/dist/compiled/babel/preset-react"), { runtime: "automatic" }],
+      require("next/dist/compiled/babel/preset-typescript"),
+    ],
+  }).code;
+  const jsx = (type, props) => ({ type, props });
+  const panelModule = { exports: {} };
+  new Function("require", "module", "exports", code)(
+    (name) =>
+      name === "react/jsx-runtime"
+        ? { jsx, jsxs: jsx }
+        : // 그 밖의 모듈은 class 문자열 (SMALL 은 이름, BUTTON.quiet 는 「quiet」) · 끌기 받는 곳.
+          {
+            SMALL: "small",
+            DROP: "",
+            GRIP: null,
+            dropTo: (fn, prefix) => ({
+              drop: (data) => data.startsWith(prefix) && fn(data.slice(prefix.length)),
+            }),
+            BUTTON: new Proxy({}, { get: (_, key) => String(key) }),
+          },
+    panelModule,
+    panelModule.exports,
+  );
+  const Panel = panelModule.exports.default;
+  const selected = [
+    { item_id: "one", value: "[역할놀이] 가게 놀이" },
+    { item_id: "two", value: "[쌓기놀이] - 길 만들기" },
+  ];
+  const plan = {
+    status: "DRAFT",
+    indoor_play_selection: true,
+    sections: [{ section_key: "indoor_play", cells: selected }],
+    activity_candidates: [
+      {
+        section_key: "indoor_play",
+        activity_type: "역할놀이",
+        name: "가게 놀이",
+        cell: { item_id: "candidate", value: "가게 놀이: 말을 주고받습니다." },
+      },
+      {
+        section_key: "group_activity",
+        activity_type: "음률",
+        name: "집단 활동",
+        cell: { item_id: "group", value: "숨길 집단 후보" },
+      },
+    ],
+  };
+  const calls = [];
+  const props = {
+    plan,
+    disabled: false,
+    onAdd: (id) => calls.push(id),
+    onOrder: (ids) => calls.push(ids),
+    onRemove: (id) => calls.push(id),
+  };
+  const all = (node) =>
+    Array.isArray(node)
+      ? node.flatMap(all)
+      : node && typeof node === "object"
+        ? [node, ...all(node.props?.children)]
+        : [];
+  const text = (node) =>
+    Array.isArray(node)
+      ? node.map(text).join("")
+      : node && typeof node === "object"
+        ? text(node.props?.children)
+        : typeof node === "string"
+          ? node
+          : "";
+  const tree = Panel(props);
+  assert.equal(text(tree).includes("숨길 집단 후보"), false);
+  const buttons = all(tree).filter((n) => n.type === "button");
+  const byLabel = (label) => buttons.find((n) => n.props["aria-label"] === label);
+  // 넣은 후보는 서버가 옮겨 쓴 「[종류] 이름」(옛 「[종류] - 이름」도)으로 알아보고 후보 목록에서 뺀다(PM 2026-11-06). 빼면 다시 보인다.
+  assert.equal(byLabel("이번 주 놀이에 넣기: 가게 놀이"), undefined);
+  const without = all(
+    Panel({
+      ...props,
+      plan: { ...plan, sections: [{ section_key: "indoor_play", cells: selected.slice(1) }] },
+    }),
+  );
+  const put = without.find((n) => n.props?.["aria-label"] === "이번 주 놀이에 넣기: 가게 놀이");
+  assert.equal(text(put), "+ 넣기");
+  put.props.onClick();
+  byLabel("1번 놀이 빼기").props.onClick();
+  // 점선 빈칸의 「+」 — 빈 줄이 없으면 직접 쓸 칸을 더한다.
+  byLabel("직접 쓸 놀이 더하기").props.onClick();
+  // 「+」로 더한 빈 줄도 목록에 보이고, 누르면 「칸 편집」으로 연다.
+  const blankRow = { item_id: "new", value: "" };
+  all(
+    Panel({
+      ...props,
+      onWrite: (id) => calls.push("write:" + id),
+      plan: { ...plan, sections: [{ section_key: "indoor_play", cells: [...selected, blankRow] }] },
+    }),
+  )
+    .find((n) => n.props?.["aria-label"] === "3번 놀이 직접 쓰기")
+    .props.onClick();
+  // 끌기 — 후보는 넣은 목록에, 넣은 줄은 다른 줄 자리로 · 후보 쪽에 놓으면 뺀다.
+  const drops = all(Panel(props)).filter((n) => n.props?.drop);
+  drops[0].props.drop("weekly-indoor:candidate");
+  drops[1].props.drop("weekly-indoor-row:two"); // 「one」 줄에 「two」를 놓는다
+  assert.deepEqual(calls, ["candidate", "one", null, "write:new", "candidate", ["two", "one"]]);
+  assert.ok(
+    all(Panel({ ...props, disabled: true }))
+      .filter((n) => n.type === "button")
+      .every((n) => n.props.disabled),
+  );
+  assert.equal(Panel({ ...props, plan: { ...plan, status: "CONFIRMED" } }), null);
+  assert.equal(Panel({ ...props, plan: { ...plan, indoor_play_selection: false } }), null);
+});
+
+test("대·소집단활동 패널: 요일마다 한 줄, 넣은 후보는 숨기고, [+ 넣기] 뒤에는 다음 요일로", async () => {
+  const { createRequire } = await import("node:module");
+  const require = createRequire(import.meta.url);
+  const source = readFileSync(
+    new URL("../components/workspace/WeeklyGroupActivityPanel.tsx", import.meta.url),
+    "utf8",
+  );
+  const code = require("next/dist/compiled/babel/core").transformSync(source, {
+    filename: "WeeklyGroupActivityPanel.tsx",
+    babelrc: false,
+    configFile: false,
+    presets: [
+      [require("next/dist/compiled/babel/preset-env"), { targets: { node: "current" } }],
+      [require("next/dist/compiled/babel/preset-react"), { runtime: "automatic" }],
+      require("next/dist/compiled/babel/preset-typescript"),
+    ],
+  }).code;
+  const jsx = (type, props) => ({ type, props });
+  const panelModule = { exports: {} };
+  new Function("require", "module", "exports", code)(
+    (name) =>
+      name === "react/jsx-runtime"
+        ? { jsx, jsxs: jsx, Fragment: "frag" }
+        : {
+            DAY_NAMES: { MON: "월", TUE: "화", WED: "수" },
+            DROP: "",
+            GRIP: null,
+            SMALL: "small",
+            WEEKLY_ACTIVITY_DRAG: "weekly-activity:",
+            dropTo: (fn) => ({ drop: fn }),
+          },
+    panelModule,
+    panelModule.exports,
+  );
+  const Panel = panelModule.exports.default;
+  const cell = (item_id, day, value) => ({ item_id, day, value });
+  const candidate = (id, activity_type, name, section_key = "group_activity") => ({
+    section_key,
+    activity_type,
+    name,
+    description: "",
+    cell: { item_id: id, value: name + " 설명" },
+  });
+  const plan = {
+    operating_days: ["MON", "TUE", "WED"],
+    sections: [
+      {
+        section_key: "group_activity",
+        cells: [cell("w", "WED", ""), cell("m", "MON", "[음률] 노래 놀이"), cell("t", "TUE", "")],
+      },
+    ],
+    activity_candidates: [
+      candidate("c1", "음률", "노래 놀이"),
+      candidate("c2", "신체", "공 굴리기"),
+      candidate("c3", "역할놀이", "가게 놀이", "indoor_play"),
+    ],
+  };
+  const calls = [];
+  const render = (cellId) =>
+    Panel({
+      plan,
+      cellId,
+      shown: (c) => c.value,
+      disabled: false,
+      onPut: (...a) => calls.push(["put", ...a]),
+      onDrop: (...a) => calls.push(["drop", ...a]),
+      onClear: (id) => calls.push(["clear", id]),
+      onSelect: (id) => calls.push(["select", id]),
+    });
+  const all = (node) =>
+    Array.isArray(node)
+      ? node.flatMap(all)
+      : node && typeof node === "object"
+        ? [node, ...all(node.props?.children)]
+        : [];
+  const text = (node) =>
+    Array.isArray(node)
+      ? node.map(text).join("")
+      : node && typeof node === "object"
+        ? text(node.props?.children)
+        : typeof node === "string" || typeof node === "number"
+          ? String(node)
+          : "";
+  const labels = (tree) =>
+    all(tree)
+      .filter((n) => n.type === "button")
+      .map((n) => n.props["aria-label"]);
+  const tree = render("t");
+  assert.match(text(tree), /1\/3일 채웠어요/);
+  // 요일 순서로 줄 — 넣은 「노래 놀이」와 실내놀이 후보는 아래 목록에 없다.
+  assert.deepEqual(labels(tree), [
+    "월요일 활동 고르기: [음률] 노래 놀이",
+    "월요일에서 빼기: [음률] 노래 놀이",
+    "화요일 활동 고르기 (빈 칸)",
+    "수요일 활동 고르기 (빈 칸)",
+    "화요일에 넣기: 공 굴리기",
+  ]);
+  const press = (t, label) =>
+    all(t)
+      .find((n) => n.props?.["aria-label"] === label)
+      .props.onClick();
+  press(tree, "화요일에 넣기: 공 굴리기");
+  press(tree, "월요일에서 빼기: [음률] 노래 놀이");
+  press(render("w"), "수요일에 넣기: 공 굴리기"); // 마지막 요일 — 넘어가지 않는다
+  all(tree)
+    .filter((n) => n.props?.drop)[2]
+    .props.drop("c2");
+  assert.deepEqual(calls, [
+    ["put", "t", "c2"],
+    ["select", "w"],
+    ["clear", "m"],
+    ["put", "w", "c2"],
+    ["drop", "w", "c2"],
+  ]);
 });
 
 test("G5 — 같은 반 같은 주는 한 번만 만든다", async () => {
@@ -188,6 +520,26 @@ test("G5 — 같은 반 같은 주는 한 번만 만든다", async () => {
     409,
     "ALREADY_EXISTS",
   );
+});
+
+test("안전교육은 월간에서 그 주에 놓은 후보를 복사한다 — 안 놓은 주는 빈칸", async () => {
+  const { klass, monthly: draft } = await classWithMonthly({ confirm: false });
+  const [w1, w2] = draft.weeks;
+  const source = draft.safety_candidates[0].cell;
+  let monthly = await placeMonthlySafety(draft.id, w1.week_id, source.item_id, draft.revision);
+  monthly = await confirmMonthlyPlan(monthly.id, monthly.revision);
+  const safety = (plan) => plan.sections.find((s) => s.section_key === "safety_education").cells[0];
+  const copied = safety(await weekly.createWeeklyPlan({ class_id: klass.id, week_id: w1.week_id }));
+  assert.equal(copied.value, monthly.safety_weeks[0].display_value);
+  assert.equal(copied.state, "FILLED");
+  assert.equal(copied.generation.method, "RULE_ONLY");
+  assert.equal(copied.generation.rule_id, "weekly.safety.parent_placement");
+  assert.deepEqual(copied.parent_snapshots, [
+    { parent_item_id: source.item_id, snapshot_value: source.value },
+  ]);
+  const blank = safety(await weekly.createWeeklyPlan({ class_id: klass.id, week_id: w2.week_id }));
+  assert.equal(blank.value, "");
+  assert.equal(blank.state, "EMPTY_UNRESOLVED");
 });
 
 test("Section 마다 칸이 하나다 — 주차 열이 없다", async () => {
@@ -260,7 +612,7 @@ test("토요일을 켜면 표시 기간이 하루 늘고 요일이 여섯이다"
   assert.notEqual(plan.display_end_date, plan.week_period.end_date);
 });
 
-test("확정하면 고칠 수 없고 지울 수도 없다 — 확정 취소가 없다", async () => {
+test("확정하면 고칠 수 없고, 지우는 것은 된다(ADR-064) · 주간이 딸린 월간은 409 IN_USE", async () => {
   const { klass, monthly } = await classWithMonthly();
   let plan = await weekly.createWeeklyPlan({
     class_id: klass.id,
@@ -273,7 +625,9 @@ test("확정하면 고칠 수 없고 지울 수도 없다 — 확정 취소가 �
     409,
     "ALREADY_CONFIRMED",
   );
-  await rejects(weekly.deleteWeeklyPlan(plan.id), 409, "GATE_BLOCKED");
+  await rejects(deleteMonthlyPlan(monthly.id), 409, "IN_USE");
+  await weekly.deleteWeeklyPlan(plan.id);
+  await deleteMonthlyPlan(monthly.id);
 });
 
 test("칸 이름표는 열두 칸을 모두 덮고, 월간의 옛 키(habits)는 쓰지 않는다", () => {

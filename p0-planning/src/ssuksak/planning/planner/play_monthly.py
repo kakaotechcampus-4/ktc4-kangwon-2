@@ -24,11 +24,23 @@ from ..domain.safety_placement import SafetyCandidateSlot as SafetySlot
 from ..domain.safety_placement import SafetyKind
 from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
+from .teacher_memo import (
+    CANDIDATE_MEMO_PROMPT,
+    CANDIDATE_MEMO_PROMPT_TAG,
+    SAFETY_REQUESTS_PROMPT,
+    SAFETY_REQUESTS_PROMPT_TAG,
+    TEACHER_MEMO_PROMPT,
+    TEACHER_MEMO_PROMPT_TAG,
+    memo_properties,
+    safety_request_properties,
+)
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
+from .v1_guidance import NATURAL_PLAY_GUIDANCE, SAFETY_TEXT_GUIDANCE
 from .weekly import unsupported_facts
+from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG, venue_memo
 
-PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v3"
-PLAY_MONTHLY_REPAIR_PROMPT_VERSION = "play-monthly-repair-v3"
+PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v5" + VENUE_POLICY_TAG
+PLAY_MONTHLY_REPAIR_PROMPT_VERSION = "play-monthly-repair-v5" + VENUE_POLICY_TAG
 CONTENT_MIN, CONTENT_MAX = 1, 3  # content ids per activity (first contract proposal)
 ACTIVITY_SECTIONS = ("together", "free_play")
 
@@ -39,25 +51,24 @@ SYSTEM_PROMPT = (
     '"habits": [{"week_id", "entry_id"}], "health_entry_id", "nutrition_entry_id", "drills": [{"topic_id", "text"}]}. '
     "target_month 는 요청 값을 그대로 쓴다. "
     "theme 은 이 달에 예상되는 놀이를 나타내는 놀이 주제다. rationale 은 이 주제를 고른 까닭을 합니다체 2~4문장으로 쓴다 — "
-    "부모 연간의 해당 시기 놀이와 계절 · 생활을 바탕으로 예상되는 놀이를 설명하고, 유아가 실제로 보인 관심 · 관찰 · 실시 · 성과를 사실처럼 쓰지 않는다. "
+    "연간에서 고른 해당 시기 놀이와 계절 · 생활을 바탕으로 예상되는 놀이를 설명한다. 교사가 읽을 문서이므로 입력 필드 이름이나 시스템의 부모 연결을 설명하는 개발 용어는 쓰지 않는다. "
+    "유아가 실제로 보인 관심 · 관찰 · 실시 · 성과를 사실처럼 쓰지 않는다. "
     "together 는 함께 하는 활동, free_play 는 유아 예상 자유놀이다. 각각 counts 의 개수를 정확히 쓴다. "
     "name 은 문서에 들어갈 짧은 놀이 이름이다. 분류 이름만 쓰지 말고 무엇을 가지고 무엇을 해 보는지 드러나게 쓰며, 모든 이름을 같은 어미로 맞추지 않는다. "
     "description 은 교사가 편집 화면에서 어떤 놀이인지 이해하도록 합니다체 1~3문장으로 쓴다 — "
     "준비해 볼 수 있는 재료나 공간, 놀이 대상, 유아가 해 볼 수 있는 행동이나 탐색을 쓴다. "
     "재료는 준비 제안이며 원에 있다고 단정하지 않는다. 유아가 다음에 할 행동의 순서나 만들어야 할 결과물을 정해 두지 않는다. "
-    "놀이마다 중요한 대상과 탐색을 중심으로 자연스럽게 쓴다 — 모든 설명을 재료 준비로 시작하거나 같은 문장 구조 · 맺는말로 되풀이하지 않는다. "
-    "준비 제안이라는 뜻을 매번 「제안합니다」로 나타낼 필요는 없다. "
-    "모든 놀이 이름은 서로 달라야 한다. "
+    + NATURAL_PLAY_GUIDANCE
+    + "모든 놀이 이름은 서로 달라야 한다. "
     "parent_plays 는 부모 연간에서 교사가 고른 이 시기의 놀이다. emphasized 가 true 인 놀이는 이번 달에 더 이어 갈 놀이다. "
     "parent_plays 의 materials · support_direction 은 참고 맥락이다. 고른 놀이를 모두 참고하되, 다섯 놀이를 이번 달에 하나씩 반드시 넣어야 하는 것은 아니다. "
     "어떤 놀이가 부모 놀이 하나를 실제로 이어 가면 parent_ref 에 그 놀이의 ref 를 쓰고, 연간에 없는 새 놀이면 null 로 둔다. "
     "content_ids 는 curriculum_contents 의 content_id 중 그 놀이의 name 과 description 에 실제로 드러나는 "
     f"유아 경험과 명확하게 연결되는 {CONTENT_MIN}~{CONTENT_MAX}개다. "
-    "개수를 채우려고 연결이 약한 내용을 고르지 않는다. "
+    "개수를 채우려고 연결이 약한 내용을 고르지 않는다. 소재나 도구 이름만으로 배움을 연결하거나, 고른 ID에 맞추려고 설명에 없던 경험을 보태지 않는다. "
     "safety 는 safety_slots 의 slot 마다 정확히 하나씩 쓴다. text 는 그 달 유아에게 할 안전교육 내용 한 문장이며, 「[교통안전]」 같은 영역 이름을 앞에 붙이지 않는다. "
-    "text 는 주의할 대상 · 상황과 유아가 할 행동이 분명한 짧은 문장으로 쓴다 — 뜻을 더하지 않는 계절 수식 · 서론 · 부연과 여러 행동의 나열은 줄이되, "
-    "「조심해요」처럼 행동이 모호해지도록 줄이지 않고 뜻을 가르는 조건 · 부정 표현은 남긴다. "
-    "refs 는 그 slot 의 allowed_refs 중 text 가 실제로 근거한 것이다 — 법정 영역 slot 은 정확히 1개, 생활안전 slot 은 1개 이상이다. "
+    + SAFETY_TEXT_GUIDANCE
+    + "refs 는 그 slot 의 allowed_refs 중 text 가 실제로 근거한 것이다 — 법정 영역 slot 은 정확히 1개, 생활안전 slot 은 1개 이상이다. "
     "habits 는 weeks 의 week_id 마다 하나씩, habit_entries 의 entry_id 를 고른다. 주차 수가 항목 수보다 많지 않으면 같은 항목을 되풀이하지 않는다. "
     "health_entry_id 는 health_entries, nutrition_entry_id 는 nutrition_entries 의 entry_id 중 하나다. 그 문장은 쓰지 않는다. "
     "drills 는 drill_topics 의 topic_id 마다 하나씩, 그 상황을 가정한 소방대피 · 재난대비 훈련 주제를 유아가 알아듣는 말로 한 문장 쓴다. "
@@ -119,6 +130,10 @@ class PlayMonthlyRequest:
     nutrition_entry_ids: frozenset[str]
     drill_topic_ids: tuple[str, ...]  # fixed by the Rule; the LLM writes one sentence each
     fingerprint: str
+    # ADR-060: the addresses memo_applied may name; None = no teacher memo (or a repair).
+    memo_addresses: tuple[str, ...] | None = None
+    # ADR-060 2층: statutory categories safety_requests may name; None = not asked.
+    safety_request_slots: tuple[str, ...] | None = None
 
     @property
     def source_refs(self) -> frozenset[str]:
@@ -177,6 +192,31 @@ class PlayMonthlyProvider(Protocol):
     def generate_play_monthly(self, request: PlayMonthlyRequest) -> RawLlmResponse: ...
 
 
+def play_monthly_memo_addresses(
+    counts: dict[str, int], safety_slots: tuple[SafetySlot, ...], drill_topic_ids: tuple[str, ...]
+) -> tuple[str, ...]:
+    """Every LLM-written or LLM-picked cell; week safety placement stays the teacher's."""
+    return (
+        "theme",
+        "rationale",
+        *(f"{section}[{i}]" for section in ACTIVITY_SECTIONS for i in range(counts[section])),
+        *(f"safety:{s.slot}" for s in safety_slots),
+        "habits",
+        "health",
+        "nutrition",
+        *(f"drills:{t}" for t in drill_topic_ids),
+    )
+
+
+def play_monthly_response_schema(request: PlayMonthlyRequest) -> dict:
+    if request.memo_addresses is None:
+        return RESPONSE_SCHEMA
+    properties = dict(RESPONSE_SCHEMA["properties"], **memo_properties(request.memo_addresses))
+    if request.safety_request_slots is not None:
+        properties.update(safety_request_properties(request.safety_request_slots, request.week_ids))
+    return _object_schema(properties)
+
+
 def parent_ref(period_key: str, row_key: str) -> str:
     """Parent play address; the period keeps cand1 of different seasons apart."""
     return f"{period_key}.{row_key}"
@@ -198,6 +238,8 @@ def build_play_monthly_request(
     nutrition_entries: tuple[DailyLifeEntry, ...],
     drill_topics: tuple[tuple[str, str, str], ...],  # (topic_id, label, situation)
     reference_versions: tuple[str, ...],
+    teacher_memo: str = "",
+    teacher_venues: tuple[str, ...] = (),
 ) -> PlayMonthlyRequest:
     def entries(values: tuple[DailyLifeEntry, ...]) -> list[dict]:
         return [{"entry_id": e.entry_id, "label": e.label, "text": e.text} for e in values]
@@ -225,10 +267,27 @@ def build_play_monthly_request(
             {"topic_id": t, "label": label, "situation": situation} for t, label, situation in drill_topics
         ],
     }
+    drill_topic_ids = tuple(t for t, _, _ in drill_topics)
+    if teacher_venues:
+        payload["teacher_venues"] = list(teacher_venues)
+    memo = play_monthly_memo_addresses(counts, safety_slots, drill_topic_ids) if teacher_memo else None
+    prompt_version, system_prompt = PLAY_MONTHLY_PROMPT_VERSION, SYSTEM_PROMPT + VENUE_GUIDANCE
+    if memo is not None:
+        payload["teacher_memo"] = {"text": teacher_memo, "addresses": list(memo)}
+        prompt_version += TEACHER_MEMO_PROMPT_TAG + CANDIDATE_MEMO_PROMPT_TAG
+        system_prompt += TEACHER_MEMO_PROMPT + CANDIDATE_MEMO_PROMPT
+    # 2층: 법정 안전교육 횟수 · 주 요청은 뽑기만 하고 Rule 이 둔다.
+    safety_request_slots = (
+        tuple(s.slot for s in safety_slots if s.category_id is not None) if memo is not None else ()
+    ) or None
+    if safety_request_slots is not None:
+        payload["safety_request_slots"] = list(safety_request_slots)
+        prompt_version += SAFETY_REQUESTS_PROMPT_TAG
+        system_prompt += SAFETY_REQUESTS_PROMPT
     user_content = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     return PlayMonthlyRequest(
-        prompt_version=PLAY_MONTHLY_PROMPT_VERSION,
-        system_prompt=SYSTEM_PROMPT,
+        prompt_version=prompt_version,
+        system_prompt=system_prompt,
         user_content=user_content,
         fact_source=user_content,
         target_month=target_month,
@@ -240,8 +299,10 @@ def build_play_monthly_request(
         habit_entry_ids=tuple(e.entry_id for e in habit_entries),
         health_entry_ids=frozenset(e.entry_id for e in health_entries),
         nutrition_entry_ids=frozenset(e.entry_id for e in nutrition_entries),
-        drill_topic_ids=tuple(t for t, _, _ in drill_topics),
-        fingerprint=_fingerprint(PLAY_MONTHLY_PROMPT_VERSION, SYSTEM_PROMPT, user_content, *reference_versions),
+        drill_topic_ids=drill_topic_ids,
+        fingerprint=_fingerprint(prompt_version, system_prompt, user_content, *reference_versions),
+        memo_addresses=memo,
+        safety_request_slots=safety_request_slots,
     )
 
 
@@ -257,7 +318,7 @@ def build_repair_request(
         ensure_ascii=False,
         sort_keys=True,
     )
-    system_prompt = SYSTEM_PROMPT + REPAIR_INSTRUCTION
+    system_prompt = SYSTEM_PROMPT + VENUE_GUIDANCE + REPAIR_INSTRUCTION
     return PlayMonthlyRequest(
         **{
             **{name: getattr(request, name) for name in PlayMonthlyRequest.__dataclass_fields__},
@@ -267,6 +328,8 @@ def build_repair_request(
             "fingerprint": _fingerprint(
                 PLAY_MONTHLY_REPAIR_PROMPT_VERSION, system_prompt, user_content, request.fingerprint
             ),
+            "memo_addresses": None,  # the repair answers in the first schema, without memo fields
+            "safety_request_slots": None,
         }
     )
 
@@ -339,7 +402,8 @@ def validate_play_monthly(
     def text(location: str, value: str, **limits: int) -> None:
         # Safety words are expected content in a plan that has its own safety section.
         # The repair is validated against the first request too, so its ids stay blocked.
-        for code in visible_text_violations(value, evidence_refs=request.source_refs, **limits):
+        for code in visible_text_violations(value, evidence_refs=request.source_refs,
+                                           teacher_venue_text=venue_memo(request.fact_source), **limits):
             if code != "SAFETY_CONTENT_LEAKAGE":
                 add(location, code)
         if unsupported_facts(value, request.fact_source):

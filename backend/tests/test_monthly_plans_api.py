@@ -24,6 +24,9 @@ from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateR
 from ssuksak.adapters.request_aware_monthly_llm import RequestAwareMonthlyLlm
 from ssuksak.planning import ActivityCatalogSelector, MonthlyPlan, PlanId, TemplateProfileRef
 from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
+from ssuksak.planning.domain.year_month import YearMonth
+from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
+from test_monthly_safety_read_api import legacy_mode  # noqa: F401
 
 from app.config import settings
 from app.db import engine
@@ -181,6 +184,36 @@ def _error(response):
 # ── 생성 · 조회 ───────────────────────────────────────────────────────────
 
 
+def test_가져온_연간을_확정하면_월간을_만들_수_있다(world):
+    """Theme Reference 없는 연간(2026-11-01 I-A)도 부모 주제 글자로 월간을 만든다."""
+    months = []
+    for m in (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2):
+        weeks = len(canonical_week_periods(YearMonth(2026 if m >= 3 else 2027, m)))
+        months.append(
+            {
+                "month": m,
+                "theme": f"{m}월 우리 동네",
+                "sub_themes": [f"{i}주" for i in range(weeks)],
+            }
+        )
+    imported = client.post(
+        "/api/plans/annual/import",
+        json={"class_id": world["class_a"], "source": "MANUAL", "file": None, "months": months},
+    )
+    assert imported.status_code == 201, imported.json()
+    annual_id = imported.json()["id"]
+    assert client.post(f"/api/plans/annual/{annual_id}/confirm").status_code == 200
+
+    created = _create(world)
+
+    assert created.status_code == 201, created.json()
+    body = created.json()
+    assert body["parent"]["annual_plan_id"] == annual_id
+    assert body["parent"]["theme"] == "9월 우리 동네"
+    theme = next(s for s in body["sections"] if s["section_key"] == "theme")["cells"][0]
+    assert [e["source_type"] for e in theme["evidence"]] == ["PARENT_PLAN"]
+
+
 def test_생성하면_201_이고_단건_조회가_같은_계약을_준다(world):
     session = world["session"]
     annual_id = _annual(world["class_a"])
@@ -217,6 +250,7 @@ def test_생성하면_201_이고_단건_조회가_같은_계약을_준다(world)
         "theme": "NONE",
         "week_axis": None,
         "outdoor_play": "WEEK",
+        "outdoor_play_detail": "WEEK",  # ADR-066 숨은 설명
         "safety_education": "WEEK",
         "focus": "WEEK",
     }
@@ -238,18 +272,20 @@ def test_생성하면_201_이고_단건_조회가_같은_계약을_준다(world)
     focus_sources = {e["source_type"] for c in sections["focus"]["cells"] for e in c["evidence"]}
     assert "INSTITUTION_SAMPLE" in focus_sources  # LLM 이 쓴 칸의 Grounding
 
-    # 안전교육은 배치 정책 v2 의 법정 주만 「[짧은 이름] - 내용」으로 채우고 나머지 주는 비워 둔다
-    # (2026-10-22 · 10-23 결정). 법정 시수는 따지지 않으므로 제약은 그대로
-    # 「근거 필요 · 미검증」이다.
+    # 안전교육은 후보 모드다(ADR-052): 주별 칸은 비어 있고 후보 8개 · 미배치 안내가 온다.
+    # 법정 시수는 따지지 않으므로 제약은 그대로 「근거 필요 · 미검증」이다.
     safety = sections["safety_education"]["cells"]
-    filled = [c for c in safety if c["state"] == "FILLED"]
-    assert filled and all(c["value"].startswith("[") for c in filled)
-    assert {(c["state"], c["value"]) for c in safety if c not in filled} == {("EMPTY_VALID", "")}
+    assert {(c["state"], c["value"]) for c in safety} == {("EMPTY_VALID", "")}
+    assert len(body["safety_candidates"]) == 8
     constraints = {c["code"]: c for c in body["constraints"]}
     assert constraints["STATUTORY_SAFETY_EDUCATION"]["verification"] == (
         "NOT_VERIFIED_SOURCE_REQUIRED"
     )
     assert body["verification"]["executed_rules"]
+    # 후보 모드는 안전 칸을 미해결로 보지 않는다 — 연간 시수 미검증 발견이 verification 에서 빠진다.
+    assert "SAFETY_ANNUAL_HOURS_NOT_VERIFIED" not in {
+        f["code"] for f in body["verification"]["findings"]
+    }
     assert [f["code"] for f in body["verification"]["findings"]] == [
         f.code for f in stored.verification_report.findings
     ]
@@ -782,23 +818,38 @@ def test_확정된_월간을_hwpx_로_내려준다(world):
     assert response.status_code == 200, response.text
     assert response.headers["content-type"] == "application/hwp+zip"
 
-    table, printed = _exported_table(response.content)
-    weeks = [week for week in plan["weeks"] if week["active"]]
-    weekly = [
-        s
-        for s in plan["sections"]
-        if s["visible"] and s["role"] == "CONTENT" and s["repeat_by"] == "WEEK"
-    ]
+    from app.features.plans.export import MONTHLY_MONTH_CELLS, MONTHLY_WEEK_ROWS
+    from app.shared.hwpx import NS, _cells
 
-    # 주마다 값이 있는 Section 하나가 본문 한 줄이다. 머리 7 · 본문 n · 꼬리 2.
-    assert int(table.get("rowCnt")) == 7 + len(weekly) + 2
-    for section in weekly:
-        assert section["label"] in printed
-        for cell in section["cells"]:
-            if cell["value"]:
-                assert cell["value"] in printed
-    assert weeks[0]["label"] in printed
-    assert f"{weeks[0]['start_date']} ~ {weeks[-1]['end_date']}" in printed
+    table, _ = _exported_table(response.content)
+    weeks = [week for week in plan["weeks"] if week["active"]]
+    cells = {
+        address: "\n".join("".join(p.itertext()) for p in tc.iterfind("hp:subList/hp:p", NS))
+        for address, tc in _cells(table).items()
+    }
+
+    # 한 쪽 양식: 줄은 양식에 박혀 있고 주차 칸 수만 4 · 5주로 다르다.
+    assert int(table.get("rowCnt")) == 25
+    columns = sorted(col for row, col in cells if row == 6 and col > 0)
+    assert [cells[(6, col)] for col in columns] == [f"{i}주" for i in range(1, len(weeks) + 1)]
+    title, mark = cells[(0, 0)].split("\n")
+    assert title == f"{plan['month']}월 놀이계획안"
+    assert mark.startswith("만 ") and mark.endswith("세 햇살반")
+    dots = lambda day: day.replace("-", ".")  # noqa: E731 — 한글 문서는 「2026.11.02」(하민 결정 2026-11-06)
+    assert cells[(2, 1)] == f"{dots(weeks[0]['start_date'])} ~ {dots(weeks[-1]['end_date'])}"
+    shown = [s for s in plan["sections"] if s["visible"] and s["role"] == "CONTENT"]
+    assert {s["section_key"] for s in shown} & MONTHLY_WEEK_ROWS.keys()
+    for section in shown:
+        key = section["section_key"]
+        if key in MONTHLY_MONTH_CELLS:
+            value = "\n".join(c["value"] for c in section["cells"] if c["value"])
+            assert cells[MONTHLY_MONTH_CELLS[key]] == value
+            continue
+        by_week = {c["week_id"]: c["value"] for c in section["cells"]}
+        for col, week in zip(columns, weeks, strict=True):
+            assert cells[(MONTHLY_WEEK_ROWS[key], col)] == by_week.get(week["week_id"], "")
+    pdf = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp?format=pdf")  # ADR-061
+    assert (pdf.status_code, pdf.headers["content-type"]) == (200, "application/pdf"), pdf.text
 
 
 def test_월간은_확정_전에_내보낼_수_없다(world):
@@ -827,6 +878,154 @@ def test_제출_문서에_출처가_섞이지_않는다(world):
         assert banned not in joined
 
 
+def _place(plan: dict, week_id: str, candidate_item_id: str, revision: int):
+    return client.put(
+        f"/api/plans/monthly/{plan['id']}/safety-weeks/{week_id}",
+        json={"expected_revision": revision, "candidate_item_id": candidate_item_id},
+    )
+
+
+def _safety_row(response, plan: dict) -> list[str]:
+    from app.features.plans.export import MONTHLY_WEEK_ROWS
+    from app.shared.hwpx import NS, _cells
+
+    table, _ = _exported_table(response.content)
+    cells = {
+        address: "\n".join("".join(p.itertext()) for p in tc.iterfind("hp:subList/hp:p", NS))
+        for address, tc in _cells(table).items()
+    }
+    columns = sorted(col for row, col in cells if row == 6 and col > 0)
+    return [cells[(MONTHLY_WEEK_ROWS["safety_education"], col)] for col in columns]
+
+
+def _head_over_sentence(value: str) -> str:
+    """화면(safetyLines)처럼 「[주제] 문장」 → 「[주제]」 다음 줄에 문장(2026-11-06)."""
+    head, sep, rest = value.partition("] ")
+    return f"{head}]\n{rest}" if sep and value.startswith("[") else value
+
+
+def _bold_safety_heads(response) -> list[str]:
+    """안전교육 줄에서 굵은 글자 모양으로 쓴 조각들."""
+    import zipfile
+    from io import BytesIO
+
+    from lxml import etree
+
+    from app.features.plans.export import MONTHLY_WEEK_ROWS
+    from app.shared.hwpx import NS, _cells
+
+    table, _ = _exported_table(response.content)
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        header = etree.fromstring(archive.read("Contents/header.xml"))
+    bold = {e.getparent().get("id") for e in header.iterfind(".//{*}charPr/{*}bold")}
+    return [
+        "".join(run.itertext())
+        for (r, c), tc in _cells(table).items()
+        if r == MONTHLY_WEEK_ROWS["safety_education"] and c > 0  # 줄 이름 칸은 원래 굵다
+        for run in tc.iterfind("hp:subList/hp:p/hp:run", NS)
+        if run.get("charPrIDRef") in bold and "".join(run.itertext())
+    ]
+
+
+@pytest.mark.parametrize("month", [9, 10])  # 2026-09 는 5주, 2026-10 은 4주다
+def test_안전교육_줄은_배치한_주의_표시값이고_안_고른_주는_빈칸이다(world, month):
+    _annual(world["class_a"])
+    plan = _create(world, month=month).json()
+    weeks = [w["week_id"] for w in plan["weeks"] if w["active"]]
+    candidate = plan["safety_candidates"][0]
+    placed = _place(plan, weeks[1], candidate["cell"]["item_id"], plan["revision"])
+    assert placed.status_code == 200, placed.json()
+    confirmed = client.post(
+        f"/api/plans/monthly/{plan['id']}/confirm",
+        json={"expected_revision": placed.json()["revision"]},
+    ).json()
+    display = {w["week_id"]: w["display_value"] for w in confirmed["safety_weeks"]}
+    assert display[weeks[1]].endswith(candidate["cell"]["value"]) and display[weeks[1]]
+
+    response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    expected = [_head_over_sentence(display[w]) for w in weeks]
+    assert _safety_row(response, plan) == expected
+    assert len(weeks) == (5 if month == 9 else 4)
+    assert [v for v in expected if v] == [_head_over_sentence(display[weeks[1]])]  # 나머지 빈칸
+    head = display[weeks[1]].split("] ")[0] + "]"
+    assert _bold_safety_heads(response) == [head]  # 「[주제]」 만 굵게
+    assert not any(text and "evidence" in text for text in _exported_table(response.content)[1])
+
+
+@pytest.mark.usefixtures("legacy_mode")
+def test_예전_계획안은_저장된_칸_값을_그대로_안전교육_줄에_내보낸다(world):
+    plan = _confirmed(world)
+    assert plan["safety_weeks"] == []
+    section = next(s for s in plan["sections"] if s["section_key"] == "safety_education")
+    stored = {c["week_id"]: c["value"] for c in section["cells"]}
+    assert any(v.startswith("[") for v in stored.values()) and "" in stored.values()
+
+    response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    weeks = [w["week_id"] for w in plan["weeks"] if w["active"]]
+    assert _safety_row(response, plan) == [_head_over_sentence(stored[w]) for w in weeks]
+
+
+def test_안전교육_줄을_숨긴_양식이면_배치한_후보가_있어도_그_줄은_빈칸이다(world, monkeypatch):
+    _annual(world["class_a"])
+    plan = _create(world).json()
+    week = next(w["week_id"] for w in plan["weeks"] if w["active"])
+    placed = _place(plan, week, plan["safety_candidates"][0]["cell"]["item_id"], plan["revision"])
+    assert placed.status_code == 200, placed.json()
+    assert placed.json()["safety_weeks"][0]["display_value"]  # 숨기지 않았다면 채워졌을 값
+    client.post(
+        f"/api/plans/monthly/{plan['id']}/confirm",
+        json={"expected_revision": placed.json()["revision"]},
+    )
+    from app.features.plans import export
+
+    original = export._monthly_detail
+
+    def hidden(session, user, plan_id):
+        detail = original(session, user, plan_id)
+        for section in detail.sections:
+            if section.section_key == "safety_education":
+                section.visible = False
+        return detail
+
+    monkeypatch.setattr(export, "_monthly_detail", hidden)
+    response = client.get(f"/api/plans/monthly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    assert set(_safety_row(response, plan)) == {""}
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("monthly_safety_evidence_not_active", (503, "DEPENDENCY_UNAVAILABLE")),
+        ("monthly_safety_rule_incomplete", (503, "DEPENDENCY_UNAVAILABLE")),
+        ("monthly_safety_evidence_version_mismatch", (503, "DEPENDENCY_UNAVAILABLE")),
+        ("monthly_safety_evidence_store_mismatch", (503, "DEPENDENCY_UNAVAILABLE")),
+        ("monthly_life_safety_grounding_insufficient", (503, "DEPENDENCY_UNAVAILABLE")),
+        # 방어 매핑 — 안전교육은 필수 Section 이라 정상 Profile 로는 나지 않는다.
+        ("monthly_safety_candidates_require_safety_section", (422, "VALIDATION_FAILED")),
+        ("monthly_safety_candidates_require_llm_planner", (500, "GENERATION_FAILED")),
+    ],
+)
+def test_안전_후보_생성_오류는_계약_코드로_바뀌고_저장되지_않는다(
+    world, monkeypatch, code, expected
+):
+    from ssuksak.planning import MonthlyApplicationError
+
+    class Broken:
+        def execute(self, command):
+            raise MonthlyApplicationError(code, "internal detail")
+
+    monkeypatch.setattr(monthly_router, "monthly_generation", lambda **kwargs: Broken())
+    _annual(world["class_a"])
+    response = _create(world)
+
+    assert (response.status_code, response.json()["error"]["code"]) == expected
+    assert "internal detail" not in response.text
+    assert _monthly_rows(world["session"]) == []
+
+
 # ── 지우기 (§9-1) ─────────────────────────────────────────────────────────
 
 
@@ -840,34 +1039,13 @@ def test_확정_전_월간계획안을_지우면_그_달을_다시_만들_수_�
     assert _create(world, month=9).status_code == 201
 
 
-def test_확정된_월간계획안은_지우지_못한다(world):
-    """제출 문서다. 버튼 한 번으로 사라지면 안 된다."""
+def test_확정된_월간계획안도_지우면_그_달을_다시_만들_수_있다(world):
+    """확정본도 지운다(ADR-064, Human Decision 2026-11-05 하민). 고치려면 지우고 다시 만든다."""
     plan = _confirmed(world)
 
-    assert _error(client.delete(f"/api/plans/monthly/{plan['id']}"))[:2] == (409, "GATE_BLOCKED")
-    assert client.get(f"/api/plans/monthly/{plan['id']}").status_code == 200
-
-
-def test_삭제가_읽은_뒤_다른_요청이_확정하면_확정본을_지우지_않는다(world, db_session, monkeypatch):
-    """DRAFT 로 읽어도 삭제 직전에 확정되면 409 이고 확정본은 남는다(멘토 리뷰 #210)."""
-    _annual(world["class_a"])
-    plan_id = _create(world).json()["id"]
-    real = monthly_router._own_row
-    confirmed = False
-
-    def read_then_confirmed_elsewhere(session, user, current_id):
-        nonlocal confirmed
-        row = real(session, user, current_id)
-        if not confirmed:
-            confirmed = True
-            session.expunge(row)  # 삭제 요청은 DRAFT 로 읽은 값을 그대로 들고 간다
-            session.execute(update(Plan).where(Plan.id == current_id).values(status="CONFIRMED"))
-            session.commit()
-        return row
-
-    monkeypatch.setattr(monthly_router, "_own_row", read_then_confirmed_elsewhere)
-    assert _error(client.delete(f"/api/plans/monthly/{plan_id}")) == (409, "GATE_BLOCKED", [])
-    assert db_session.scalar(select(Plan.status).where(Plan.id == plan_id)) == "CONFIRMED"
+    assert client.delete(f"/api/plans/monthly/{plan['id']}").status_code == 204
+    assert client.get(f"/api/plans/monthly/{plan['id']}").status_code == 404
+    assert _create(world, month=9).status_code == 201
 
 
 def test_남의_원_월간계획안은_지울_수_없고_404(world):

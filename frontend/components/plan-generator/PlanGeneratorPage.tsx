@@ -1,1011 +1,315 @@
 "use client";
 
-/** 기관 양식과 입력 조건으로 계획안을 생성하고, 로딩·편집·저장 흐름을 연결합니다. */
+/** 연간계획안 만들기 — 방식은 첫 화면(/plans)에서 골라 쿼리로 온다. 반 정보는 지금 고른 반에서 읽는다. */
 
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { selectedAgesFor, ageSelectionLabel, type SelectedAge } from "@/lib/onboarding/types";
-import { saveAnnualContext } from "@/lib/plan-generator/context";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { fontClassName } from "@/lib/fonts";
-import AppHeader from "@/components/app/AppHeader";
-import { createAnnualPlan, deleteAnnualPlan, listAnnualPlans } from "@/lib/api/plans";
-import { getForms } from "@/lib/api/forms";
-import { syncCenter, syncClass } from "@/lib/api/onboarding";
-import type { AnnualInput, ApiForm } from "@/lib/api/types";
-import { SessionChangedError } from "@/lib/auth/request-session";
-import GenerationFlow from "./GenerationFlow";
-import { requestAI } from "@/lib/workspace/ai-client";
-import { templatePlan, type PlanContent } from "@/lib/workspace/plans";
-import { today, type Section } from "@/lib/workspace/model";
 import Link from "next/link";
-import { ApiError } from "@/lib/api/client";
-import { useAIStatus, ws } from "@/components/workspace/WorkspaceUI";
 import {
-  PLAN_TYPE_HELP,
-  PLAN_TYPE_LABEL,
-  type AgeGroup,
-  type GenerationPhase,
-  type PeriodState,
-  type PlanType,
-} from "@/lib/plan-generator/types";
+  createAnnualPlan,
+  deleteAnnualPlan,
+  listAnnualPlans,
+  testResetAnnualPlan,
+  TEST_RESET_ENABLED,
+} from "@/lib/api/plans";
+import { syncClass } from "@/lib/api/onboarding";
+import { ApiError } from "@/lib/api/client";
+import type { AnnualInput } from "@/lib/api/types";
+import { classAnnualContext, saveAnnualContext } from "@/lib/plan-generator/context";
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
-import { isValidDate } from "@/lib/plan-generator/date";
+import { ageSelectionLabel, selectedAgesFor } from "@/lib/onboarding/types";
+import { useClientState } from "@/lib/hooks/use-client-state";
+import { schoolYearOf } from "@/lib/workspace/document-archive";
+import { today } from "@/lib/workspace/model";
+import { Tape } from "@/components/workspace/WorkspaceUI";
+import { SlideTour } from "@/components/app/Tour";
+import GenerationRing, { ringFinished, STOPPED_NOTE } from "@/components/plan-ui/GenerationRing";
+import { useCompactShell } from "@/components/app/compact-shell";
+import { memoError, PlanMemoField } from "./PlanMemo";
+import { BACK_BUTTON, BACK_ICON } from "./AnnualFrame";
 
-// 요구사항명세서에 있는 종류만 띄운다. **일간 계획안은 FR 번호가 없다** — 만들기로 한 적이
-// 없는데 카드만 있었다. 「준비 중」이라고 써 두면 곧 생길 것처럼 보여서 뺀다.
-// 헷갈리기 쉬운 것 — 「일일 보육일지」는 있다(§11). 그건 계획안이 아니라 일지고,
-// 문서 보관함(/documents)에서 만든다.
-const PLAN_TYPES: PlanType[] = ["annual", "monthly", "weekly"];
-const ANNUAL_FORMATS = [
-  { value: "MONTHLY_THEME", name: "월별 주제형", image: "monthly-theme", width: 567, height: 792 },
-  {
-    value: "PLAY_PROJECT",
-    name: "놀이 프로젝트형",
-    image: "play-project",
-    width: 595,
-    height: 838,
+type Format = AnnualInput["format"];
+
+// 기관 양식 선택은 버렸다(디자인 결정) — 기본 양식만 잠근 채 보여 준다.
+/** 양식 칸 화살표 — 온보딩 Select 의 chevron 과 같은 그림. */
+const CHEVRON =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M5 9l7 7 7-7' fill='none' stroke='%236B7280' stroke-width='2.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")";
+
+const FORMAT = {
+  MONTHLY_THEME: {
+    name: "월별 주제형",
+    form: "소주제형 기본 양식",
+    image: "monthly-theme-crop",
+    alt: "쌤플 기본 연간계획안 양식 예시",
+    chip: "bg-[#e8f1ea] text-[#3b5441]",
+    steps: ["주제 정하기", "소주제 나누기", "문서로 정리하기"],
   },
-] as const;
-
-/**
- * 서버가 실제로 만들 수 있는 종류. 나머지 카드는 「준비 중」으로 잠근다.
- *
- * **고를 수 있는데 아무 일도 안 일어나는 게 제일 나쁘다.** 지금 백엔드 라우터에는
- * `/api/plans/annual` 하나뿐이다(월간 엔진은 p0-planning 에 있지만 API 가 없다).
- * 여기에 종류를 더하는 건 그 API 가 생긴 뒤다.
- */
-// 여기서 끝까지 만들 수 있는 종류. 월간은 만들 수 있지만 **흐름이 다르다** —
-// 확정된 연간과 원 양식(TemplateProfile)이 있어야 해서 /plans/monthly 로 보낸다.
-const READY: ReadonlySet<PlanType> = new Set<PlanType>(["annual"]);
-const ELSEWHERE: Partial<Record<PlanType, string>> = {
-  monthly: "/plans/monthly",
-  // 주간도 같다 — 확정한 월간이 있어야 만들 수 있다 (weekly-plan-contract §4-1 G3).
-  weekly: "/plans/weekly",
-};
-// 새 디자인은 계획안 종류를 색이 아니라 글로 가른다. 고른 카드만 주 색으로 선다.
-const ACCENT: Record<PlanType, { text: string; tint: string; ink: string }> = {
-  annual: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
-  monthly: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
-  weekly: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
-  daily: { text: "text-primary-ink", tint: "bg-primary-tint", ink: "text-primary-ink" },
-};
-
-const SUGGESTIONS = [
-  {
-    emoji: "🍂",
-    label: "가을 자연물 놀이",
-    text: "가을 자연물(낙엽, 열매)을 활용한 놀이 활동을 중심으로 작성해주세요.",
-    tone: "peach" as const,
+  PLAY_PROJECT: {
+    name: "놀이 중심형",
+    form: "놀이 중심형 기본 양식",
+    image: "play-project-crop",
+    alt: "놀이 중심형 연간계획안 양식 예시",
+    chip: "bg-[#eee4f4] text-[#5e4b96]",
+    steps: ["놀이 떠올리기", "계절별로 나누기", "문서로 정리하기"],
   },
-  {
-    emoji: "🎨",
-    label: "실외+미술 활동",
-    text: "실외활동과 미술활동을 포함해주세요.",
-    tone: "mint" as const,
-  },
-];
+} as const;
 
-/**
- * @param embedded  true 면 AppLayout(사이드바) 안에서 렌더된다는 뜻.
- *                  자체 브랜드 헤더 대신 공통 AppHeader(페이지 제목)를 쓰고, 나머지 레이아웃/디자인은 그대로.
- */
-/** URL 쿼리와 온보딩에 저장된 반 설정 — 마운트 시 한 번만 읽는다(서버 렌더에서는 빈 값). */
-function readStartup() {
-  if (typeof window === "undefined")
-    return { memo: "", formId: "", ages: [] as SelectedAge[], className: "", classId: "" };
-  const params = new URLSearchParams(window.location.search);
-  const primary = primaryClassFor(loadClassSettings());
-  return {
-    memo: params.get("topic")?.slice(0, 5000) ?? "",
-    // 서버 양식 번호다. 목록에 없는 값은 아래에서 기본 양식으로 본다.
-    formId: params.get("template") ?? "",
-    ages: primary ? selectedAgesFor(primary) : [],
-    className: primary?.className ?? "",
-    classId: primary?.id ?? "",
-  };
+const NO_ROOM = { className: "", age: "" };
+
+export default function PlanGeneratorPage({ format }: { format: Format | null }) {
+  if (!format) return <NoFormat />;
+  return <AnnualGenerator format={format} />;
 }
 
-export default function PlanGeneratorPage({ embedded = false }: { embedded?: boolean } = {}) {
-  const router = useRouter();
-  const [startup] = useState(readStartup);
-  const [age, setAge] = useState<AgeGroup | "">(
-    startup.ages.length === 1
-      ? (String(startup.ages[0]) as AgeGroup)
-      : startup.ages.length
-        ? "mixed"
-        : "",
+/** 방식 없이 들어온 옛 주소(/plans/create · 트렌드 링크). 방식은 첫 화면에서만 고른다. */
+function NoFormat() {
+  return (
+    <div className="flex w-full flex-col gap-3 px-10 pb-12 pt-[26px] text-[#2b2826]">
+      <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+        연간계획안 만들기
+      </h1>
+      <p className="m-0 text-base text-[#5c5243]">어떤 방식으로 만들지 먼저 골라 주세요.</p>
+      <Link href="/plans" className="text-base font-bold text-[#5e4b96]">
+        방식 고르러 가기 →
+      </Link>
+    </div>
   );
-  // 온보딩에서 읽은 실제 연령([3,5] 등)은 표시용으로 보존한다. 화면 UI는 기존 드롭다운 그대로.
-  const onboardingAges = useRef<SelectedAge[]>(startup.ages);
-  const [planTypes, setPlanTypes] = useState<Set<PlanType>>(new Set());
-  const [format, setFormat] = useState<AnnualInput["format"] | null>(null);
-  const [period, setPeriod] = useState<PeriodState>({
-    annual: { year: new Date().getFullYear() },
-    monthly: { month: new Date().getMonth() + 1 },
-    weekly: { month: new Date().getMonth() + 1, week: 1 },
-    daily: { date: today() },
-  });
-  const [memo, setMemo] = useState(startup.memo);
-  const [phase, setPhase] = useState<GenerationPhase>("idle");
-  const [stepIndex, setStepIndex] = useState(0);
-  const className = startup.className;
-  const classId = startup.classId;
-  const [formId, setFormId] = useState(startup.formId);
+}
+
+function AnnualGenerator({ format }: { format: Format }) {
+  const router = useRouter();
+  const look = FORMAT[format];
+  const [room] = useClientState(() => {
+    const klass = primaryClassFor(loadClassSettings());
+    return klass
+      ? { className: klass.className, age: ageSelectionLabel(selectedAgesFor(klass)) }
+      : NO_ROOM;
+  }, NO_ROOM);
+  const [generating, setGenerating] = useState(false);
+  const [done, setDone] = useState(false);
   const [error, setError] = useState("");
-  // 그 반에 연간계획안이 이미 있을 때(409 ALREADY_EXISTS) 어느 반인지. 교사에게 묻고
-  // 「새로 만들기」를 고르면 그때 지운다. **조용히 지우지 않는다** — 확정 전이라도 교사가
-  // 쓴 글이 사라지는 일이라 뜻을 받아야 한다.
+  const [stopped, setStopped] = useState(false);
+  const [memo, setMemo] = useState("");
+  const [memoProblem, setMemoProblem] = useState<string | null>(null);
+  // 그 반에 연간이 이미 있을 때(409) 어느 반인지. 교사가 「새로 만들기」를 고를 때만 지운다 —
+  // 확정 전이라도 교사가 쓴 글이 사라지는 일이라 조용히 지우지 않는다.
   const [occupied, setOccupied] = useState<number | null>(null);
-  const [contents, setContents] = useState<Partial<Record<PlanType, PlanContent>>>({});
-  // 기관 양식의 원본은 서버다 (§8) — 브라우저 저장소를 보지 않는다. null 이면 아직 못 받았다.
-  const [forms, setForms] = useState<ApiForm[] | null>(null);
-  const [formsError, setFormsError] = useState("");
-  const available = useAIStatus();
   const controllerRef = useRef<AbortController | null>(null);
-  const [generated, setGenerated] = useState<{
-    age: AgeGroup;
-    selectedTypes: PlanType[];
-    period: PeriodState;
-    memo: string;
-  } | null>(null);
+  const year = schoolYearOf(today());
+  useCompactShell(generating);
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 
-  // 원 양식 등록 화면과 같은 흐름이다. 실패해도 기본 양식으로는 계속 만들 수 있다.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const settings = loadClassSettings();
-        if (!settings) throw new Error("원 정보를 먼저 설정해주세요.");
-        const { items } = await getForms(await syncCenter(settings));
-        if (alive) setForms(items);
-      } catch (e) {
-        // 계정이 바뀌면 apiRequest 가 여기서 끊는다 — 새 계정 화면에 옛 오류를 남기지 않는다.
-        if (!alive || e instanceof SessionChangedError) return;
-        // 기관 양식만 못 받은 것이다 — 빈 목록으로 두고 기본 양식으로 계속 만들게 한다.
-        setForms([]);
-        setFormsError(e instanceof Error ? e.message : "등록한 기관 양식을 불러오지 못했어요.");
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  // 양식 번호는 연간계획안 생성에만 실린다 (§4). 다른 종류에는 붙일 계약이 없다.
-  const annualSelected = planTypes.has("annual");
-  const formsLoading = forms === null;
-  const canGenerate =
-    available !== null &&
-    phase !== "generating" &&
-    // 양식을 고른 채로 들어왔으면 목록을 받은 뒤에만 보낸다 — 조용히 기본 양식이 되지 않게.
-    !(annualSelected && format === "MONTHLY_THEME" && formId !== "" && formsLoading) &&
-    format !== null &&
-    age !== "" &&
-    planTypes.size > 0 &&
-    Number.isInteger(period.annual.year) &&
-    period.annual.year >= 2000 &&
-    period.annual.year <= 2100 &&
-    (!planTypes.has("daily") || isValidDate(period.daily.date));
-  const selectedTypes = useMemo(() => PLAN_TYPES.filter((t) => planTypes.has(t)), [planTypes]);
-
-  const stageRef = useRef<HTMLElement | null>(null);
-
-  function toggleType(t: PlanType) {
-    if (t === "annual" && annualSelected) setFormat(null);
-    setPlanTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(t)) next.delete(t);
-      else next.add(t);
-      return next;
-    });
-  }
-
-  function updatePeriod<K extends keyof PeriodState>(key: K, value: PeriodState[K]) {
-    setPeriod((prev) => {
-      const next = { ...prev, [key]: value };
-      const maxWeeks = Math.ceil(new Date(next.annual.year, next.weekly.month, 0).getDate() / 7);
-      return { ...next, weekly: { ...next.weekly, week: Math.min(next.weekly.week, maxWeeks) } };
-    });
-  }
-
-  async function handleGenerate() {
-    if (!canGenerate || format === null) return;
+  async function generate() {
+    if (generating) return;
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
-    // [3,5]처럼 비연속 선택은 "mixed" 한 값으로 줄이면 4세가 섞인 것으로 읽힌다.
-    // 드롭다운 값(age)은 그대로 두고 실제 선택 연령을 함께 넘긴다.
-    const exactAges =
-      age === "mixed" && onboardingAges.current.length > 1 ? [...onboardingAges.current] : null;
-    const request = {
-      age,
-      ageLabel: exactAges ? ageSelectionLabel(exactAges) : undefined,
-      selectedTypes: [...selectedTypes],
-      period: structuredClone(period),
-      memo,
-    };
-    setGenerated(request);
-    setContents({});
+    setGenerating(true);
+    setDone(false);
     setError("");
-    setPhase("generating");
-    setStepIndex(0);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setStopped(false);
+    setMemoProblem(null);
+    setOccupied(null);
+    let classId: number | null = null;
     try {
-      const results: Partial<Record<PlanType, PlanContent>> = {};
-      // 목록에 없는 값(옛 브라우저 양식 번호 등)은 기본 양식으로 본다.
-      const form = (forms ?? []).find((f) => String(f.id) === formId) ?? null;
-      setStepIndex(1);
-      for (const type of selectedTypes) {
-        if (type === "annual") {
-          const settings = loadClassSettings(),
-            primary = primaryClassFor(settings);
-          if (!settings || !primary) throw new Error("반 정보를 먼저 저장해주세요.");
-          // 계획안 조건으로 저장된 반/아동 연결을 변경하지 않는다.
-          const serverClassId = await syncClass(settings, primary);
-          // 양식은 번호만 든다 — 서버가 FK 로 가리킨다 (§4). null 이면 기본 양식이다.
-          const plan = await createAnnualPlan(
-            {
-              class_id: serverClassId,
-              format,
-              ...(format === "MONTHLY_THEME" ? { form_id: form?.id ?? null } : {}),
-            },
-            controller.signal,
-          );
-          results.annual = {
-            annualPlanId: plan.id,
-            // 서버가 `source_type` 을 보내지 않아 이 자리는 늘 "template" 이었다.
-            // **"ai" 로 바꾸지 않는다.** LLM_MODE 기본이 mock 이라, 그때는 참고자료
-            // 라벨을 그대로 베끼고 LLM 이 한 글자도 안 쓴다(`plans/llm.py:114`).
-            // 지금 응답에는 `generation` 이 없어서 프런트가 둘을 가를 방법이 없다 —
-            // 모르는 것을 단정하지 않고, 쌓여 있는 문서와 같은 값을 그대로 쓴다.
-            // #146 이 `generation` 을 실어 오면 그때 method 로 가른다(월간 화면과 같이).
-            origin: "template",
-            notes: [
-              "연간계획안은 서버에 초안으로 저장됩니다. 추가 요청사항은 메모로 보존되며 활동에 반영하려면 내용을 수정해주세요.",
-            ],
-            rows:
-              plan.format === "MONTHLY_THEME"
-                ? plan.months.map((m) => ({
-                    label: m.month + "월",
-                    title: m.theme,
-                    detail: m.sub_themes.join("\n"),
-                  }))
-                : [],
-          };
-        } else if (available) {
-          const result = await requestAI<{ sections: Section[]; notes: string[] }>(
-            "plan",
-            {
-              type,
-              age,
-              ...(exactAges ? { ages: exactAges } : {}),
-              period,
-              memo,
-              // ApiForm 을 이 요청에 잇는 계약이 아직 없다. 임의 변환을 만들지 않는다.
-              template: null,
-            },
-            controller.signal,
-          );
-          if (!result.sections.length)
-            throw new Error("계획안 항목을 완성하지 못했어요. 다시 생성해주세요.");
-          results[type] = {
-            origin: "ai",
-            notes: result.notes,
-            rows: result.sections.map((s, i) => ({
-              label: String(i + 1),
-              title: s.heading,
-              detail: s.body,
-            })),
-          };
-        } else {
-          results[type] = templatePlan(type, age, period, memo, undefined, request.ageLabel);
-        }
-        if (controller.signal.aborted) return;
-        setStepIndex(2);
-      }
-      if (!available) await new Promise((resolve) => setTimeout(resolve, 700));
+      const settings = loadClassSettings(),
+        primary = primaryClassFor(settings);
+      if (!settings || !primary) throw new Error("반 정보를 먼저 저장해주세요.");
+      classId = await syncClass(settings, primary);
+      // 놀이 중심형은 form_id 를 보내지 않는다. 월별 주제형은 null = 기본 양식 (§4).
+      const plan = await createAnnualPlan(
+        {
+          class_id: classId,
+          format,
+          ...(format === "MONTHLY_THEME" ? { form_id: null } : {}),
+          ...(memo.trim() ? { memo: memo.trim() } : {}),
+        },
+        controller.signal,
+      );
       if (controller.signal.aborted) return;
-      if (results.annual?.annualPlanId) {
-        const { annual, ...companions } = results;
-        try {
-          saveAnnualContext(annual.annualPlanId!, { request, classId, className, companions });
-        } catch (e) {
-          console.warn("계획안 표시 정보 캐시 저장 실패", e);
-        }
-        router.replace("/plans/annual/" + annual.annualPlanId);
-        return;
+      try {
+        saveAnnualContext(plan.id, classAnnualContext(primary, plan.school_year));
+      } catch (e) {
+        console.warn("계획안 표시 정보 캐시 저장 실패", e);
       }
-      setContents(results);
-      setStepIndex(4);
-      setPhase("done");
+      setDone(true);
+      await ringFinished();
+      router.replace("/plans/annual/" + plan.id);
     } catch (e) {
       if (controller.signal.aborted) return;
       // 만들기 경로의 409 는 「이 반의 연간계획안이 이미 있습니다」 하나뿐이다.
-      const taken = e instanceof ApiError && e.status === 409 ? loadClassSettings() : null;
-      const primary = taken ? primaryClassFor(taken) : null;
-      if (primary) setOccupied(await syncClass(taken!, primary));
-      setError(e instanceof Error ? e.message : "계획안을 생성하지 못했어요.");
-      setPhase("idle");
+      if (e instanceof ApiError && e.status === 409 && classId !== null) setOccupied(classId);
+      const memoMessage = memoError(e);
+      if (memoMessage) setMemoProblem(memoMessage);
+      else setError(e instanceof Error ? e.message : "계획안을 생성하지 못했어요.");
+      setGenerating(false);
     }
   }
 
+  /** [생성 멈추기]. 요청을 끊는다 — 놀이 중심형은 서버도 남은 구간을 부르지 않고 저장하지 않는다. */
+  function stop() {
+    controllerRef.current?.abort();
+    setGenerating(false);
+    setStopped(true);
+  }
+
   /** 그 반의 연간계획안을 지우고 다시 만든다. 교사가 「새로 만들기」를 눌렀을 때만 온다. */
-  async function handleReplace(classId: number) {
+  async function replace(classId: number) {
     setOccupied(null);
     setError("");
     try {
       const { items } = await listAnnualPlans(classId);
       const existing = items[0];
       if (!existing) throw new Error("지울 계획안을 찾지 못했어요. 새로고침 후 다시 해주세요.");
-      await deleteAnnualPlan(existing.id);
+      // 시험 모드면 확정본 · 딸린 월간 · 주간까지 지운다(서버 test-reset). 아니면 서버가 그것들을 막는다.
+      await (TEST_RESET_ENABLED ? testResetAnnualPlan : deleteAnnualPlan)(existing.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "지우지 못했어요.");
       return;
     }
-    await handleGenerate();
+    await generate();
   }
 
-  function handleRegenerate() {
-    controllerRef.current?.abort();
-    setPhase("idle");
-  }
+  if (generating)
+    return (
+      <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
+        <GenerationRing
+          kind={`annual:${format}`}
+          // Sol 실측(2026-11-05): 놀이 중심형은 4구간을 차례로 불러 약 176초. 주제형은 아직 안 쟀다.
+          expect={format === "PLAY_PROJECT" ? 180 : 20}
+          steps={[...look.steps]}
+          done={done}
+          onCancel={stop}
+        />
+      </div>
+    );
 
   return (
-    <div
-      className={`${embedded ? "" : `${fontClassName} min-h-screen`} font-body`}
-      style={{ background: "var(--pg-cream)", color: "var(--pg-ink)" }}
-    >
-      {embedded ? (
-        <AppHeader
-          title="계획안 생성"
-          description="조건을 선택하고 요청사항을 입력하면 AI가 계획안 초안을 만들어요."
-          divider={false}
-        />
-      ) : (
-        <header
-          className="flex items-center justify-between px-4 py-3.5 lg:px-8 lg:py-5 border-b"
-          style={{ borderColor: "var(--pg-line)" }}
+    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)]">
+      {stopped && STOPPED_NOTE}
+      {error && (
+        <p
+          role="alert"
+          className="m-0 rounded-md border border-[#e8e2d8] bg-white px-4 py-3 text-sm"
         >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true" className="shrink-0">
-              <circle cx="12" cy="15" r="9" className="fill-sage" />
-              <circle cx="20" cy="10" r="6" className="fill-sage-ink" />
-            </svg>
-            <span className="font-display text-xl">쌤플</span>
-            <span className="hidden lg:inline text-sm ml-1 text-ink-soft">· 계획안 생성</span>
-          </div>
-        </header>
+          {error}
+          {occupied !== null && (
+            <>
+              {" "}
+              새로 만들면 지금 있는 초안이 사라져요.{" "}
+              <button type="button" className="underline" onClick={() => replace(occupied)}>
+                새로 만들기
+              </button>{" "}
+              ·{" "}
+              <button type="button" className="underline" onClick={() => setOccupied(null)}>
+                그대로 두기
+              </button>
+            </>
+          )}
+        </p>
       )}
 
-      <div className="px-4 lg:px-10">
-        {(error || formsError) && (
-          <p className={ws.error} role="alert">
-            {error || formsError}
-          </p>
-        )}
-        {occupied !== null && (
-          <p className={ws.error} role="alert">
-            새로 만들면 지금 있는 초안이 사라져요.{" "}
-            <button type="button" className={ws.link} onClick={() => handleReplace(occupied)}>
-              새로 만들기
-            </button>{" "}
-            ·{" "}
-            <button type="button" className={ws.link} onClick={() => setOccupied(null)}>
-              그대로 두기
-            </button>
-          </p>
-        )}
-        {phase === "idle" && (
-          <div className={ws.row} style={{ marginBottom: 20 }}>
-            <label className={ws.field}>
-              사용할 기관 양식
-              <select
-                value={formId}
-                disabled={!annualSelected || format === "PLAY_PROJECT" || formsLoading}
-                onChange={(e) => setFormId(e.target.value)}
+      {/* 월간 · 주간 만들기와 같은 틀 — 왼쪽 고르기 1 : 오른쪽 양식 1.15, 화면 높이에 맞춤. */}
+      <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        <Tape />
+        <section className="flex min-h-0 flex-col gap-6 overflow-y-auto border border-line bg-paper rounded-md p-7">
+          {/* 왼쪽 판 맨 위: 제목 앞 「←」 돌아가기(편집 화면과 같은 버튼) · 방식. */}
+          <div className="flex shrink-0 flex-col">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <Link
+                href="/plans"
+                aria-label="돌아가기: 방식 다시 고르기"
+                title="방식 다시 고르기"
+                className={BACK_BUTTON}
               >
-                <option value="">쌤플 기본 양식</option>
-                {(forms ?? []).map((f) => (
-                  <option value={String(f.id)} key={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
+                {BACK_ICON}
+              </Link>
+              <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+                {year} 연간계획안 만들기
+              </h1>
+              <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
+                {look.name}
+              </span>
+              <span className="ml-auto">
+                <SlideTour format={format} />
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <h2 className="m-0 font-display text-[24px] font-bold leading-tight text-ink">
+              우리 반
+            </h2>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                ["반", room.className || "반 없음"],
+                ["연령", room.age || "—"],
+                ["학년도", String(year)],
+              ].map(([k, v]) => (
+                <div key={k} className="flex flex-col gap-1 rounded-md bg-[#f7f4ee] px-4 py-3">
+                  <span className="text-[13px] text-[#5c5243]">{k}</span>
+                  <span className="text-lg font-bold">{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label
+              htmlFor="form"
+              className="m-0 font-display text-[24px] font-bold leading-tight text-ink"
+            >
+              양식
             </label>
-            {format !== "PLAY_PROJECT" && (
-              <p className={ws.hint}>
-                {formsLoading
-                  ? "등록한 기관 양식을 불러오고 있어요."
-                  : annualSelected
-                    ? "등록한 기관 양식은 연간계획안 생성에 적용돼요."
-                    : "기관 양식은 연간계획안에만 적용돼요. 연간계획안을 선택하면 고를 수 있어요."}
-              </p>
-            )}
-            <p className={ws.hint}>
-              계획안은 초안으로 생성·저장돼요. 생성 후 우리 반에 맞게 검토해주세요.
-            </p>
+            <select
+              id="form"
+              disabled
+              // 기본 화살표는 칸 끝에 붙는다 — 온보딩 Select 와 같은 chevron 을 안쪽(18px)에 둔다.
+              className="min-h-[52px] appearance-none rounded-md border border-[#ddd6ca] bg-[#f7f4ee] bg-[length:15px] bg-[right_18px_center] bg-no-repeat pl-4 pr-12 text-base text-[#5c5243]"
+              style={{ backgroundImage: CHEVRON }}
+            >
+              <option>{look.form}</option>
+            </select>
           </div>
-        )}
-        {phase === "generating" && format === "PLAY_PROJECT" && (
-          <p className={ws.hint} role="status">
-            놀이 프로젝트형은 네 구간을 차례로 만들어 몇 분 걸릴 수 있어요.
-          </p>
-        )}
-      </div>
-      {phase !== "idle" && generated ? (
-        <GenerationFlow
-          key={phase}
-          phase={phase}
-          stepIndex={stepIndex}
-          request={generated}
-          contents={contents}
-          classId={classId}
-          className={className}
-          onBack={handleRegenerate}
-          onRetry={handleGenerate}
-        />
-      ) : (
-        <main
-          className={`grid grid-cols-1 gap-4 p-4 lg:gap-6 lg:grid-cols-[400px_minmax(0,1fr)] ${embedded ? "lg:px-10 lg:pt-2 lg:pb-12 pt-1" : "lg:p-8"}`}
-        >
-          <InputPanel
-            age={age}
-            onAgeChange={setAge}
-            planTypes={planTypes}
-            onToggleType={toggleType}
-            format={format}
-            onFormatChange={setFormat}
-            period={period}
-            onPeriodChange={updatePeriod}
-            memo={memo}
-            onMemoChange={setMemo}
-            canGenerate={canGenerate}
-            onGenerate={handleGenerate}
+
+          <PlanMemoField
+            value={memo}
+            onChange={setMemo}
+            error={memoProblem}
+            chips={
+              format === "PLAY_PROJECT"
+                ? ["자연물 놀이 많이", "실외 활동 중심", "미술 활동 포함"]
+                : ["자연물 놀이 많이", "실외 활동 중심", "미술 활동 포함", "명절·행사 반영"]
+            }
+            placeholder="예) 가을엔 자연물 놀이를 많이 넣어주세요"
           />
 
-          <section
-            ref={stageRef}
-            className="relative overflow-hidden rounded-md border px-5 py-7 lg:p-10 min-h-[380px] lg:min-h-[640px] flex items-center justify-center bg-paper shadow-pg"
-            style={{ borderColor: "var(--pg-line)" }}
+          <button
+            type="button"
+            onClick={() => void generate()}
+            disabled={!room.className}
+            className="mt-auto min-h-[56px] rounded-md bg-primary hover:bg-primary-hover text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
           >
-            <svg
-              className="absolute -left-8 -top-8 opacity-20 lg:opacity-30 scale-[.6] lg:scale-100 pg-float"
-              style={{ animation: "pg-float 5s ease-in-out infinite" }}
-              width="110"
-              height="110"
-              viewBox="0 0 110 110"
-              aria-hidden="true"
-            >
-              <circle cx="55" cy="55" r="42" className="fill-sage" />
-            </svg>
-            <svg
-              className="absolute -right-10 -bottom-10 opacity-20 lg:opacity-30 scale-[.6] lg:scale-100"
-              style={{ animation: "pg-float 5s ease-in-out infinite -2.5s" }}
-              width="140"
-              height="140"
-              viewBox="0 0 140 140"
-              aria-hidden="true"
-            >
-              <circle cx="70" cy="70" r="55" className="fill-mint" />
-            </svg>
+            연간계획안 만들기
+          </button>
+        </section>
 
-            {phase === "idle" && <IdleState />}
-          </section>
-        </main>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------
-// 왼쪽 입력 패널
-// ---------------------------------------------------------------------
-
-function InputPanel(props: {
-  age: AgeGroup | "";
-  onAgeChange: (v: AgeGroup | "") => void;
-  planTypes: Set<PlanType>;
-  onToggleType: (t: PlanType) => void;
-  format: AnnualInput["format"] | null;
-  onFormatChange: (format: AnnualInput["format"]) => void;
-  period: PeriodState;
-  onPeriodChange: <K extends keyof PeriodState>(key: K, value: PeriodState[K]) => void;
-  memo: string;
-  onMemoChange: (v: string) => void;
-  canGenerate: boolean;
-  onGenerate: () => void;
-}) {
-  const {
-    age,
-    onAgeChange,
-    planTypes,
-    onToggleType,
-    format,
-    onFormatChange,
-    period,
-    onPeriodChange,
-    memo,
-    onMemoChange,
-    canGenerate,
-    onGenerate,
-  } = props;
-
-  return (
-    <aside
-      className="min-w-0 rounded-md border p-5 lg:p-6 flex flex-col gap-6 lg:gap-7 h-fit bg-paper shadow-pg"
-      style={{ borderColor: "var(--pg-line)" }}
-    >
-      {/* 1. 대상 연령 */}
-      <section className="flex flex-col gap-2.5">
-        <label htmlFor="age" className="font-semibold text-[15px]">
-          대상 연령
-        </label>
-        <select
-          id="age"
-          value={age}
-          onChange={(e) => onAgeChange(e.target.value as AgeGroup | "")}
-          className="w-full rounded-md px-4 py-3 min-h-[48px] text-base lg:text-[15px] border bg-paper appearance-none"
-          style={{
-            borderColor: "var(--pg-line)",
-            backgroundImage: CHEVRON_BG,
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "right 12px center",
-            backgroundSize: "15px",
-            paddingRight: 34,
-          }}
+        <section
+          aria-label="양식 미리보기"
+          className="flex min-h-[420px] flex-col border border-shell-line bg-shell-hover shadow-[inset_0_1px_4px_rgba(52,49,47,0.08)] p-3"
         >
-          <option value="">연령을 선택해주세요</option>
-          <option value="3">만 3세</option>
-          <option value="4">만 4세</option>
-          <option value="5">만 5세</option>
-          <option value="mixed">혼합반</option>
-        </select>
-      </section>
-
-      {/* 2. 생성할 계획안 */}
-      <section className="flex flex-col gap-2.5">
-        <div>
-          <label className="font-semibold text-[15px]">생성할 계획안</label>
-          <p className="text-[12.5px] mt-0.5 text-ink-soft">여러 개를 함께 선택할 수 있어요</p>
-        </div>
-        <div className="grid grid-cols-2 gap-2.5">
-          {PLAN_TYPES.map((t) => (
-            <PlanTypeCard
-              key={t}
-              type={t}
-              selected={planTypes.has(t)}
-              ready={READY.has(t)}
-              onToggle={() => onToggleType(t)}
+          <div className="relative min-h-0 flex-1">
+            {/* 정답지 ②: 종이 모양(테두리 · 그림자)이 그림 크기에 딱 맞게. fill 은 빈 띠를 남긴다. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/plan-formats/${look.image}.png`}
+              alt={look.alt}
+              className="absolute inset-x-0 top-0 mx-auto max-h-full max-w-full rounded-md border border-[#e3ddd2] bg-white object-contain object-top shadow-[0_1px_2px_rgba(43,40,38,0.1),0_14px_32px_-14px_rgba(43,40,38,0.35)]"
             />
-          ))}
-        </div>
-      </section>
-
-      {planTypes.has("annual") && (
-        <fieldset className="min-w-0">
-          <legend className="mb-2.5 font-semibold text-[15px]">연간계획안 형식 (필수)</legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {ANNUAL_FORMATS.map((option) => (
-              <FormatCard
-                key={option.value}
-                option={option}
-                selected={format === option.value}
-                onSelect={() => onFormatChange(option.value)}
-              />
-            ))}
           </div>
-        </fieldset>
-      )}
-
-      {/* 3. 기간 선택 (선택한 계획안 종류에 따라 동적으로 표시) */}
-      <section className="flex flex-col gap-2.5">
-        <label className="font-semibold text-[15px]">기간 선택</label>
-        <label className={ws.field}>
-          기준 연도
-          <input
-            name="year"
-            aria-label="기준 연도"
-            type="number"
-            min={2000}
-            max={2100}
-            value={period.annual.year}
-            onChange={(e) => onPeriodChange("annual", { year: Number(e.target.value) })}
-          />
-        </label>
-        {planTypes.has("annual") && (
-          <p className="text-xs text-ink-soft">
-            연간: {period.annual.year}년 3월 ~ {period.annual.year + 1}년 2월
-          </p>
-        )}
-        {planTypes.has("weekly") && (
-          <p className="text-xs text-ink-soft">주차는 1~7일, 8~14일 등 월 안의 7일 단위예요.</p>
-        )}
-        {planTypes.size === 0 ? (
-          <div
-            className="text-[12.5px] rounded-md px-3.5 py-3 border border-dashed text-ink-soft"
-            style={{ borderColor: "var(--pg-line)", background: "var(--pg-sage-tint)" }}
-          >
-            계획안 종류를 먼저 선택해주세요
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2.5">
-            {planTypes.has("monthly") && (
-              <PeriodBlock type="monthly" label="몇 월인가요?">
-                <MonthSelect
-                  value={period.monthly.month}
-                  onChange={(month) => onPeriodChange("monthly", { month })}
-                />
-              </PeriodBlock>
-            )}
-            {planTypes.has("weekly") && (
-              <PeriodBlock type="weekly" label="몇 월 몇 주차인가요?">
-                <MonthSelect
-                  value={period.weekly.month}
-                  onChange={(month) => onPeriodChange("weekly", { ...period.weekly, month })}
-                />
-                <WeekSelect
-                  maxWeeks={Math.ceil(
-                    new Date(period.annual.year, period.weekly.month, 0).getDate() / 7,
-                  )}
-                  value={period.weekly.week}
-                  onChange={(week) => onPeriodChange("weekly", { ...period.weekly, week })}
-                />
-              </PeriodBlock>
-            )}
-            {planTypes.has("daily") && (
-              <PeriodBlock type="daily" label="날짜를 선택해주세요">
-                <input
-                  name="plan_date"
-                  type="date"
-                  aria-label="계획안 날짜"
-                  value={period.daily.date}
-                  onChange={(e) => onPeriodChange("daily", { date: e.target.value })}
-                  className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper"
-                  style={{ borderColor: "var(--pg-line)" }}
-                />
-              </PeriodBlock>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* 4. 추가 요청사항 / 메모 */}
-      <section className="flex flex-col gap-2.5">
-        <label htmlFor="memo" className="font-semibold text-[15px]">
-          추가 요청사항 / 메모
-        </label>
-        <textarea
-          id="memo"
-          rows={5}
-          value={memo}
-          onChange={(e) => onMemoChange(e.target.value)}
-          placeholder={
-            "예) 가을 자연물을 활용한 놀이 활동을 중심으로 작성해주세요.\n예) 실외활동과 미술활동을 포함해주세요."
-          }
-          className="w-full rounded-md px-4 py-3 min-h-[140px] text-base lg:text-[14px] leading-relaxed resize-none border bg-paper placeholder:text-ink-soft"
-          style={{ borderColor: "var(--pg-line)" }}
-        />
-        <div className="flex flex-wrap gap-1.5">
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s.label}
-              type="button"
-              onClick={() => onMemoChange(s.text)}
-              className={`text-[13px] min-h-[36px] rounded-full px-3 py-1.5 border transition-[filter] hover:brightness-95 ${
-                s.tone === "peach"
-                  ? "text-peach-ink bg-peach-tint border-peach-tint"
-                  : "text-mint-ink bg-mint-tint border-mint-tint"
-              }`}
-            >
-              {s.emoji} {s.label}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* 5. 생성 버튼 */}
-      <section className="flex flex-col gap-2">
-        <button
-          type="button"
-          disabled={!canGenerate}
-          onClick={onGenerate}
-          className={`rounded-md py-3.5 min-h-[54px] lg:min-h-0 font-semibold text-[17px] lg:text-[16px] transition-colors active:translate-y-px disabled:cursor-not-allowed ${
-            canGenerate
-              ? "border border-primary-line bg-primary text-white shadow-pg-hard hover:bg-primary-hover"
-              : "bg-line text-ink-soft"
-          }`}
-        >
-          계획안 생성하기
-        </button>
-        <p className="text-[12px] text-center text-ink-soft">
-          {canGenerate
-            ? "입력한 내용을 바탕으로 계획안을 생성해요"
-            : "연령·계획안 종류·형식·날짜를 확인해주세요. 생성 중에는 잠시 기다려주세요"}
-        </p>
-      </section>
-    </aside>
-  );
-}
-
-function FormatCard({
-  option,
-  selected,
-  onSelect,
-}: {
-  option: (typeof ANNUAL_FORMATS)[number];
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={onSelect}
-      className={`flex min-w-0 flex-col items-center rounded-md border p-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${selected ? "border-primary bg-primary-tint" : "border-line bg-paper"}`}
-    >
-      <span>{option.name}</span>
-      <Image
-        src={`/plan-formats/${option.image}.png`}
-        alt={`${option.name} 연간계획안 예시 문서`}
-        width={option.width}
-        height={option.height}
-        className="order-first mb-2 h-40 w-full object-contain"
-      />
-    </button>
-  );
-}
-
-const CHEVRON_BG =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M5 9l7 7 7-7' fill='none' stroke='%236B7280' stroke-width='2.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")";
-
-function MonthSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  return (
-    <select
-      aria-label="계획안 월"
-      value={value}
-      onChange={(e) => onChange(Number(e.target.value))}
-      className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
-      style={{
-        borderColor: "var(--pg-line)",
-        backgroundImage: CHEVRON_BG,
-        backgroundRepeat: "no-repeat",
-        backgroundPosition: "right 8px center",
-        backgroundSize: "13px",
-        paddingRight: 26,
-      }}
-    >
-      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-        <option key={m} value={m}>
-          {m}월
-        </option>
-      ))}
-    </select>
-  );
-}
-
-function WeekSelect({
-  value,
-  onChange,
-  maxWeeks,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-  maxWeeks: number;
-}) {
-  return (
-    <select
-      aria-label="계획안 주차"
-      value={value}
-      onChange={(e) => onChange(Number(e.target.value))}
-      className="flex-1 lg:flex-none rounded-md px-3 py-1.5 min-h-[44px] lg:min-h-0 text-base lg:text-[13px] border bg-paper appearance-none"
-      style={{
-        borderColor: "var(--pg-line)",
-        backgroundImage: CHEVRON_BG,
-        backgroundRepeat: "no-repeat",
-        backgroundPosition: "right 8px center",
-        backgroundSize: "13px",
-        paddingRight: 26,
-      }}
-    >
-      {Array.from({ length: maxWeeks }, (_, i) => i + 1).map((w) => (
-        <option key={w} value={w}>
-          {w}주차
-        </option>
-      ))}
-    </select>
-  );
-}
-
-function PeriodBlock({
-  type,
-  label,
-  children,
-}: {
-  type: PlanType;
-  label: string;
-  children: React.ReactNode;
-}) {
-  const a = ACCENT[type];
-  return (
-    <div
-      className={`rounded-md p-3.5 flex items-center gap-2 flex-wrap border ${a.tint}`}
-      style={{ borderColor: "var(--pg-line)" }}
-    >
-      <span
-        className={`text-[12px] font-mono px-2 py-1 rounded-full text-ink ${type === "monthly" || type === "annual" ? "bg-sage" : type === "weekly" ? "bg-mint" : "bg-peach"}`}
-      >
-        {PLAN_TYPE_LABEL[type]}
-      </span>
-      <span className="text-[13px] text-ink-soft">{label}</span>
-      <div className="w-full lg:w-auto lg:ml-auto flex items-center gap-2">{children}</div>
-    </div>
-  );
-}
-
-function PlanTypeCard({
-  type,
-  selected,
-  ready,
-  onToggle,
-}: {
-  type: PlanType;
-  selected: boolean;
-  ready: boolean;
-  onToggle: () => void;
-}) {
-  const a = ACCENT[type];
-  // 다른 화면에서 만드는 종류는 카드를 링크로 바꾼다. 「준비 중」으로 잠가 두면 만들 수
-  // 있는데 못 만드는 것처럼 보인다.
-  const elsewhere = ELSEWHERE[type];
-  if (elsewhere)
-    return (
-      <Link
-        href={elsewhere}
-        className="relative p-3.5 flex flex-col items-center gap-1.5 text-center rounded-md border-[1.5px] bg-paper transition-colors hover:-translate-y-px"
-        style={{ borderColor: "var(--pg-line)" }}
-      >
-        <PlanTypeIcon type={type} className="text-ink-soft" />
-        <span className="text-[13.5px] font-bold text-ink">{PLAN_TYPE_LABEL[type]}</span>
-        <span className="text-[12px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
-        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[12px] text-ink-soft">
-          따로 열기
-        </span>
-      </Link>
-    );
-  return (
-    <button
-      type="button"
-      role="button"
-      aria-pressed={selected}
-      disabled={!ready}
-      title={ready ? undefined : "아직 만들 수 없어요"}
-      onClick={onToggle}
-      className={`relative p-3.5 flex flex-col items-center gap-1.5 text-center rounded-md border-[1.5px] transition-colors ${
-        ready ? "hover:-translate-y-px" : "cursor-not-allowed opacity-55"
-      } ${selected ? `border-current ${a.tint} ${a.text}` : "bg-paper"}`}
-      style={{ borderColor: selected ? undefined : "var(--pg-line)" }}
-    >
-      <PlanTypeIcon type={type} className={selected ? a.text : "text-ink-soft"} />
-      <span className="text-[13.5px] font-bold text-ink">{PLAN_TYPE_LABEL[type]}</span>
-      <span className="text-[12px] leading-snug text-ink-soft">{PLAN_TYPE_HELP[type]}</span>
-      {!ready && (
-        <span className="absolute top-1.5 right-1.5 rounded-full border border-line bg-cream px-1.5 py-px font-mono text-[12px] text-ink-soft">
-          준비 중
-        </span>
-      )}
-      {selected && (
-        <span
-          className="absolute top-1.5 right-1.5 flex items-center justify-center rounded-full bg-primary"
-          style={{ width: 14, height: 14 }}
-        >
-          <svg width="9" height="9" viewBox="0 0 24 24">
-            <path
-              d="M4 12.5L9.5 18L20 6"
-              stroke="#fff"
-              strokeWidth={3}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </span>
-      )}
-    </button>
-  );
-}
-
-function PlanTypeIcon({ type, className }: { type: PlanType; className?: string }) {
-  if (type === "monthly" || type === "annual") {
-    return (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className={className}>
-        <rect x="3.5" y="5" width="17" height="15" rx="3" stroke="currentColor" strokeWidth="1.6" />
-        <path d="M3.5 9.5H20.5" stroke="currentColor" strokeWidth="1.6" />
-        <path d="M8 3V6.2M16 3V6.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (type === "weekly") {
-    return (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className={className}>
-        <rect x="3.5" y="5" width="17" height="15" rx="3" stroke="currentColor" strokeWidth="1.6" />
-        <path d="M3.5 9.5H20.5" stroke="currentColor" strokeWidth="1.6" />
-        <path
-          d="M8 12H8.01M12 12H12.01M16 12H16.01M8 15.5H8.01M12 15.5H12.01"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-      </svg>
-    );
-  }
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className={className}>
-      <rect x="3.5" y="5" width="17" height="15" rx="3" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M3.5 9.5H20.5" stroke="currentColor" strokeWidth="1.6" />
-      <circle cx="12" cy="14.5" r="2.6" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
-  );
-}
-
-// ---------------------------------------------------------------------
-// 오른쪽 스테이지: 상태별 화면
-// ---------------------------------------------------------------------
-
-function IdleState() {
-  return (
-    <div
-      className="relative z-10 flex flex-col items-center text-center gap-5 max-w-md"
-      style={{ animation: "pg-fade-up .35s ease both" }}
-    >
-      <svg
-        width="132"
-        height="90"
-        viewBox="0 0 132 90"
-        aria-hidden="true"
-        style={{ animation: "pg-float 5s ease-in-out infinite" }}
-      >
-        <circle cx="40" cy="52" r="34" className="fill-sage" />
-        <circle cx="30" cy="44" r="3.2" fill="#fff" />
-        <circle cx="30" cy="44" r="1.6" fill="var(--pg-ink)" />
-        <circle cx="46" cy="44" r="3.2" fill="#fff" />
-        <circle cx="46" cy="44" r="1.6" fill="var(--pg-ink)" />
-        <path
-          d="M30 60Q38 67 47 59"
-          stroke="var(--pg-ink)"
-          strokeWidth="2.2"
-          fill="none"
-          strokeLinecap="round"
-        />
-        <circle cx="98" cy="38" r="24" className="fill-primary-tint" />
-        <circle cx="90" cy="33" r="2.6" fill="#fff" />
-        <circle cx="90" cy="33" r="1.3" fill="var(--pg-ink)" />
-        <circle cx="103" cy="33" r="2.6" fill="#fff" />
-        <circle cx="103" cy="33" r="1.3" fill="var(--pg-ink)" />
-        <path
-          d="M91 44Q98 49 106 43"
-          stroke="var(--pg-ink)"
-          strokeWidth="2"
-          fill="none"
-          strokeLinecap="round"
-        />
-      </svg>
-      <div>
-        <h2 className="font-display text-2xl">계획안을 만들어볼까요?</h2>
-        <p className="mt-2.5 text-[14.5px] leading-relaxed text-ink-soft">
-          연령과 계획안 종류를 선택하고 요청사항을 입력하면
-          <br className="hidden sm:inline" />
-          AI가 계획안을 생성해드려요.
-        </p>
+        </section>
       </div>
-      <p
-        className="font-mono text-[12px] px-3 py-1 rounded-full border text-ink-soft"
-        style={{ background: "var(--pg-primary-tint)", borderColor: "var(--pg-line)" }}
-      >
-        TIP · 추천 태그를 누르면 메모가 빠르게 채워져요
-      </p>
     </div>
   );
 }

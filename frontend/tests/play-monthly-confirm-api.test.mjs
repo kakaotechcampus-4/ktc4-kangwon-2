@@ -91,6 +91,7 @@ const KEYS = [
   "link_change",
   "arrangement_change",
   "copied_from",
+  "timetable_change",
 ];
 const post = (id, body) =>
   apiRequest("/api/plans/monthly/play/" + id + "/confirm", {
@@ -99,7 +100,11 @@ const post = (id, body) =>
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 const audit = async (id) => (await pm.getPlayMonthlyAudit(id)).items;
-const cellCount = (plan) => new Set(JSON.stringify(plan).match(/item_[0-9a-f]{32}/g)).size;
+// 시간표 경계(split_id)는 칸이 아니다.
+const cellCount = (plan) =>
+  new Set(
+    JSON.stringify(plan, (k, v) => (k === "split_id" ? undefined : v)).match(/item_[0-9a-f]{32}/g),
+  ).size;
 
 test("confirm: draft without a body is 422, a stale revision is 409, neither changes anything", async () => {
   const { id, rev } = await seeded();
@@ -169,7 +174,7 @@ test("confirm: an already confirmed plan answers 200 as stored, with any or no b
   assert.equal((await audit(id)).filter((e) => e.type === "CONFIRMED").length, 1);
 });
 
-test("after confirming, edits are 409 ALREADY_CONFIRMED and delete is 409 GATE_BLOCKED", async () => {
+test("after confirming, edits are 409 ALREADY_CONFIRMED and delete still works (ADR-064)", async () => {
   const { id, rev, plan } = await seeded();
   const done = await pm.confirmPlayMonthly(id, rev);
   await rejects(
@@ -179,13 +184,7 @@ test("after confirming, edits are 409 ALREADY_CONFIRMED and delete is 409 GATE_B
     "확정된 계획안은 수정할 수 없습니다.",
     [],
   );
-  await rejects(
-    pm.deletePlayMonthly(id),
-    409,
-    "GATE_BLOCKED",
-    "확정된 계획안은 지울 수 없습니다.",
-    [],
-  );
+  await pm.deletePlayMonthly(id);
 });
 
 test("two confirms at once: both 200, one revision step, one CONFIRMED event", async () => {

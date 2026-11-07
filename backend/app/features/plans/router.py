@@ -9,7 +9,8 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Response, status
+import anyio
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -38,6 +39,7 @@ from ssuksak.planning import (
     YearlyApplicationError,
     YearlyPlan,
 )
+from ssuksak.planning.application.confirm_yearly_plan import UnconfirmYearlyPlan
 from ssuksak.planning.application.generate_play_project_plan import PlayProjectGenerationError
 from ssuksak.planning.application.play_project_lifecycle import (
     ConfirmPlayProjectPlan,
@@ -47,10 +49,16 @@ from ssuksak.planning.application.play_project_lifecycle import (
     PlayProjectApplicationError,
     SavePlayProjectSelection,
     SavePlayProjectSelectionCommand,
+    UnconfirmPlayProjectPlan,
+    UnconfirmPlayProjectPlanCommand,
 )
+from ssuksak.planning.application.yearly_dto import UnconfirmYearlyPlanCommand
+from ssuksak.planning.application.yearly_memo import with_yearly_memo
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT, PlayProjectYearlyPlan
+from ssuksak.planning.domain.teacher_memo import MemoNotice
 from ssuksak.planning.planner.contracts import ProposalRejectedError
 from ssuksak.planning.rules.errors import YearlyRuleError
+from ssuksak.planning.rules.monthly_week_periods import canonical_week_periods
 from ssuksak.planning.rules.yearly_theme_selection import RULE_ID as THEME_SELECTION_RULE_ID
 
 from app.config import settings
@@ -60,8 +68,20 @@ from app.features.auth.models import User
 # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
 from app.features.forms.service import find_own_form
 from app.features.plans import play_project
-from app.features.plans.annual_content import generate_subthemes
+from app.features.plans.annual_content import (
+    generate_subthemes,
+    generate_subthemes_with_memo,
+    subthemes_for_month,
+    with_teacher_subthemes,
+)
+from app.features.plans.codec import to_jsonable
 from app.features.plans.llm import theme_text_generator
+from app.features.plans.memo_privacy import (
+    mask_memo,
+    memo_name_table,
+    raise_if_mask_failed,
+    unmask_text,
+)
 from app.features.plans.models import Plan
 from app.features.plans.play_project import ConfirmIn, EditItemIn, SaveSelectionIn, format_of
 from app.features.plans.repository import PostgresPlanRepository
@@ -83,9 +103,10 @@ from app.features.plans.schemas import (
     PlayProjectPlanOut,
     UpdateMonth,
     ValueChangeOut,
+    memo_notices_out,
 )
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_class
+from app.shared.auth.ownership import foreign_class_refs, require_own_class
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 router = APIRouter(prefix="/plans/annual", tags=["plans"])
@@ -117,6 +138,9 @@ _ALREADY_EXISTS = HTTPException(
         "fields": ["class_id"],
     },
 )
+# 「생성 멈추기」로 끊긴 요청 — 받는 브라우저가 없어 화면에 나오지 않는다
+# (499 는 nginx 관례, 기록용).
+_STOPPED = {"code": "GENERATION_STOPPED", "message": "생성을 멈췄습니다.", "fields": []}
 
 
 def _repo(session: Session, user: User) -> PostgresPlanRepository[YearlyPlan]:
@@ -129,7 +153,9 @@ def _error(code: int, error_code: str, message: str, fields: list[str]) -> HTTPE
     return HTTPException(code, detail={"code": error_code, "message": message, "fields": fields})
 
 
-def _row(session: Session, user: User, plan_id: int, *, lock: bool = False) -> Plan:
+def _row(
+    session: Session, user: User, plan_id: int, read_only: bool = False, *, lock: bool = False
+) -> Plan:
     """남의 원 계획안은 없는 것과 같다 (shared/auth/ownership.py 와 같은 이유).
 
     **쓰는 요청은 `lock=True` 로 읽는다**(`SELECT … FOR UPDATE`). 본문 전체를 읽고 고쳐서 통째로
@@ -138,6 +164,9 @@ def _row(session: Session, user: User, plan_id: int, *, lock: bool = False) -> P
     때(commit · 오류) 풀린다. 행 하나만 잡으므로 서로 기다리다 막히는 일은 없다.
 
     형식은 가르지 않는다 — 놀이 프로젝트형을 받는 경로마다 `format_of` 로 직접 가른다.
+
+    같은 원이어도 남의 반 계획안이면 반 검사를 거친다(ADR-059). 기본이 쓰기다 — 읽기만
+    `read_only=True`.
     """
     query = select(Plan).where(
         Plan.id == plan_id, Plan.center_id == user.center_id, Plan.kind == "annual"
@@ -148,6 +177,7 @@ def _row(session: Session, user: User, plan_id: int, *, lock: bool = False) -> P
     )
     if row is None:
         raise _NOT_FOUND
+    require_own_class(session, user, int(row.classroom_ref), read_only=read_only)
     return row
 
 
@@ -162,6 +192,7 @@ def _months(
             theme=period.theme.value,
             # 생성·교사 수정 내용은 서버가 저장한다. Core 의 주제 포트는 유지한다.
             sub_themes=sub_themes.get(str(period.period.calendar_month), []),
+            week_count=len(canonical_week_periods(period.period)),
             safety_education=placements.get(str(period.period.calendar_month), []),
             safety_education_source=(
                 "TEACHER_INPUT" if str(period.period.calendar_month) in placements else None
@@ -202,6 +233,8 @@ def _detail(row: Plan, plan: YearlyPlan) -> AnnualPlanOut:
     months = _months(plan, row.sub_themes, row.annual_safety)
     return AnnualPlanOut(
         id=row.id,
+        memo=plan.teacher_memo,
+        memo_notices=memo_notices_out(plan),
         class_id=int(plan.classroom_ref),
         school_year=plan.school_year,
         status=plan.status.value,
@@ -326,7 +359,16 @@ def _play_project_generation_error(error: Exception) -> HTTPException:
     )
 
 
-def _play_project_plan(session: Session, user: User, klass):
+def _disconnected(request: Request):
+    """동기 핸들러(스레드)에서 「브라우저가 요청을 끊었나」를 묻는다.
+
+    「생성 멈추기」(하민 결정 2026-11-06).
+
+    Next 프록시는 브라우저가 끊으면 이 서버 연결도 끊는다(proxy-request.js `res.on('close')`)."""
+    return lambda: anyio.from_thread.run(request.is_disconnected)
+
+
+def _play_project_plan(session: Session, user: User, klass, memo: str, names, stopped):
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     session.commit()
 
@@ -336,8 +378,16 @@ def _play_project_plan(session: Session, user: User, klass):
             klass.school_year,
             str(klass.id),
             frozenset(range(klass.age_min, klass.age_max + 1)),
+            memo,
+            names,
+            stopped,
         )
+    except play_project.GenerationStopped as stop:
+        # 받는 쪽이 없다. 남은 구간의 Sol 을 부르지 않고 저장하지 않는다(다시 만들어도 409 가 없다).
+        _log.info("annual play-project generation stopped before=%s", stop)
+        raise HTTPException(499, detail=_STOPPED) from None
     except Exception as error:
+        raise_if_mask_failed(error)
         raise _play_project_generation_error(error) from error
 
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
@@ -400,13 +450,17 @@ def _domain_error(error: Exception) -> HTTPException:
     response_model=Annotated[AnnualPlanOut | PlayProjectPlanOut, Field(discriminator="format")],
     status_code=status.HTTP_201_CREATED,
 )
-def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: CurrentUser):
+def create_annual_plan(
+    body: CreateAnnualPlan, request: Request, session: DbSession, user: CurrentUser
+):
     """12개월치를 만들어 DRAFT 로 저장한다.
 
     **학년도를 받지 않는다.** `class_id` 가 정한다 — `classes` 행이 학년도마다 새로
     생기므로 따로 받으면 불일치 경로만 생긴다(§4).
     """
     klass = require_own_class(session, user, body.class_id)
+    # 요청 사항 속 아이 이름은 LLM 에 보내기 전에 가명으로 바꾼다. 못 바꾸면 여기서 422(ADR-060).
+    names = memo_name_table(session, klass.id, body.memo)
     # 연간은 반 하나에 하나다. 막지 않으면 교사가 새로고침하고 다시 눌렀을 때 두 개가
     # 생기고, 둘 중 어느 쪽이 진짜인지 아무도 모른다. **동시 요청은 이 조회로 못 막는다** —
     # 둘 다 「없다」를 보고 지나간다. 최종 보장은 models.py 의 부분 유니크 인덱스다.
@@ -420,7 +474,7 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     if duplicate is not None:
         raise _ALREADY_EXISTS
     if body.format == "PLAY_PROJECT":
-        return _play_project_plan(session, user, klass)
+        return _play_project_plan(session, user, klass, body.memo, names, _disconnected(request))
     if body.form_id is not None and find_own_form(session, user.center_id, body.form_id) is None:
         # 남의 원 양식 번호를 넣어도 통과하면 안 된다. 없는 것과 남의 것을 가르지 않는다(ADR-017).
         # forms 모델을 직접 import 하지 않는다 — 창구 함수를 쓴다(structure.md).
@@ -470,8 +524,23 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
     # 계획안이 남고 교사는 500 을 본다 — 실패한 줄 알고 다시 눌러 두 개가 생긴다.
     # 저장소가 이미 flush 해두어 commit 전에도 행을 읽을 수 있다.
     row = session.scalar(select(Plan).where(Plan.plan_ref == result.plan.plan_id.value))
+    plan = result.plan
     try:
-        row.sub_themes = generate_subthemes(result.plan)
+        if body.memo:
+            # 주제(theme_id)는 Rule 이 고른다 — 메모는 소주제에만 닿는다(ADR-060).
+            sub_themes, applied, notices = generate_subthemes_with_memo(
+                plan, mask_memo(body.memo, names)
+            )
+            row.sub_themes = {
+                month: [unmask_text(text, names) for text in texts]
+                for month, texts in sub_themes.items()
+            }
+            notices = tuple(MemoNotice(unmask_text(n.summary, names), n.reason) for n in notices)
+            plan = with_yearly_memo(plan, body.memo, applied, notices)
+            # Core 가 이미 저장한 행을 고쳐 쓴다. 저장소 save 는 revision 을 올리므로 쓰지 않는다.
+            row.body = to_jsonable(plan)
+        else:
+            row.sub_themes = generate_subthemes(plan)
     except (LlmUnavailable, LlmBudgetExceeded, LlmFailed) as error:
         # Core 가 이미 flush 했다. 실패한 생성에서 부분 계획안을 남기지 않는다.
         session.rollback()
@@ -494,7 +563,7 @@ def create_annual_plan(body: CreateAnnualPlan, session: DbSession, user: Current
         ) from error
     # 어느 양식에서 나왔는지 남긴다. 도메인은 양식을 모르므로 서버가 칸에 넣는다.
     row.form_id = body.form_id
-    detail = _detail(row, result.plan)
+    detail = _detail(row, plan)
     session.commit()
     return detail
 
@@ -508,8 +577,11 @@ def list_annual_plans(session: DbSession, user: CurrentUser, class_id: int | Non
     """
     query = select(Plan).where(Plan.center_id == user.center_id, Plan.kind == "annual")
     if class_id is not None:
-        require_own_class(session, user, class_id)
+        require_own_class(session, user, class_id, read_only=True)
         query = query.where(Plan.classroom_ref == str(class_id))
+    else:
+        # 반을 안 짚은 목록은 내 반만 — 승인받은 반은 반을 짚어야 보인다.
+        query = query.where(Plan.classroom_ref.not_in(foreign_class_refs(user)))
     rows = session.scalars(query.order_by(Plan.created_at.desc(), Plan.id.desc())).all()
     return AnnualPlanListOut(
         items=[
@@ -532,7 +604,7 @@ def list_annual_plans(session: DbSession, user: CurrentUser, class_id: int | Non
     response_model=Annotated[AnnualPlanOut | PlayProjectPlanOut, Field(discriminator="format")],
 )
 def get_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
-    row = _row(session, user, plan_id)
+    row = _row(session, user, plan_id, read_only=True)
     if format_of(row) == PLAY_PROJECT_FORMAT:
         repo = PostgresPlanRepository(
             session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
@@ -543,14 +615,15 @@ def get_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
-    """확정 전 연간계획안을 지운다.
+    """연간계획안을 지운다. 초안이든 확정본이든 지운다(ADR-064).
 
     **지울 길이 있어야 다시 만들 수 있다.** 반 하나에 연간은 하나고(models.py 부분 유니크
     인덱스), 만들기는 409 로 막는다. 지우기가 없으면 교사가 첫 초안이 마음에 안 들어도
     영영 다시 못 만든다.
 
-    **확정본은 안 지운다.** 제출 문서다. 다시 만들어야 하면 사람이 판단할 일이지
-    버튼 한 번으로 사라지면 안 된다.
+    **확정본도 지운다**(Human Decision 2026-11-05 하민, ADR-064). 화면에서 확정 취소를 없앴다 —
+    확정본을 고치려면 문서 보관함에서 지우고 다시 만든다. 이력 · 근거는 본문(`body`) 안에
+    있어 행과 함께 사라지고, `plans` 를 가리키는 FK 는 없어 고아가 남지 않는다.
 
     **월간이 딸려 있으면 안 지운다.** 월간은 이 계획안을 부모로 들고 있어서(§9-1
     `parent`), 부모가 사라지면 조회가 깨진다. 월간을 먼저 지워야 한다.
@@ -558,19 +631,11 @@ def delete_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> R
     부모는 `body` 안에만 있어서 열로는 못 찾는다. 같은 반 · 같은 학년도의 월간을 본다 —
     연간이 반마다 하나뿐이라 그 월간의 부모는 이것뿐이다.
 
-    **잠그고 읽는다.** 안 잠그면 확정과 겹쳤을 때 DRAFT 를 보고 지나간 DELETE 가 확정의
-    commit 뒤에 실행돼 확정본을 지운다.
+    **잠그고 읽는다**(`FOR UPDATE`). 월간 생성은 저장 직전에 이 행을 공유 잠금(`FOR SHARE`)으로
+    다시 본다. 그래서 「월간 없음」을 본 DELETE 와 같은 순간에 월간이 저장되지 않는다 — 한쪽이
+    끝날 때까지 다른 쪽이 기다리고, 늦은 쪽이 상대 결과(월간 있음 · 연간 없음)를 본다.
     """
     row = _row(session, user, plan_id, lock=True)
-    if row.status == "CONFIRMED":
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail={
-                "code": "GATE_BLOCKED",
-                "message": "확정된 계획안은 지울 수 없습니다.",
-                "fields": [],
-            },
-        )
     child = session.scalar(
         select(Plan.id).where(
             Plan.center_id == user.center_id,
@@ -600,11 +665,10 @@ def test_reset_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) 
     **파일럿 시작 전에 끈다.** `ALLOW_TEST_RESET` 가 꺼져 있으면 이 경로는 404 다 —
     있는지조차 알리지 않는다. 기본은 꺼짐이다(`config.py`).
 
-    **왜 필요한가** — 연간을 확정하면 고칠 수도(`내용 수정` 이 꺼진다) 지울 수도
-    (`DELETE` 가 확정본을 막는다) 없다. 계획안에는 일지와 달리 `unconfirm` 이 없어서
-    빠져나올 구멍이 없다. 시험하는 동안 그 막다른 길을 열어 둔다.
+    **왜 필요한가** — `DELETE` 는 딸린 월간이 있으면 막는다(확정본은 ADR-064 부터 지운다).
+    시험하는 동안 아래부터 하나씩 지우지 않고 처음부터 다시 시작하는 길을 열어 둔다.
 
-    **진짜 지우기는 따로 둔다.** 위 `DELETE /{plan_id}` 는 그대로 확정본과 딸린 월간을
+    **진짜 지우기는 따로 둔다.** 위 `DELETE /{plan_id}` 는 그대로 딸린 월간을
     막는다. 그쪽이 교사가 쓰는 길이고, 이건 우리가 시험할 때만 쓰는 길이다. 한 경로에
     「가끔 다르게 도는 조건」을 넣으면 어느 쪽이 도는지 아무도 모르게 된다.
     """
@@ -669,6 +733,10 @@ def update_month(
         )
     except (YearlyApplicationError, InvalidStateTransitionError, InvalidDomainValueError) as error:
         raise _domain_error(error) from error
+    updated = with_teacher_subthemes(
+        updated, month, subthemes_for_month(row.sub_themes, month), body.sub_themes
+    )
+    row.body = {**row.body, "teacher_subthemes": to_jsonable(updated.teacher_subthemes)}
     # 소주제는 도메인 밖이라 따로 넣는다. dict 를 통째로 갈아끼워야 SQLAlchemy 가
     # 바뀐 걸 알아챈다 — 안쪽만 고치면 JSONB 가 그대로 남는다.
     row.sub_themes = {**row.sub_themes, str(month): body.sub_themes}
@@ -717,6 +785,18 @@ def confirm_annual_plan(
     if row.status == "CONFIRMED":
         return ConfirmOut(id=row.id, status=row.status, confirmed_at=row.confirmed_at)
     repo = _repo(session, user)
+    # 월간이 주차별 소주제를 쓴다. 달마다 소주제 수 = 그 달 주 수여야 확정한다(2026-11-01 I-A).
+    plan = repo.get(PlanId(row.plan_ref))
+    mismatched = [
+        str(period.period.calendar_month)
+        for period in plan.periods
+        if len(subthemes_for_month(row.sub_themes, period.period.calendar_month))
+        != len(canonical_week_periods(period.period))
+    ]
+    if mismatched:
+        raise _error(
+            422, "VALIDATION_FAILED", "달마다 소주제 수를 그 달 주 수에 맞춰주세요.", mismatched
+        )
     try:
         confirmed = ConfirmYearlyPlan(plan_repository=repo, clock=SystemClock()).execute(
             ConfirmYearlyPlanCommand(
@@ -738,7 +818,7 @@ def get_audit(plan_id: int, session: DbSession, user: CurrentUser):
     **계획안 단위와 칸 단위를 같이 준다.** 생성·확정은 계획안에 남고 교사 수정은
     그 칸에 남는다. 계획안 것만 주면 "교사가 뭘 고쳤나"가 통째로 빠진다.
     """
-    row = _row(session, user, plan_id)
+    row = _row(session, user, plan_id, read_only=True)
     if format_of(row) == PLAY_PROJECT_FORMAT:
         return play_project.audit_out(_play_plan(session, user, row))
     plan = _repo(session, user).get(PlanId(row.plan_ref))
@@ -927,3 +1007,66 @@ def edit_play_project_cell(
     if getattr(candidate, name).value == body.value:  # Core 는 허용하지만 API 가 막는다(§6-1)
         raise _invalid(["value"])
     return _play_write(session, user, row, repo, changed, body.expected_revision)
+
+
+# ── 확정 취소 (계약 U) ─────────────────────────────────────────────────────
+
+
+@router.post(
+    "/{plan_id}/unconfirm",
+    response_model=Annotated[AnnualPlanOut | PlayProjectPlanOut, Field(discriminator="format")],
+)
+def unconfirm_annual_plan(
+    plan_id: int,
+    session: DbSession,
+    user: CurrentUser,
+    body: Annotated[ConfirmIn | None, Body()] = None,
+):
+    """CONFIRMED → DRAFT. 값 · 근거 · 이력은 그대로 두고 계획안 단위 `UNCONFIRMED` 를 남긴다.
+
+    본문 · 잠금 · 순서는 그 형식의 확정과 같다. 이미 DRAFT 면 아무것도 쓰지 않고 상세 그대로 200.
+    **월간이 딸려 있어도 풀린다** — 월간은 부모 스냅샷을 그대로 갖고 `parent_changed` 로 안다.
+    풀린 연간으로는 다시 확정할 때까지 새 월간을 못 만든다(생성의 부모 확정 게이트 그대로).
+    """
+    row = _row(session, user, plan_id)
+    actor = ActorId(f"user_{user.id}")
+    if format_of(row) == PLAY_PROJECT_FORMAT:
+        plan = _play_plan(session, user, row)
+        if row.status != "CONFIRMED":
+            return play_project.to_out(row, plan)
+        expected = body.expected_revision if body is not None else None
+        if expected is None:
+            raise _invalid(["expected_revision"])
+        if row.revision != expected:
+            raise _STALE_WRITE
+        changed = UnconfirmPlayProjectPlan(
+            plan_repository=_drafts(plan), clock=SystemClock()
+        ).execute(UnconfirmPlayProjectPlanCommand(plan.plan_id, actor))
+        repo = PostgresPlanRepository(
+            session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+        )
+        plan_id = row.id  # rollback 이 row 를 만료시킨다
+        written = repo.update_if_revision(
+            changed.plan_id, changed, expected_revision=expected, status="CONFIRMED"
+        )
+        if written is None:  # 그 사이 바뀌었다 — 먼저 풀었으면 이미 DRAFT 와 같다(200)
+            session.rollback()
+            row = _row(session, user, plan_id)
+            if row.status == "CONFIRMED":
+                raise _STALE_WRITE
+            return play_project.to_out(row, _play_plan(session, user, row))
+        session.refresh(row)
+        detail = play_project.to_out(row, changed)
+        session.commit()
+        return detail
+    # 월별 주제형은 확정처럼 잠그고 다시 읽는다. revision 을 받지 않는다.
+    row = _row(session, user, plan_id, lock=True)
+    repo = _repo(session, user)
+    if row.status != "CONFIRMED":
+        return _detail(row, repo.get(PlanId(row.plan_ref)))
+    changed = UnconfirmYearlyPlan(plan_repository=repo, clock=SystemClock()).execute(
+        UnconfirmYearlyPlanCommand(plan_id=PlanId(row.plan_ref), actor_id=actor)
+    )
+    detail = _detail(row, changed)
+    session.commit()
+    return detail

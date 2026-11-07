@@ -1,12 +1,21 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import AppHeader from "@/components/app/AppHeader";
 import { getAnnualPlan } from "@/lib/api/plans";
 import type { AnnualPlanResponse } from "@/lib/api/types";
 import { loadAnnualContext, type AnnualContext } from "@/lib/plan-generator/context";
-import GenerationFlow from "./GenerationFlow";
-import PlayProjectResult from "./PlayProjectResult";
+import { AnnualDone } from "./AnnualFrame";
+import AnnualThemeSheet from "./AnnualThemeSheet";
+import PlayProjectResult, { picksFromPlan } from "./PlayProjectResult";
+import PlayProjectSheet from "./PlayProjectSheet";
+import { playPageLabels } from "./playProjectPagination";
+import ThemeAnnualResult from "./ThemeAnnualResult";
+import { useCompactShell } from "@/components/app/compact-shell";
+import { loadClassSettings } from "@/lib/onboarding/settings";
+import { classServerId } from "@/lib/api/onboarding";
+
+/** 반 설정(온보딩 · 설정에서 적은 반 이름)에서 이 계획안 반의 이름. 상단 띠와 같은 출처. 못 찾으면 빈 값. */
+const settingsClassName = (classId: number) =>
+  loadClassSettings()?.classes.find((c) => classServerId(c.id) === classId)?.className ?? "";
 /** 한 번의 조회 결과 — 어떤 요청(key)에 대한 값인지 함께 들고 있어서 id/재시도가 바뀌면 자동으로 무효가 된다. */
 interface Loaded {
   key: string;
@@ -20,8 +29,7 @@ interface Loaded {
 const STALE_NOTICE = "다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.";
 
 export default function AnnualResult({ id }: { id: number }) {
-  const router = useRouter(),
-    [retry, setRetry] = useState(0),
+  const [retry, setRetry] = useState(0),
     [loaded, setLoaded] = useState<Loaded | null>(null);
   // 저장이 409 로 막히면 최신 계획안으로 바꾼다. 재시도 key 를 올리면 안내를 잃으니 같은 key 로 덮는다.
   // 요청이 겹치면 마지막 요청의 응답만 반영한다 — 늦게 온 옛 응답이 새 응답을 덮으면 과거 revision 으로 돌아간다.
@@ -36,6 +44,7 @@ export default function AnnualResult({ id }: { id: number }) {
         apply((cur) => ({
           key,
           plan: fresh,
+          context: cur?.context,
           error: "",
           notice: STALE_NOTICE,
           version: (cur?.version ?? 0) + 1,
@@ -46,10 +55,16 @@ export default function AnnualResult({ id }: { id: number }) {
         ),
     );
   }
-  // 확정이 끝나면 응답 계획안으로 바꾸고 key 를 올려 확정본 화면으로 다시 그린다(안내는 비운다).
-  const confirmedPlan = (fresh: AnnualPlanResponse) => {
+  // 확정이 끝나면 응답 계획안으로 바꾸고 key 를 올려 ⑥ · ⑤ 로 다시 그린다(안내는 비운다).
+  const replacePlan = (fresh: AnnualPlanResponse) => {
     ++lastReload.current; // 늦게 온 다시 불러오기 응답이 확정본을 덮지 못하게.
-    setLoaded((cur) => ({ key, plan: fresh, error: "", version: (cur?.version ?? 0) + 1 }));
+    setLoaded((cur) => ({
+      key,
+      plan: fresh,
+      context: cur?.context,
+      error: "",
+      version: (cur?.version ?? 0) + 1,
+    }));
   };
   const dismissNotice = () =>
     setLoaded((cur) => (cur?.notice ? { ...cur, notice: undefined } : cur));
@@ -86,79 +101,75 @@ export default function AnnualResult({ id }: { id: number }) {
       controller.abort();
     };
   }, [id, key, valid]);
-  const request = context?.request || {
-    age: "mixed" as const,
-    ageLabel: "연령 정보 없음",
-    selectedTypes: ["annual" as const],
-    period: {
-      annual: { year: plan?.school_year || new Date().getFullYear() },
-      monthly: { month: 3 },
-      weekly: { month: 3, week: 1 },
-      daily: { date: "" },
-    },
-    memo: "",
-  };
-  return (
-    <>
-      <AppHeader
-        title={plan?.format === "PLAY_PROJECT" ? "연간계획안 · 놀이 프로젝트형" : "연간계획안"}
-        description={
-          plan?.format === "PLAY_PROJECT"
-            ? "생성된 놀이 후보를 구간별로 확인해주세요."
-            : "생성된 계획안을 확인하고 수정·확정해주세요."
+  // 확정 전(놀이 고르기 · 다듬기)은 문서 폭을 위해 사이드바를 접는다. 불러오는 동안도 접어 두어
+  // 생성 중 → 결과로 넘어올 때 한 번 펼쳤다 접히지 않게 한다. 확정본은 펼친다.
+  useCompactShell(!error && plan?.status !== "CONFIRMED");
+  const className = context?.className ?? "";
+  if (error)
+    return (
+      <div className="px-4 pt-6 lg:px-10">
+        <p role="alert">{error}</p>
+        <button onClick={() => setRetry((v) => v + 1)}>다시 불러오기</button>
+      </div>
+    );
+  if (!plan)
+    return (
+      <p role="status" className="px-4 pt-6 lg:px-10">
+        계획안을 불러오고 있어요.
+      </p>
+    );
+  const view = key + ":" + (current?.version ?? 0);
+  // 놀이형 문서 제목 「- 햇살반」. 월별 주제형은 위 className(생성 때 남긴 문맥)을 그대로 쓴다.
+  const playClassName = plan.format === "PLAY_PROJECT" ? settingsClassName(plan.class_id) : "";
+  // 월별 주제형도 문맥이 없으면(보관함에서 열면) 반 설정 이름 — 한글 내려받기 제목은 늘 반 이름을 단다.
+  const themeClassName = className || settingsClassName(plan.class_id);
+  // ⑥ 확정 후. 놀이 중심형은 원래 문서처럼 두 구간씩 한 쪽(봄·여름 / 가을·겨울), 월별 주제형은 한 쪽이다.
+  if (plan.status === "CONFIRMED")
+    return (
+      <AnnualDone
+        key={view}
+        plan={plan}
+        pageLabels={plan.format === "PLAY_PROJECT" ? playPageLabels(plan.periods) : undefined}
+        pages={
+          plan.format === "PLAY_PROJECT"
+            ? [0, 2].map((i) => (
+                <PlayProjectSheet
+                  key={i}
+                  plan={plan}
+                  className={playClassName}
+                  picks={picksFromPlan(plan)}
+                  periods={[i, i + 1].filter((n) => n < plan.periods.length)}
+                  perPage={2}
+                />
+              ))
+            : [
+                <AnnualThemeSheet
+                  key="annual"
+                  title={`${themeClassName ? themeClassName + " " : ""}${plan.school_year}학년도 연간 보육계획안`}
+                  months={plan.months}
+                />,
+              ]
         }
-        divider={false}
       />
-      {error ? (
-        <div className="px-4 lg:px-10">
-          <p role="alert">{error}</p>
-          <button onClick={() => setRetry((v) => v + 1)}>다시 불러오기</button>
-        </div>
-      ) : !plan ? (
-        <p role="status" className="px-4 lg:px-10">
-          계획안을 불러오고 있어요.
-        </p>
-      ) : plan.format === "PLAY_PROJECT" ? (
-        <PlayProjectResult
-          key={key + ":" + (current?.version ?? 0)}
-          plan={plan}
-          notice={current?.notice}
-          onConflict={reloadAfterConflict}
-          onDismissNotice={dismissNotice}
-          onConfirmed={confirmedPlan}
-        />
-      ) : (
-        <GenerationFlow
-          key={id + ":" + retry}
-          phase="done"
-          stepIndex={4}
-          initialConfirmed={plan.status === "CONFIRMED"}
-          request={request}
-          contents={{
-            ...context?.companions,
-            annual: {
-              annualPlanId: plan.id,
-              // 서버가 `source_type` 을 보내지 않아 이 자리는 늘 "template" 이었다.
-              // **"ai" 로 바꾸지 않는다.** LLM_MODE 기본이 mock 이라, 그때는 참고자료
-              // 라벨을 그대로 베끼고 LLM 이 한 글자도 안 쓴다(`plans/llm.py:114`).
-              // 지금 응답에는 `generation` 이 없어서 프런트가 둘을 가를 방법이 없다 —
-              // 모르는 것을 단정하지 않고, 쌓여 있는 문서와 같은 값을 그대로 쓴다.
-              // #146 이 `generation` 을 실어 오면 그때 method 로 가른다(월간 화면과 같이).
-              origin: "template",
-              notes: [],
-              rows: plan.months.map((m) => ({
-                label: m.month + "월",
-                title: m.theme,
-                detail: m.sub_themes.join("\n"),
-              })),
-            },
-          }}
-          classId={context?.classId || ""}
-          className={context?.className || ""}
-          onBack={() => router.push("/plans/annual/new")}
-          onRetry={() => router.push("/plans/annual/new")}
-        />
-      )}
-    </>
+    );
+  return plan.format === "PLAY_PROJECT" ? (
+    <PlayProjectResult
+      key={view}
+      plan={plan}
+      className={playClassName}
+      notice={current?.notice}
+      onConflict={reloadAfterConflict}
+      onDismissNotice={dismissNotice}
+      onConfirmed={replacePlan}
+    />
+  ) : (
+    <ThemeAnnualResult
+      key={view}
+      plan={plan}
+      className={themeClassName}
+      notice={current?.notice}
+      onConflict={reloadAfterConflict}
+      onConfirmed={replacePlan}
+    />
   );
 }

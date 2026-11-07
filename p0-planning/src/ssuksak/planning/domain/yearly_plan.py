@@ -8,16 +8,19 @@ from datetime import datetime
 from .errors import InvalidDomainValueError, InvalidStateTransitionError
 from .identifiers import ActorId, ItemId, PlanId
 from .plan import PlanItem, PlanStatus
+from .teacher_memo import MemoNotice, require_memo_fields
 from .provenance import (
     AuditEvent,
     AuditEventType,
     AuditHistory,
     EvidenceSource,
     EvidenceSourceType,
+    GenerationMethod,
 )
 from .year_month import YearMonth
 
 _ACADEMIC_MONTHS = (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2)
+_REFERENCE_FREE = (GenerationMethod.IMPORTED, GenerationMethod.MANUAL)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,9 +35,11 @@ class YearlyPeriod:
             raise InvalidDomainValueError("YearlyPeriod.period must be YearMonth")
         if not isinstance(self.theme, PlanItem):
             raise InvalidDomainValueError("YearlyPeriod.theme must be PlanItem")
-        if len(self.theme_references) != 1:
+        # Imported or hand-typed themes have no Theme Reference; Rule-made ones have exactly one.
+        expected = 0 if self.theme.generation.method in _REFERENCE_FREE else 1
+        if len(self.theme_references) != expected:
             raise InvalidDomainValueError(
-                "YearlyPeriod.theme requires exactly one THEME_REFERENCE evidence"
+                f"YearlyPeriod.theme requires exactly {expected} THEME_REFERENCE evidence"
             )
 
     @property
@@ -46,8 +51,10 @@ class YearlyPeriod:
         )
 
     @property
-    def theme_id(self) -> str:
-        return self.theme_references[0].source_id
+    def theme_id(self) -> str | None:
+        """None for an IMPORTED or MANUAL theme, which has no Theme Reference."""
+        references = self.theme_references
+        return references[0].source_id if references else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,10 +68,22 @@ class YearlyPlan:
     status: PlanStatus
     periods: tuple[YearlyPeriod, ...]
     audit: AuditHistory = field(default_factory=AuditHistory)
+    # ADR-060: the teacher's request note and the requests generation could not apply.
+    teacher_memo: str = ""
+    memo_notices: tuple[MemoNotice, ...] = ()
+    # Subthemes are a server sidecar; retain demonstrably teacher-written values by month.
+    teacher_subthemes: tuple[tuple[int, tuple[str, ...]], ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
             raise InvalidDomainValueError("YearlyPlan.plan_id must be PlanId")
+        require_memo_fields("YearlyPlan", self.teacher_memo, self.memo_notices)
+        if not isinstance(self.teacher_subthemes, tuple) or any(
+            not isinstance(entry, tuple) or len(entry) != 2 or type(entry[0]) is not int
+            or not 1 <= entry[0] <= 12 or not isinstance(entry[1], tuple)
+            or any(not isinstance(text, str) for text in entry[1]) for entry in self.teacher_subthemes
+        ) or len({entry[0] for entry in self.teacher_subthemes}) != len(self.teacher_subthemes):
+            raise InvalidDomainValueError("teacher_subthemes must contain unique months and text tuples")
         if type(self.school_year) is not int or not 1 <= self.school_year <= 9998:
             raise InvalidDomainValueError(
                 "YearlyPlan.school_year must be an integer from 1 through 9998"
@@ -177,6 +196,18 @@ class YearlyPlan:
             status=PlanStatus.CONFIRMED,
             audit=self.audit.append(event),
         )
+
+    def unconfirm(self, *, actor_id: ActorId, occurred_at: datetime) -> YearlyPlan:
+        """CONFIRMED → DRAFT. Only a plan-level UNCONFIRMED event is added; a DRAFT is returned as is."""
+        if self.status is not PlanStatus.CONFIRMED:
+            return self
+        event = AuditEvent(
+            event_type=AuditEventType.UNCONFIRMED,
+            occurred_at=occurred_at,
+            plan_id=self.plan_id,
+            actor_id=actor_id,
+        )
+        return replace(self, status=PlanStatus.DRAFT, audit=self.audit.append(event))
 
 
 def _expected_periods(school_year: int) -> tuple[str, ...]:

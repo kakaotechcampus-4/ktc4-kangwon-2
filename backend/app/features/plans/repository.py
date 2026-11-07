@@ -15,16 +15,28 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from ssuksak.planning import InvalidDomainValueError, PlanId
 
+from app.features.centers.models import Class
 from app.features.plans.codec import from_jsonable, to_jsonable
 from app.features.plans.models import Plan
 
 
 def _confirmed_at(body: dict) -> datetime | None:
-    """확정 시각은 감사 기록에만 있다. 따로 받으면 본문과 갈라진다."""
+    """확정 시각은 감사 기록에만 있다. 따로 받으면 본문과 갈라진다.
+
+    마지막 확정 뒤에 확정 취소(`UNCONFIRMED`)가 있으면 지금은 확정 시각이 없다.
+    """
     for event in reversed(body.get("audit", {}).get("events", [])):
+        if event.get("event_type") == "UNCONFIRMED":
+            return None
         if event.get("event_type") == "CONFIRMED":
             return datetime.fromisoformat(event["occurred_at"])
     return None
+
+
+def _class_snapshot(session: Session, classroom_ref: str) -> dict[str, str]:
+    """확정하는 순간의 반 이름 · 담임 이름. 이후 반을 고쳐도 확정본은 이 값을 쓴다(ADR-062)."""
+    klass = session.get(Class, int(classroom_ref))
+    return {"class_name": klass.name, "teacher_name": klass.teacher_name}
 
 
 class PostgresPlanRepository[TPlan]:
@@ -44,6 +56,9 @@ class PostgresPlanRepository[TPlan]:
             raise InvalidDomainValueError("PostgresPlanRepository requires PlanId keys")
         body = to_jsonable(plan)
         row = self._session.scalar(select(Plan).where(Plan.plan_ref == plan_id.value))
+        # 가져온 연간의 파일 출처는 도메인 밖 서버 메타다. 다시 저장해도 지우지 않는다.
+        if row is not None and "import_source" in row.body:
+            body["import_source"] = row.body["import_source"]
         week = getattr(plan, "week_id", None)  # 주간만 가진다 (WeeklyPlan)
         # 월간은 target_month 를 갖고, 주간은 그 주가 속한 달을 쓴다.
         month = getattr(plan, "target_month", None) or (week and week.target_month)
@@ -60,6 +75,9 @@ class PostgresPlanRepository[TPlan]:
             "confirmed_at": _confirmed_at(body),
             "body": body,
         }
+        # 확정이 되는 저장에서만 찍는다. 확정 취소 뒤 다시 확정하면 그때의 반 값으로 덮는다.
+        if body["status"] == "CONFIRMED" and (row is None or row.status != "CONFIRMED"):
+            values |= _class_snapshot(self._session, values["classroom_ref"])
         if row is None:
             self._session.add(Plan(plan_ref=plan_id.value, sub_themes={}, **values))
         else:
@@ -76,26 +94,30 @@ class PostgresPlanRepository[TPlan]:
         self._session.flush()
 
     def update_if_revision(
-        self, plan_id: PlanId, plan: TPlan, *, expected_revision: int
+        self, plan_id: PlanId, plan: TPlan, *, expected_revision: int, status: str = "DRAFT"
     ) -> int | None:
         """DRAFT 이고 revision 이 읽은 값 그대로일 때만 덮어쓴다. 새 revision, 못 썼으면 None.
 
         **비교와 +1 이 UPDATE 한 문장이다**(결정 문서 12.4 D-3 · 12.10). 같은 revision 을 본 두
         요청 중 하나만 지나간다 — 조회해 보고 쓰면 그 사이에 다른 요청이 끼어든다.
         조건의 `status` 는 저장 전 상태다. 확정도 DRAFT → CONFIRMED 저장이라 같은 조건을 탄다.
+        확정 취소만 `status="CONFIRMED"` 로 부른다(CONFIRMED → DRAFT).
         None 이면 왜 못 썼는지(없음 · 확정됨 · revision 다름)는 부르는 쪽이 다시 읽어 가른다.
         `save()` 의 +1 은 타지 않는다 — 한 번 저장에 한 번만 오른다.
         """
         if not isinstance(plan_id, PlanId):
             raise InvalidDomainValueError("PostgresPlanRepository requires PlanId keys")
         body = to_jsonable(plan)
+        snapshot = {}
+        if body["status"] == "CONFIRMED" and status != "CONFIRMED":
+            snapshot = _class_snapshot(self._session, str(plan.classroom_ref))
         statement = (
             update(Plan)
             .where(
                 Plan.plan_ref == plan_id.value,
                 Plan.center_id == self._center_id,
                 Plan.kind == self._kind,
-                Plan.status == "DRAFT",
+                Plan.status == status,
                 Plan.revision == expected_revision,
             )
             .values(
@@ -103,6 +125,7 @@ class PostgresPlanRepository[TPlan]:
                 status=body["status"],
                 confirmed_at=_confirmed_at(body),
                 revision=Plan.revision + 1,
+                **snapshot,
             )
             .returning(Plan.revision)
             .execution_options(synchronize_session=False)

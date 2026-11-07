@@ -24,7 +24,7 @@ from ssuksak.planning.application.yearly_dto import (
 from ssuksak.planning.domain.identifiers import ActorId, PlanId
 from ssuksak.planning.domain.yearly_plan import YearlyPlan
 
-from app.features.centers.models import Center
+from app.features.centers.models import Center, Class
 from app.features.plans.models import Plan
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.runtime import SystemClock, UuidGenerator
@@ -55,7 +55,7 @@ def _row(session, plan: YearlyPlan) -> Plan:
     return session.scalar(select(Plan).where(Plan.plan_ref == plan.plan_id.value))
 
 
-def _generate(repo) -> YearlyPlan:
+def _generate(repo, classroom_ref: str = "classroom_001") -> YearlyPlan:
     """진짜 연간계획안 12개월치를 만든다. 저장은 repo 가 한다."""
     use_case = GenerateYearlyPlan(
         theme_repository=JsonThemeReferenceRepository(),
@@ -67,7 +67,7 @@ def _generate(repo) -> YearlyPlan:
     result = use_case.execute(
         GenerateYearlyPlanCommand(
             school_year=2026,
-            classroom_ref="classroom_001",
+            classroom_ref=classroom_ref,
             target_ages=frozenset({3}),
             catalog=SELECTOR,
         )
@@ -103,7 +103,18 @@ def test_조회에_쓰는_칸은_본문에서_나온다(db_session):
 def test_확정하면_본문과_칸이_같이_바뀐다(db_session):
     center = _center(db_session)
     repo = _repo(db_session, center.id)
-    plan = _generate(repo)
+    # 확정하면 반 이름을 찍으므로 진짜 반이 있어야 한다.
+    klass = Class(
+        center_id=center.id,
+        name="햇살반",
+        school_year=2026,
+        age_min=3,
+        age_max=3,
+        teacher_name="김선생",
+    )
+    db_session.add(klass)
+    db_session.flush()
+    plan = _generate(repo, str(klass.id))
     assert _row(db_session, plan).status == "DRAFT"
 
     ConfirmYearlyPlan(plan_repository=repo, clock=FixedClock(NOW)).execute(
@@ -113,6 +124,7 @@ def test_확정하면_본문과_칸이_같이_바뀐다(db_session):
     row = _row(db_session, plan)
     assert row.status == "CONFIRMED"
     assert row.body["status"] == "CONFIRMED"
+    assert (row.class_name, row.teacher_name) == ("햇살반", "김선생")
     assert repo.get(plan.plan_id).status.value == "CONFIRMED"
 
 

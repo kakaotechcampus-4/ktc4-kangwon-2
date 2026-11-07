@@ -10,6 +10,7 @@ from ..domain.monthly_plan import MonthlyGenerationMode, MonthlyPlan
 from ..domain.monthly_template_profile import TemplateProfileRef
 from ..domain.year_month import YearMonth
 from ..planner.contracts import MonthlyCellPlanningOutcome
+from ..planner.teacher_memo import normalize_teacher_memo
 from ..rules.monthly_activity_selection import ActivitySelectionTrace
 from .ports import OptionalContextResult
 
@@ -50,6 +51,18 @@ class SafetyCandidatesSelector:
 
 
 @dataclass(frozen=True, slots=True)
+class DrillTopicsSelector:
+    """The approved drill topic Reference the drill Section's candidates come from."""
+
+    catalog_id: str
+    catalog_version: str
+
+    def __post_init__(self) -> None:
+        _non_blank(self.catalog_id, "DrillTopicsSelector.catalog_id")
+        _non_blank(self.catalog_version, "DrillTopicsSelector.catalog_version")
+
+
+@dataclass(frozen=True, slots=True)
 class ActivityCatalogSelector:
     catalog_id: str
     catalog_version: str
@@ -74,8 +87,14 @@ class GenerateMonthlyPlanCommand:
     parent_subthemes: tuple[str, ...] = ()
     # Mutually exclusive with safety_placement; requires LLM_PLANNER.
     safety_candidates: SafetyCandidatesSelector | None = None
+    # Required when the Profile has the drill Section; requires LLM_PLANNER.
+    drill_topics: DrillTopicsSelector | None = None
+    # ADR-060: the teacher's request note, applied only inside the Rule range.
+    teacher_memo: str = ""
 
     def __post_init__(self) -> None:
+        if normalize_teacher_memo(self.teacher_memo) != self.teacher_memo:
+            raise InvalidDomainValueError("teacher_memo must be normalized")
         if not isinstance(self.parent_yearly_plan_id, PlanId):
             raise InvalidDomainValueError(
                 "GenerateMonthlyPlanCommand.parent_yearly_plan_id must be PlanId"
@@ -125,6 +144,8 @@ class GenerateMonthlyPlanCommand:
             raise InvalidDomainValueError(
                 "GenerateMonthlyPlanCommand.safety_candidates is invalid or combined with safety_placement"
             )
+        if self.drill_topics is not None and not isinstance(self.drill_topics, DrillTopicsSelector):
+            raise InvalidDomainValueError("GenerateMonthlyPlanCommand.drill_topics is invalid")
         if self.safety_placement is not None and not isinstance(
             self.safety_placement, SafetyPlacementSelector
         ):
@@ -150,6 +171,12 @@ class RegenerateMonthlyPlanItemCommand:
 
 @dataclass(frozen=True, slots=True)
 class ConfirmMonthlyPlanCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+
+
+@dataclass(frozen=True, slots=True)
+class UnconfirmMonthlyPlanCommand:
     plan_id: PlanId
     actor_id: ActorId
 

@@ -1,14 +1,34 @@
-import type { PlayMonthlyPlan } from "../api/types";
+import type { PlayMonthlyPlan, PlayMonthlyTimetableSize } from "../api/types";
+import { leaves, locate, removeLeaf, withRatio } from "./playMonthlyTimetable";
+
+type Axis = "VERTICAL" | "HORIZONTAL";
+export type PlaySection = "together" | "free_play";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "failed";
 
-/** 놀이 월간의 쓰기 4종. 모두 같은 revision 을 올리므로 한 줄로 보낸다. */
+/** 놀이 월간의 쓰기. 모두 같은 revision 을 올리므로 한 줄로 보낸다. */
 export type Job =
   | { kind: "cell"; itemId: string; value: string }
   | { kind: "safety"; weekId: string; candidateItemId: string | null }
   /** `cellIds` 는 그 행의 이름 · 설명 칸 — 행이 사라지면 그 칸에 대한 대기 중 글은 버린다. */
   | { kind: "remove"; itemId: string; cellIds: string[] }
-  | { kind: "copy"; itemId: string };
+  | { kind: "copy"; itemId: string }
+  /** 한 목록 안의 행 순서(행 이름 칸 id 전부). */
+  | { kind: "order"; section: PlaySection; itemIds: string[] }
+  /** AI 후보(이름 칸 id)를 그 목록 끝에 넣는다(ADR-065). */
+  | { kind: "pick"; itemId: string }
+  /** 빼기 되돌리기 — 넣은 뒤 `itemIds`(그 목록 전부) 순서로 원래 자리에 둔다(요청 1~2번). */
+  | { kind: "repick"; itemId: string; section: PlaySection; itemIds: string[] }
+  /** 기본생활습관 칸 id 전부, 새 주 순서. */
+  | { kind: "habits"; itemIds: string[] }
+  // 특별활동 시간표. split · restore 는 새 id 를 서버가 정해 응답 뒤에 화면 · 되돌리기 목록을 맞춘다.
+  /** `was` 는 다시 하기 — 예전 새 칸 · 경계 id 를 응답의 새 id 로 바꾼다. */
+  | { kind: "split"; itemId: string; axis: Axis; was?: { newId: string; splitId: string } }
+  | { kind: "removeCell"; itemId: string }
+  | { kind: "ratio"; splitId: string; ratio: number }
+  | { kind: "size"; size: PlayMonthlyTimetableSize }
+  /** 뺀 칸 되살리기 = 형제 칸을 같은 축으로 나누고 글 · 비율을 되돌린다(요청 여러 번). */
+  | { kind: "restore"; step: RemovedCell };
 
 export interface IdleResult {
   saved: boolean;
@@ -36,7 +56,7 @@ interface Options {
   /** 쌓인 작업이 모두 끝났다(성공 · 거절). 화면을 서버가 확인한 계획안으로 맞춘다. */
   onDrained: () => void;
   /** 409 로 멈췄다. 부모가 다시 불러온다. */
-  onConflict: () => void;
+  onConflict: (error: unknown) => void;
 }
 
 /**
@@ -82,7 +102,7 @@ export function createPlayMonthlyQueue(options: Options) {
           busy = false;
           setStatus("idle");
           settle(false);
-          options.onConflict();
+          options.onConflict(error);
           return;
         }
         if (!options.isRejected(error)) {
@@ -199,17 +219,81 @@ export const withSafety = (
   ),
 });
 
-export const withoutActivity = (plan: PlayMonthlyPlan, itemId: string): PlayMonthlyPlan => ({
+/** 한 목록의 행을 `itemIds` 순서로. */
+export const withOrder = (
+  plan: PlayMonthlyPlan,
+  section: PlaySection,
+  itemIds: string[],
+): PlayMonthlyPlan => ({
   ...plan,
-  together: plan.together.filter((row) => row.activity_id !== itemId),
-  free_play: plan.free_play.filter((row) => row.activity_id !== itemId),
+  [section]: itemIds.map((id) => plan[section].find((row) => row.activity_id === id)!),
 });
 
-// ---- 되돌리기 · 다시 하기 (칸 글 · 안전 배치만, 30번) ----
+/** 행을 뺀다. AI 후보면 후보 목록의 생성 순서 자리로 돌아간다(ADR-065). */
+export function withoutActivity(plan: PlayMonthlyPlan, itemId: string): PlayMonthlyPlan {
+  const next = {
+    ...plan,
+    together: plan.together.filter((row) => row.activity_id !== itemId),
+    free_play: plan.free_play.filter((row) => row.activity_id !== itemId),
+  };
+  const order = plan.activity_candidates ?? [];
+  if (!order.includes(itemId)) return next;
+  const section: PlaySection = plan.together.some((r) => r.activity_id === itemId)
+    ? "together"
+    : "free_play";
+  const row = plan[section].find((r) => r.activity_id === itemId)!;
+  const pool = [...(plan.activity_pool ?? []), { ...row, section }];
+  pool.sort((a, b) => order.indexOf(a.activity_id) - order.indexOf(b.activity_id));
+  return { ...next, activity_pool: pool };
+}
 
+/** 후보 목록의 AI 후보를 그 목록 끝에 넣는다. 없으면 그대로. */
+export function withPick(plan: PlayMonthlyPlan, itemId: string): PlayMonthlyPlan {
+  const found = plan.activity_pool?.find((r) => r.activity_id === itemId);
+  if (!found) return plan;
+  const { section, ...row } = found;
+  return {
+    ...plan,
+    [section]: [...plan[section], row],
+    activity_pool: plan.activity_pool!.filter((r) => r !== found),
+  };
+}
+
+/** 습관 칸을 `itemIds` 순서로 주에 다시 둔다 — 주(`week_id`)는 제자리, 칸이 통째로 옮긴다. */
+export const withHabits = (plan: PlayMonthlyPlan, itemIds: string[]): PlayMonthlyPlan => ({
+  ...plan,
+  habits: plan.habits.map((h, i) => ({
+    ...plan.habits.find((x) => x.cell.item_id === itemIds[i])!,
+    week_id: h.week_id,
+  })),
+});
+
+// ---- 되돌리기 · 다시 하기 (칸 글 · 안전 배치 · 행 순서 · AI 후보 넣기 · 빼기 · 훈련 복사 · 시간표, 30번) ----
+
+/** 형제가 칸 하나일 때만 되돌릴 수 있다. `first` 는 뺀 칸이 위 · 왼쪽이었는가. */
+export interface RemovedCell {
+  kind: "removeCell";
+  itemId: string;
+  siblingId: string;
+  splitId: string;
+  axis: Axis;
+  ratio: number;
+  first: boolean;
+  text: string;
+}
 export type Step =
   | { kind: "cell"; itemId: string; before: string; after: string }
-  | { kind: "safety"; weekId: string; before: string | null; after: string | null };
+  | { kind: "safety"; weekId: string; before: string | null; after: string | null }
+  | { kind: "order"; section: PlaySection; before: string[]; after: string[] }
+  | { kind: "habits"; before: string[]; after: string[] }
+  /** AI 후보 넣기 · 빼기 — 그 목록의 행 id 앞뒤. `itemId` 가 든 쪽이면 넣고, 없는 쪽이면 뺀다. */
+  | { kind: "activity"; itemId: string; section: PlaySection; before: string[]; after: string[] }
+  /** 훈련 복사 — 되돌리기는 칸 글을 `before` 로, 다시 하기는 같은 후보를 다시 복사한다. */
+  | { kind: "copy"; itemId: string; target: string; before: string; after: string }
+  | { kind: "ratio"; splitId: string; before: number; after: number }
+  | { kind: "size"; before: PlayMonthlyTimetableSize; after: PlayMonthlyTimetableSize }
+  | { kind: "split"; itemId: string; axis: Axis; newId: string; splitId: string }
+  | RemovedCell;
 export interface History {
   undo: Step[];
   redo: Step[];
@@ -238,6 +322,50 @@ export function moveStep(h: History, direction: "undo" | "redo") {
         : { undo: [...to, step], redo: rest },
   };
 }
+
+/** 나눈 뒤 · 되살린 뒤 서버가 정한 새 id 를 목록의 옛 id 자리에 넣는다. id 는 겹치지 않는 32자라 글자 바꾸기로 충분하다. */
+export function remapHistory(h: History, map: Record<string, string>): History {
+  const keys = Object.keys(map).filter((k) => map[k] !== k);
+  if (!keys.length) return h;
+  const pattern = new RegExp(keys.join("|"), "g");
+  return JSON.parse(JSON.stringify(h).replace(pattern, (k) => map[k]));
+}
+/** 칸 `itemId` 를 방금 나눈 경계와 둘째 칸(새 칸). */
+export function grown(plan: PlayMonthlyPlan, itemId: string) {
+  const parent = locate(plan.special_activity, itemId)!.path.at(-2)!;
+  return { newId: parent.children[1].cell!.item_id, splitId: parent.split_id! };
+}
+/** 칸을 빼면 남는 것 — 형제가 칸 하나면 되돌릴 걸음, 묶음이면 null(되돌릴 수 없다). 요일의 마지막 칸이면 undefined. */
+export function removal(plan: PlayMonthlyPlan, itemId: string): RemovedCell | null | undefined {
+  const found = locate(plan.special_activity, itemId);
+  const parent = found?.path.at(-2);
+  if (!found || !parent) return undefined;
+  const first = parent.children[0].cell?.item_id === itemId;
+  const sibling = parent.children[first ? 1 : 0];
+  if (!sibling.cell) return null;
+  return {
+    kind: "removeCell",
+    itemId,
+    siblingId: sibling.cell.item_id,
+    splitId: parent.split_id!,
+    axis: parent.axis!,
+    ratio: parent.ratio!,
+    first,
+    text: found.path.at(-1)!.cell!.value,
+  };
+}
+const days = (
+  plan: PlayMonthlyPlan,
+  change: (day: PlayMonthlyPlan["special_activity"][number]) => typeof day,
+) => ({ ...plan, special_activity: plan.special_activity.map(change) });
+export const withTimetableRatio = (plan: PlayMonthlyPlan, splitId: string, ratio: number) =>
+  days(plan, (d) => withRatio(d, splitId, ratio));
+export const withoutTimetableCell = (plan: PlayMonthlyPlan, itemId: string) =>
+  days(plan, (d) => (leaves(d).some((c) => c.item_id === itemId) ? removeLeaf(d, itemId) : d));
+export const withTimetableSize = (plan: PlayMonthlyPlan, size: PlayMonthlyTimetableSize) => ({
+  ...plan,
+  special_activity_size: size,
+});
 
 /** 훈련 후보를 붙여 넣는 「소방대피/재난대비」 칸의 item_id. */
 export const drillTarget = (plan: PlayMonthlyPlan) =>

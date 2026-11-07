@@ -21,6 +21,9 @@ from ssuksak.adapters.institution_evidence_repository import (
 from ssuksak.adapters.json_activity_reference_repository import (
     JsonActivityReferenceRepository,
 )
+from ssuksak.adapters.json_drill_topic_reference_repository import (
+    JsonDrillTopicReferenceRepository,
+)
 from ssuksak.adapters.monthly_reference_repositories import (
     JsonSafetyLegalRuleRepository,
     JsonSafetyPlacementPolicyRepository,
@@ -94,6 +97,7 @@ def monthly_generation(
         context_pipeline=monthly_context_pipeline(),
         planner=MonthlyPlanner(provider),
         safety_placement_repository=JsonSafetyPlacementPolicyRepository(),
+        drill_repository=JsonDrillTopicReferenceRepository(),
     )
 
 

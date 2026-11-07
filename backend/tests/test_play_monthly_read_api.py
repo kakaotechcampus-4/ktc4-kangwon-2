@@ -25,9 +25,13 @@ URL = "/api/plans/monthly/play"
 LEGACY = "기존 월간계획안은 /api/plans/monthly 경로로 다룹니다."
 SINGLE_KEYS = {
     "id", "class_id", "school_year", "month", "target_month", "status", "revision", "format",
-    "format_version", "created_at", "confirmed_at", "target_ages", "weeks", "parent", "theme",
-    "rationale", "together", "free_play", "habits", "safety_candidates", "safety_weeks", "health",
-    "nutrition", "drill_candidates", "teacher_inputs", "notices",
+    "format_version", "created_at", "confirmed_at", "target_ages", "weeks", "parent",
+    "parent_changed", "theme",
+    "rationale", "together", "free_play", "direction", "display", "habits",
+    "safety_candidates", "safety_weeks", "health",
+    "nutrition", "drill_candidates", "teacher_inputs", "specialized_timetable",
+    "special_activity", "special_activity_size", "notices", "memo", "memo_notices",
+    "activity_pick", "activity_candidates", "activity_pool",
 }  # fmt: skip
 
 
@@ -189,13 +193,47 @@ def test_단건은_계약_모양이고_싣지_않는_것은_없다(world):
         "activity_id", "name", "description", "content_ids", "parent_item_id"
     }  # fmt: skip
     assert body["together"][0]["activity_id"] == body["together"][0]["name"]["item_id"]
-    assert set(body["habits"][0]) == {"week_id", "entry_id", "cell"}
+    assert set(body["habits"][0]) == {"week_id", "entry_id", "label", "cell"}
     assert set(body["safety_candidates"][0]) == {"kind", "category_id", "topic_group", "cell"}
     assert set(body["safety_weeks"][0]) == {"week_id", "candidate_item_id"}
     assert set(body["health"]) == {"entry_id", "cell"}
     assert set(body["drill_candidates"][0]) == {"topic_id", "label", "cell"}
     assert set(body["teacher_inputs"][0]) == {"key", "cell"}
     assert all(set(n) == {"code", "week_id"} for n in body["notices"])
+    # 문서 머리 · 가운데 방향 칸 — 한글 내려받기와 같은 값(Human Decision 2026-11-05)
+    assert set(body["direction"]) == cell and body["direction"]["value"] == plan.direction.value
+    assert set(body["display"]) == {"title", "age", "class_name", "period"}
+    display = plan.display
+    assert [body["display"][k]["value"] for k in ("title", "age", "class_name", "period")] == [
+        c.value for c in display.cells()
+    ]
+    assert body["display"]["title"]["item_id"] == display.title.item_id.value
+
+
+def test_습관_label_은_한글_문서의_분류와_같다(world, monkeypatch):
+    """화면도 한글 문서처럼 「[분류]」를 쓴다(하민 결정 2026-11-06).
+
+    같은 판 · 같은 규칙에서 읽는다."""
+    from play_monthly_factory import DAILY, _Catalogs
+    from ssuksak.planning.application.play_monthly_document import play_monthly_document
+
+    from app.features.plans import play_monthly_router
+
+    monkeypatch.setattr(
+        play_monthly_router, "JsonDailyLifeReferenceRepository", lambda: _Catalogs(DAILY)
+    )
+
+    def blank_first(plan):
+        first = plan.habits[0]
+        habit = replace(first.habit, cell=replace(first.habit.cell, value=""))
+        return replace(plan, habits=(replace(first, habit=habit), *plan.habits[1:]))
+
+    plan, row = _play(world, edit=blank_first)
+    body = client.get(f"{URL}/{row.id}").json()
+    printed = [week.habit_label for week in play_monthly_document(plan, DAILY).weeks]
+
+    assert [h["label"] for h in body["habits"]] == printed
+    assert printed[0] == "" and all(printed[1:])  # 빈 문장에는 머리를 붙이지 않는다
 
 
 def test_evidence_와_generation_은_세_축_규칙을_따른다(world):
@@ -227,7 +265,9 @@ def test_evidence_와_generation_은_세_축_규칙을_따른다(world):
 
 def test_annual_plan_id_는_연간_행의_정수_id(world):
     _, row = _play(world)
-    annual = world["session"].scalar(select(Plan).where(Plan.kind == "annual"))
+    annual = world["session"].scalar(
+        select(Plan).where(Plan.kind == "annual", Plan.center_id == world["mine"]["center"])
+    )
 
     parent = client.get(f"{URL}/{row.id}").json()["parent"]
 
@@ -324,38 +364,14 @@ def test_초안은_지워지고_204(world):
     assert world["session"].scalar(select(Plan).where(Plan.id == row.id)) is None
 
 
-def test_확정본은_409_이고_행이_남는다(world):
+def test_확정본도_지워지고_204(world):
+    """확정본도 지운다(ADR-064, Human Decision 2026-11-05 하민)."""
     _, row = _play(world, confirmed=True)
 
     response = client.delete(f"{URL}/{row.id}")
 
-    assert _error(response) == (409, "GATE_BLOCKED", [])
-    assert response.json()["error"]["message"] == "확정된 계획안은 지울 수 없습니다."
-    assert world["session"].scalar(select(Plan).where(Plan.id == row.id)) is not None
-
-
-def test_읽은_뒤_확정되어도_DRAFT_조건이_확정본을_지키지_않게_막는다(world, monkeypatch):
-    from types import SimpleNamespace
-
-    from app.features.plans import play_monthly_router as router
-
-    _, row = _play(world, confirmed=True)
-    real, calls = router._own_row, []
-
-    def stale_first(session, user, plan_id):  # 첫 읽기는 아직 DRAFT 로 보였던 때다
-        calls.append(plan_id)
-        return (
-            SimpleNamespace(id=row.id, status="DRAFT")
-            if len(calls) == 1
-            else real(session, user, plan_id)
-        )
-
-    monkeypatch.setattr(router, "_own_row", stale_first)
-
-    response = client.delete(f"{URL}/{row.id}")
-
-    assert _error(response) == (409, "GATE_BLOCKED", [])
-    assert world["session"].scalar(select(Plan).where(Plan.id == row.id)) is not None
+    assert (response.status_code, response.content) == (204, b"")
+    assert world["session"].scalar(select(Plan).where(Plan.id == row.id)) is None
 
 
 def test_삭제_남의_원_없는_id_는_404_기존_월간은_409(world):

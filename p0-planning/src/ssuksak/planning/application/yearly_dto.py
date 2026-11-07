@@ -81,6 +81,12 @@ class ConfirmYearlyPlanCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class UnconfirmYearlyPlanCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+
+
+@dataclass(frozen=True, slots=True)
 class GenerateYearlyPlanResult:
     plan: YearlyPlan
     selection_traces: tuple[ThemeSelectionTrace, ...]

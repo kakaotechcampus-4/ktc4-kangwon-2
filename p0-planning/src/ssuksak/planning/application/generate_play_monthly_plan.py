@@ -12,13 +12,13 @@ institution isolation belongs to the parent repository's scope and the backend p
 from __future__ import annotations
 
 import calendar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from ..domain.curriculum_reference import CurriculumCatalog
 from ..domain.daily_life_reference import DailyLifeCatalog, DailyLifeEntry, DailyLifeKind
 from ..domain.drill_topic_reference import DrillTopic, DrillTopicCatalog
-from ..domain.errors import DomainError
+from ..domain.errors import DomainError, InvalidDomainValueError
 from ..domain.identifiers import PlanId
 from ..domain.lineage import ParentLineage
 from ..domain.plan import PlanStatus
@@ -43,6 +43,7 @@ from ..domain.play_monthly_plan import (
     PlayMonthlyLayout,
     PlayMonthlyPlan,
     PlayMonthlyReferences,
+    RemovedActivity,
     SafetyCandidate,
     SafetyWeek,
     TimetableNode,
@@ -67,7 +68,6 @@ from ..evidence.safety_classification import SafetyEvidenceClassification
 from ..evidence.safety_quality import SafetyReferenceQuality
 from ..planner.contracts import ProposalRejectedError
 from ..planner.play_monthly import (
-    PLAY_MONTHLY_PROMPT_VERSION,
     PLAY_MONTHLY_REPAIR_PROMPT_VERSION,
     PlayMonthlyIssue,
     PlayMonthlyProvider,
@@ -80,15 +80,27 @@ from ..planner.play_monthly import (
     section_of,
     validate_play_monthly,
 )
+from ..planner.teacher_memo import (
+    normalize_teacher_memo,
+    split_memo_applied,
+    split_safety_requests,
+    with_memo_evidence,
+)
 from ..rules.monthly_week_periods import canonical_week_periods
+from .drill_topics import DrillTopicError, DrillTopicReferenceRepository, select_drill_topics
 from .generate_play_project_plan import CurriculumReferenceRepository
 from .play_project_lifecycle import PLAY_PROJECT_LAYOUTS
 from .ports import Clock, IdGenerator, PlanRepository, SafetyLegalRuleRepository
 from .safety_candidates import (
     SafetyCandidateError,
+    apply_safety_requests,
     candidate_evidence,
     safety_candidate_slots,
 )
+from ..domain.safety_placement import SafetyKind
+from ..domain.teacher_memo import TEACHER_MEMO_EVIDENCE
+from ..venue_policy import parent_teacher_venues, venue_name_only_repair
+from ..rules.safety_requests import SAFETY_REQUEST_RULE_ID, SAFETY_REQUEST_RULE_VERSION
 
 SYSTEM_ACTOR = "play_monthly_application"
 RULE_ID = "play_monthly.generate"
@@ -124,6 +136,16 @@ PLAY_MONTHLY_LAYOUT_V0_2 = PlayMonthlyLayout(
     drill_candidate_count=5,  # M2-D15: candidates, not a drill frequency
 )
 
+# v0.3.0 (2026-11-06 Human Decision): the AI writes 8 candidates per play section and the teacher
+# keeps exactly 5 in the document, like the play-project yearly picking. The rest is v0.2.0.
+PLAY_MONTHLY_LAYOUT_V0_3 = replace(
+    PLAY_MONTHLY_LAYOUT_V0_2,
+    layout_version="play-monthly-layout-v0.3.0",
+    together_count=8,
+    free_play_count=8,
+    activity_pick=5,
+)
+
 # The special-activity parts as the approved template draws them (전달본 rows 20~21): None is a
 # cell, (axis, first-part percent, first, second) a boundary. Percents are the template's widths
 # and heights, rounded; columns are equal and the two rows are 24 mm together.
@@ -148,10 +170,6 @@ class PlayMonthlyGenerationError(DomainError):
 
 class DailyLifeReferenceRepository(Protocol):
     def get_catalog(self, catalog_id: str, catalog_version: str) -> DailyLifeCatalog | None: ...
-
-
-class DrillTopicReferenceRepository(Protocol):
-    def get_catalog(self, catalog_id: str, catalog_version: str) -> DrillTopicCatalog | None: ...
 
 
 class SafetyClassificationRepository(Protocol):
@@ -181,6 +199,12 @@ class GeneratePlayMonthlyPlanCommand:
     # The class name the document header starts with (D-10), from the caller's classroom.
     # Blank leaves that header cell for the teacher; it never names or checks the classroom.
     class_name: str = ""
+    # ADR-060: the teacher's request note, applied only inside the Rule range.
+    teacher_memo: str = ""
+
+    def __post_init__(self) -> None:
+        if normalize_teacher_memo(self.teacher_memo) != self.teacher_memo:
+            raise InvalidDomainValueError("teacher_memo must be normalized")
 
 
 def _fail(code: str) -> PlayMonthlyGenerationError:
@@ -225,7 +249,7 @@ class GeneratePlayMonthlyPlan:
         month = command.target_month
         weeks = canonical_week_periods(month)
         period = next(p for p in parent.periods if p.period.key == snapshot.period_key)
-        layout = PLAY_MONTHLY_LAYOUT_V0_2
+        layout = PLAY_MONTHLY_LAYOUT_V0_3
         counts = {"together": layout.together_count, "free_play": layout.free_play_count}
         request = build_play_monthly_request(
             target_month=month.value,
@@ -251,7 +275,7 @@ class GeneratePlayMonthlyPlan:
             nutrition_entries=daily.of_kind(DailyLifeKind.NUTRITION),
             drill_topics=tuple((t.topic_id, t.label, t.situation) for t in drill_topics),
             reference_versions=(
-                PLAY_MONTHLY_LAYOUT_V0_2.layout_version,
+                layout.layout_version,
                 catalog.catalog_version,
                 daily.catalog_version,
                 drills.catalog_version,
@@ -261,15 +285,27 @@ class GeneratePlayMonthlyPlan:
                 command.safety_classification_version,
                 command.safety_quality_version,
             ),
+            teacher_memo=command.teacher_memo,
+            teacher_venues=parent_teacher_venues(
+                (getattr(row, field) for period in parent.periods
+                 if command.target_month.calendar_month in period.period.months
+                 for row in period.candidates if row.row_key in period.selected
+                 for field in ("play_name", "materials", "support_direction")),
+                memo=parent.teacher_memo,
+            ),
         )
 
         response = self._provider.generate_play_monthly(request)
-        proposal = parse_play_monthly_proposal(response.content)
+        content, memo_applied, memo_skipped = split_memo_applied(response.content, request.memo_addresses)
+        content, safety_requests = split_safety_requests(content, request.safety_request_slots, request.week_ids)
+        proposal = parse_play_monthly_proposal(content)
         issues = validate_play_monthly(proposal, request)
         changed: frozenset[str] = frozenset()
         if issues:
-            repair = build_repair_request(request, response.content, issues)
+            repair = build_repair_request(request, content, issues)
             repaired = parse_play_monthly_proposal(self._provider.generate_play_monthly(repair).content)
+            if any(issue.code == "UNREQUESTED_VENUE" for issue in issues) and venue_name_only_repair(proposal, repaired):
+                raise ProposalRejectedError(("VENUE_NAME_ONLY_REMOVAL",))
             changed = changed_locations(proposal, repaired)
             remaining = validate_play_monthly(repaired, request) + repair_scope_issues(changed, issues)
             if remaining:
@@ -307,7 +343,7 @@ class GeneratePlayMonthlyPlan:
                     method=GenerationMethod.RULE_LLM,
                     rule_id=RULE_ID,
                     rule_version=(
-                        PLAY_MONTHLY_REPAIR_PROMPT_VERSION if repaired_here else PLAY_MONTHLY_PROMPT_VERSION
+                        PLAY_MONTHLY_REPAIR_PROMPT_VERSION if repaired_here else request.prompt_version
                     ),
                 ),
                 audit=created(item_id),
@@ -352,6 +388,9 @@ class GeneratePlayMonthlyPlan:
         calendar_source = EvidenceSource(EvidenceSourceType.CALENDAR, month.value)
         classroom_source = EvidenceSource(EvidenceSourceType.CLASSROOM_PROFILE, command.classroom_ref)
 
+        def memo(address: str, evidence: tuple[EvidenceSource, ...]) -> tuple[EvidenceSource, ...]:
+            return with_memo_evidence(evidence, address in memo_applied)
+
         def curriculum(content_id: str) -> EvidenceSource:
             return EvidenceSource(EvidenceSourceType.CURRICULUM, content_id, catalog.catalog_version)
 
@@ -377,6 +416,7 @@ class GeneratePlayMonthlyPlan:
                         parent_item_id=play.play_name_item_id,
                         snapshot_value=play.play_name,
                     )
+                evidence = memo(f"{section}[{index}]", evidence)
                 name = cell(f"{section}[{index}]", None, row.name, evidence)
                 description = cell(
                     f"{section}[{index}].description", f"{name.semantic_key}.description", row.description, evidence
@@ -385,7 +425,8 @@ class GeneratePlayMonthlyPlan:
             return tuple(rows)
 
         def entry_cell(location: str, semantic_key: str, entry: DailyLifeEntry) -> EntryCell:
-            return EntryCell(cell(location, semantic_key, entry.text, (curriculum(entry.content_id),)), entry.entry_id)
+            evidence = memo(location.split(":", 1)[0], (curriculum(entry.content_id),))  # habits:W1 -> habits
+            return EntryCell(cell(location, semantic_key, entry.text, evidence), entry.entry_id)
 
         def safety(item) -> SafetyCandidate:
             slot = next(s for s in request.safety_slots if s.slot == item.slot)
@@ -393,7 +434,7 @@ class GeneratePlayMonthlyPlan:
                 slot, item.refs, legal_rule_version=rule.legal_rule_version, store=store, records=records
             )
             return SafetyCandidate(
-                cell(f"safety:{slot.slot}", f"safety_education.{slot.slot}", item.text, evidence),
+                cell(f"safety:{slot.slot}", f"safety_education.{slot.slot}", item.text, memo(f"safety:{slot.slot}", evidence)),
                 slot.kind,
                 category_id=slot.category_id,
                 topic_group=slot.topic_group,
@@ -402,6 +443,44 @@ class GeneratePlayMonthlyPlan:
         drill_texts = dict(proposal.drills)
         by_slot = {item.slot: item for item in proposal.safety}
         habits = dict(proposal.habits)
+        safety_candidates = tuple(safety(by_slot[s.slot]) for s in request.safety_slots)
+        safety_weeks = tuple(SafetyWeek(w.week_id) for w in weeks)
+        if safety_requests:
+
+            def extra(category: str, ref: str, text: str) -> SafetyCandidate:
+                # A further sentence of one legal category: its official item, as is (RULE_ONLY).
+                item_id = self._ids.new_item_id()
+                return SafetyCandidate(
+                    PlayMonthlyCell(
+                        item_id=item_id,
+                        semantic_key=f"safety_education.{category}.{item_id.value}",
+                        value=text,
+                        evidence=(
+                            EvidenceSource(
+                                EvidenceSourceType.SAFETY_RULE, ref, rule.legal_rule_version, display_name=text
+                            ),
+                            TEACHER_MEMO_EVIDENCE,
+                        ),
+                        generation=GenerationMethodDetail(
+                            method=GenerationMethod.RULE_ONLY,
+                            rule_id=SAFETY_REQUEST_RULE_ID,
+                            rule_version=SAFETY_REQUEST_RULE_VERSION,
+                        ),
+                        audit=created(item_id),
+                    ),
+                    SafetyKind.STATUTORY,
+                    category_id=category,
+                )
+
+            safety_candidates, safety_weeks, placed = apply_safety_requests(
+                safety_requests,
+                safety_candidates,
+                safety_weeks,
+                slots={s.slot: s.allowed for s in request.safety_slots if s.category_id is not None},
+                make_extra=extra,
+            )
+            memo_skipped += placed
+        candidates = [(s, a) for s in ("together", "free_play") for a in activities(s)]
         plan = PlayMonthlyPlan(
             plan_id=plan_id,
             school_year=command.school_year,
@@ -424,14 +503,17 @@ class GeneratePlayMonthlyPlan:
                 safety_quality_version=command.safety_quality_version,
                 drill_catalog_id=drills.catalog_id,
                 drill_catalog_version=drills.catalog_version,
-                prompt_version=PLAY_MONTHLY_PROMPT_VERSION,
+                prompt_version=request.prompt_version,
                 request_fingerprint=request.fingerprint,
             ),
             # Theme and rationale are written from the parent period's selected plays.
-            theme=cell("theme", "theme", proposal.theme, (parent_period,)),
-            rationale=cell("rationale", "rationale", proposal.rationale, (parent_period,)),
-            together=activities("together"),
-            free_play=activities("free_play"),
+            theme=cell("theme", "theme", proposal.theme, memo("theme", (parent_period,))),
+            rationale=cell("rationale", "rationale", proposal.rationale, memo("rationale", (parent_period,))),
+            # All candidates start in the pool; the teacher picks the document rows.
+            together=(),
+            free_play=(),
+            activity_candidates=tuple(a.cell.item_id for _, a in candidates),
+            activity_pool=tuple(RemovedActivity(section, a) for section, a in candidates),
             habits=tuple(
                 HabitWeek(
                     w.week_id,
@@ -443,8 +525,8 @@ class GeneratePlayMonthlyPlan:
                 )
                 for w in weeks
             ),
-            safety_candidates=tuple(safety(by_slot[s.slot]) for s in request.safety_slots),
-            safety_weeks=tuple(SafetyWeek(w.week_id) for w in weeks),
+            safety_candidates=safety_candidates,
+            safety_weeks=safety_weeks,
             health=entry_cell("health", "health_nutrition.health", daily.get(proposal.health_entry_id)),
             nutrition=entry_cell("nutrition", "health_nutrition.nutrition", daily.get(proposal.nutrition_entry_id)),
             drill_candidates=tuple(
@@ -453,7 +535,7 @@ class GeneratePlayMonthlyPlan:
                         f"drills:{topic.topic_id}",
                         f"{DRILL_CELL_KEY}.candidate.{topic.topic_id}",
                         drill_texts[topic.topic_id],
-                        (curriculum(topic.content_id),),
+                        memo(f"drills:{topic.topic_id}", (curriculum(topic.content_id),)),
                     ),
                     topic.topic_id,
                     topic.label,
@@ -485,6 +567,8 @@ class GeneratePlayMonthlyPlan:
             ),
             special_activity_size=SPECIAL_ACTIVITY_START_SIZE,
             audit=created(),
+            teacher_memo=command.teacher_memo,
+            memo_notices=memo_skipped,
         )
         self._plans.save(plan.plan_id, plan)
         return plan
@@ -570,26 +654,13 @@ class GeneratePlayMonthlyPlan:
         self, command: GeneratePlayMonthlyPlanCommand, catalog: CurriculumCatalog
     ) -> tuple[DrillTopicCatalog, tuple[DrillTopic, ...]]:
         drills = self._drills.get_catalog(command.drill_catalog_id, command.drill_catalog_version)
-        if drills is None:
-            raise _fail("DRILL_REFERENCE_NOT_FOUND")
-        if not drills.is_active:
-            raise _fail("DRILL_REFERENCE_NOT_ACTIVE")
-        if (drills.curriculum_catalog_id, drills.curriculum_catalog_version) != (
-            catalog.catalog_id,
-            catalog.catalog_version,
-        ):
-            raise _fail("DRILL_CURRICULUM_MISMATCH")
-        if any(catalog.get(topic.content_id) is None for topic in drills.topics):
-            raise _fail("DRILL_UNKNOWN_CONTENT_ID")
-        count = PLAY_MONTHLY_LAYOUT_V0_2.drill_candidate_count
-        eligible = drills.for_month(command.target_month.calendar_month)
-        # Month-limited topics (e.g. 폭설 in winter) first, then catalog order.
-        # ponytail: fixed order, so a month without a seasonal topic always gets the same five;
-        # add rotation only if teachers ask for variety.
-        topics = sorted(eligible, key=lambda t: len(t.applicable_months) == 12)[:count]
-        if len(topics) < count:
-            raise _fail("DRILL_TOPICS_INSUFFICIENT")
-        return drills, tuple(topics)
+        try:
+            topics = select_drill_topics(
+                drills, catalog, command.target_month.calendar_month, PLAY_MONTHLY_LAYOUT_V0_3.drill_candidate_count
+            )
+        except DrillTopicError as error:
+            raise _fail(error.code) from None
+        return drills, topics
 
     def _safety_references(self, command: GeneratePlayMonthlyPlanCommand):
         rule: SafetyLegalRule | None = self._safety_rules.get_legal_rule(command.legal_rule_version)

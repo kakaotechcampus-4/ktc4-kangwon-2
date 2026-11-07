@@ -2112,7 +2112,11 @@ def test_two_patches_for_one_cell_are_both_rejected():
 
 def test_every_llm_repairable_code_has_a_mutation_contract():
     assert set(REPAIRABLE_CODES) - {"REFERENCE_VALUE_MISMATCH"} == {code.value for code in REPAIR_MUTABLE_FIELDS}
-    assert all("reference_id" not in fields and "unresolved" not in fields for fields in REPAIR_MUTABLE_FIELDS.values())
+    assert all("reference_id" not in fields for fields in REPAIR_MUTABLE_FIELDS.values())
+    assert {code.value for code, fields in REPAIR_MUTABLE_FIELDS.items() if "unresolved" in fields} == {
+        "INDOOR_ALTERNATIVE_REQUIRED"
+    }
+    assert repair_targets((_issue("INDOOR_ALTERNATIVE_REQUIRED", "outdoor_play"),)) == ()
 
 
 def test_repair_targets_skip_findings_that_authorize_nothing():

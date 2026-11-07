@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { loadClassSettings, saveClassSettings } from "@/lib/onboarding/settings";
 import { adoptServerClasses, hydrateClassChildren } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -34,10 +35,48 @@ export function WorkspacePage({
     </main>
   );
 }
-export function Empty({ title, children }: { title: string; children?: ReactNode }) {
+/**
+ * 보육일지 메뉴 안의 두 화면 — 일일(일과를 적고 그날 일지)과 주간(한 주 일지).
+ * 주간 기록이 메뉴 하나를 따로 차지했는데 일과 목록을 다시 보여 줄 뿐이라 합쳤다(13주차 멘토 리뷰).
+ */
+export function JournalTabs({
+  at,
+  daily,
+  weekly,
+}: {
+  at: "daily" | "weekly";
+  daily: string;
+  weekly: string;
+}) {
+  return (
+    <nav aria-label="보육일지 종류" className={styles.journalTabs} data-tour="journal-tabs">
+      <Link href={daily} aria-current={at === "daily" ? "page" : undefined}>
+        일일 보육일지
+      </Link>
+      <Link href={weekly} aria-current={at === "weekly" ? "page" : undefined}>
+        주간 보육일지
+      </Link>
+    </nav>
+  );
+}
+
+/** 종이를 붙여 둔 테이프 한 조각. 기록 · 계획안 화면의 첫 판에 붙인다. 부모는 relative 여야 한다. */
+export function Tape() {
+  return <span aria-hidden="true" className={styles.tape} />;
+}
+export function Empty({
+  title,
+  children,
+  art,
+}: {
+  title: string;
+  children?: ReactNode;
+  /** 새싹 대신 세울 그림. 포스티가 말을 거는 화면에서 쓴다. */
+  art?: ReactNode;
+}) {
   return (
     <div className={styles.empty}>
-      <span aria-hidden="true">🌱</span>
+      {art ?? <span aria-hidden="true">🌱</span>}
       <h3>{title}</h3>
       <p>{children}</p>
     </div>
@@ -61,11 +100,36 @@ export function Message({
 }
 const NO_CLASSES: ClassroomEntry[] = [];
 /**
+ * 스르륵 올라왔다 4.5초 뒤 스스로 사라지는 한 줄 알림.
+ *
+ * 화면을 막을 일은 아니지만 교사가 바로 알아야 하는 말 — 「시간이 겹쳐요」,
+ * 「왜 이 단추가 안 눌리나」 같은 것. 흐린 단추만 두면 고장으로 읽힌다.
+ */
+export function Notice({ children, onDone }: { children: string; onDone: () => void }) {
+  useEffect(() => {
+    if (!children) return;
+    const timer = setTimeout(onDone, 4500);
+    return () => clearTimeout(timer);
+    // `onDone` 은 매 렌더 새 함수다. 넣으면 다시 그릴 때마다 시계가 처음부터 돈다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [children]);
+  if (!children) return null;
+  return (
+    <p className={styles.toast} role="status">
+      <svg className={styles.toastMark} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M12 7v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="12" cy="16.6" r="1.15" fill="currentColor" />
+      </svg>
+      {children}
+    </p>
+  );
+}
+/**
  * 이 교사가 쓸 반 목록. 작업실 화면들이 전부 이걸 쓴다.
  *
  * **브라우저 저장소에 있는 반 + 서버에만 있는 반**을 합친다. 저장소만 보면
- * 초대받은 교사(§1-1)와 기기를 바꾼 교사에게 반이 하나도 안 보인다 — 서버에는
- * 멀쩡히 있는데도. 실제로 초대 기능을 붙이면서 드러났다.
+ * 기기를 바꾼 교사에게 반이 하나도 안 보인다 — 서버에는 멀쩡히 있는데도.
  */
 export function useClasses(onError?: (message: string) => void) {
   const [classes, setClasses] = useClientState<ClassroomEntry[]>(
@@ -84,17 +148,23 @@ export function useClasses(onError?: (message: string) => void) {
       // 반대로 끊기면 「연결은 있는데 목록에 없는 반」이 되어 영영 안 들어온다.
       // 화면을 떠났어도 저장은 한다. 사이드바·홈도 저장소를 본다.
       let next = local;
-      const adopted = await adoptServerClasses(
+      await adoptServerClasses(
         local,
         (name) =>
           onError?.(`${name || "반"}의 아동 명단을 못 불러왔어요. 페이지를 새로고침해주세요.`),
-        (rows) => {
-          next = [...local, ...rows];
+        (rows, dropped) => {
+          // 남의 반이 된 것은 뺀다 — 들인 반이 없어도 저장 · 화면 갱신이 필요하다.
+          next = [...local.filter((c) => !dropped.includes(c.id)), ...rows];
           saveClassSettings({ ...(settings ?? EMPTY_CLASS_SETTINGS), classes: next });
         },
       );
-      if (!adopted.length) return;
-      if (live) setClasses(next);
+      // 같은 화면의 다른 useClasses(사이드바 등)가 먼저 들였으면 여기서는 「연결은 있는데
+      // 목록에 없는 반」이라 건너뛴다. 그쪽이 목록을 먼저 저장했으니 저장소에서 받는다.
+      const stored = loadClassSettings();
+      const extra = stored?.classes.filter((c) => !next.some((n) => n.id === c.id)) ?? [];
+      if (stored && extra.length)
+        next = [...next, ...(await hydrateClassChildren({ ...stored, classes: extra }))];
+      if (next !== local && live) setClasses(next);
     })().catch(() => {
       if (live) onError?.("반 정보를 불러오지 못했어요. 페이지를 새로고침해주세요.");
     });

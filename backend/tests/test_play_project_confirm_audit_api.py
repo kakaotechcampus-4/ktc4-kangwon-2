@@ -287,6 +287,27 @@ def test_확정_뒤_선택_저장도_칸_편집도_409(world, saved):
     _error(_put_cell(row, _item_id(plan, 0, 1), "새 값", 3), 409, "ALREADY_CONFIRMED", [])
 
 
+def test_확정을_풀면_DRAFT_로_돌아가고_다시_고치고_확정한다(world, saved):
+    plan, row = saved
+    unconfirm = f"/api/plans/annual/{row.id}/unconfirm"
+    assert client.post(unconfirm).json()["revision"] == 1  # 이미 DRAFT — 본문 없이도 200
+    _select_all(row)
+    _confirm(row, 2)
+    _error(client.post(unconfirm), 422, "VALIDATION_FAILED", ["expected_revision"])
+    _error(client.post(unconfirm, json={"expected_revision": 2}), 409, "STALE_WRITE",
+           ["expected_revision"])  # fmt: skip
+
+    response = client.post(unconfirm, json={"expected_revision": 3})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["status"], body["revision"], body["format"]) == ("DRAFT", 4, "PLAY_PROJECT")
+    assert [e.actor_id.value for e in _events(_stored(world, row), "UNCONFIRMED")] == ["user_1"]
+    assert row.confirmed_at is None
+    assert _put_cell(row, _item_id(plan, 0, 1), "다시 고친 값", 4).status_code == 200
+    assert _confirm(row, 5).json()["status"] == "CONFIRMED"
+
+
 def test_월별_주제형_확정은_본문이_없어도_빈_객체여도_기존_응답(world):
     created = client.post(
         "/api/plans/annual",

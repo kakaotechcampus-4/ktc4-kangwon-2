@@ -24,6 +24,7 @@ from ssuksak.adapters.weekly_composition import WEEKLY_TEMPLATE_PATH
 from ssuksak.planning import MonthlyApplicationError, WeeklyPlan
 from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
 from ssuksak.planning.planner.weekly import WEEKLY_CONTEXT_CELL_PROMPT_VERSION
+from ssuksak.planning.venue_policy import VENUE_POLICY_TAG
 
 from app.config import settings
 from app.features.auth.models import User
@@ -143,6 +144,104 @@ def _create(world, week: str = WEEK):
     )
 
 
+@pytest.mark.parametrize("saturday", [False, True])
+def test_activity_candidates_copy_split_reload_and_export(world, saturday):
+    center = world["session"].get(Center, world["mine"]["center"])
+    center.weekly_saturday_enabled = saturday
+    world["session"].flush()
+    response = client.post(
+        "/api/plans/weekly",
+        json={"class_id": world["mine"]["class"], "week_id": WEEK, "activity_candidates": True},
+    )
+    assert response.status_code == 201, response.text
+    plan = response.json()
+    assert 2 <= len(plan["activity_candidates"]) <= 10
+
+    def group(p):
+        return next(s["cells"] for s in p["sections"] if s["section_key"] == "group_activity")
+
+    assert len(group(plan)) == 5 + saturday
+    assert all(not c["value"] and c["day"] for c in group(plan))
+    item = group(plan)[0]["item_id"]
+    url = f"/api/plans/weekly/{plan['id']}/cells/{item}"
+    candidate = plan["activity_candidates"][0]
+    body = {
+        "candidate_item_id": candidate["cell"]["item_id"],
+        "expected_revision": plan["revision"],
+    }
+    result = client.post(url + "/copy-activity", json=body)
+    assert result.status_code == 200, result.text
+    plan = result.json()
+    assert group(plan)[0]["value"] == f"[{candidate['activity_type']}] {candidate['name']}"
+    assert client.post(url + "/copy-activity", json=body).status_code == 409
+    body["expected_revision"] = plan["revision"]
+    assert client.post(url + "/copy-activity", json=body).json()["revision"] == plan["revision"]
+    result = client.post(
+        url + "/split", json={"axis": "VERTICAL", "expected_revision": plan["revision"]}
+    )
+    assert result.status_code == 200, result.text
+    plan = result.json()
+    assert len(group(plan)) == 6 + saturday
+    new_id = group(plan)[1]["item_id"]
+    second = plan["activity_candidates"][1]
+    result = client.post(
+        f"/api/plans/weekly/{plan['id']}/cells/{new_id}/copy-activity",
+        json={
+            "candidate_item_id": second["cell"]["item_id"],
+            "expected_revision": plan["revision"],
+        },
+    )
+    assert result.status_code == 200, result.text
+    plan = result.json()
+    fetched = client.get(f"/api/plans/weekly/{plan['id']}").json()
+    assert fetched == plan
+    events = client.get(f"/api/plans/weekly/{plan['id']}/audit").json()["items"]
+    assert any(
+        e["type"] == "TIMETABLE_CHANGED" and e["timetable_change"]["new_cell_id"] == new_id
+        for e in events
+    )
+    assert any(
+        e["copied_from"] == candidate["cell"]["item_id"] and e["day"] == "MON" for e in events
+    )
+    # Delete a spare leaf with a query revision, leaving the two selected leaves intact.
+    spare = client.post(
+        url + "/split", json={"axis": "VERTICAL", "expected_revision": plan["revision"]}
+    ).json()
+    spare_id = next(
+        c["item_id"]
+        for c in group(spare)
+        if c["item_id"] not in {x["item_id"] for x in group(plan)}
+    )
+    delete_url = f"/api/plans/weekly/{plan['id']}/cells/{spare_id}/split"
+    assert client.delete(delete_url).status_code == 422
+    assert client.delete(delete_url, params={"expected_revision": 0}).status_code == 422
+    assert (
+        client.delete(delete_url, params={"expected_revision": plan["revision"]}).status_code == 409
+    )
+    removed = client.delete(delete_url, params={"expected_revision": spare["revision"]})
+    assert removed.status_code == 200, removed.text
+    plan = removed.json()
+    assert all(c["item_id"] != spare_id for c in group(plan))
+    assert client.get(f"/api/plans/weekly/{plan['id']}").json() == plan
+    result = client.post(
+        f"/api/plans/weekly/{plan['id']}/confirm", json={"expected_revision": plan["revision"]}
+    )
+    assert result.status_code == 200, result.text
+    export = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp")
+    assert export.status_code == 200, export.text
+    with zipfile.ZipFile(BytesIO(export.content)) as archive:
+        text = archive.read("Contents/section0.xml").decode()
+        assert candidate["name"] in text and second["name"] in text
+        assert 'rowSpan="2"' in text
+    assert (
+        client.post(
+            url + "/split",
+            json={"axis": "VERTICAL", "expected_revision": result.json()["revision"]},
+        ).status_code
+        == 409
+    )
+
+
 def _error(response) -> tuple[int, str, list[str]]:
     body = response.json()["error"]
     return response.status_code, body["code"], body["fields"]
@@ -168,8 +267,10 @@ def test_만들면_DRAFT_로_저장하고_계약_모양으로_준다(world):
     assert plan["display_end_date"] == plan["week_period"]["end_date"]
     assert plan["parent"]["monthly_plan_id"] == world["monthly"]["id"]
     assert plan["base_template_ref"]["template_id"] == "ssuksak.weekly-template-a"
+    assert all(s["repeat_by"] == "NONE" for s in plan["sections"])
     cells = {s["section_key"]: s["cells"] for s in plan["sections"]}
     assert all(len(c) == 1 for c in cells.values())  # Section 당 칸 하나
+    assert all(c[0]["day"] is None for c in cells.values())
     # 교사 입력 칸은 첫 입력 전에 만든 방식이 없다 — null 로 그대로 내려간다(주간 계약 §10-2).
     assert {key for key, c in cells.items() if c[0]["generation"] is None} == TEACHER_INPUT
     assert cells["theme"][0]["parent_snapshots"]  # 부모 월간 주제 칸 인용
@@ -382,37 +483,34 @@ def test_목록_남의_원_반은_404(world):
     assert response.status_code == 404
 
 
-def test_DRAFT_는_지우고_다시_만들_수_있다_확정본은_못_지운다(world, db_session):
+def test_DRAFT_도_확정본도_지우고_다시_만들_수_있다(world, db_session):
+    """확정본도 지운다(ADR-064, Human Decision 2026-11-05 하민)."""
     created = _create(world).json()
     assert client.delete(f"/api/plans/weekly/{created['id']}").status_code == 204
-    again = _create(world)
-    assert again.status_code == 201
+    again = _create(world).json()
+    confirmed = _confirm(again)
+    assert confirmed.status_code == 200, confirmed.text
 
-    db_session.execute(update(Plan).where(Plan.id == again.json()["id"]).values(status="CONFIRMED"))
-    assert _error(client.delete(f"/api/plans/weekly/{again.json()['id']}")) == (
-        409,
-        "GATE_BLOCKED",
-        [],
+    assert client.delete(f"/api/plans/weekly/{again['id']}").status_code == 204
+    assert client.get(f"/api/plans/weekly/{again['id']}").status_code == 404
+    assert _create(world).status_code == 201
+
+
+def test_주간이_딸린_월간은_확정본이어도_지우지_못하고_주간을_지우면_지운다(world):
+    """주간은 월간을 부모로 든다. 부모만 지우면 주간 조회가 깨진다(ADR-064)."""
+    monthly_id = world["monthly"]["id"]
+    weekly = _create(world).json()
+
+    response = client.delete(f"/api/plans/monthly/{monthly_id}")
+    assert _error(response) == (409, "IN_USE", [])
+    assert response.json()["error"]["message"] == (
+        "이 월간계획안으로 만든 주간계획안이 있습니다. 먼저 지워주세요."
     )
+    assert client.get(f"/api/plans/monthly/{monthly_id}").status_code == 200
 
-
-def test_삭제가_읽은_뒤_다른_요청이_확정하면_확정본을_지우지_않는다(world, db_session, monkeypatch):
-    """읽기와 지우기 사이에 확정이 끼면 409 · 행이 남는다(Codex W5b-01 실제 경합 재현)."""
-    created = _create(world).json()
-    real = weekly_router._own_row
-
-    def read_then_confirmed_elsewhere(session, user, plan_id):
-        row = real(session, user, plan_id)
-        session.expunge(row)  # 삭제는 DRAFT 로 읽은 값을 그대로 들고 간다
-        # 다른 요청의 확정은 이미 commit 됐다 — 이 요청이 409 로 되돌려도 남아야 한다.
-        session.execute(update(Plan).where(Plan.id == plan_id).values(status="CONFIRMED"))
-        session.commit()
-        return row
-
-    monkeypatch.setattr(weekly_router, "_own_row", read_then_confirmed_elsewhere)
-    assert _error(client.delete(f"/api/plans/weekly/{created['id']}")) == (409, "GATE_BLOCKED", [])
-    # 확정본 행이 그대로 남는다(상태 칸만 바꿔 흉내 냈으므로 칸을 본다).
-    assert db_session.scalar(select(Plan.status).where(Plan.id == created["id"])) == "CONFIRMED"
+    assert client.delete(f"/api/plans/weekly/{weekly['id']}").status_code == 204
+    assert client.delete(f"/api/plans/monthly/{monthly_id}").status_code == 204
+    assert client.get(f"/api/plans/monthly/{monthly_id}").status_code == 404
 
 
 @pytest.mark.parametrize("code", ["opaque_actor_required", "repository_contract_violation"])
@@ -568,7 +666,7 @@ def test_칸을_다시_만들면_그_칸만_바뀐다(world):
     assert audit[-1]["type"] == "REGENERATED"
     assert (
         audit[-1]["generation_change"]["after"]["rule_version"]
-        == WEEKLY_CONTEXT_CELL_PROMPT_VERSION
+        == WEEKLY_CONTEXT_CELL_PROMPT_VERSION + VENUE_POLICY_TAG
     )
 
 
@@ -719,6 +817,33 @@ def test_확정된_주간은_고치지도_다시_만들지도_않는다(world):
     assert _error(_regenerate(plan, "goals"))[:2] == (409, "ALREADY_CONFIRMED")
 
 
+def _unconfirm(path: str, revision: int):
+    return client.post(f"{path}/unconfirm", json={"expected_revision": revision})
+
+
+def test_확정을_풀면_다시_고칠_수_있고_부모_월간을_풀면_parent_changed(world):
+    plan = _create(world).json()
+    path = f"/api/plans/weekly/{plan['id']}"
+    assert plan["parent_changed"] is False
+    assert _unconfirm(path, 99).json() == plan  # 이미 DRAFT — 아무것도 안 바뀐다
+    confirmed = _confirm(plan).json()
+    assert _error(_unconfirm(path, plan["revision"]))[:2] == (409, "STALE_WRITE")
+
+    reopened = _unconfirm(path, confirmed["revision"]).json()
+    assert (reopened["status"], reopened["confirmed_at"]) == ("DRAFT", None)
+    assert reopened["revision"] == confirmed["revision"] + 1
+    assert reopened["sections"] == confirmed["sections"]
+    goals = _cell(reopened, "goals")["item_id"]
+    events = client.get(f"{path}/audit", params={"item_id": goals}).json()["items"]
+    assert [e["type"] for e in events if e["scope"] == "PLAN"] == ["CONFIRMED", "UNCONFIRMED"]
+    assert _put(reopened, "goals", "다시 고친 목표").status_code == 200
+
+    monthly = world["monthly"]
+    unconfirmed = _unconfirm(f"/api/plans/monthly/{monthly['id']}", monthly["revision"])
+    assert unconfirmed.status_code == 200, unconfirmed.json()
+    assert client.get(path).json()["parent_changed"] is True
+
+
 def test_DRAFT_를_옛_revision_으로_확정하면_409(world):
     plan = _create(world).json()
     assert _error(_confirm(plan, revision=plan["revision"] + 1)) == (
@@ -739,6 +864,7 @@ def test_이력은_칸으로_거르고_없는_칸은_404(world):
 
     assert [(e["scope"], e["type"]) for e in items] == [("CELL", "CREATED"), ("PLAN", "CONFIRMED")]
     assert items[0]["week_id"] == WEEK and items[0]["section_key"] == "goals"
+    assert [e["day"] for e in items] == [None, None]
     assert _error(
         client.get(f"/api/plans/weekly/{plan['id']}/audit", params={"item_id": "item_없는_칸"})
     ) == (404, "NOT_FOUND", ["item_id"])
@@ -778,7 +904,8 @@ def test_확정된_주간을_표_양식_hwpx_로_내려준다(world):
     assert _cell(edited, "theme")["value"] in printed
     assert any((t or "").endswith("(만 3·4세)") for t in printed)  # 혼합반 연령 (Codex W5c-01)
     assert any(edited["week_period"]["label"] in (t or "") for t in printed)
-    assert any(str(edited["display_end_date"]) in (t or "") for t in printed)
+    # 한글 문서의 날짜는 「2026.11.02」 모양이다(하민 결정 2026-11-06).
+    assert any(str(edited["display_end_date"]).replace("-", ".") in (t or "") for t in printed)
 
 
 def test_내보내기_연령은_단일과_혼합을_만_N세로_쓴다():
@@ -812,3 +939,457 @@ def test_주간_제출_문서에_출처가_섞이지_않는다(world):
     joined = "\n".join(text for text in printed if text)
     for banned in ("evidence", "generation", "INSTITUTION_SAMPLE", "RULE_LLM", "mock"):
         assert banned not in joined
+
+
+# ── 요일 칸 (Template v0.2.0) ─────────────────────────────────────────────
+
+V0_2_0_PATH = WEEKLY_TEMPLATE_PATH.with_name("weekly_template_a_v0_2_0.json")
+V0_2_0_REF = TemplateRef("ssuksak.weekly-template-a", "weekly-template-a-v0.2.0")
+DAY_SECTIONS = {"group_activity", "special_program"}
+
+
+def _use_v0_2_0(monkeypatch) -> None:
+    monkeypatch.setattr(weekly_composition, "WEEKLY_TEMPLATE_PATH", V0_2_0_PATH)
+    monkeypatch.setattr(weekly_router, "WEEKLY_TEMPLATE_REF", V0_2_0_REF)
+
+
+def _section(plan: dict, key: str) -> dict:
+    return next(s for s in plan["sections"] if s["section_key"] == key)
+
+
+def _day_cell(plan: dict, key: str, day: str) -> dict:
+    return next(c for c in _section(plan, key)["cells"] if c["day"] == day)
+
+
+@pytest.mark.parametrize(
+    ("saturday", "expected_days"),
+    [
+        (False, ["MON", "TUE", "WED", "THU", "FRI"]),
+        (True, ["MON", "TUE", "WED", "THU", "FRI", "SAT"]),
+    ],
+)
+def test_v0_2_0_요일_칸은_운영_요일_순서로_내려가고_조회도_같다(
+    world, monkeypatch, saturday, expected_days
+):
+    _use_v0_2_0(monkeypatch)
+    if saturday:
+        client.put(
+            f"/api/centers/{world['mine']['center']}/settings",
+            json={"weekly_saturday_enabled": True},
+        )
+
+    response = _create(world)
+    assert response.status_code == 201, response.json()
+    plan = response.json()
+
+    assert plan["base_template_ref"] == {
+        "template_id": "ssuksak.weekly-template-a",
+        "template_version": "weekly-template-a-v0.2.0",
+    }
+    assert plan["operating_days"] == expected_days
+    assert {s["section_key"] for s in plan["sections"] if s["repeat_by"] == "DAY"} == DAY_SECTIONS
+    none_sections = [s for s in plan["sections"] if s["repeat_by"] == "NONE"]
+    assert len(none_sections) == 10
+    for section in none_sections:
+        assert len(section["cells"]) == 1
+        assert section["cells"][0]["day"] is None
+    for key in DAY_SECTIONS:
+        cells = _section(plan, key)["cells"]
+        assert [c["day"] for c in cells] == expected_days
+        assert len({c["item_id"] for c in cells}) == len(expected_days)
+
+    assert client.get(f"/api/plans/weekly/{plan['id']}").json() == plan
+
+
+def test_v0_2_0_요일_칸을_고치면_그_요일만_바뀌고_이력에_요일이_남는다(world, monkeypatch):
+    _use_v0_2_0(monkeypatch)
+    plan = _create(world).json()
+    wed = _section(plan, "group_activity")["cells"][2]
+
+    response = client.put(
+        f"/api/plans/weekly/{plan['id']}/cells/{wed['item_id']}",
+        json={
+            "value": "수요일에 친구와 가을 열매 분류 놀이를 한다.",
+            "expected_revision": plan["revision"],
+        },
+    )
+
+    assert response.status_code == 200, response.json()
+    after = response.json()
+    assert after["revision"] == plan["revision"] + 1
+    assert [c["day"] for c in _section(after, "group_activity")["cells"]] == [
+        "MON",
+        "TUE",
+        "WED",
+        "THU",
+        "FRI",
+    ]
+    edited = _section(after, "group_activity")["cells"][2]
+    assert (edited["item_id"], edited["day"], edited["value"]) == (
+        wed["item_id"],
+        "WED",
+        "수요일에 친구와 가을 열매 분류 놀이를 한다.",
+    )
+    assert edited == {**wed, "value": "수요일에 친구와 가을 열매 분류 놀이를 한다."}
+    assert [
+        (s["section_key"], [c for c in s["cells"] if c["item_id"] != wed["item_id"]])
+        for s in after["sections"]
+    ] == [
+        (s["section_key"], [c for c in s["cells"] if c["item_id"] != wed["item_id"]])
+        for s in plan["sections"]
+    ]
+
+    items = client.get(
+        f"/api/plans/weekly/{plan['id']}/audit", params={"item_id": wed["item_id"]}
+    ).json()["items"]
+    assert [e["type"] for e in items] == ["CREATED", "TEACHER_EDITED"]
+    assert all(
+        (e["scope"], e["section_key"], e["day"], e["week_id"], e["item_id"])
+        == ("CELL", "group_activity", "WED", WEEK, wed["item_id"])
+        for e in items
+    )
+    assert items[-1]["value_change"]["after"] == "수요일에 친구와 가을 열매 분류 놀이를 한다."
+
+
+def test_v0_2_0_특별활동_요일_칸은_다시_만들지_않는다(world, monkeypatch):
+    _use_v0_2_0(monkeypatch)
+    plan = _create(world).json()
+    tue = _day_cell(plan, "special_program", "TUE")
+
+    response = client.post(
+        f"/api/plans/weekly/{plan['id']}/cells/{tue['item_id']}/regenerate",
+        json={"expected_revision": plan["revision"]},
+    )
+
+    assert _error(response) == (422, "VALIDATION_FAILED", ["item_id"])
+    assert response.json()["error"]["message"] == "이 칸은 다시 만들 수 없습니다."
+
+
+def test_v0_2_0_대소집단_요일_칸을_다시_만들면_그_요일만_바뀐다(world, monkeypatch):
+    _use_v0_2_0(monkeypatch)
+    plan = _create(world).json()
+    thu = _section(plan, "group_activity")["cells"][3]
+
+    response = client.post(
+        f"/api/plans/weekly/{plan['id']}/cells/{thu['item_id']}/regenerate",
+        json={"expected_revision": plan["revision"]},
+    )
+
+    assert response.status_code == 200, response.json()
+    after = response.json()
+    assert after["revision"] == plan["revision"] + 1
+    assert [c["day"] for c in _section(after, "group_activity")["cells"]] == [
+        "MON",
+        "TUE",
+        "WED",
+        "THU",
+        "FRI",
+    ]
+    regenerated = _section(after, "group_activity")["cells"][3]
+    assert (regenerated["item_id"], regenerated["day"]) == (thu["item_id"], "THU")
+    assert regenerated["value"] != thu["value"]
+    assert [
+        (s["section_key"], [c for c in s["cells"] if c["item_id"] != thu["item_id"]])
+        for s in after["sections"]
+    ] == [
+        (s["section_key"], [c for c in s["cells"] if c["item_id"] != thu["item_id"]])
+        for s in plan["sections"]
+    ]
+
+    items = client.get(
+        f"/api/plans/weekly/{plan['id']}/audit", params={"item_id": thu["item_id"]}
+    ).json()["items"]
+    assert [e["type"] for e in items] == ["CREATED", "REGENERATED"]
+    assert (items[-1]["section_key"], items[-1]["day"], items[-1]["week_id"]) == (
+        "group_activity",
+        "THU",
+        WEEK,
+    )
+
+
+def test_월간에서_후보를_배치해_확정하면_주간_안전_칸이_그_표시값이다(db_session, teacher):
+    """후보 모드 월간(기본) → 배치 → 확정 → 주간. Core 의 후보 복사 분기를 서버 경로로 지난다."""
+    seed = _seed(db_session, "가원", "a@example.com")
+    teacher.center_id = seed["center"]
+    monthly = _monthly(seed, confirm=False)
+    candidate = monthly["safety_candidates"][0]
+    placed = client.put(
+        f"/api/plans/monthly/{monthly['id']}/safety-weeks/{WEEK}",
+        json={
+            "expected_revision": monthly["revision"],
+            "candidate_item_id": candidate["cell"]["item_id"],
+        },
+    )
+    assert placed.status_code == 200, placed.json()
+    display = next(w for w in placed.json()["safety_weeks"] if w["week_id"] == WEEK)[
+        "display_value"
+    ]
+    assert display
+    confirmed = client.post(
+        f"/api/plans/monthly/{monthly['id']}/confirm",
+        json={"expected_revision": placed.json()["revision"]},
+    )
+    assert confirmed.status_code == 200, confirmed.json()
+
+    weekly = client.post("/api/plans/weekly", json={"class_id": seed["class"], "week_id": WEEK})
+
+    assert weekly.status_code == 201, weekly.json()
+    safety = next(s for s in weekly.json()["sections"] if s["section_key"] == "safety_education")
+    assert safety["cells"][0]["value"] == display
+
+
+def test_요일_양식_주간은_고정_양식의_요일_칸에_채운다(world, monkeypatch):
+    """ADR-051 WD-4 — v0.2.0 계획은 월~토 양식에 (section_key, day) 로 채운다(§9-6)."""
+    from lxml import etree
+
+    from app.shared.hwpx import NS, _cells
+
+    monkeypatch.setattr(
+        weekly_composition,
+        "WEEKLY_TEMPLATE_PATH",
+        WEEKLY_TEMPLATE_PATH.with_name("weekly_template_a_v0_2_0.json"),
+    )
+    monkeypatch.setattr(
+        weekly_router,
+        "WEEKLY_TEMPLATE_REF",
+        replace(weekly_router.WEEKLY_TEMPLATE_REF, template_version="weekly-template-a-v0.2.0"),
+    )
+    client.put(
+        f"/api/centers/{world['mine']['center']}/settings", json={"weekly_saturday_enabled": True}
+    )
+    plan = _create(world).json()
+    row = world["session"].get(Plan, plan["id"])
+    saturday = from_jsonable(WeeklyPlan, row.body).operating_days[-1]
+    item = from_jsonable(WeeklyPlan, row.body).cell("special_program", saturday).item_id.value
+    edited = client.put(
+        f"/api/plans/weekly/{plan['id']}/cells/{item}",
+        json={"value": "토요 체육", "expected_revision": plan["revision"]},
+    ).json()
+    indoor = from_jsonable(WeeklyPlan, row.body).cell("indoor_play").item_id.value
+    edited = client.put(
+        f"/api/plans/weekly/{plan['id']}/cells/{indoor}",
+        json={
+            "value": "[역할놀이] 가을 가게\n[쌓기놀이]: 열매 길\n분류 없는 교사 메모",
+            "expected_revision": edited["revision"],
+        },
+    ).json()
+    assert _confirm(edited).status_code == 200
+
+    response = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    pdf = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp?format=pdf")  # ADR-061
+    assert (pdf.status_code, pdf.headers["content-type"]) == (200, "application/pdf"), pdf.text
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        table = etree.fromstring(archive.read("Contents/section0.xml")).find(".//hp:tbl", NS)
+    cells = _cells(table)
+
+    def text(address):
+        return "".join(t.text or "" for t in cells[address].iter(f"{{{NS['hp']}}}t"))
+
+    world["session"].refresh(row)
+    core = from_jsonable(WeeklyPlan, row.body)
+    assert table.get("colCnt") == "7"
+    assert [text((10, col)) for col in range(1, 7)] == list("월화수목금토")
+    for col, day in enumerate(core.operating_days, start=1):
+        assert text((11, col)) == core.cell("group_activity", day).value
+    assert [text((19, col)) for col in range(1, 7)] == ["", "", "", "", "", "토요 체육"]
+    assert text((2, 1)) == core.cell("theme").value
+    assert text((0, 0)).startswith(f"{plan['week_period']['label']} 주간놀이계획안")
+    paragraphs = cells[(7, 1)].findall("hp:subList/hp:p", NS)
+    assert ["".join(p.itertext()) for p in paragraphs] == [
+        "[역할놀이] 가을 가게",
+        "[쌓기놀이] 열매 길",
+        "분류 없는 교사 메모",
+    ]
+    assert core.cell("indoor_play").value.startswith("[역할놀이] 가을 가게")
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        header = etree.fromstring(archive.read("Contents/header.xml"))
+        assert "[역할놀이] 가을 가게" in archive.read("Preview/PrvText.txt").decode()
+    namespaces = {
+        **NS,
+        "hh": "http://www.hancom.co.kr/hwpml/2011/head",
+        "hc": "http://www.hancom.co.kr/hwpml/2011/core",
+    }
+    style = header.find(f".//hh:paraPr[@id='{paragraphs[0].get('paraPrIDRef')}']", namespaces)
+    assert {s.get("value") for s in style.findall(".//hh:lineSpacing", namespaces)} == {"140"}
+    assert {s.get("value") for s in style.findall(".//hh:margin/hc:next", namespaces)} == {"100"}
+    font_id = paragraphs[0].find("hp:run", NS).get("charPrIDRef")
+    assert header.find(f".//hh:charPr[@id='{font_id}']", namespaces).get("height") == "900"
+
+
+def test_주간_안전교육은_옛_값의_줄표를_떼고_한_줄이다():
+    from app.features.plans.export import _weekly_text
+
+    old, new = "[교통안전] - 길을 건너요 - 천천히", "[교통안전] 길을 건너요 - 천천히"
+    assert _weekly_text("safety_education", old) == new
+    assert _weekly_text("safety_education", new) == new
+    assert _weekly_text("safety_education", "") == ""
+
+
+def test_indoor_display_keeps_blank_and_untagged_teacher_text():
+    from app.features.plans.export import _indoor_play_text
+
+    for value in ("", "교사가 직접 쓴 놀이", "[역할놀이] 가게 놀이", "[역할놀이]\n가게 놀이"):
+        assert _indoor_play_text(value) == value
+    # 2026-11-06 전 값의 「 - 」는 뗀다.
+    assert _indoor_play_text("[역할놀이] - 가게 놀이") == "[역할놀이] 가게 놀이"
+
+
+@pytest.mark.parametrize("saturday", [False, True])
+def test_indoor_candidates_select_edit_order_export_and_archive(
+    world, saturday, tmp_path, monkeypatch
+):
+    world["session"].get(Center, world["mine"]["center"]).weekly_saturday_enabled = saturday
+    world["session"].flush()
+    response = client.post(
+        "/api/plans/weekly",
+        json={
+            "class_id": world["mine"]["class"],
+            "week_id": WEEK,
+            "indoor_play_candidates": True,
+        },
+    )
+    assert response.status_code == 201, response.text
+    plan = response.json()
+    assert plan["indoor_play_selection"]
+    candidates = [c for c in plan["activity_candidates"] if c["section_key"] == "indoor_play"]
+    assert 2 <= len(candidates) <= 10
+
+    def rows(p):
+        return next(s["cells"] for s in p["sections"] if s["section_key"] == "indoor_play")
+
+    def add(p, candidate):
+        return client.post(
+            f"/api/plans/weekly/{p['id']}/indoor-plays",
+            json={
+                "candidate_item_id": candidate,
+                "expected_revision": p["revision"],
+            },
+        )
+
+    assert len(rows(plan)) == 1 and not rows(plan)[0]["value"]
+    assert (
+        add(
+            {**plan, "revision": plan["revision"] + 1}, candidates[0]["cell"]["item_id"]
+        ).status_code
+        == 409
+    )
+    plan = add(plan, candidates[0]["cell"]["item_id"]).json()
+    first = rows(plan)[0]
+    assert first["value"] == f"[{candidates[0]['activity_type']}] {candidates[0]['name']}"
+    plan = add(plan, candidates[1]["cell"]["item_id"]).json()
+    assert len(rows(plan)) == 2
+    for candidate in candidates[2:7]:
+        plan = add(plan, candidate["cell"]["item_id"]).json()
+    plan = client.put(
+        f"/api/plans/weekly/{plan['id']}/cells/{first['item_id']}",
+        json={
+            "value": "[역할놀이] 교사가 다듬은 가게 놀이",
+            "expected_revision": plan["revision"],
+        },
+    ).json()
+    duplicate = add(plan, candidates[0]["cell"]["item_id"])
+    assert duplicate.status_code == 200 and duplicate.json() == plan
+    ids = [c["item_id"] for c in reversed(rows(plan))]
+    ordered = client.put(
+        f"/api/plans/weekly/{plan['id']}/indoor-plays/order",
+        json={
+            "item_ids": ids,
+            "expected_revision": plan["revision"],
+        },
+    )
+    assert ordered.status_code == 200, ordered.text
+    plan = ordered.json()
+    assert [c["item_id"] for c in rows(plan)] == ids
+    assert client.get(f"/api/plans/weekly/{plan['id']}").json() == plan
+    other = next(c for c in plan["activity_candidates"] if c["section_key"] == "group_activity")
+    assert add(plan, other["cell"]["item_id"]).status_code == 422
+    group_cell = next(
+        s["cells"][0] for s in plan["sections"] if s["section_key"] == "group_activity"
+    )
+    copied_group = client.post(
+        f"/api/plans/weekly/{plan['id']}/cells/{group_cell['item_id']}/copy-activity",
+        json={
+            "candidate_item_id": other["cell"]["item_id"],
+            "expected_revision": plan["revision"],
+        },
+    )
+    assert copied_group.status_code == 200, copied_group.text
+    plan = copied_group.json()
+    assert (
+        client.put(
+            f"/api/plans/weekly/{plan['id']}/indoor-plays/order",
+            json={
+                "item_ids": [ids[0], ids[0]],
+                "expected_revision": plan["revision"],
+            },
+        ).status_code
+        == 422
+    )
+    with monkeypatch.context() as blocked:
+        blocked.setattr(
+            weekly_router,
+            "_weekly_provider",
+            lambda: pytest.fail("No provider needed for a read-only regeneration target"),
+        )
+        assert (
+            client.post(
+                f"/api/plans/weekly/{plan['id']}/cells/{ids[0]}/regenerate",
+                json={
+                    "expected_revision": plan["revision"],
+                },
+            ).status_code
+            == 422
+        )
+    confirmed = _confirm(plan)
+    assert confirmed.status_code == 200, confirmed.text
+    response = client.get(f"/api/plans/weekly/{plan['id']}/export/hwp")
+    assert response.status_code == 200, response.text
+    (tmp_path / f"selected_{6 if saturday else 5}days.hwpx").write_bytes(response.content)
+    from lxml import etree
+
+    from app.shared.hwpx import NS, _cells
+
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        table = etree.fromstring(archive.read("Contents/section0.xml")).find(".//hp:tbl", NS)
+        assert candidates[0]["description"] not in archive.read("Preview/PrvText.txt").decode()
+    paragraphs = _cells(table)[(7, 1)].findall("hp:subList/hp:p", NS)
+    assert ["".join(p.itertext()) for p in paragraphs] == [c["value"] for c in rows(plan)]
+    assert add(confirmed.json(), None).status_code == 409
+    plan = client.post(
+        f"/api/plans/weekly/{plan['id']}/unconfirm",
+        json={
+            "expected_revision": confirmed.json()["revision"],
+        },
+    ).json()
+    for item_id in ids:
+        deleted = client.delete(
+            f"/api/plans/weekly/{plan['id']}/indoor-plays/{item_id}",
+            params={"expected_revision": plan["revision"]},
+        )
+        assert deleted.status_code == 200, deleted.text
+        plan = deleted.json()
+    assert len(rows(plan)) == 1 and rows(plan)[0]["value"] == ""
+    events = client.get(f"/api/plans/weekly/{plan['id']}/audit").json()["items"]
+    assert any(e["copied_from"] == candidates[0]["cell"]["item_id"] for e in events)
+    assert any(
+        e["arrangement_change"] and e["arrangement_change"]["scope"] == "indoor_play"
+        for e in events
+    )
+    manual = client.put(
+        f"/api/plans/weekly/{plan['id']}/cells/{rows(plan)[0]['item_id']}",
+        json={
+            "value": "직접 정한 자유놀이",
+            "expected_revision": plan["revision"],
+        },
+    )
+    assert manual.status_code == 200, manual.text
+    assert rows(manual.json())[0]["generation"]["method"] == "RULE_ONLY"
+    manual_events = client.get(
+        f"/api/plans/weekly/{plan['id']}/audit",
+        params={
+            "item_id": rows(plan)[0]["item_id"],
+        },
+    ).json()["items"]
+    assert manual_events[-1]["type"] == "TEACHER_EDITED"
+    assert manual_events[-1]["value_change"]["after"] == "직접 정한 자유놀이"

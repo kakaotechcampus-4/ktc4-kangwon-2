@@ -31,8 +31,8 @@ CURRICULUM_CATALOG = ("ssuksak.nuri-curriculum-content", "nuri-curriculum-conten
 DAILY_LIFE_CATALOG = ("ssuksak.daily-life", "daily-life-v0.1.0")
 DRILL_CATALOG = ("ssuksak.emergency-drill-topics", "emergency-drill-topics-v0.1.0")
 LEGAL_RULE_VERSION = "child-welfare-act-decree-annex6-2022-06-21"
-SAFETY_CLASSIFICATION_VERSION = "safety-evidence-classification-v0.2.0"
-SAFETY_QUALITY_VERSION = "safety-reference-quality-v0.1.0"
+SAFETY_CLASSIFICATION_VERSION = "safety-evidence-classification-v0.3.0"
+SAFETY_QUALITY_VERSION = "safety-reference-quality-v0.2.0"
 # The Evidence Store's version and SHA are read from the store itself, not passed here.
 
 
@@ -63,6 +63,7 @@ def play_monthly_command(
     target_month: YearMonth,
     emphasized_row_keys: tuple[str, ...] = (),
     class_name: str = "",
+    teacher_memo: str = "",
 ) -> GeneratePlayMonthlyPlanCommand:
     """The request facts from the caller; the Reference versions from this module."""
     return GeneratePlayMonthlyPlanCommand(
@@ -81,6 +82,7 @@ def play_monthly_command(
         drill_catalog_version=DRILL_CATALOG[1],
         emphasized_row_keys=emphasized_row_keys,
         class_name=class_name,
+        teacher_memo=teacher_memo,
     )
 
 

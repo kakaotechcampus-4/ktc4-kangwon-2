@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { fontClassName } from "@/lib/fonts";
 import MockProvider from "@/msw/MockProvider";
+import PostyDoodles from "@/components/app/PostyDoodles";
 import "./globals.css"; // styles/plan-generator-tokens.css 내용을 여기에 포함(또는 @import)
 
 export const metadata: Metadata = {
@@ -25,8 +26,40 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ko" className={fontClassName}>
+    <html lang="ko" className={fontClassName} suppressHydrationWarning>
+      <head>
+        {/* 1440 × 800 기준 비례 화면 — 폭 · 높이 중 모자란 쪽에 맞춰 줄이고(0.8 까지) 넓은 화면은 키우지 않는다. 첫 그림 전에 넣어야 화면이 한 번 튀지 않는다 — globals.css 참고. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){function f(){var w=window.innerWidth,h=window.innerHeight;document.documentElement.style.setProperty("--app-zoom",String(w>=1024?Math.max(0.8,Math.min(1,w/1440,h/800)):1))}f();addEventListener("resize",f)})();`,
+          }}
+        />
+        {/*
+         * 글꼴은 구글 폰트에서 받는다. 여기 `<link>` 로 받는 이유가 있다.
+         *
+         * globals.css 안에서 `@import` 로 받으면 브라우저가 이렇게 움직인다 —
+         * HTML 받기 → 우리 CSS 받기 → 그 안의 `@import` 를 보고 구글 CSS 받기.
+         * 세 번이 줄줄이 이어져, 마지막 글꼴 조각은 한참 뒤에야 내려온다.
+         * 그동안 글자는 기본 글꼴로 보이다가 뒤늦게 바뀐다 — 「폰트가 깨졌다」는
+         * 말은 대개 이 장면이다.
+         *
+         * `<link>` 로 올리면 HTML 을 읽는 즉시 우리 CSS 와 **나란히** 받는다.
+         * preconnect 두 줄은 그 전에 연결(TCP · TLS)을 미리 터 둔다 —
+         * 글꼴 파일은 fonts.gstatic.com 에서 오므로 두 곳 다 필요하다.
+         * gstatic 쪽은 다른 출처(CORS)라 crossOrigin 이 있어야 연결이 재사용된다.
+         */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        {/* 아래 규칙은 옛 pages/_document 기준이다. App Router 의 루트 layout 은
+            모든 화면이 함께 쓰는 head 라 한 페이지에만 실리지 않는다. */}
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Gaegu:wght@400;700&display=swap"
+        />
+      </head>
       <body className="font-body bg-cream text-ink antialiased [word-break:keep-all]">
+        <PostyDoodles />
         <MockProvider>{children}</MockProvider>
       </body>
     </html>
