@@ -301,6 +301,16 @@ export default function OnboardingLayout({
               {footer}
             </div>
           )}
+          {/* 주 버튼이 없는 화면(어린이집 찾기)도 768px 부터는 오른쪽 칸 아래 버튼 자리를 비워 둔다.
+              없으면 포스티 칸이 칠판 끝까지 늘어나 포스티가 다른 화면보다 아래에 선다. 휴대폰에는 그리지 않는다. */}
+          {!footer && stage && (
+            <div
+              aria-hidden="true"
+              className="hidden pt-3 md:col-start-2 md:row-start-2 md:block md:border-l md:border-shell md:bg-ivory md:px-7 md:pb-8"
+            >
+              <div className="h-14" />
+            </div>
+          )}
         </div>
       </div>
     </div>
