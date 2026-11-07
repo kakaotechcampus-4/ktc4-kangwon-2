@@ -365,7 +365,7 @@ test("자유놀이 패널은 종류별 후보와 선택 목록을 구분하고 �
     }),
   );
   const put = without.find((n) => n.props?.["aria-label"] === "이번 주 놀이에 넣기: 가게 놀이");
-  assert.equal(text(put), "+ 넣기");
+  assert.equal(text(put), "+");
   put.props.onClick();
   byLabel("1번 놀이 빼기").props.onClick();
   // 점선 빈칸의 「+」 — 빈 줄이 없으면 직접 쓸 칸을 더한다.
@@ -483,7 +483,7 @@ test("대·소집단활동 패널: 요일마다 한 줄, 넣은 후보는 숨기
       .filter((n) => n.type === "button")
       .map((n) => n.props["aria-label"]);
   const tree = render("t");
-  assert.match(text(tree), /1\/3일 채웠어요/);
+  assert.doesNotMatch(text(tree), /채웠어요/);
   // 요일 순서로 줄 — 넣은 「노래 놀이」와 실내놀이 후보는 아래 목록에 없다.
   assert.deepEqual(labels(tree), [
     "월요일 활동 고르기: [음률] 노래 놀이",

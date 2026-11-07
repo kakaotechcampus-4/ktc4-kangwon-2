@@ -6,8 +6,10 @@ import workspace from "@/components/workspace/Workspace.module.css";
 import PlayProjectPicking from "./PlayProjectPicking";
 import PlayProjectSheet from "./PlayProjectSheet";
 import { MemoMark } from "@/components/plan-ui/PlayPickBoard";
+import SeasonIcon from "./SeasonIcon";
 import PlayCellEditor from "./PlayCellEditor";
-import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
+import DraftSave from "@/components/plan-ui/DraftSave";
+import PlayMonthlyConfirm, { CONFIRM_TITLE, PickCellHint } from "./PlayMonthlyConfirm";
 import Link from "next/link";
 import AnnualFrame, {
   BACK_BUTTON,
@@ -158,8 +160,6 @@ function movedNotice(name: string, index: number) {
 type LeftTab = "edit" | "picked";
 // 문서 기준 폭(A4 세로 비율). 「맞춤」은 이 폭을 문서 칸 폭에 맞춰 키우거나 줄인다.
 const SHEET_WIDTH = 794;
-const SMALL =
-  "min-h-[36px] shrink-0 rounded-lg border border-[#ddd6ca] px-3 text-xs font-bold text-[#5e4b96] disabled:opacity-40";
 /** 끌어서 순서를 바꾸는 손잡이(점 여섯 개). */
 const GRIP = (
   <svg
@@ -506,11 +506,7 @@ export default function PlayProjectResult({
   // 칸 편집: 칸 칩 · 입력창 · 문서에서 빼기. 순서는 문서에서 끌어 옮긴다.
   function renderViewer() {
     if (!selectedCandidate || !selectedCell || !selectedField)
-      return (
-        <p className="m-0 text-[15px] text-[#5c5243]">
-          오른쪽 문서의 칸을 누르면 여기에서 고칠 수 있어요.
-        </p>
-      );
+      return <PickCellHint>문서에서 고칠 칸을 눌러 주세요.</PickCellHint>;
     return (
       <div className="flex flex-col gap-4">
         <h2 className="m-0 text-[20px] font-bold leading-tight">
@@ -535,10 +531,13 @@ export default function PlayProjectResult({
         <div className="flex gap-2 border-t border-[#efeae2] pt-4">
           <button
             type="button"
-            className={BUTTON.quiet}
+            className={BUTTON.drop}
             onClick={() => toggleCandidate(selectedCandidate.row_key)}
           >
-            문서에서 빼기
+            <span aria-hidden="true" className="text-[18px] leading-none">
+              −
+            </span>
+            이 놀이 빼기
           </button>
         </div>
       </div>
@@ -555,7 +554,6 @@ export default function PlayProjectResult({
         <>
           <label htmlFor={cellFieldId}>{field.label}</label>
           <textarea id={cellFieldId} readOnly value={cell.value} />
-          <p>배움은 누리과정 원문이라 고칠 수 없어요.</p>
         </>
       );
     const itemId = cell.item_id;
@@ -588,15 +586,13 @@ export default function PlayProjectResult({
           <h2
             id={pickedHeadingId}
             tabIndex={-1}
-            className="m-0 flex items-baseline justify-between text-[18px] font-bold leading-tight"
+            className="penMark m-0 flex items-center gap-2 font-display text-[24px] font-bold leading-tight text-ink"
           >
+            <SeasonIcon periodKey={period.period_key} />
             {seasonLabel} 놀이
-            <span className="text-[13px] font-normal text-ink-soft">
-              {periodPicks.length}/{MAX_PICKS} 골랐어요
-            </span>
           </h2>
           {pickedCandidates.length > 0 && (
-            <ol className="m-0 list-none divide-y divide-[#ece6dc] rounded-md border border-line bg-paper p-0">
+            <ol className="m-0 list-none divide-y-2 divide-[#e6dfd3] rounded-md border-2 border-[#cdbfe3] bg-[#fbf8fd] p-0">
               {pickedCandidates.map((candidate, index) => (
                 <li
                   key={candidate.row_key}
@@ -623,18 +619,16 @@ export default function PlayProjectResult({
                     <span className="truncate text-[15px] font-bold">
                       {candidate.play_name.value}
                     </span>
-                    <span className="truncate text-[13px] text-ink-soft">
-                      {candidate.materials.value}
-                    </span>
                   </button>
                   {candidate.memo_applied && <MemoMark />}
                   <button
                     type="button"
-                    className="min-h-[36px] shrink-0 rounded-md px-2.5 text-[13px] text-ink-soft hover:bg-[#f3efe8] hover:text-ink"
+                    className={BUTTON.remove}
                     aria-label={`${candidate.play_name.value} 빼기`}
+                    title="빼기"
                     onClick={() => toggleCandidate(candidate.row_key)}
                   >
-                    빼기
+                    −
                   </button>
                 </li>
               ))}
@@ -647,17 +641,12 @@ export default function PlayProjectResult({
             {...DROP_HOVER}
             onDrop={(event) => dropToRest(takeDrop(event))}
           >
-            <h3 className="m-0 text-[15px] font-bold text-ink">다른 후보 {rest.length}개</h3>
-            <p className="m-0 mb-1 text-[13px] text-ink-soft">
-              {full
-                ? "위 놀이나 문서 줄에 끌어 놓으면 그 놀이와 바뀌어요."
-                : "넣으면 고른 놀이 맨 아래에 붙어요. 끌어 놓으면 그 자리에 들어가요."}
-            </p>
+            <h3 className="m-0 text-[15px] font-bold text-ink">다른 후보</h3>
             <ul className="m-0 flex list-none flex-col gap-2 p-0">
               {rest.map((candidate) => (
                 <li
                   key={candidate.row_key}
-                  className="flex cursor-grab items-center gap-2.5 rounded-md border border-line bg-[#faf8f4] py-2.5 pl-2 pr-3 hover:bg-[#f5f1e9]"
+                  className="flex cursor-grab items-center gap-2.5 rounded-md border-2 border-[#e3dccf] bg-paper py-2.5 pl-2 pr-3 hover:border-[#c9bfae] hover:bg-[#fbf9f5]"
                   draggable
                   onDragStart={(event) =>
                     event.dataTransfer.setData("text/plain", candidate.row_key)
@@ -668,19 +657,17 @@ export default function PlayProjectResult({
                     <span className="truncate text-[15px] font-bold">
                       {candidate.play_name.value}
                     </span>
-                    <span className="truncate text-[13px] text-ink-soft">
-                      {candidate.materials.value}
-                    </span>
                   </span>
                   {candidate.memo_applied && <MemoMark />}
                   <button
                     type="button"
-                    className={SMALL}
+                    className={BUTTON.add}
                     aria-label={`${candidate.play_name.value} 넣기`}
+                    title="넣기"
                     disabled={full}
                     onClick={() => toggleCandidate(candidate.row_key)}
                   >
-                    + 넣기
+                    +
                   </button>
                 </li>
               ))}
@@ -756,9 +743,10 @@ export default function PlayProjectResult({
           role="tab"
           aria-selected={activePeriod === index}
           aria-controls={panelId}
-          className={`${pageClass(activePeriod === index)} inline-flex items-center gap-1.5 ${lacking.includes(item.period_key) ? "text-[#b3261e]" : ""}`}
+          className={`${pageClass(activePeriod === index)} inline-flex items-center gap-1 ${lacking.includes(item.period_key) ? "text-[#b3261e]" : ""}`}
           onClick={() => goToPeriod(index)}
         >
+          <SeasonIcon periodKey={item.period_key} />
           {/* 문서 위 도구줄에 들어가 좁다 — 계절 이름이 있으면 달은 마우스를 올리면 보인다. */}
           {playSeason(item).name ? (
             <span title={playSeason(item).months}>{playSeason(item).name}</span>
@@ -791,10 +779,10 @@ export default function PlayProjectResult({
             >
               {BACK_ICON}
             </Link>
-            <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+            <h1 className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
               놀이 고르기
             </h1>
-            <span className="rounded-full bg-[#eee4f4] px-3 py-1 text-[13px] font-bold text-[#5e4b96]">
+            <span className="-rotate-2 border border-black/10 bg-[#eee4f4] px-3 py-0.5 font-display text-[18px] font-bold text-[#5e4b96] shadow-pg-card">
               놀이 중심형
             </span>
             <span role="status" className="text-[13px] text-ink-soft">
@@ -825,7 +813,7 @@ export default function PlayProjectResult({
       <div
         role="tablist"
         aria-label="왼쪽 패널"
-        className="flex gap-5 border-b border-[#efeae2] px-6 pt-2"
+        className="flex gap-1 border-b border-line px-6 pt-3"
         onKeyDown={onLeftTabKey}
       >
         {(["picked", "edit"] as const).map((tab) => (
@@ -844,7 +832,7 @@ export default function PlayProjectResult({
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+      <div className="relative min-h-0 flex-1 overflow-y-auto px-6 py-5">
         <div
           role="tabpanel"
           id={leftPanelId("picked")}
@@ -861,7 +849,7 @@ export default function PlayProjectResult({
         >
           {renderViewer()}
         </div>
-        <p role="status" className="m-0 mt-3 text-[13px] text-[#5c5243]">
+        <p role="status" className="sr-only">
           {moveNotice}
         </p>
       </div>
@@ -906,6 +894,7 @@ export default function PlayProjectResult({
       }
       actions={
         <>
+          <DraftSave disabled={confirming} save={async () => (await saving.whenIdle()).saved} />
           <div className="relative">
             <button
               type="button"
@@ -944,10 +933,7 @@ export default function PlayProjectResult({
             {asking && (
               <div className={POPOVER}>
                 <PlayMonthlyConfirm
-                  title="연간계획안을 확정할까요?"
-                  message={
-                    "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요.\n이 내용으로 월간계획안을 만들게 돼요."
-                  }
+                  title={CONFIRM_TITLE}
                   yes={confirming ? "확정하는 중…" : "확정하기"}
                   no="더 다듬기"
                   disabled={confirming}

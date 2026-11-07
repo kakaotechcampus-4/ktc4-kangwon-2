@@ -10,7 +10,13 @@
 
 import type { WeeklyActivityCandidate, WeeklyCell, WeeklyPlan } from "@/lib/api/types";
 import { DAY_NAMES } from "@/lib/weekly/section-labels";
-import { DROP, GRIP, SMALL, dropTo } from "@/components/plan-generator/PlayMonthlySafetyPanel";
+import {
+  DROP,
+  GRIP,
+  REMOVE,
+  SMALL,
+  dropTo,
+} from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import { WEEKLY_ACTIVITY_DRAG } from "./WeeklySheet";
 
 /** 칸 글이 이 후보를 넣은 글인가 — 2026-11-06 전에는 「[종류] - 이름」이었다. */
@@ -62,17 +68,12 @@ export default function WeeklyGroupActivityPanel({
     onPut(cellId, id);
     if (next) onSelect(next.item_id);
   };
-  const filled = cells.filter((c) => shown(c).trim()).length;
   const here = current ? label(current) : "";
   return (
     <section aria-label="대·소집단활동" className="flex flex-col gap-5">
       <section className="flex flex-col gap-2">
-        <h2 className="m-0 flex items-baseline justify-between text-[18px] font-bold leading-tight">
+        <h2 className="penMark m-0 font-display text-[24px] font-bold leading-tight text-ink">
           대·소집단활동
-          <span className="text-[13px] font-normal text-ink-soft">
-            {filled}/{cells.length}
-            {cells.length === days.length ? "일" : "칸"} 채웠어요
-          </span>
         </h2>
         <ol
           aria-label="넣은 활동"
@@ -137,9 +138,10 @@ export default function WeeklyGroupActivityPanel({
                     aria-label={`${label(cell)}요일에서 빼기: ${text}`}
                     disabled={disabled}
                     onClick={() => onClear(cell.item_id)}
-                    className="min-h-[36px] shrink-0 rounded-md px-2.5 text-[13px] text-ink-soft hover:bg-[#f3efe8] hover:text-ink disabled:opacity-40"
+                    title="빼기"
+                    className={REMOVE}
                   >
-                    빼기
+                    −
                   </button>
                 )}
               </li>
@@ -148,19 +150,7 @@ export default function WeeklyGroupActivityPanel({
         </ol>
       </section>
       <section className="flex flex-col gap-1">
-        <h3 className="m-0 flex items-center justify-between gap-2 text-[15px] font-bold text-ink">
-          {here}요일 활동 후보
-          {current && !shown(current).trim() && (
-            <span className="shrink-0 rounded-full bg-peach-tint px-2.5 py-0.5 font-body text-[12px] font-semibold text-peach-ink">
-              아직 비어 있어요
-            </span>
-          )}
-        </h3>
-        <p className="m-0 mb-1 text-[13px] text-ink-soft">
-          {rest.length === 0
-            ? "후보를 다 넣었어요. 위 요일의 [빼기]로 되돌릴 수 있어요."
-            : `${next ? "넣으면 다음 요일로 넘어가요. " : ""}끌어서 위 요일이나 문서 칸에 놓아도 돼요.`}
-        </p>
+        <h3 className="m-0 text-[15px] font-bold text-ink">{here}요일 활동 후보</h3>
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {rest.map((c) => {
             const id = c.cell.item_id;
@@ -192,7 +182,7 @@ export default function WeeklyGroupActivityPanel({
                   disabled={disabled || !ok}
                   onClick={() => put(id)}
                 >
-                  + 넣기
+                  +
                 </button>
               </li>
             );

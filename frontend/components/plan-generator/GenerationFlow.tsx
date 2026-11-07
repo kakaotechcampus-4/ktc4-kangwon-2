@@ -438,7 +438,7 @@ export default function GenerationFlow({
                       {/* 연간을 확정해야 월간을 만들 수 있다 (§9-1 Gate). 확정한 그 자리에서
                           다음 걸음을 준다 — 사이드바로 돌아가 찾게 하지 않는다. */}
                       <Link className={styles.secondary} href="/plans/monthly">
-                        월간계획안 만들기 →
+                        월간계획안 만들기
                       </Link>
                     </>
                   ) : null}
@@ -567,7 +567,7 @@ export default function GenerationFlow({
               <p className={styles.disclaimer}>
                 {contents[active]?.notes.join(" ") ||
                   "우리 반의 상황과 안전을 검토한 후 사용해주세요."}{" "}
-                <Link href="/documents">문서 보관함으로 →</Link>
+                <Link href="/documents">문서 보관함으로</Link>
               </p>
               <p className={styles.notice} role="status">
                 {notice}

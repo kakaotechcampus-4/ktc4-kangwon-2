@@ -25,7 +25,7 @@ import {
 } from "@/lib/plan-generator/playMonthlyTimetable";
 import type { PlaySection } from "@/lib/plan-generator/playMonthlyQueue";
 import { dropCells, liftCells, settle } from "./rowDrag";
-import { SAFETY_DRAG, safetyTopic } from "./PlayMonthlySafetyPanel";
+import { DRILL_DRAG, DROP, SAFETY_DRAG, dropTo, safetyTopic } from "./PlayMonthlySafetyPanel";
 
 /**
  * 월간 문서 용지 — 디자인 넘김 `monthly-docs.tsx`(내보내기 양식 모양)의 선 · 머리 색 · 주 색.
@@ -53,15 +53,18 @@ export const Cell = ({
   onSelect,
   hint = "+ 채우기",
   strong = false,
+  tag,
 }: Pick & {
   id: string;
   value: string;
   hint?: string;
   /** 「[화재대피] …」의 [..] 를 건강 · 영양 머리처럼 굵게. */
   strong?: boolean;
+  /** 「[건강] 문장」 — 머리까지 칸 안에 넣어 칸 전체가 눌린다. 한글 양식처럼 가운데. */
+  tag?: string;
 }) => (
   <span
-    className={`${!value.trim() && onSelect ? "flex items-center justify-center" : "block"} min-h-[1.5em] whitespace-pre-line px-[7px] py-[2px] ${onSelect ? "cursor-pointer hover:bg-[#faf7fd]" : ""} ${selected === id ? SELECTED : ""}`}
+    className={`${tag ? "flex h-full items-start justify-center text-center" : !value.trim() && onSelect ? "flex items-center justify-center" : "block"} min-h-[1.5em] whitespace-pre-line px-[7px] py-[2px] ${onSelect ? "cursor-pointer hover:bg-[#faf7fd]" : ""} ${selected === id ? SELECTED : ""}`}
     data-cell={id}
     {...(onSelect && {
       role: "button",
@@ -76,6 +79,7 @@ export const Cell = ({
       },
     })}
   >
+    {tag && <b className="shrink-0 pr-1">[{tag}]</b>}
     {value.trim() || !onSelect ? (
       strong ? (
         value.split(/(\[[^\]\n]*\])/).map((part, n) => (n % 2 ? <b key={n}>{part}</b> : part))
@@ -289,14 +293,6 @@ const Rows = ({
   </>
 );
 
-/** 「[건강] 문장」 — 한글 양식처럼 가운데. */
-const Tagged = ({ tag, children }: { tag: string; children: ReactNode }) => (
-  <div className="flex items-start justify-center text-center">
-    <b className="shrink-0 py-1 pl-1.5">[{tag}]</b>
-    <span className="min-w-0">{children}</span>
-  </div>
-);
-
 /**
  * 주마다 한 칸인 줄(안전교육 · 기본생활습관)의 칸 하나. `onMove` 가 있으면 넣은 칸 왼쪽 위 손잡이로 끌어
  * 같은 줄의 다른 주 칸에 놓는다(놀이 중심형 연간 줄 끌기와 같은 모양). 끄는 글은 안전교육이면 주 id, 습관이면
@@ -380,12 +376,15 @@ export default function PlayMonthlySheet({
   onSize,
   onMoveSafety,
   onPlaceSafety,
+  onDropDrill,
   onMoveHabit,
   onMoveRow,
 }: {
   plan: PlayMonthlyPlan;
   /** 「AI 후보」의 안전교육 후보 카드를 문서의 주 칸에 끌어 놓았다 — `onMoveSafety` 가 있을 때만 받는다. */
   onPlaceSafety?: (weekId: string, candidateItemId: string) => void;
+  /** 「AI 후보」 훈련 카드를 소방대피/재난대비 칸에 끌어 놓았다. 없으면(확정 · 저장 중) 받지 않는다. */
+  onDropDrill?: (candidateItemId: string) => void;
   /** 기본생활습관 칸을 다른 주로 끌어 옮긴다(두 주를 맞바꾼다) — 다듬는 동안만. */
   onMoveHabit?: (fromWeekId: string, toWeekId: string) => void;
   /** 함께 하는 활동 · 자유놀이 행을 같은 목록 안에서 끌어 옮긴다 — 다듬는 동안만. */
@@ -582,7 +581,11 @@ export default function PlayMonthlySheet({
             <th scope="row" className={`${LINE} ${HEAD} h-6`}>
               소방대피/재난대비
             </th>
-            <td colSpan={weeks.length} className={`${LINE} p-0`}>
+            <td
+              colSpan={weeks.length}
+              className={`${LINE} p-0 transition-colors ${DROP}`}
+              {...(onDropDrill && dropTo(onDropDrill, DRILL_DRAG))}
+            >
               {drill && <Cell {...at} id={drill.item_id} value={drill.value} strong />}
             </td>
           </tr>
@@ -590,15 +593,21 @@ export default function PlayMonthlySheet({
             <th scope="row" className={`${LINE} ${HEAD} h-7`}>
               건강·영양교육
             </th>
-            <td colSpan={Math.ceil(weeks.length / 2)} className={`${LINE} p-0`}>
-              <Tagged tag="건강">
-                <Cell {...at} id={plan.health.cell.item_id} value={plan.health.cell.value} />
-              </Tagged>
+            <td colSpan={Math.ceil(weeks.length / 2)} className={`${LINE} h-px p-0`}>
+              <Cell
+                {...at}
+                tag="건강"
+                id={plan.health.cell.item_id}
+                value={plan.health.cell.value}
+              />
             </td>
-            <td colSpan={Math.floor(weeks.length / 2)} className={`${LINE} p-0`}>
-              <Tagged tag="영양">
-                <Cell {...at} id={plan.nutrition.cell.item_id} value={plan.nutrition.cell.value} />
-              </Tagged>
+            <td colSpan={Math.floor(weeks.length / 2)} className={`${LINE} h-px p-0`}>
+              <Cell
+                {...at}
+                tag="영양"
+                id={plan.nutrition.cell.item_id}
+                value={plan.nutrition.cell.value}
+              />
             </td>
           </tr>
         </tbody>
