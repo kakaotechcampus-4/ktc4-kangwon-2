@@ -2085,3 +2085,31 @@ test("관찰일지 편집기에는 반 운영 특이사항 칸이 없다", async
   await tick();
   assert.equal(editorHarness(selection).textarea("반 운영 특이사항"), undefined);
 });
+
+test("AI 검토 결과는 한 문장에 한 줄, 어긋난 기록 원문을 같이 보여 준다 (ADR-069)", () => {
+  const lines = documents.verifyLines({
+    judged: true,
+    issues: [
+      {
+        heading: "해석",
+        sentence: "아이가 퍼즐만 했다.",
+        code: "CONTRADICTS_SOURCE",
+        sourceText: "아이가 블록을 쌓았다.",
+        reason: "근거 기록과 다른 내용이 있어요.",
+        fix: "기록에 적힌 대로 고쳐 주세요.",
+      },
+      {
+        heading: "해석",
+        sentence: "아이가 퍼즐만 했다.",
+        code: "DIAGNOSIS",
+        sourceText: null,
+        reason: "단정하는 표현이 있어요.",
+        fix: "이 장면만 적어 주세요.",
+      },
+    ],
+  });
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^\[해석\] 「아이가 퍼즐만 했다\.」 — /);
+  assert.match(lines[0], /기록에는 「아이가 블록을 쌓았다\.」로 적혀 있어요\./);
+  assert.match(lines[0], / \/ 단정하는 표현이 있어요\./);
+});
