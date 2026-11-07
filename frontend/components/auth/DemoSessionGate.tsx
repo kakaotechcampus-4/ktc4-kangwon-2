@@ -13,7 +13,7 @@ export default function DemoSessionGate({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   useEffect(() => {
     const check = () => {
-      const destination = accessRedirect();
+      const destination = accessRedirect(pathname);
       setReady(!destination);
       if (destination) router.replace(destination);
     };

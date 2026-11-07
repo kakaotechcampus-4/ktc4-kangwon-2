@@ -4,7 +4,6 @@ import { useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import OnboardingLayout from "./OnboardingLayout";
 import DoneScreen from "./DoneScreen";
-import ReviewCenterEdit, { type CenterField } from "./ReviewCenterEdit";
 import ReviewClassEdit from "./ReviewClassEdit";
 import { Chevron, CtaButton, ErrorLine, LoadingLine, Question } from "./FlowParts";
 import { useOnboardingData } from "./useOnboardingData";
@@ -17,8 +16,7 @@ import { ageSelectionLabel, selectedAgesFor, type ClassroomEntry } from "@/lib/o
 
 const WELCOME_KEY = "saessak.welcome";
 
-type View =
-  { kind: "list" } | { kind: "center"; field: CenterField } | { kind: "class"; id: string };
+type View = { kind: "list" } | { kind: "class"; id: string };
 
 /** /onboarding/review — 마지막 확인. 원 정보와 반을 한눈에 보고, 누르면 그 칸만 고친다. */
 export default function ReviewFlow() {
@@ -30,12 +28,6 @@ export default function ReviewFlow() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const saving = useRef(false);
-
-  function saveSettings(next: typeof settings) {
-    const ok = commit(next);
-    if (ok) setView({ kind: "list" });
-    return ok;
-  }
 
   function saveClass(next: ClassroomEntry) {
     const classes = settings.classes.map((c) => (c.id === next.id ? next : c));
@@ -82,19 +74,6 @@ export default function ReviewFlow() {
       />
     );
 
-  if (view.kind === "center")
-    return (
-      <>
-        <Notice onDone={() => setNotice("")}>{notice}</Notice>
-        <ReviewCenterEdit
-          field={view.field}
-          settings={settings}
-          onSaved={saveSettings}
-          onCancel={() => setView({ kind: "list" })}
-        />
-      </>
-    );
-
   const editing =
     view.kind === "class" ? settings.classes.find((c) => c.id === view.id) : undefined;
   if (editing)
@@ -131,27 +110,16 @@ export default function ReviewFlow() {
       </div>
       <Question
         title={"입력한 정보를\n확인해주세요"}
-        hint="고칠 곳을 누르면 그 칸만 바로 고칠 수 있어요."
+        hint="반은 누르면 그 칸만 바로 고칠 수 있어요. 원 정보는 바꿀 수 없어요."
       />
 
       <section aria-label="원 정보" className="mb-6">
         <SectionTitle>원 정보</SectionTitle>
         <div className="divide-y divide-shell overflow-hidden squircle [--r:16px] border border-line">
-          <Row
-            label="원 이름"
-            value={settings.orgName}
-            onClick={() => setView({ kind: "center", field: "org" })}
-          />
-          <Row
-            label="원장"
-            value={settings.directorName}
-            onClick={() => setView({ kind: "center", field: "director" })}
-          />
-          <Row
-            label="지역"
-            value={region}
-            onClick={() => setView({ kind: "center", field: "region" })}
-          />
+          {/* 원 정보는 고치지 않는다 — 같은 원 선생님 모두의 정보다(ADR-068). 누를 수 없는 줄이다. */}
+          <Row label="원 이름" value={settings.orgName} />
+          <Row label="원장" value={settings.directorName} />
+          <Row label="지역" value={region} />
         </div>
       </section>
 
@@ -201,15 +169,14 @@ const rowClass =
 /** 반 카드 안의 칸 이름 — 칠판에 손으로 적은 글씨. */
 const dtClass = "font-display text-[23px] font-bold leading-tight text-ink";
 
-function Row({ label, value, onClick }: { label: string; value: string; onClick: () => void }) {
+function Row({ label, value }: { label: string; value: string }) {
   return (
-    <button type="button" onClick={onClick} aria-label={`${label} 고치기`} className={rowClass}>
+    <div className="flex min-h-14 w-full items-center gap-3 bg-paper py-3 pl-[18px] pr-4 text-left text-ink">
       <span className="w-[112px] flex-none font-display text-[24px] font-bold leading-tight text-ink">
         {label}
       </span>
       <span className="flex-1 text-[18px] font-semibold">{value || "-"}</span>
-      <Chevron />
-    </button>
+    </div>
   );
 }
 

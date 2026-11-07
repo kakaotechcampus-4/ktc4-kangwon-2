@@ -55,6 +55,8 @@ export interface ClassSettings {
   directorName: string;
   regionProvince: string;
   regionDistrict: string;
+  /** 정부 어린이집 목록에서 고른 원의 열쇠(ADR-068). 직접 적은 원 · 옛 원은 비어 있다. */
+  registryKey?: string;
   classes: ClassroomEntry[];
   characterEducationEnabled: boolean;
   characterMessages: CharacterMessages;

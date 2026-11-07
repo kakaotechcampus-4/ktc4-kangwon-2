@@ -217,7 +217,7 @@ export default function EvaluationAuto({
       <div>
         <h2 className={styles.sectionTitle}>확정 문서로 확인하는 평가항목</h2>
         <p className={ws.hint}>
-          쌤플에서 확정했거나 올린 문서를 세어 봐요. 세어 준 것이지 충족을 확인해 준 것이 아니에요.
+          쌤플에서 확정했거나 올린 문서를 세어 봐요. 충족했는지는 선생님께서 한 번 더 확인해 주세요.
         </p>
       </div>
       {items.map((item) => (

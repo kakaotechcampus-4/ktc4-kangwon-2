@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/app/icons";
+import { Posty } from "@/components/app/Posty";
 import { DOCUMENT_KINDS, localDate, today, type DocumentKind } from "@/lib/workspace/model";
 import {
   ARCHIVE_STATUS_LABEL,
@@ -39,7 +40,6 @@ import {
   MonthlyCover,
   ObservationArt,
   OverviewArt,
-  SidebarDecor,
   StartArt,
   WeeklyCover,
 } from "./DocumentArchiveArt";
@@ -449,39 +449,44 @@ export default function DocumentArchiveView({
           sort={sortButton}
         >
           {items.map((p, i) => (
-            <button
-              type="button"
-              key={p.id}
-              className={styles.docCard}
-              aria-pressed={shownPlan?.kind === "annual" && shownPlan.id === p.id}
-              onClick={() =>
-                openPlan({
-                  kind: "annual",
-                  id: p.id,
-                  classId: p.class_id,
-                  className: classroom?.className ?? "",
-                  title: `${p.school_year}학년도 연간계획안`,
-                  period: `${p.school_year}학년도`,
-                  periodKey: String(p.school_year),
-                  createdAt: p.created_at,
-                  href: `/plans/annual/${p.id}`,
-                })
-              }
-            >
-              <div className={styles.cover} data-type="annual">
-                <b>{p.school_year}학년도</b>
-                <small>
-                  {classroom?.className}
-                  {p.format === "PLAY_PROJECT" ? " · 놀이 프로젝트형" : ""}
-                </small>
-                <AnnualCover index={i} className={styles.coverArt} />
-              </div>
-              <div className={styles.docTitle}>{p.school_year}학년도 연간계획안</div>
-              <div className={styles.docFoot}>
-                <span>{localDate(p.created_at)}</span>
-                <StatusBadge state={planStatus(p.status)} />
-              </div>
-            </button>
+            <div key={p.id} className={styles.docSlot}>
+              <button
+                type="button"
+                className={styles.docCard}
+                aria-pressed={shownPlan?.kind === "annual" && shownPlan.id === p.id}
+                onClick={() =>
+                  openPlan({
+                    kind: "annual",
+                    id: p.id,
+                    classId: p.class_id,
+                    className: classroom?.className ?? "",
+                    title: `${p.school_year}학년도 연간계획안`,
+                    period: `${p.school_year}학년도`,
+                    periodKey: String(p.school_year),
+                    createdAt: p.created_at,
+                    href: annualHref(p),
+                  })
+                }
+              >
+                <div className={styles.cover} data-type="annual">
+                  <b>{p.school_year}학년도</b>
+                  <small>
+                    {classroom?.className}
+                    {p.format === "PLAY_PROJECT" ? " · 놀이 프로젝트형" : ""}
+                  </small>
+                  <AnnualCover index={i} className={styles.coverArt} />
+                </div>
+                <div className={styles.docTitle}>{p.school_year}학년도 연간계획안</div>
+                <div className={styles.docFoot}>
+                  <span>{localDate(p.created_at)}</span>
+                  <StatusBadge state={planStatus(p.status)} />
+                </div>
+              </button>
+              {/* 미리보기를 거치지 않고 바로 연다 — 미리보기 맨 아래 단추는 있는 줄 모를 수 있다(멘토 11-05). */}
+              <Link className={styles.cardOpen} href={annualHref(p)}>
+                문서 열기 →
+              </Link>
+            </div>
           ))}
         </PlanGrid>
       </>
@@ -546,42 +551,45 @@ export default function DocumentArchiveView({
           sort={sortButton}
         >
           {items.map((p) => (
-            <button
-              type="button"
-              key={p.id}
-              className={styles.docCard}
-              aria-pressed={shownPlan?.kind === "monthly" && shownPlan.id === p.id}
-              onClick={() =>
-                openPlan({
-                  kind: "monthly",
-                  id: p.id,
-                  classId: p.class_id,
-                  className: classroom?.className ?? "",
-                  title: `${p.month}월 월간계획안`,
-                  period: p.target_month,
-                  periodKey: p.target_month,
-                  createdAt: p.created_at,
-                  href: p.play
-                    ? `/plans/monthly/play/${p.id}`
-                    : `/plans/monthly?plan_id=${p.id}&class_id=${p.class_id}&month=${p.month}`,
-                  play: p.play,
-                })
-              }
-            >
-              <div className={styles.cover} data-type="monthly">
-                <b>{monthLabel(p.target_month)}</b>
-                <small>
-                  {classroom?.className}
-                  {p.play ? " · 놀이 중심형" : ""}
-                </small>
-                <MonthlyCover month={p.month} className={styles.coverArt} />
-              </div>
-              <div className={styles.docTitle}>{p.month}월 월간계획안</div>
-              <div className={styles.docFoot}>
-                <span>{localDate(p.created_at)}</span>
-                <StatusBadge state={planStatus(p.status)} />
-              </div>
-            </button>
+            <div key={p.id} className={styles.docSlot}>
+              <button
+                type="button"
+                className={styles.docCard}
+                aria-pressed={shownPlan?.kind === "monthly" && shownPlan.id === p.id}
+                onClick={() =>
+                  openPlan({
+                    kind: "monthly",
+                    id: p.id,
+                    classId: p.class_id,
+                    className: classroom?.className ?? "",
+                    title: `${p.month}월 월간계획안`,
+                    period: p.target_month,
+                    periodKey: p.target_month,
+                    createdAt: p.created_at,
+                    href: monthlyHref(p),
+                    play: p.play,
+                  })
+                }
+              >
+                <div className={styles.cover} data-type="monthly">
+                  <b>{monthLabel(p.target_month)}</b>
+                  <small>
+                    {classroom?.className}
+                    {p.play ? " · 놀이 중심형" : ""}
+                  </small>
+                  <MonthlyCover month={p.month} className={styles.coverArt} />
+                </div>
+                <div className={styles.docTitle}>{p.month}월 월간계획안</div>
+                <div className={styles.docFoot}>
+                  <span>{localDate(p.created_at)}</span>
+                  <StatusBadge state={planStatus(p.status)} />
+                </div>
+              </button>
+              {/* 미리보기를 거치지 않고 바로 연다 — 미리보기 맨 아래 단추는 있는 줄 모를 수 있다(멘토 11-05). */}
+              <Link className={styles.cardOpen} href={monthlyHref(p)}>
+                문서 열기 →
+              </Link>
+            </div>
           ))}
         </PlanGrid>
       </>
@@ -622,37 +630,42 @@ export default function DocumentArchiveView({
           sort={sortButton}
         >
           {items.map((p, i) => (
-            <button
-              type="button"
-              key={p.id}
-              className={styles.docCard}
-              aria-pressed={shownPlan?.kind === "weekly" && shownPlan.id === p.id}
-              onClick={() =>
-                openPlan({
-                  kind: "weekly",
-                  id: p.id,
-                  classId: p.class_id,
-                  className: classroom?.className ?? "",
-                  title: `${weekIdLabel(p.week_id)} 주간계획안`,
-                  period: p.week_id,
-                  periodKey: month,
-                  createdAt: p.created_at,
-                  href: `/plans/weekly?plan_id=${p.id}&class_id=${p.class_id}&week_id=${p.week_id}`,
-                })
-              }
-            >
-              <div className={styles.cover} data-type="weekly">
-                {/* 주차는 서버가 준 week_id 를 읽기만 한다 — 화면이 세지 않는다. */}
-                <b>{weekIdLabel(p.week_id)}</b>
-                <small>{classroom?.className}</small>
-                <WeeklyCover index={i} className={styles.coverArt} />
-              </div>
-              <div className={styles.docTitle}>{weekIdLabel(p.week_id)} 주간계획안</div>
-              <div className={styles.docFoot}>
-                <span>{localDate(p.created_at)}</span>
-                <StatusBadge state={planStatus(p.status)} />
-              </div>
-            </button>
+            <div key={p.id} className={styles.docSlot}>
+              <button
+                type="button"
+                className={styles.docCard}
+                aria-pressed={shownPlan?.kind === "weekly" && shownPlan.id === p.id}
+                onClick={() =>
+                  openPlan({
+                    kind: "weekly",
+                    id: p.id,
+                    classId: p.class_id,
+                    className: classroom?.className ?? "",
+                    title: `${weekIdLabel(p.week_id)} 주간계획안`,
+                    period: p.week_id,
+                    periodKey: month,
+                    createdAt: p.created_at,
+                    href: weeklyHref(p),
+                  })
+                }
+              >
+                <div className={styles.cover} data-type="weekly">
+                  {/* 주차는 서버가 준 week_id 를 읽기만 한다 — 화면이 세지 않는다. */}
+                  <b>{weekIdLabel(p.week_id)}</b>
+                  <small>{classroom?.className}</small>
+                  <WeeklyCover index={i} className={styles.coverArt} />
+                </div>
+                <div className={styles.docTitle}>{weekIdLabel(p.week_id)} 주간계획안</div>
+                <div className={styles.docFoot}>
+                  <span>{localDate(p.created_at)}</span>
+                  <StatusBadge state={planStatus(p.status)} />
+                </div>
+              </button>
+              {/* 미리보기를 거치지 않고 바로 연다 — 미리보기 맨 아래 단추는 있는 줄 모를 수 있다(멘토 11-05). */}
+              <Link className={styles.cardOpen} href={weeklyHref(p)}>
+                문서 열기 →
+              </Link>
+            </div>
           ))}
         </PlanGrid>
       </>
@@ -868,7 +881,7 @@ export default function DocumentArchiveView({
   /** 문서 종류 다섯 칸. 상세 화면에서는 그리지 않는다. */
   function typeGrid() {
     return (
-      <div className={styles.typeGrid}>
+      <div className={styles.typeGrid} data-tour="archive-types">
         {TYPES.map((t) => (
           <button
             type="button"
@@ -1152,6 +1165,22 @@ function Legend() {
   );
 }
 
+/** 계획안 편집 화면 주소 — 카드의 「문서 열기」와 미리보기가 같이 쓴다. */
+const annualHref = (p: { id: number }) => `/plans/annual/${p.id}`;
+const monthlyHref = (p: { id: number; class_id: number; month: number; play?: boolean }) =>
+  p.play
+    ? `/plans/monthly/play/${p.id}`
+    : `/plans/monthly?plan_id=${p.id}&class_id=${p.class_id}&month=${p.month}`;
+const weeklyHref = (p: { id: number; class_id: number; week_id: string }) =>
+  `/plans/weekly?plan_id=${p.id}&class_id=${p.class_id}&week_id=${p.week_id}`;
+
+/** 내 반 쪽지 둘째 줄 — 「만 5세 · 아이 6명」. 아이 이름은 브라우저에 없어 수만 센다(ADR-013). */
+function classLine(c: ClassroomEntry) {
+  const kids = c.children.length || c.childIds?.length || 0;
+  // 반 이름 바로 아래라 「만 5세반」의 「반」은 겹친다 — 「만 5세」로(시안).
+  return `${ageSelectionLabel(selectedAgesFor(c)).replace(/세반$/, "세")} · 아이 ${kids}명`;
+}
+
 /** 문서 보관함 안쪽 반 선택. **전역 사이드바(AppSidebar)를 대신하지 않는다.** */
 function ClassRail({
   classes,
@@ -1174,7 +1203,7 @@ function ClassRail({
 }) {
   const waiting = received.filter((r) => r.status === "PENDING").length;
   return (
-    <aside className={styles.classRail} aria-label="반 선택">
+    <aside className={styles.classRail} aria-label="반 선택" data-tour="archive-rail">
       <div className={styles.railHead}>우리 반</div>
       {classes.length ? (
         <div className={styles.classList}>
@@ -1183,18 +1212,25 @@ function ClassRail({
               type="button"
               key={c.id}
               className={styles.classCard}
+              data-tone="own"
               aria-pressed={c.id === classId}
+              // 버튼 이름은 반 이름만 — 둘째 줄은 설명으로 읽힌다(이름이 「햇살반만 4세…」가 되지 않게).
+              aria-describedby={`rail-line-${c.id}`}
               onClick={() => onPick(c.id)}
             >
-              <Icon name="users" />
-              <span className={styles.grow}>{c.className || "이름 없는 반"}</span>
-              <Icon name="chevron" />
+              <span className={styles.grow}>
+                <span>{c.className || "이름 없는 반"}</span>
+                <small id={`rail-line-${c.id}`} aria-hidden="true" className={styles.railTeacher}>
+                  {classLine(c)}
+                </small>
+              </span>
             </button>
           ))}
           {received.length > 0 && (
             <button
               type="button"
               className={styles.classCard}
+              data-tone="received"
               aria-pressed={foreign === "received"}
               onClick={() => onPickForeign("received")}
             >
@@ -1204,7 +1240,6 @@ function ClassRail({
                   {waiting}
                 </span>
               )}
-              <Icon name="bell" />
             </button>
           )}
         </div>
@@ -1213,10 +1248,7 @@ function ClassRail({
       )}
       {others.length > 0 && (
         <>
-          <div className={styles.railHead}>
-            <Icon name="lock" />
-            같은 원 반
-          </div>
+          <div className={styles.railHead}>같은 원 반</div>
           <p className={styles.railNote}>담임 선생님이 승인하면 문서를 볼 수 있어요.</p>
           <div className={styles.classList}>
             {others.map((c) => {
@@ -1226,10 +1258,18 @@ function ClassRail({
                   type="button"
                   key={c.id}
                   className={styles.classCard}
+                  data-state={state}
                   aria-pressed={foreign === c.id}
                   onClick={() => onPickForeign(c.id)}
                 >
-                  <span className={styles.grow}>{c.name}</span>
+                  {/* 같은 원 다른 반은 담임 이름을 붙여 누구 반인지 보인다(ADR-068).
+                      둘째 줄에 두어 상태 배지가 길어도 이름이 잘리지 않는다. */}
+                  <span className={styles.grow}>
+                    {c.name}
+                    {c.teacher_name && (
+                      <small className={styles.railTeacher}>담임 {c.teacher_name}</small>
+                    )}
+                  </span>
                   <span className={styles.railBadge} data-state={state}>
                     {ACCESS_LABEL[state]}
                   </span>
@@ -1239,7 +1279,10 @@ function ClassRail({
           </div>
         </>
       )}
-      <SidebarDecor className={styles.decor} />
+      {/* 아래 그림은 두 팔을 든 포스티 하나 — 홈 · 첫 설정과 같은 그림 말투(PM 11-07 시안). */}
+      <div className={styles.decor} data-art="rail-posty">
+        <Posty pose="cheer" tone="note" size={104} tape label={null} />
+      </div>
     </aside>
   );
 }

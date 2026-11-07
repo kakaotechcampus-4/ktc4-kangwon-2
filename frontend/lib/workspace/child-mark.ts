@@ -1,36 +1,43 @@
 /**
- * 아이마다 고정된 표식(도형·색)과 기록 요약.
+ * 아이마다 고정된 표식(쪽지 색)과 기록 요약.
  *
  * 아이 데이터에는 사진이 없다 (`ChildEntry` 는 id·이름뿐이다). 이름 글자만 깔아 놓으면
- * 열여덟 칸이 전부 비슷해 보여서, 교사가 매번 글자를 읽어야 아이를 찾는다. 도형과 색을
- * 하나씩 달아 두면 글자를 읽기 전에 자리가 먼저 눈에 들어온다.
+ * 열여덟 칸이 전부 비슷해 보여서, 교사가 매번 글자를 읽어야 아이를 찾는다. 이름 첫 글자를
+ * 손글씨로 적은 작은 쪽지를 달아 두면 글자를 다 읽기 전에 자리가 먼저 눈에 들어온다.
+ * 전에는 뜻 없는 도형이라 따로 외워야 했다.
  *
- * **표식은 아이 id 로 정한다.** 목록 순서로 정하면 아이 한 명이 들어올 때 가나다 순서가
- * 밀려 이미 있던 아이들의 도형이 전부 바뀐다 — 교사가 외운 자리가 그때마다 무너진다.
+ * **색은 아이 id 로 정한다.** 목록 순서로 정하면 아이 한 명이 들어올 때 가나다 순서가
+ * 밀려 이미 있던 아이들의 색이 전부 바뀐다 — 교사가 외운 자리가 그때마다 무너진다.
  */
 
-/** 도형 가짓수. ChildPicker 의 도형 목록과 같아야 한다. */
-export const MARK_SHAPES = 6;
-/** 색 가짓수. 셋만 쓴다 — 더 늘리면 크림·흰 바탕에서 명암비가 모자란 색이 끼게 된다. */
-export const MARK_TONES = 3;
+/** 쪽지 색 가짓수. ChildPicker 의 색 목록(포스티 쪽지 색)과 같아야 한다. */
+export const MARK_TONES = 7;
 
 export interface ChildMark {
-  /** 0 .. MARK_SHAPES-1 */
-  shape: number;
   /** 0 .. MARK_TONES-1 */
   tone: number;
 }
 
-/** id 글자를 섞어 흩뜨린다. 같은 id 면 늘 같은 표식이 나온다. */
+/**
+ * id 로 색을 고른다. 같은 id 면 늘 같은 색이다.
+ *
+ * id 끝이 번호면(`child-12`, 서버 번호) 그 번호로 돌린다 — 차례로 등록한 아이끼리
+ * 색이 겹치지 않는다. 번호가 없으면 글자를 섞어 흩뜨린다.
+ */
 export function markFor(childId: string): ChildMark {
+  const number = /(\d+)$/.exec(childId);
+  if (number) return { tone: Number(number[1]) % MARK_TONES };
   let sum = 7;
   for (let i = 0; i < childId.length; i += 1) {
     sum = (sum * 31 + childId.charCodeAt(i)) % 100003;
   }
-  return {
-    shape: sum % MARK_SHAPES,
-    tone: Math.floor(sum / MARK_SHAPES) % MARK_TONES,
-  };
+  return { tone: sum % MARK_TONES };
+}
+
+/** 쪽지에 적는 글자 — 성을 뺀 이름의 첫 글자. 두 글자 이름이면 첫 글자 그대로다. */
+export function markLetter(name: string): string {
+  const chars = Array.from(name.trim());
+  return (chars.length >= 3 ? chars[1] : chars[0]) ?? "";
 }
 
 /** 한 아이의 기록 상태. */

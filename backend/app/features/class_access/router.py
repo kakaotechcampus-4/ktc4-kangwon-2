@@ -172,6 +172,39 @@ def received_requests(session: DbSession, user: CurrentUser) -> ReceivedList:
     return ReceivedList(items=[_received(*row) for row in rows])
 
 
+def _mirror(session: Session, requester_id: int, approver: User, status_value: str) -> None:
+    """승인은 서로다 (ADR-068). 요청한 교사의 반을 승인한 교사도 본다 · 취소하면 같이 닫힌다.
+
+    요청을 보낸 것을 「내 반도 보여 줘도 된다」는 동의로 본다 — 요청 화면이 그렇게 알린다.
+    승인할 때 요청자에게 있던 반만 연다. 그 뒤에 요청자가 새로 만든 반은 따로 청해야 한다.
+    """
+    theirs = session.scalars(
+        select(Class.id).where(
+            Class.center_id == approver.center_id, Class.teacher_id == requester_id
+        )
+    ).all()
+    for class_id in theirs:
+        back = session.scalar(
+            select(ClassAccessRequest)
+            .where(
+                ClassAccessRequest.class_id == class_id,
+                ClassAccessRequest.requester_id == approver.id,
+            )
+            .with_for_update()
+        )
+        if status_value == "APPROVED":
+            if back is None:
+                session.add(
+                    ClassAccessRequest(
+                        class_id=class_id, requester_id=approver.id, status="APPROVED"
+                    )
+                )
+            else:
+                back.status = "APPROVED"
+        elif back is not None and back.status == "APPROVED":
+            back.status = "REVOKED"
+
+
 @router.patch("/access-requests/{request_id}", response_model=ReceivedRequest)
 def decide_request(
     request_id: int, body: AccessRequestPatch, session: DbSession, user: CurrentUser
@@ -196,6 +229,8 @@ def decide_request(
     if body.status not in _TRANSITIONS.get(row.status, ()):
         raise _STALE_WRITE
     row.status = body.status
+    if body.status in ("APPROVED", "REVOKED"):
+        _mirror(session, row.requester_id, user, body.status)
     session.commit()
     session.refresh(row)
     return _received(row, class_name, requester_name)

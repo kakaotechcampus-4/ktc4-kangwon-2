@@ -25,18 +25,19 @@ export async function completeOnboarding(
   const { className = "햇살반", ages = [4], consent = true, children = [] } = input;
   const next = page.getByRole("button", { name: "다음", exact: true });
 
-  // S1 원 정보 — 바로 첫 질문(원 이름)이다. 초대 코드로 들어오는 갈림길은 우선 뺐다.
+  // S1 원 정보 — 지역 → 어린이집 찾기 → 원장(ADR-068). 지역은 시트에서 시·도 → 시·군·구 순서로
+  // 고른다. 정부 목록에서 고르면 테스트끼리 같은 원으로 묶이므로 「목록에 없어요」로 직접 적는다.
   await expect(page).toHaveURL(/\/onboarding\/center$/);
-  await page.getByLabel("원 이름").fill(input.center);
-  await next.click();
-  await page.getByLabel("원장 이름").fill(input.director);
-  await next.click();
-  // 지역은 시트에서 시·도 → 시·군·구 순서로 고른다. 다 고르면 시트가 닫힌다.
   await page.locator("button#region").click();
   const sheet = page.getByRole("dialog");
   await sheet.getByRole("button", { name: "강원특별자치도", exact: true }).click();
   await sheet.getByRole("button", { name: "춘천시", exact: true }).click();
   await expect(sheet).toBeHidden();
+  await next.click();
+  await page.getByRole("button", { name: "목록에 없어요 · 직접 적기", exact: true }).click();
+  await page.getByLabel("어린이집 이름").fill(input.center);
+  await next.click();
+  await page.getByLabel("원장 이름").fill(input.director);
   await next.click();
 
   // S2 반 정보 — 마지막 「다음」이 반을 등록한다. 확인 시트는 없다(마지막 확인에서 고친다).

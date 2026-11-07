@@ -157,15 +157,45 @@ me       GET /api/auth/me                                               → 200 
 
 ```json
 { "name": "서충주어린이집", "director_name": "김원장",
-  "region_sido": "충청북도", "region_sigungu": "충주시" }
+  "region_sido": "충청북도", "region_sigungu": "충주시",
+  "registry_key": "충청북도|충주시|서충주어린이집|충청북도 충주시 ○○로 00" }
 ```
 
-**Response** `201`
+**Response** `201` (새 원) · `200` (같은 원이 이미 있어 그리로 들어감)
 
 ```json
 { "id": 1, "name": "...", "director_name": "...",
-  "region_sido": "...", "region_sigungu": "...", "created_at": "..." }
+  "region_sido": "...", "region_sigungu": "...", "created_at": "...",
+  "registry_key": "... | null", "kind": "국공립 | null", "address": "... | null",
+  "teacher_count": 1, "joined": false }
 ```
+
+**원은 정부 어린이집 목록에서 고른다 (ADR-068).** `registry_key` 는 아래 `GET /api/daycares` 의 `key` 다.
+
+- `registry_key` 가 있으면 목록에 있어야 한다 — 없으면 `VALIDATION_FAILED` 422 (`fields: ["registry_key"]`).
+  이름 · 지역은 **목록 값으로** 저장한다(보낸 값은 쓰지 않는다).
+- 같은 `registry_key` 의 원이 이미 있으면 **그 원으로 들어간다** — `200`, `joined: true`. 합류 승인은 없다.
+  `director_name` 은 빼도 되고 보내도 쓰지 않는다(화면의 합류 단계는 원장 이름을 묻지 않는다).
+- 새로 만드는 원이면 `director_name` 이 있어야 한다 — 없으면 `VALIDATION_FAILED` 422 (`fields: ["director_name"]`).
+- `registry_key` 가 없으면 「목록에 없어요」로 직접 적은 원이다. 지금처럼 새로 만들고 다른 교사가 찾을 수 없다.
+- `kind` · `address` 는 목록에서 읽어 붙인다(직접 적은 원은 `null`). `teacher_count` 는 그 원에 가입한 교사 수다.
+
+**원 정보는 고치지 않는다.** `PATCH /api/centers/{center_id}` 는 없다(ADR-068) — 같은 원 교사가 여럿이다.
+
+### 어린이집 찾기 — `GET /api/daycares?sido=&sigungu=&q=`
+
+```json
+{ "items": [ { "key": "강원특별자치도|춘천시|리틀빌리지어린이집|강원특별자치도 춘천시 영서로 2920 …",
+               "name": "리틀빌리지어린이집", "kind": "민간", "status": "정상",
+               "address": "강원특별자치도 춘천시 영서로 2920 …", "teacher_count": 2 } ] }
+```
+
+- 그 시군구에서 이름에 `q` 가 든 곳(띄어쓰기 무시). 이름 앞부분이 맞는 곳이 먼저, 가나다순, **30곳까지**.
+- `teacher_count` — 쌤플에 이미 있는 원이면 가입한 교사 수, 없으면 0. 이름은 주지 않는다.
+- 목록은 서버 사본(`backend/resources/daycares/daycares.csv`, 매달 `scripts/fetch_daycares.py`)이다.
+  정부 서버를 부르지 않는다. 시도 · 시군구 이름은 `frontend/lib/onboarding/regions.ts` 와 같다.
+- 폐지된 원은 없다. `status` 는 `정상` · `재개` · `휴지`.
+- 출처: 어린이집정보공개포털(한국사회보장정보원) — 목록을 보여 주는 화면에 적는다.
 
 **지역을 두 값으로 받는다.** PRD S1 이 「시·도 → 시·군·구 2단」 드롭다운으로 정했고,
 화면이 두 번 고르는데 서버가 한 문자열로 받으면 붙였다 쪼갰다를 두 번 한다.
@@ -181,56 +211,14 @@ me       GET /api/auth/me                                               → 200 
 | success | S2 로 이동 |
 | error | `VALIDATION_FAILED` 422 — 입력값 유지, 해당 칸에 표시 |
 
-**중복 생성을 막지 않는다.** 이름만으로 `UNIQUE` 를 걸면 다른 지역의 같은 이름 원이 막힌다.
-계정 단위 판단은 인증이 붙는 P1 이다.
+**이름 중복을 막지 않는다.** 이름만으로 `UNIQUE` 를 걸면 다른 지역의 같은 이름 원이 막힌다.
+같은 원을 가리는 것은 `registry_key` 하나다(UNIQUE). **한 계정은 원 하나다** — 원이 있는 교사의 두 번째 요청은 `ALREADY_EXISTS` 409.
 
-**조회** `GET /api/centers/{center_id}` → `200` 위 Response 와 같은 모양. 자기 원만 읽는다 —
+**조회** `GET /api/centers/{center_id}` → `200` 위 Response 와 같은 모양(`joined` 빼고). 자기 원만 읽는다 —
 남의 원 · 없는 원 · 아직 원이 없는 교사는 `404 NOT_FOUND` (`fields: ["center_id"]`).
-초대 코드로 들어온 교사(§1-1)는 원을 만든 적이 없어 화면에 원 정보가 없다. 로그인 뒤 여기서 읽는다.
+같은 원으로 들어온 교사는 원을 만든 적이 없어 브라우저에 원 정보가 없다. 로그인 뒤 여기서 읽는다.
 
----
-
-## 1-1. 같은 원 교사 초대 — `POST /api/centers/{center_id}/invites` · `POST /api/centers/join`
-
-원 하나에 담임이 여럿이다. 먼저 원을 등록한 교사가 코드를 만들어 주고, 같은 원 교사는
-온보딩 1단계에서 원을 새로 만드는 대신 그 코드를 넣는다 (ADR-029).
-
-**코드 만들기** `POST /api/centers/{center_id}/invites` — 본문 없음
-
-**Response** `201`
-
-```json
-{ "code": "K7PQ2MXH4R", "expires_at": "2026-10-17T09:00:00Z" }
-```
-
-- 자기 원에만 만든다. 원이 없거나 남의 원이면 `NOT_FOUND` 404 (`fields: ["center_id"]`).
-- **1회용 · 7일.** 코드는 10자, 헷갈리는 글자(0·O·1·I·L)를 뺀 대문자·숫자다.
-- 목록·취소 API 는 없다. 안 쓴 코드는 7일 뒤 저절로 못 쓴다.
-
-**참여하기** `POST /api/centers/join`
-
-```json
-{ "code": "k7pq2mxh4r" }
-```
-
-**Response** `200` — §1 과 같은 원 객체. 이 교사의 `center_id` 가 그 원이 된다.
-
-| 상황 | 응답 |
-|---|---|
-| 이미 원이 있다 | `ALREADY_EXISTS` 409 — §1 의 두 번째 원 만들기와 같다 |
-| 없는 코드 · 쓴 코드 · 만료된 코드 | `NOT_FOUND` 404, `fields: ["code"]`. **셋을 구분하지 않는다** — 구분해 주면 맞혀 보는 쪽에 힌트다 |
-| 빈 코드 | `VALIDATION_FAILED` 422 |
-
-대소문자와 앞뒤 공백은 서버가 맞춘다.
-
-**UI states**
-
-| | |
-|---|---|
-| loading | 버튼 비활성 |
-| empty | 해당 없음 |
-| success | 만들기 — 코드와 만료일 표시. 참여 — S2(반) 로 이동 |
-| error | 메시지를 그대로 표시, 입력값 유지 |
+**초대 코드(§1-1)는 없앴다** — 원 고르기가 그 길을 대신한다(ADR-068, ADR-029 대체).
 
 ---
 
@@ -603,6 +591,10 @@ P0 에서는 아동 기록이 없는 온보딩 단계에서만 일어난다. 이
 다른 화면이 먼저 바꿨으니 다시 불러온다. **내 반 요청이 아니거나 없으면 `404 NOT_FOUND` 다.**
 `created_at` · `updated_at` 은 UTC(`Z`)다.
 
+**승인은 서로다 (ADR-068).** `APPROVED` 로 바꾸면 요청한 교사가 이 원에 가진 반 전부에 대해, 승인한 교사의
+`APPROVED` 줄도 함께 생긴다(이미 줄이 있으면 `APPROVED` 로 바뀐다). `REVOKED` 로 바꾸면 그 반대 줄도 `REVOKED` 다.
+`REJECTED` 는 반대 줄을 건드리지 않는다. 승인할 때 있던 반만 열린다 — 그 뒤 새로 만든 반은 따로 청한다.
+
 ### 시간순 예시
 
 ```
@@ -619,8 +611,9 @@ P0 에서는 아동 기록이 없는 온보딩 단계에서만 일어난다. 이
 
 ### 주인 없는 옛 반
 
-**이 결정 전에 만든 반의 `teacher_id` 는 NULL 로 둔다.** 주인을 채우지 않는다 — 누가 만들었는지 기록이 없다.
-`my_access` 는 OPEN 이고 같은 원 교사 모두 지금처럼 읽고 쓴다. 열람 요청은 필요 없다.
+**한 번 주인을 채웠다 (ADR-068, 마이그레이션 `e8a1c4f7b2d6`).** `teacher_id` 가 NULL 이던 반은 그 원에 가장 먼저
+가입한 교사가 주인이다. 교사가 없는 원의 반만 NULL 로 남고, 그 반은 `my_access` 가 OPEN 이다.
+채우지 않으면 원을 골라 새로 들어온 교사에게 옛 반이 「내 반」처럼 열리고 고치기까지 된다.
 
 ### 이번에 없는 것
 
@@ -848,7 +841,8 @@ summary  80자 이하
     그대로 쓴 후보가 `safety_candidates` 뒤에 붙는다(`generation.method` = `RULE_ONLY`). 그래서 후보가 8개보다 많을 수 있다.
   - 못 채운 횟수 · 주는 `memo_notices` 에 `RULE_CONFLICT` 로 온다(예: 「교통안전: 2주차에는 넣지 못했어요」).
   - 요청으로 놓인 후보는 「요청 사항」 Evidence 를 갖는다. 놓인 뒤에는 교사가 [후보 두기]로 바꿀 수 있다. 생활안전 횟수 요청은 알림만 한다.
-- **아이 이름은 가명으로 나간다**(§9 「자유 입력 필드」). 메모에 그 반 아이 이름이 있으면 메모 글만 가명으로 바꿔 보내고 답을 되돌린다.
+- **아이 이름은 가명으로 나간다**(§9 「자유 입력 필드」). 메모에 그 원 아이 이름(다른 반 아이 포함)이 있으면 메모 글만 가명으로 바꿔 보내고 답을 되돌린다.
+  저장된 메모가 실리는 칸 재생성(월간 §9-3 · 주간 §9-6)도 같다.
   바꿀 수 없으면(두 아이가 같은 이름을 쓰는 등) 또는 보낼 요청에 그 이름이 남아 있으면 **LLM 을 부르지 않고**
   422 `VALUE_INVALID` `["memo"]` — 화면은 「이름을 빼고 다시 적어 주세요」를 띄운다. 아무것도 저장되지 않는다.
 - **안전교육 개수 · 주차 요청**(「재난 안전교육 3회 이상」)을 Rule 이 배치하는 것은 다음 단계다(ADR-060 결정 2). 지금은 `RULE_CONFLICT` 로 알린다.
@@ -1226,12 +1220,13 @@ FE 는 목업을 고정값으로 만들되, **실제 응답이 매번 같다고 
 
 - HWP · HWPX · DOCX · PDF(글자층)를 받는다. `.hwp` 는 양식 파싱(§8)과 같은 `hwp5html` 로 표 칸을 읽는다(표 밖 문단은 읽지 않는다). 앱은 크기를 제한하지 않고 nginx 10MB 가 막는다(§8 과 같다).
 - 글자를 뽑아 교사 · 원장 이름과 기관명을 가린 뒤 LLM 이 월별로 칸을 배정한다. LLM 에는 앞 30,000자만 보낸다 — 그 뒤에 있는 달은 `missing` 으로 나온다.
+- 그 원 아이 이름(다른 반 포함)도 가명으로 바꿔 보낸다. 돌려받은 칸 글자는 원문에 적힌 표기 그대로 되돌린다.
 - **배정된 글자는 원문에 그대로 있어야 한다**(공백을 정리한 뒤 부분 문자열). 없으면 버린다. 생활주제를 못 찾은 달은 `theme: null`, `missing: true` 다.
 - 화면은 이 결과를 표에 채워 교사에게 보여 주고, 교사가 확인 · 수정한 뒤 위 표 저장(`source: "FILE"`)으로 보낸다.
 
 | | |
 |---|---|
-| error | `UNSUPPORTED_FILE_TYPE` 400 → 그 밖의 형식, 또는 확장자와 내용이 어긋남. 「HWP · HWPX · DOCX · PDF 파일만 올릴 수 있어요」(§8 관례)<br>`VALIDATION_FAILED` 422 → 손상 · 빈 파일 · 글자층 없는 PDF, `fields: ["file"]`<br>`LLM_BUDGET_EXCEEDED` · `DEPENDENCY_UNAVAILABLE` 503 → 운영 문의(`.hwp` 를 읽을 `hwp5html` 이 서버에 없을 때도 503). 표에 직접 입력하는 길은 그대로 열려 있다 |
+| error | `UNSUPPORTED_FILE_TYPE` 400 → 그 밖의 형식, 또는 확장자와 내용이 어긋남. 「HWP · HWPX · DOCX · PDF 파일만 올릴 수 있어요」(§8 관례)<br>`VALIDATION_FAILED` 422 → 손상 · 빈 파일 · 글자층 없는 PDF, `fields: ["file"]`<br>`VALUE_INVALID` 422 → 파일 속 아이 이름을 가명으로 못 바꿨다. LLM 을 부르지 않는다, `fields: ["file"]`<br>`LLM_BUDGET_EXCEEDED` · `DEPENDENCY_UNAVAILABLE` 503 → 운영 문의(`.hwp` 를 읽을 `hwp5html` 이 서버에 없을 때도 503). 표에 직접 입력하는 길은 그대로 열려 있다 |
 
 ---
 
@@ -2124,6 +2119,9 @@ value   문자열.  필수.  빈 문자열도 받는다(칸을 비운다 — 상
 - LLM 을 기다리는 동안 다른 화면이 고치거나 확정했으면 **새 결과를 버리고** `STALE_WRITE` /
   `ALREADY_CONFIRMED` 409 다. 실패하면 칸 · revision 이 그대로다. 오류는 §9-1 생성과 같다
   (`LLM_BUDGET_EXCEEDED` · `DEPENDENCY_UNAVAILABLE` 503 · `GENERATION_FAILED` 500).
+- 저장된 요청 사항(`memo`)이 칸 프롬프트에 실린다. 그 속 아이 이름을 가명으로 못 바꾸거나 보낼 요청에 그 이름이
+  남아 있으면(다른 칸 값에 이름이 들어 있는 등) **LLM 을 부르지 않고** 422 `VALUE_INVALID` `["memo"]` 다(§4 「요청 사항」).
+  재생성 화면에는 요청 사항을 고치는 칸이 없어서 메시지는 「이 칸은 직접 고쳐 주세요」다. 주간 칸 재생성도 같다.
 
 ### 안전 배치 — `PUT /api/plans/monthly/{id}/safety-weeks/{week_id}`
 
