@@ -103,8 +103,7 @@ export function Notice({ children, onDone }: { children: string; onDone: () => v
  * 이 교사가 쓸 반 목록. 작업실 화면들이 전부 이걸 쓴다.
  *
  * **브라우저 저장소에 있는 반 + 서버에만 있는 반**을 합친다. 저장소만 보면
- * 초대받은 교사(§1-1)와 기기를 바꾼 교사에게 반이 하나도 안 보인다 — 서버에는
- * 멀쩡히 있는데도. 실제로 초대 기능을 붙이면서 드러났다.
+ * 기기를 바꾼 교사에게 반이 하나도 안 보인다 — 서버에는 멀쩡히 있는데도.
  */
 export function useClasses(onError?: (message: string) => void) {
   const [classes, setClasses] = useClientState<ClassroomEntry[]>(

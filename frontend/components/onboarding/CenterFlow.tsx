@@ -39,7 +39,7 @@ const regionSet = (s: ClassSettings) => districtsFor(s.regionProvince).includes(
 const centerSet = (s: ClassSettings) =>
   s.orgName.trim() !== "" && s.directorName.trim() !== "" && regionSet(s);
 
-/** /onboarding/center — 원 이름 · 원장 · 지역, 질문 셋. (초대 코드로 들어오는 길은 우선 뺐다.) */
+/** /onboarding/center — 원 이름 · 원장 · 지역, 질문 셋. */
 export default function CenterFlow() {
   const router = useRouter();
   const data = useOnboardingData("center");

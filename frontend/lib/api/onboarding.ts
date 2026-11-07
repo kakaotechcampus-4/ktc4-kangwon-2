@@ -3,7 +3,7 @@ import { API_STORAGE_CONTEXT } from "./storage-context";
 import { accountStorageKey, readAccountStorageKey } from "../auth/demo-session";
 import { isAlreadyExists, isApiNotFound } from "./client";
 import { getMe } from "./auth";
-import { createCenter, getCenter, joinCenter, updateCenter } from "./centers";
+import { createCenter, getCenter, updateCenter } from "./centers";
 import { createClass, getClasses, isMyClass, updateClass } from "./classes";
 import { listAnnualPlans } from "./plans";
 import type { ClassUpdate } from "./types";
@@ -107,7 +107,7 @@ async function syncCenterOnce(settings: ClassSettings) {
   if (links.center?.signature === signature) return links.center.id;
   // **이미 만든 원은 고친다.** 예전에는 수정 API 가 없어 원을 새로 만들었는데, 서버가
   // 「이미 등록한 원이 있습니다」 409 로 거절하거나 원이 쌓였고, links.classes 를 비워서
-  // 방금 들인 반까지 날아갔다. 초대받았거나 기기를 바꾼 교사(ADOPTED)도 같은 길로 간다 —
+  // 방금 들인 반까지 날아갔다. 기기를 바꾼 교사(ADOPTED)도 같은 길로 간다 —
   // 그 교사의 원 정보 수정이 서버에 반영되지 않던 것이 이것으로 풀린다.
   if (links.center) {
     const updated = await updateCenter(links.center.id, data);
@@ -135,35 +135,6 @@ async function syncCenterOnce(settings: ClassSettings) {
     saveLinks(links);
     return updated.id;
   }
-}
-/**
- * 초대 코드로 기존 원에 들어간다 (§1-1). 원 정보는 서버 값으로 채우고, syncCenter 가 같은
- * 서명을 보도록 연결해 둔다 — 서명이 다르면 다음 단계에서 원을 새로 만들려다 409 가 난다.
- */
-export async function joinCenterByCode(
-  settings: ClassSettings,
-  code: string,
-): Promise<ClassSettings> {
-  const center = await joinCenter(code);
-  // 화면이 지역을 정식 이름으로 바꿔 쓴다(「강원」 → 「강원특별자치도」). 서명도 같은 값으로 만든다.
-  const data = {
-    name: center.name,
-    director_name: center.director_name,
-    region_sido: normalizeProvince(center.region_sido).trim(),
-    region_sigungu: center.region_sigungu.trim(),
-  };
-  saveLinks({
-    center: { id: center.id, signature: JSON.stringify(data) },
-    classes: {},
-    children: {},
-  });
-  return {
-    ...settings,
-    orgName: center.name,
-    directorName: center.director_name,
-    regionProvince: data.region_sido,
-    regionDistrict: data.region_sigungu,
-  };
 }
 async function syncClassOnce(settings: ClassSettings, c: ClassroomEntry) {
   const center = await syncCenter(settings),
@@ -260,7 +231,6 @@ export async function syncClasses(settings: ClassSettings) {
  * **왜 필요한가.** 지금 반 목록은 브라우저 저장소에서 나온다(`loadClassSettings`).
  * 그래서 아래 두 경우에 반이 하나도 안 보인다. 서버에는 멀쩡히 있는데도.
  *
- *   초대받은 교사   §1-1 로 같은 원에 들어왔지만 그 사람 저장소는 비어 있다
  *   기기를 바꾼 교사  새 노트북 · 캐시 삭제 · 다른 브라우저
  *
  * `loadServerClasses` 는 **이미 로컬에 있는 반**의 내용만 서버 값으로 덮어쓴다.
@@ -305,7 +275,7 @@ export async function adoptServerClasses(
   //
   // 그래서 **한 번 쓴 적 있는 계정**(links.classes 에 뭔가 있고 retired 를 적은 적 없는)
   // 에서는, 지금 연결 안 된 서버 반을 전부 버려진 것으로 적고 이번에는 아무것도 들이지
-  // 않는다. 온보딩을 안 한 계정(초대받은 교사 · 기기 바꾼 교사)은 links.classes 가
+  // 않는다. 온보딩을 안 한 계정(기기 바꾼 교사)은 links.classes 가
   // 비어 있으므로 이 길을 타지 않는다.
   if (links.retired === undefined) {
     const used = Object.keys(links.classes).length > 0;
