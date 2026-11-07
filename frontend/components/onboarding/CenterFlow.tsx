@@ -68,6 +68,14 @@ const centerSet = (s: ClassSettings) =>
 const street = (d: Daycare, s: ClassSettings) =>
   d.address.replace(`${s.regionProvince} ${s.regionDistrict}`, "").trim() || d.address;
 
+/**
+ * 찾기 결과 상자 높이. 한 줄은 66px(min-h) · 줄 사이 4px.
+ * 3줄(198 + 12) + 4번째 줄 윗부분 44px + 안쪽 여백 12 + 점선 4 = 270px.
+ * 4곳부터는 4번째 줄이 이름과 번호까지 보이다 상자 바닥에 잘려, 아래에 더 있다는 게 보인다.
+ * (26px 만 보이면 이름 윗부분만 보이고 번호는 안 보여 어색했다.) 줄 높이를 바꾸면 이 높이도 같이 바꾼다.
+ */
+const RESULT_BOX = "h-[270px]";
+
 /** /onboarding/center — 지역 · 어린이집 · (처음 쓰는 원이면) 원장. */
 export default function CenterFlow() {
   const router = useRouter();
@@ -319,8 +327,10 @@ function FindField({
   onManual: () => void;
 }) {
   const empty = items !== null && items.length === 0;
+  // 칠판 높이(760px)를 다른 화면과 같게 두려고 이 칸만 여백을 줄인다 — 질문 쪽으로 8px 당기고(-mt-2),
+  // 안내와 상자 사이 4px(-mt-6), 출처 줄을 상자에 바짝(mt-1). 결과 상자 270px 를 지키려는 것이다.
   return (
-    <div className="mb-7">
+    <div className="-mt-2">
       <LineField
         id="daycareName"
         label="어린이집 이름"
@@ -331,15 +341,18 @@ function FindField({
         placeholder="예: 햇살"
         onChange={(e) => onQuery(e.target.value)}
       />
-      {/* 결과 자리는 높이를 고정한다 — 찾은 수에 따라 아래 출처 줄이 오르내리지 않게. 넘치면 안에서 스크롤 */}
-      <div className="-mt-3 h-[280px] squircle [--r:16px] border-2 border-dashed border-line p-1.5">
+      {/* 결과 자리는 높이를 고정한다 — 찾은 수에 따라 아래 출처 줄이 오르내리지 않게. 넘치면 안에서 스크롤.
+          높이는 3줄 + 4번째 줄 머리(RESULT_BOX): 3곳이면 꽉 차 보이고, 4곳부터는 4번째 줄이 바닥에 걸친다. */}
+      <div
+        className={`-mt-6 ${RESULT_BOX} squircle [--r:16px] border-2 border-dashed border-line p-1.5`}
+      >
         {empty ? (
           <NoDaycare query={q} district={s.regionDistrict} onManual={onManual} />
         ) : (
           <DaycareResults items={items} settings={s} onPick={onPick} />
         )}
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-4">
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-x-4">
         <p className="text-[13px] text-board-ink-soft">어린이집 목록: 어린이집정보공개포털</p>
         {!empty && <ManualLink onClick={onManual} />}
       </div>
@@ -353,7 +366,8 @@ function ManualLink({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-11 items-center gap-1.5 px-1 text-[14.5px] font-semibold text-ink hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+      // 누르는 자리는 44px 로 두되(min-h-11) 위아래로 겹쳐(-my-3) 줄 높이는 글자만큼만 차지한다.
+      className="-my-3 inline-flex min-h-11 items-center gap-1.5 px-1 text-[14.5px] font-semibold text-ink hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
     >
       <span className="underline decoration-primary underline-offset-4">
         목록에 없어요 · 직접 적기
@@ -439,7 +453,7 @@ function DaycareResults({
           <button
             type="button"
             onClick={() => onPick(d)}
-            className="group grid min-h-[62px] w-full grid-cols-[34px_minmax(0,1fr)_40px] items-center gap-2.5 px-1 py-1.5 text-left text-ink focus-visible:outline-none"
+            className="group grid min-h-[66px] w-full grid-cols-[34px_minmax(0,1fr)_40px] items-center gap-2.5 px-1 py-1.5 text-left text-ink focus-visible:outline-none"
           >
             <span
               aria-hidden="true"
@@ -449,7 +463,7 @@ function DaycareResults({
             </span>
             <span className="relative min-w-0 justify-self-start py-1 pl-3 pr-3.5">
               <ChalkRing />
-              <b className="text-[18px]">{d.name}</b>
+              <b className="text-[18px] leading-[26px]">{d.name}</b>
               {d.teacher_count > 0 && (
                 <span className="ml-2 font-display text-[19px] font-bold text-primary">
                   쌤플 선생님 {d.teacher_count}명
@@ -458,7 +472,7 @@ function DaycareResults({
               {d.status === "휴지" && (
                 <span className="ml-2 font-display text-[19px] font-bold text-ink-soft">휴지</span>
               )}
-              <small className="mt-0.5 block truncate text-[13px] text-ink-soft">
+              <small className="mt-0.5 block truncate text-[13px] leading-[18px] text-ink-soft">
                 {d.kind} · {street(d, settings)}
               </small>
             </span>

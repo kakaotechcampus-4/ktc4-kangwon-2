@@ -45,11 +45,20 @@ export const putCenterSettings = (
     return next;
   });
 /**
- * 목업 어린이집 목록 (§1 「어린이집 찾기」). 어느 지역을 골라도 세 곳이 나온다.
+ * 목업 어린이집 목록 (§1 「어린이집 찾기」). 어느 지역을 골라도 같은 일곱 곳이 나온다 —
+ * 결과 상자에 다 안 들어가 스크롤되는 모습까지 로컬에서 본다.
  * 진짜 목록은 서버 사본(backend/resources/daycares)이다 — 여기 이름은 지어낸 것이다.
  */
 export const mockDaycares = (sido: string, sigungu: string) =>
-  ["햇살어린이집", "달님어린이집", "새싹어린이집"].map((name, i) => ({
+  [
+    "햇살어린이집",
+    "달님어린이집",
+    "새싹어린이집",
+    "별빛어린이집",
+    "무지개어린이집",
+    "푸른숲어린이집",
+    "꿈나무어린이집",
+  ].map((name, i) => ({
     key: [sido, sigungu, name, `${sido} ${sigungu} 목업로 ${i + 1}`].join("|"),
     name,
     kind: i === 0 ? "국공립" : "민간",
