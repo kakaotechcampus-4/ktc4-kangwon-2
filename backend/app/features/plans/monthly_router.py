@@ -98,7 +98,12 @@ from ssuksak.planning.rules.safety_placement import candidate_display_value  # �
 
 from app.db import get_session
 from app.features.plans.annual_content import subthemes_for_month
-from app.features.plans.memo_privacy import memo_name_table, raise_if_mask_failed, with_masked_memo
+from app.features.plans.memo_privacy import (
+    REGEN_MASK_FAILED,
+    memo_name_table,
+    raise_if_mask_failed,
+    with_masked_memo,
+)
 from app.features.plans.models import Plan
 from app.features.plans.monthly_llm import monthly_llm_provider
 from app.features.plans.monthly_schemas import (
@@ -1012,7 +1017,7 @@ def regenerate_monthly_cell(
     """
     plan = _read_draft(session, user, plan_id, body.expected_revision)
     # 칸 프롬프트에도 저장된 요청 사항이 실린다. 생성과 같이 가린다(ADR-060).
-    names = memo_name_table(session, int(plan.classroom_ref), plan.teacher_memo)
+    names = memo_name_table(session, int(plan.classroom_ref), plan.teacher_memo, REGEN_MASK_FAILED)
     session.commit()  # 이름표 읽기까지 끝낸다. LLM 을 기다리는 동안 transaction 을 잡지 않는다
     try:
         provider = monthly_llm_provider()
@@ -1028,7 +1033,7 @@ def regenerate_monthly_cell(
             RegenerateMonthlyPlanItemCommand(plan.plan_id, _item_id(item_id), _actor(user))
         ).plan
     except MonthlyApplicationError as error:
-        raise_if_mask_failed(error)
+        raise_if_mask_failed(error, REGEN_MASK_FAILED)
         _log.warning(
             "monthly cell regeneration failed code=%s stage=%s cause=%s validation_codes=%s",
             error.code,

@@ -84,6 +84,34 @@ def test_월간_칸을_다시_만들어도_요청_사항의_아이_이름은_가
     _no_names(prompt)
 
 
+def test_칸_재생성에서_이름을_못_가리면_그_칸을_직접_고치라고_알린다(db_session, teacher):
+    """재생성 화면에는 요청 사항을 고치는 칸이 없다 — 「이 칸은 직접 고쳐 주세요」."""
+    seed = _seed(db_session, "가원", "a@example.com")
+    teacher.center_id = seed["center"]
+    _children(db_session, seed["class"])
+    annual = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": seed["class"]}
+    )
+    assert client.post(f"/api/plans/annual/{annual.json()['id']}/confirm").status_code == 200
+    plan = client.post(
+        "/api/plans/monthly",
+        json={"class_id": seed["class"], "month": 9, "profile_ref": seed["profile"], "memo": MEMO},
+    ).json()
+    # 만든 뒤 같은 반에 「가명」을 같이 쓰는 아이가 들어왔다 — 메모의 「가명이」가 누구인지 모른다.
+    db_session.add(Child(class_id=seed["class"], name="박가명", code="나래"))
+    db_session.flush()
+    focus = next(s for s in plan["sections"] if s["section_key"] == "focus")["cells"][0]
+
+    response = client.post(
+        f"/api/plans/monthly/{plan['id']}/cells/{focus['item_id']}/regenerate",
+        json={"expected_revision": plan["revision"]},
+    )
+
+    assert response.status_code == 422, response.json()
+    assert response.json()["error"]["fields"] == ["memo"]
+    assert "이 칸은 직접 고쳐 주세요" in response.json()["error"]["message"]
+
+
 def test_주간_칸을_다시_만들어도_요청_사항의_아이_이름은_가명으로_나간다(
     db_session, teacher, monkeypatch
 ):

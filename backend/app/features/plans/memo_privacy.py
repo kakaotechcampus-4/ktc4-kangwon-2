@@ -37,6 +37,16 @@ MASK_FAILED = HTTPException(
         "fields": ["memo"],
     },
 )
+# 칸 재생성 화면에는 요청 사항을 고치는 칸이 없다.
+# 「다시 적어 주세요」 대신 그 칸을 직접 고치게 한다.
+REGEN_MASK_FAILED = HTTPException(
+    status.HTTP_422_UNPROCESSABLE_ENTITY,
+    detail={
+        "code": "VALUE_INVALID",
+        "message": "요청 사항에 아이 이름이 있어 AI 를 부르지 않았어요. 이 칸은 직접 고쳐 주세요.",
+        "fields": ["memo"],
+    },
+)
 
 
 def center_name_table(session: Session, class_id: int, text: str) -> NameTable | None:
@@ -59,12 +69,14 @@ def center_name_table(session: Session, class_id: int, text: str) -> NameTable |
     return table_for_text(load_pool(), own, others, text)
 
 
-def memo_name_table(session: Session, class_id: int, memo: str) -> NameTable | None:
+def memo_name_table(
+    session: Session, class_id: int, memo: str, failure: HTTPException = MASK_FAILED
+) -> NameTable | None:
     """메모에 원 아이 이름이 있을 때만 표를 만든다. 바꾸지 못하면 LLM 을 부르기 전에 422."""
     try:
         return center_name_table(session, class_id, memo)
     except SubstitutionError as error:
-        raise MASK_FAILED from error
+        raise failure from error
 
 
 def mask_memo(memo: str, table: NameTable | None) -> str:
@@ -79,12 +91,12 @@ class MemoMaskFailed(Exception):
     """보낼 요청에 메모 속 아이 이름이 남았다. Core 가 provider 오류를 감싸므로 라우터가 꺼낸다."""
 
 
-def raise_if_mask_failed(error: BaseException) -> None:
+def raise_if_mask_failed(error: BaseException, failure: HTTPException = MASK_FAILED) -> None:
     """Core 가 감싼 원인 사슬에 MemoMaskFailed 가 있으면 422 로 바꾼다."""
     current: BaseException | None = error
     while current is not None:
         if isinstance(current, MemoMaskFailed):
-            raise MASK_FAILED from error
+            raise failure from error
         current = current.__cause__ or current.__context__
 
 

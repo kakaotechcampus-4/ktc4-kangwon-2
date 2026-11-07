@@ -56,7 +56,12 @@ from ssuksak.planning.domain.weekly_plan import WEEKLY_INSTITUTION_INPUT_SECTION
 from app.config import settings
 from app.db import get_session
 from app.features.centers.models import Center
-from app.features.plans.memo_privacy import memo_name_table, raise_if_mask_failed, with_masked_memo
+from app.features.plans.memo_privacy import (
+    REGEN_MASK_FAILED,
+    memo_name_table,
+    raise_if_mask_failed,
+    with_masked_memo,
+)
 from app.features.plans.models import Plan
 from app.features.plans.monthly_llm import monthly_llm_provider
 from app.features.plans.monthly_router import (
@@ -769,7 +774,7 @@ def regenerate_weekly_cell(
         if target is not None and target.section_key == "indoor_play":
             raise _CELL_NOT_REGENERATABLE
     # 칸 프롬프트에도 저장된 요청 사항이 실린다. 생성과 같이 가린다(ADR-060).
-    names = memo_name_table(session, int(plan.classroom_ref), plan.teacher_memo)
+    names = memo_name_table(session, int(plan.classroom_ref), plan.teacher_memo, REGEN_MASK_FAILED)
     session.commit()  # 이름표 읽기까지 끝낸다. LLM 을 기다리는 동안 transaction 을 잡지 않는다
     try:
         provider = with_masked_memo(_weekly_provider(), plan.teacher_memo, names)
@@ -780,7 +785,7 @@ def regenerate_weekly_cell(
             RegenerateWeeklyPlanCellCommand(plan.plan_id, _item_id(item_id), _actor(user))
         )
     except MonthlyApplicationError as error:
-        raise_if_mask_failed(error)
+        raise_if_mask_failed(error, REGEN_MASK_FAILED)
         _log.warning(
             "weekly cell regeneration failed code=%s stage=%s cause=%s validation_codes=%s",
             error.code,
