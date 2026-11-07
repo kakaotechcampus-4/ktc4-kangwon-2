@@ -44,7 +44,8 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
     items: [
       {
         key: "records",
-        label: "관찰 기록",
+        // 메뉴 이름은 선생님이 쓰는 문서 이름 — 보육일지와 짝(PM 11-07).
+        label: "관찰일지",
         short: "관찰",
         href: "/records",
         icon: "users",

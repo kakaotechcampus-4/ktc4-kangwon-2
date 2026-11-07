@@ -72,7 +72,7 @@ test("가입부터 관찰 기록까지", async ({ page }) => {
   // 사이드바가 **기록**과 **문서**로 갈리면서 「아이별 기록」는 메뉴에서 빠졌다.
   // 관찰 기록 화면 안의 길로 들어가고, 그 아래 화면이므로 메뉴는 관찰 기록이 켜진 채다.
   const menu = page.getByRole("complementary", { name: "주 메뉴" });
-  const recordsMenu = menu.getByRole("link", { name: "관찰 기록", exact: true });
+  const recordsMenu = menu.getByRole("link", { name: "관찰일지", exact: true });
   await recordsMenu.click();
   await expect(page).toHaveURL(/\/records$/);
   await page.getByRole("link", { name: "아이별 기록", exact: true }).click();
