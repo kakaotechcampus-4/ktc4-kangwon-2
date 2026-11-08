@@ -26,33 +26,33 @@
 
 | origin_id | 기관 유형 | 페이지 | 판독 페이지 |
 |---|---|---:|---|
-| `sample.monthly.aisarang.2026.09.age3` | 국공립 | 1 | 1 |
-| `sample.monthly.aisarang.2026.09.age4` | 국공립 | 1 | 1 |
-| `sample.monthly.aisarang.2026.09.age5` | 국공립 | 1 | 1 |
-| `sample.monthly.goesanhana.2026.09` | 국공립 | 2 | 1, 2 |
-| `sample.monthly.dolgorae.2026.09` | 국공립 | 1 | 1 |
-| `sample.monthly.seobom.2026.09` | 국공립 | 4 | 1, 2, 3, 4 |
-| `sample.monthly.eomji.2026.09` | 민간 | 1 | 1 |
-| `sample.monthly.yedam.2026.09` | 민간 | 1 | 1 |
-| `sample.monthly.keunbit.2026.09` | 민간 | 2 | 1 (p.2 근거 미사용) |
-| `sample.monthly.haechansol.2026.09` | 민간 | 1 | 1 |
-| `sample.monthly.geumsan.2026.09` | 직장 | 1 | 1 |
-| `sample.monthly.hansolbit.2026.03` | 민간 | 3 | 1, 2, 3 |
-| `sample.monthly.aideulsesang.2026.09` | 협동 | 2 | 1, 2 |
-| `sample.monthly.byeolbitjai.2026` | 국공립 | 2 | **판독 불가** (이미지 전용) |
+| `sample.monthly.inst_053.2026.09.age3` | 국공립 | 1 | 1 |
+| `sample.monthly.inst_053.2026.09.age4` | 국공립 | 1 | 1 |
+| `sample.monthly.inst_053.2026.09.age5` | 국공립 | 1 | 1 |
+| `sample.monthly.inst_021.2026.09` | 국공립 | 2 | 1, 2 |
+| `sample.monthly.inst_072.2026.09` | 국공립 | 1 | 1 |
+| `sample.monthly.inst_060.2026.09` | 국공립 | 4 | 1, 2, 3, 4 |
+| `sample.monthly.inst_094.2026.09` | 민간 | 1 | 1 |
+| `sample.monthly.inst_052.2026.09` | 민간 | 1 | 1 |
+| `sample.monthly.inst_024.2026.09` | 민간 | 2 | 1 (p.2 근거 미사용) |
+| `sample.monthly.inst_038.2026.09` | 민간 | 1 | 1 |
+| `sample.monthly.inst_027.2026.09` | 직장 | 1 | 1 |
+| `sample.monthly.inst_080.2026.03` | 민간 | 3 | 1, 2, 3 |
+| `sample.monthly.inst_012.2026.09` | 협동 | 2 | 1, 2 |
+| `sample.monthly.inst_042.2026` | 국공립 | 2 | **판독 불가** (이미지 전용) |
 
 ### 1.1 Source count
 
 ```text
 source_count            : 14   (origin 항목 수)
 readable_source_count   : 13
-institution_count       : 12   (아이사랑 3파일을 1기관으로 세면 12)
+institution_count       : 12   (inst_084 3파일을 1기관으로 세면 12)
 readable_institution_count : 11
 기관 유형               : 국공립 6 / 민간 5 / 직장 1 / 협동 1
 evidence 총 개수        : 74
 ```
 
-**검토 포인트 1**: 아이사랑어린이집은 연령별 3파일이라 `origin_id`를 3개로 분리했다.
+**검토 포인트 1**: inst_084은 연령별 3파일이라 `origin_id`를 3개로 분리했다.
 Theme Reference는 한 파일 안의 연령별 페이지를 `evidence[].age_scope`로 구분했는데,
 Activity에서는 파일 자체가 분리돼 있어 origin을 나눴다. 이 방식이 맞는지 확인이
 필요하다.
@@ -111,7 +111,7 @@ month_coverage : [3, 9]
 
 | 월 | 후보 수 | 근거 |
 |---|---:|---|
-| 3월 | 8 | `hansolbit` 3페이지 (유일한 3월 표본) + `sand_play` |
+| 3월 | 8 | `inst_080` 3페이지 (유일한 3월 표본) + `sand_play` |
 | 9월 | 42 | 나머지 12 origin |
 | 4·5·6·7·8·10·11·12·1·2월 | **0** | 표본 없음 |
 
@@ -151,8 +151,8 @@ age_coverage : [3, 4, 5]
 
 | activity_id | label | 관찰 | 결과 |
 |---|---|---|---|
-| `act_outdoor_ganggangsullae` | 강강술래 | 아이사랑 만3 / 아이사랑 만5 / 시립새봄 만3 / 아이들세상 만5 | `[3, 5]` |
-| `act_outdoor_tuho` | 투호놀이 | 아이사랑 만5 / 시립새봄 만3 | `[3, 5]` |
+| `act_outdoor_ganggangsullae` | 강강술래 | inst_084 만3 / inst_084 만5 / inst_060 만3 / inst_012 만5 | `[3, 5]` |
+| `act_outdoor_tuho` | 투호놀이 | inst_084 만5 / inst_060 만3 | `[3, 5]` |
 
 `mixed_age_requires_all_supported: true`이므로 `{3,4}` 반과 `{4}` 반은 강강술래를
 후보로 받지 못한다. 교육적으로는 부자연스럽지만, **근거보다 넓게 주장하지 않는다**는
@@ -169,8 +169,8 @@ age_coverage : [3, 4, 5]
 
 | origin_id | 상태 |
 |---|---|
-| `sample.monthly.haechansol.2026.09` | 본문에 연령 표기 0건. `age_scope: []` |
-| `sample.monthly.geumsan.2026.09` | 본문에 연령 표기 0건. `age_scope: []` |
+| `sample.monthly.inst_038.2026.09` | 본문에 연령 표기 0건. `age_scope: []` |
+| `sample.monthly.inst_027.2026.09` | 본문에 연령 표기 0건. `age_scope: []` |
 
 파일명은 각각 `만3세, 만4-5세` / `만3-5세`이지만 **CLAUDE.md §11에 따라 파일명
 표기로 추론하지 않았다.** 두 문서만을 근거로 하는 항목은 `supported_ages`를 만들 수
@@ -223,8 +223,8 @@ runtime 후보에는 포함하지 않았다.
 `[실내대체]` · `[대체]` · `(대체활동: …)` · `【대체활동 : …】` inline 태그가 붙은
 항목은 `indoor_alternative` Section 소속이므로 outdoor 후보로 전사하지 않았다.
 
-예: 시립새봄 p.3의 `(대체활동- · 사방치기 / · 제기차기)`에서 사방치기/제기차기는
-실내대체다. 사방치기는 아이사랑·큰빛에서 **직접 바깥놀이 항목**으로 관찰돼 그 근거로
+예: inst_060 p.3의 `(대체활동- · 사방치기 / · 제기차기)`에서 사방치기/제기차기는
+실내대체다. 사방치기는 inst_084·inst_024에서 **직접 바깥놀이 항목**으로 관찰돼 그 근거로
 후보가 됐다. 제기차기는 직접 바깥놀이 근거가 없어 후보에 없다.
 
 ---
@@ -377,10 +377,10 @@ theme_catalog_version : theme-reference-v0.1.2 (전부)
 ### 9.2 다대다 확인
 
 한 활동이 2개 theme에 링크된 항목 **8건**이다. 같은 페이지가 두 주제 계열을 병기한
-문서(아이사랑 만4·만5, 해찬솔)에서 나온다.
+문서(inst_084 만4·만5, inst_038)에서 나온다.
 
 예: `무궁화 꽃이 피었습니다` → `korea_and_world_cultures` + `autumn_and_nature`
-(해찬솔 p.1의 주제가 `얼쑤! 우리나라 / 랄랄라, 가을이 좋아!`이기 때문)
+(inst_038 p.1의 주제가 `얼쑤! 우리나라 / 랄랄라, 가을이 좋아!`이기 때문)
 
 ### 9.3 문자열 매칭을 사용하지 않았다
 
@@ -389,10 +389,10 @@ label과 theme label의 문자열 유사도를 쓰지 않았다.
 
 **검토 포인트 8**: §9.1 매핑 중 다음 2건이 판단을 요한다.
 
-1. `지구촌 탐구하기`(시립새봄 만5세)를 `korea_and_world_cultures`로 매핑했다. Theme
+1. `지구촌 탐구하기`(inst_060 만5세)를 `korea_and_world_cultures`로 매핑했다. Theme
    Reference label이 `우리나라와 세계 여러 나라`이므로 "세계 여러 나라" 쪽 의미로
    대응한다고 보았다.
-2. `열매 맺는 달`(아이들세상 만5세)을 `autumn_and_nature`로 매핑했다. 24절기 기반
+2. `열매 맺는 달`(inst_012 만5세)을 `autumn_and_nature`로 매핑했다. 24절기 기반
    표기라 직접 대응이 아니다.
 
 ---
@@ -407,15 +407,15 @@ label과 theme label의 문자열 유사도를 쓰지 않았다.
 | 2 | `강강술래` / `투호놀이`의 **만4세 공백** | §4.1 |
 | 3 | 49개 중 **39개가 1기관 관찰** | §2 |
 | 4 | `act_outdoor_traditional_play`의 4개 표현 통합 적절성 | §6.1 |
-| 5 | `큰빛 p.2`(만3세) 바깥놀이 행 **미사용** | `오전자유놀이(바깥놀이포함)` 병합 라벨로 행 귀속이 확정되지 않았다. 셀 기하 추출에서도 8개 행이 한 band로 묶였다 |
-| 6 | `해찬솔` / `금산군청` 본문 연령 미표기 | §4.2. 파일명 추론을 하지 않아 6개 항목을 제외했다 |
-| 7 | `한솔빛 p.2` 머리글 연도가 **2025년** | 문서 내부 불일치. 월(3월)만 근거로 사용했고 evidence `match_note`에 기록했다 |
-| 8 | `한솔빛` 파일명은 `만3,4,5세`인데 판독 페이지는 **3세·5세·5세** | 만4세 페이지가 없다 |
-| 9 | `돌고래 월간`이 Template A `evidence_base`에 **미포함** | Template A는 `file_count: 13` / 11기관인데 디렉터리에 14파일이 있다. Activity에서는 본문 머리글로 월·연령을 확인해 포함했다 |
-| 10 | `별빛자이` 이미지 전용 PDF | 판독 불가. origin으로 선언만 하고 evidence 0건 |
+| 5 | `inst_024 p.2`(만3세) 바깥놀이 행 **미사용** | `오전자유놀이(바깥놀이포함)` 병합 라벨로 행 귀속이 확정되지 않았다. 셀 기하 추출에서도 8개 행이 한 band로 묶였다 |
+| 6 | `inst_038` / `inst_027` 본문 연령 미표기 | §4.2. 파일명 추론을 하지 않아 6개 항목을 제외했다 |
+| 7 | `inst_080 p.2` 머리글 연도가 **2025년** | 문서 내부 불일치. 월(3월)만 근거로 사용했고 evidence `match_note`에 기록했다 |
+| 8 | `inst_080` 파일명은 `만3,4,5세`인데 판독 페이지는 **3세·5세·5세** | 만4세 페이지가 없다 |
+| 9 | `inst_072 월간`이 Template A `evidence_base`에 **미포함** | Template A는 `file_count: 13` / 11기관인데 디렉터리에 14파일이 있다. Activity에서는 본문 머리글로 월·연령을 확인해 포함했다 |
+| 10 | `inst_042` 이미지 전용 PDF | 판독 불가. origin으로 선언만 하고 evidence 0건 |
 | 11 | `바깥 놀이터 사진을 찍어요` 등 일반 명사 판정 | §5.2 |
 | 12 | `지구촌 탐구하기` / `열매 맺는 달` theme 매핑 | §9.3 |
-| 13 | 아이사랑 3파일을 3개 origin으로 분리한 방식 | §1.1 |
+| 13 | inst_084 3파일을 3개 origin으로 분리한 방식 | §1.1 |
 
 ---
 
@@ -430,7 +430,7 @@ label과 theme label의 문자열 유사도를 쓰지 않았다.
 | `safety_exclusion_statement` 진술문 | 포함 |
 | `data/rules/safety_education_legal_v1.json` 변경 | **0건.** SHA `5831809b…` 불변 |
 | `SafetyEducationPlan` Aggregate | 만들지 않음 |
-| 아이나무 연간 안전교육계획서 사용 | **0건.** `data/`·`docs/` 참조 0건 유지 |
+| inst_100 연간 안전교육계획서 사용 | **0건.** `data/`·`docs/` 참조 0건 유지 |
 | `eligible_candidates(section_key="safety_education", …)` | 승인 상태여도 `()` 반환 |
 
 `test_real_catalog_has_no_safety_fields`,
@@ -492,9 +492,9 @@ D1 결정대로, 구조는 검증됐지만 **내용 커버리지가 부족하다
 | 필요 | 내용 |
 |---|---|
 | 월 | 4·5·6·7·8·10·11·12·1·2월 월간계획안 |
-| 연령 | 만4세 표본 (강강술래·투호놀이의 연령 공백 해소, 한솔빛 만4세 페이지 부재) |
+| 연령 | 만4세 표본 (강강술래·투호놀이의 연령 공백 해소, inst_080 만4세 페이지 부재) |
 | 형식 | 바깥놀이 행이 텍스트로 판독 가능한 PDF (이미지 전용은 근거 불가) |
-| 표기 | 본문에 연령이 표기된 문서 (해찬솔·금산군청 유형의 반복을 줄이기 위해) |
+| 표기 | 본문에 연령이 표기된 문서 (inst_038·inst_027 유형의 반복을 줄이기 위해) |
 
 ### 13.4 승인 절차
 

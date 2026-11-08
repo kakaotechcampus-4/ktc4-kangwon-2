@@ -27,7 +27,7 @@
     "week_id": null
   },
   "generation_mode": "LLM_PLANNER",
-  "planner": {"model": "openai/gpt-6.1-sol", "packet_fingerprint": "2fd58dc0d2a62aa8adb33c4796aaa1bf6f49e0147babe3fef6a13c4aa3f221da", "plan_snapshot_fingerprint": "eed780bb9ba9fc99b6eb5b18476f16e25fcd3fac26c3dfa893bfea5fe5991cb9", "prompt_version": "monthly-cell-planner-v10"},
+  "planner": {"model": "openai/gpt-6.1-sol", "packet_fingerprint": "a7cd96140b966b1a2a3590ebdd4f42f7d6e1b60f8b0d77c7e1343d37aeaecdf0", "plan_snapshot_fingerprint": "eed780bb9ba9fc99b6eb5b18476f16e25fcd3fac26c3dfa893bfea5fe5991cb9", "prompt_version": "monthly-cell-planner-v10"},
   "report_refreshed": true,
   "schema": "monthly-cell-regeneration-golden-v2",
   "section": "goals",

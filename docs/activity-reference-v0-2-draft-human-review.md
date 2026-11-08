@@ -24,7 +24,7 @@
 | ID | 결정 | 적용 결과 |
 |---|---|---|
 | **HD-A** | 명시 혼합연령을 age evidence로 인정하되 강도 구별 | v0.1.0 semantics 유지. `age_support_basis`에 `SINGLE_AGE_EVIDENCE` / `MIXED_AGE_EVIDENCE_ONLY` / `SINGLE_AND_MIXED` 기록. §4 통계 분리 |
-| **HD-B** | 서진 만4.5세반은 age 근거 아님 | `age_scope: []` 유지. **supported_ages 확장 0건** |
+| **HD-B** | inst_006 만4.5세반은 age 근거 아님 | `age_scope: []` 유지. **supported_ages 확장 0건** |
 | **HD-C** | AMBIGUOUS 8건 승인 후보 제외 | canonical item 0건. `pending_human_review.ambiguous_items` 보관 |
 | **HD-D** | SECTION_LABEL_ECHO 제외 | `실외놀이` 1건 제거 → `section_label_echo_excluded` (원문 Observation 보존) |
 | **HD-E** | SAFETY_ADJACENT 5건 보류 | (HD-G로 최종 확정됨 — 아래 참조) |
@@ -52,19 +52,19 @@ Draft CARRIED_OVER_WITH_NEW_EVIDENCE   : 36
 
 | activity_id | label | 새 관찰 | 기존 evidence key와 동일? |
 |---|---|---|---|
-| `act_outdoor_autumn_sky_walk` | 가을 하늘 보며 산책하기 | 시립새봄 m9 p1 | **YES 중복** |
-| `act_outdoor_find_autumn_fruits` | 가을 열매 찾기 | 시립새봄 m9 p1 | **YES 중복** |
-| `act_outdoor_juldarigi` | 줄다리기 | 시립새봄 m9 p2 | **YES 중복** |
-| `act_outdoor_gomujul_nori` | 고무줄 놀이 | 돌고래 m9 p1 | **YES 중복** |
-| `act_outdoor_natural_hanbok_colors` | 자연 한복색 찾기 | 돌고래 m9 p1 | **YES 중복** |
-| `act_outdoor_nature_mask_making` | 자연물로 탈 꾸미기 | 돌고래 m9 p1 | **YES 중복** |
+| `act_outdoor_autumn_sky_walk` | 가을 하늘 보며 산책하기 | inst_060 m9 p1 | **YES 중복** |
+| `act_outdoor_find_autumn_fruits` | 가을 열매 찾기 | inst_060 m9 p1 | **YES 중복** |
+| `act_outdoor_juldarigi` | 줄다리기 | inst_060 m9 p2 | **YES 중복** |
+| `act_outdoor_gomujul_nori` | 고무줄 놀이 | inst_072 m9 p1 | **YES 중복** |
+| `act_outdoor_natural_hanbok_colors` | 자연 한복색 찾기 | inst_072 m9 p1 | **YES 중복** |
+| `act_outdoor_nature_mask_making` | 자연물로 탈 꾸미기 | inst_072 m9 p1 | **YES 중복** |
 
 ### 원인
 
-6건 모두 **v0.1.0 origins에 이미 있는 파일**(시립새봄·돌고래)에서 나왔고, `(origin_id, page, 정규화 label)` 키가 v0.1.0 evidence와 **완전히 동일**합니다.
+6건 모두 **v0.1.0 origins에 이미 있는 파일**(inst_060·inst_072)에서 나왔고, `(origin_id, page, 정규화 label)` 키가 v0.1.0 evidence와 **완전히 동일**합니다.
 
 ```
-예: ('sample.monthly.seobom.2026.09', 1, '가을하늘보며산책하기')
+예: ('sample.monthly.inst_060.2026.09', 1, '가을하늘보며산책하기')
     → v0.1.0 evidence에 이미 존재 → dedup이 건너뜀
 ```
 
@@ -144,15 +144,15 @@ Draft에 `reobserved_but_evidence_already_present: 6`으로 기록했고, 테스
 | `act_outdoor_gomusin_throwing` | 고무신 멀리 던지기 |
 | `act_outdoor_v2_08c8ca6c8f` | (신규 후보) |
 
-나머지 96개는 `MIXED_AGE_EVIDENCE_ONLY`이며 evidence 출처가 **우리어린이집(만3~5세 혼합) 중심**입니다.
+나머지 96개는 `MIXED_AGE_EVIDENCE_ONLY`이며 evidence 출처가 **inst_029(만3~5세 혼합) 중심**입니다.
 
 **HD-A에 따라 이 96개의 만4세 지원은 유효합니다.** 다만 `MIXED_AGE_EVIDENCE_ONLY`를 단일연령 근거와 동일하게 표현하지 않았고, item마다 `age_support_review_required: ["4", ...]`로 표시했습니다.
 
 ### ⚠ 혼합연령 기관 다양성 경고 (유지)
 
 ```
-혼합연령 명시 evidence : 우리 · 큰빛  = 2기관
-  └ 우리어린이집이 대부분
+혼합연령 명시 evidence : 우리 · inst_024  = 2기관
+  └ inst_029이 대부분
 ```
 
 혼합반 운영 관행의 기관 간 편차를 검증할 표본이 부족합니다.
@@ -165,15 +165,15 @@ canonical Activity Candidate에서 제외했고 **원문 Observation은 보존**
 
 | label | origin | page | 월 | age_scope | section |
 |---|---|---:|---:|---|---|
-| `실외놀이` | `sample.monthly.aideulsesang.2026.09` | 1 | 9 | `[5]` | outdoor_play |
-| `실외놀이` | `sample.monthly.aideulsesang.2026.09` | 2 | 9 | `[]` | outdoor_play |
+| `실외놀이` | `sample.monthly.inst_012.2026.09` | 1 | 9 | `[5]` | outdoor_play |
+| `실외놀이` | `sample.monthly.inst_012.2026.09` | 2 | 9 | `[]` | outdoor_play |
 
 ```
 draft_exclusion : SECTION_LABEL_ECHO_EXCLUDE
 위치            : pending_human_review.section_label_echo_excluded
 ```
 
-`[판단]` 아이들세상어린이집의 바깥놀이 depth-2 하위 행 라벨(`나들이` / `실외놀이` / `텃밭`)이 활동명으로 추출된 것입니다. 새 Production enum을 만들지 않고 Draft review metadata 범위에서 처리했습니다.
+`[판단]` inst_012의 바깥놀이 depth-2 하위 행 라벨(`나들이` / `실외놀이` / `텃밭`)이 활동명으로 추출된 것입니다. 새 Production enum을 만들지 않고 Draft review metadata 범위에서 처리했습니다.
 
 ---
 
@@ -185,11 +185,11 @@ draft_exclusion : SECTION_LABEL_ECHO_EXCLUDE
 
 | # | observed label | institution | month | age scope | outdoor section | **HD-G 판정** | 근거 |
 |---:|---|---|---:|---|---|---|---|
-| 1 | `바깥놀이를 안전하게 해요` | 한솔빛 | 3 | `[5]` | ✅ | **EXCLUDE** | 구체적 활동 없는 일반 안전 지침 |
-| 2 | `안전 관련 표지판 찾아보며 산책하기` | 우리 | 8 | `[3,4,5]` | ✅ | **INCLUDE_AS_ACTIVITY** | 구체적 행동/도구 존재 |
-| 3 | `안전 약속 지키며 놀이기구 타기` | 우리 | 3 | `[3,4,5]` | ✅ | **INCLUDE_AS_ACTIVITY** | 구체적 행동/도구 존재 |
-| 4 | `안전하게 놀이해요` | 예일 | 1 | `[3]` | ✅ | **EXCLUDE** | 구체적 활동 없는 일반 안전 지침 |
-| 5 | `훌라후프로 안전하게 놀아요` | 서진 | 1 | `[3]` | ✅ | **INCLUDE_AS_ACTIVITY** | 구체적 행동/도구 존재 |
+| 1 | `바깥놀이를 안전하게 해요` | inst_080 | 3 | `[5]` | ✅ | **EXCLUDE** | 구체적 활동 없는 일반 안전 지침 |
+| 2 | `안전 관련 표지판 찾아보며 산책하기` | inst_029 | 8 | `[3,4,5]` | ✅ | **INCLUDE_AS_ACTIVITY** | 구체적 행동/도구 존재 |
+| 3 | `안전 약속 지키며 놀이기구 타기` | inst_029 | 3 | `[3,4,5]` | ✅ | **INCLUDE_AS_ACTIVITY** | 구체적 행동/도구 존재 |
+| 4 | `안전하게 놀이해요` | inst_033 | 1 | `[3]` | ✅ | **EXCLUDE** | 구체적 활동 없는 일반 안전 지침 |
+| 5 | `훌라후프로 안전하게 놀아요` | inst_006 | 1 | `[3]` | ✅ | **INCLUDE_AS_ACTIVITY** | 구체적 행동/도구 존재 |
 
 ### 편입 3건 — 원문 표현 그대로
 
@@ -197,7 +197,7 @@ draft_exclusion : SECTION_LABEL_ECHO_EXCLUDE
 |---|---|---|---|---|
 | `act_outdoor_v2_1cffee74db` | 안전 관련 표지판 찾아보며 산책하기 | ['uri'] | [8] | [3, 4, 5] |
 | `act_outdoor_v2_44a1b42fff` | 안전 약속 지키며 놀이기구 타기 | ['uri'] | [3] | [3, 4, 5] |
-| `act_outdoor_v2_b52ef53a20` | 훌라후프로 안전하게 놀아요 | ['seojin'] | [1] | [3] |
+| `act_outdoor_v2_b52ef53a20` | 훌라후프로 안전하게 놀아요 | ['inst_006'] | [1] | [3] |
 
 **`[실측]` 편입 3건 검증:**
 
@@ -211,8 +211,8 @@ draft_exclusion : SECTION_LABEL_ECHO_EXCLUDE
 
 | label | institution | month | 사유 |
 |---|---|---:|---|
-| `바깥놀이를 안전하게 해요` | 한솔빛 | 3 | 구체적 놀이 행동·대상 없음. **v0.1.0의 기존 판정과 일관** |
-| `안전하게 놀이해요` | 예일 | 1 | 구체적 놀이 행동·도구·대상 없음 |
+| `바깥놀이를 안전하게 해요` | inst_080 | 3 | 구체적 놀이 행동·대상 없음. **v0.1.0의 기존 판정과 일관** |
+| `안전하게 놀이해요` | inst_033 | 1 | 구체적 놀이 행동·도구·대상 없음 |
 
 ```
 draft_exclusion : SAFETY_ADJACENT_EXCLUDE_HD_G
@@ -237,9 +237,9 @@ draft_exclusion : SAFETY_ADJACENT_EXCLUDE_HD_G
 
 ```json
 "observed_institution_count": 1,
-"observed_institutions": ["예일"],
+"observed_institutions": ["inst_033"],
 "evidence_count": 1,
-"origins_used": ["sample.monthly.yeil.2025.11"]
+"origins_used": ["sample.monthly.inst_033.2025.11"]
 ```
 
 ### 2기관 이상 재현 20건 (stronger evidence — runtime hard gate 아님)
@@ -294,15 +294,15 @@ draft_exclusion : SAFETY_ADJACENT_EXCLUDE_HD_G
 
 | 기관 | evidence | | 기관 | evidence |
 |---|---:|---|---|---:|
-| 우리 | 72 | | 괴산하나 | 11 |
-| 예일 | 50 | | 예담 | 10 |
-| 서진 | 38 | | 엄지 | 7 |
-| 시립새봄 | 24 | | 해찬솔 | 6 |
-| 한솔빛 | 18 | | 돌고래 | 5 |
-| 공립아이사랑 | 17 | | 금산군청 | 2 |
-| 아이들세상 | 14 | | 큰빛 | 11 |
+| inst_029 | 72 | | inst_021 | 11 |
+| inst_033 | 50 | | inst_052 | 10 |
+| inst_006 | 38 | | inst_094 | 7 |
+| inst_060 | 24 | | inst_038 | 6 |
+| inst_080 | 18 | | inst_072 | 5 |
+| inst_053 | 17 | | inst_027 | 2 |
+| inst_012 | 14 | | inst_024 | 11 |
 
-두루미는 HD-2에 따라 Activity evidence에서 제외(`EXCLUDE_NO_OUTDOOR_SECTION`)되어 0건입니다.
+inst_030는 HD-2에 따라 Activity evidence에서 제외(`EXCLUDE_NO_OUTDOOR_SECTION`)되어 0건입니다.
 
 ---
 

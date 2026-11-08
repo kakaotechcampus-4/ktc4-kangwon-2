@@ -9,13 +9,15 @@
 
 | 파일 (`p0-planning/data/evidence/`) | 기록 또는 판정 수 | 파일 SHA-256 |
 |---|---:|---|
-| institution_evidence_v0_2_0.json | 12,325 | `5bf84e5a59fd74880b040ea1e545b00f4ddbe8cd1cc07da11a416161dedc8bb4` |
-| monthly_evidence_semantic_classification_v0_2_0.json | 16 | `464d8bcba8dd554264bc628b1a89e7b30c15183c31488836977dab530bd2dcda` |
-| weekly_evidence_semantic_classification_v0_2_0.json | 179 | `3e9688120c14f07fe9d7ee55d8f1196bad53c32621975bcc174ab32786db6234` |
-| safety_evidence_classification_v0_3_0.json | 103 | `9b14e38a9943a02d1bfdb4deb9c13e0e1376e9d693628b6f58dec1cd5a14b973` |
-| safety_reference_quality_v0_2_0.json | 32 | `bc69551897b4940597e43f0e77a2b5cdac438a9eb6345c7825a15f6d5d68a3c4` |
+| institution_evidence_v0_2_0.json | 12,325 | `3e76eb5ccdaef50f16658397da0a1e2023b6ac2283a462414d1c16cc9e263c64` |
+| monthly_evidence_semantic_classification_v0_2_0.json | 16 | `c790c3306c294220d53fe0809d0566a7cff2590a27196d099161ba01a1756074` |
+| weekly_evidence_semantic_classification_v0_2_0.json | 179 | `2da57fd44fc5cae4ac157f631d20196197c3daffe2c9d7a8a93cf78bf48aabc0` |
+| safety_evidence_classification_v0_3_0.json | 103 | `1be141f567952a0d5bd4e1bb3bb7b4fc0bada298ba9adde79986e6d206f480cb` |
+| safety_reference_quality_v0_2_0.json | 32 | `2e4ac7d5619cf62c9b8c34989d12f7b098299e9dfa3395c05fbd024449d2ed55` |
 
-새 자료 content SHA는 `7d6d9bdb29dc5e84c024acc418a092c6e01d72134cf51043ab5dfd38a1332463`이다. 분류 4종의 판정 항목은 이전 판과 완전히 같고, 자료 결합과 판·검토 메타데이터만 새로 기록했다. 기존 승인을 승계하지 않고 이 파일별 승인을 반영했다. 승인 칸은 이번 승인 시점에 갱신했고, 나머지 초안 검토 메모는 보존했다.
+새 자료 content SHA는 `64c007e12366f57b2affdae1f55f77bea874906d9320cf227b84680fec46eced`이다. 분류 4종의 판정 항목은 이전 판과 완전히 같고, 자료 결합과 판·검토 메타데이터만 새로 기록했다. 기존 승인을 승계하지 않고 이 파일별 승인을 반영했다. 승인 칸은 이번 승인 시점에 갱신했고, 나머지 초안 검토 메모는 보존했다.
+
+> 2026-11-08 기관 가명화(ADR-074): 기관명 → `inst_NNN`, 기관 유형 칸 삭제, 원본 경로 → `references/samples/<kind>/<sha12>.pdf`, 다른 원 이름 3곳 → `○○어린이집`. 위 SHA는 가명화 뒤 값이다. record_id · 원문 · 연령 · 월 · 분류 판정은 그대로라 승인을 승계한다.
 
 자료에는 승인 필드를 새로 만들지 않는다. corpus 관찰 자료의 비규범적 역할은 그대로이며, 사람의 개인정보 검토·제외 ID·사유·원본 SHA·파생 재현 정보는 `build`에 기록한다. 분류 4종의 승인은 각 `review` 필드에 기록하고, 기본 로더 경로와 놀이 월간 조립부의 판 상수를 함께 전환한다.
 

@@ -108,20 +108,20 @@ UNREADABLE                셀 복원 불가
 
 | 기관 | Section | 1차 판정 | 이번 판정 | 결과 |
 |---|---|---|---|---|
-| 예담 | outdoor_play | WEEKLY_CELLS | WEEKLY_CELLS | 일치 |
-| 예담 | safety_education | WEEKLY_CELLS | WEEKLY_CELLS | 일치 |
-| 예담 | theme | MONTHLY_MERGED | MONTHLY_MERGED | 일치 |
-| 예담 | goals | MONTHLY_MERGED | MONTHLY_MERGED | 일치 |
-| 예담 | focus | WEEKLY_CELLS | WEEKLY_CELLS | 일치 |
-| 시립새봄 | outdoor_play | MONTHLY_MERGED | MONTHLY_MERGED | 일치 |
-| 시립새봄 | safety_education | MONTHLY_MERGED | MONTHLY_MERGED | 일치 |
-| 시립새봄 | theme | MONTHLY_MERGED | MONTHLY_MERGED | 일치 |
-| 금산군청 | outdoor_play | WEEKLY_CELLS | WEEKLY_CELLS | 일치 |
-| 금산군청 | safety_education | WEEKLY_CELLS | WEEKLY_CELLS | 일치 |
-| 아이들세상 | safety_education | (미측정) | MONTHLY_MERGED | — |
-| 해찬솔 | theme | (미측정) | **OTHER** | 아래 §0.5 참조 |
+| inst_052 | outdoor_play | WEEKLY_CELLS | WEEKLY_CELLS | 일치 |
+| inst_052 | safety_education | WEEKLY_CELLS | WEEKLY_CELLS | 일치 |
+| inst_052 | theme | MONTHLY_MERGED | MONTHLY_MERGED | 일치 |
+| inst_052 | goals | MONTHLY_MERGED | MONTHLY_MERGED | 일치 |
+| inst_052 | focus | WEEKLY_CELLS | WEEKLY_CELLS | 일치 |
+| inst_060 | outdoor_play | MONTHLY_MERGED | MONTHLY_MERGED | 일치 |
+| inst_060 | safety_education | MONTHLY_MERGED | MONTHLY_MERGED | 일치 |
+| inst_060 | theme | MONTHLY_MERGED | MONTHLY_MERGED | 일치 |
+| inst_027 | outdoor_play | WEEKLY_CELLS | WEEKLY_CELLS | 일치 |
+| inst_027 | safety_education | WEEKLY_CELLS | WEEKLY_CELLS | 일치 |
+| inst_012 | safety_education | (미측정) | MONTHLY_MERGED | — |
+| inst_038 | theme | (미측정) | **OTHER** | 아래 §0.5 참조 |
 
-**12건 중 11건 재현.** 유일한 비일치는 해찬솔 theme이며 실제 오류가 아니라 결재란 때문에
+**12건 중 11건 재현.** 유일한 비일치는 inst_038 theme이며 실제 오류가 아니라 결재란 때문에
 값 셀이 주차 영역의 70%만 덮어 `OTHER`로 떨어진 경우입니다.
 
 ### 0.3 분석 성공 범위
@@ -131,17 +131,17 @@ UNREADABLE                셀 복원 불가
 ```text
 대상 파일        13
 분석 성공        12   (페이지 17)
-분석 실패         1   별빛자이 — 벡터 drawing 0 / 텍스트 0자 / 이미지 4
+분석 실패         1   inst_042 — 벡터 drawing 0 / 텍스트 0자 / 이미지 4
 주차 축 있음      9 기관
-주차 축 없음      1 기관   아이사랑 3파일
+주차 축 없음      1 기관   inst_084 3파일
 ```
 
-별빛자이는 **진성 스캔본**입니다. 추정하지 않고 `UNREADABLE`로 기록했습니다.
+inst_042는 **진성 스캔본**입니다. 추정하지 않고 `UNREADABLE`로 기록했습니다.
 판독에는 OCR이 필요합니다.
 
 ### 0.4 Section별 분포 (기관 11곳)
 
-`[실측]` `X` = 주차 축 자체가 없어 주차 기준 판정 불가(아이사랑), `?` = 판독 불가(별빛자이)
+`[실측]` `X` = 주차 축 자체가 없어 주차 기준 판정 불가(inst_084), `?` = 판독 불가(inst_042)
 
 | Section | WEEKLY | MERGED | INLINE | OTHER | 없음 | X | ? |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -157,7 +157,7 @@ UNREADABLE                셀 복원 불가
 | theme *(교차확인)* | 0 | **7** | 0 | 2 | 0 | 1 | 1 |
 | focus *(교차확인)* | **5** | 1 | 0 | 0 | 3 | 1 | 1 |
 
-`outdoor_play`의 MERGED 2건은 시립새봄·아이들세상이고, 큰빛은 페이지별로 갈려
+`outdoor_play`의 MERGED 2건은 inst_060·inst_012이고, inst_024은 페이지별로 갈려
 다수 판정(MERGED)으로 집계했습니다. 자세한 내용은 §0.5.
 
 ### 0.5 기관별 관찰표
@@ -167,51 +167,51 @@ UNREADABLE                셀 복원 불가
 
 | 기관 | outdoor | safety | goals | habits | emergency | drill | indoor_alt | special | event | theme | focus |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 아이사랑(국공립) | X | X | X | X | X | X | X | X | X | X | X |
-| 괴산하나(국공립) | W | W | M | W | W | W | W | - | W | M | W |
-| 별빛자이(국공립) | ? | ? | ? | ? | ? | ? | ? | ? | ? | ? | ? |
-| 시립새봄(국공립) | M | M | - | - | I | I | I | M | M | M | - |
-| 엄지(민간) | W | W | - | - | - | I | I | - | W | M | - |
-| 예담(민간) | W | W | M | W | W | I | W | - | - | M | W |
-| 큰빛(민간) | **M\*** | I | M | W | - | - | I | - | M | M | M |
-| 해찬솔(민간) | W | W | **O** | W | - | I | W | W | - | **O** | W |
-| 한솔빛(민간) | W | W | M | W | I | I | W | - | - | M | W |
-| 금산군청(직장) | W | W | M | W | W | I | I | W | - | M | - |
-| 아이들세상(협동) | M | M | - | M | I | I | M | - | I | **O** | W |
+| inst_084 | X | X | X | X | X | X | X | X | X | X | X |
+| inst_021 | W | W | M | W | W | W | W | - | W | M | W |
+| inst_042 | ? | ? | ? | ? | ? | ? | ? | ? | ? | ? | ? |
+| inst_060 | M | M | - | - | I | I | I | M | M | M | - |
+| inst_094 | W | W | - | - | - | I | I | - | W | M | - |
+| inst_052 | W | W | M | W | W | I | W | - | - | M | W |
+| inst_024 | **M\*** | I | M | W | - | - | I | - | M | M | M |
+| inst_038 | W | W | **O** | W | - | I | W | W | - | **O** | W |
+| inst_080 | W | W | M | W | I | I | W | - | - | M | W |
+| inst_027 | W | W | M | W | W | I | I | W | - | M | - |
+| inst_012 | M | M | - | M | I | I | M | - | I | **O** | W |
 
 ### 0.6 기관별 주요 예외
 
 `[실측]`
 
-1. **아이사랑 — 주차 축 자체가 없음.** 3파일 전부 주차 헤더가 없고 `놀이예상기간 : 9월`로
+1. **inst_084 — 주차 축 자체가 없음.** 3파일 전부 주차 헤더가 없고 `놀이예상기간 : 9월`로
    기간이 월 단위입니다. 축을 가진 유일한 Section인 `특별활동`의 축은 **요일**(월·화·수·목·금)
    입니다. `바깥놀이`는 별도 Section이 아니라 놀이 항목의 접두 태그(`♥바깥놀이-비석치기`)입니다.
    주차 기준 `display_mode`를 정의할 수 없어 별도 분류(`X`)로 기록했습니다.
 
-2. **별빛자이 — 진성 스캔본.** 벡터 drawing 0개, 텍스트 0자, 이미지 4개.
+2. **inst_042 — 진성 스캔본.** 벡터 drawing 0개, 텍스트 0자, 이미지 4개.
    `UNREADABLE`. 임의 추정하지 않았습니다.
 
-3. **큰빛 — 기관 내 페이지 간 상이.** p.1(만4·5세, 헤더 4주)의 `바깥`은 병합 셀이고,
+3. **inst_024 — 기관 내 페이지 간 상이.** p.1(만4·5세, 헤더 4주)의 `바깥`은 병합 셀이고,
    p.2(만3세, 헤더 5주)의 `오전자유 놀이 (바깥 놀이포함)`은 주별 셀입니다.
    같은 기관·같은 달인데 연령 페이지에 따라 표시 방식이 다릅니다.
 
-4. **큰빛 safety — INLINE_OR_TAGGED.** 독립 `안전교육` 라벨 행이 없고 다른 셀 안에
+4. **inst_024 safety — INLINE_OR_TAGGED.** 독립 `안전교육` 라벨 행이 없고 다른 셀 안에
    `<안전교육> 1주-… 5주-…` 블록으로 들어갑니다. `[판단]` 물리 셀은 병합이지만 주차 배정
    정보가 텍스트로 보존된 형태이며, **표시 방식과 canonical data 구조를 구분해야 한다는**
    사례입니다. canonical item에는 week reference를 보존할 수 있습니다.
 
-5. **해찬솔 theme — OTHER.** `주 제` 값 셀이 1개이지만 오른쪽에 담임·원장 **결재란**이 있어
+5. **inst_038 theme — OTHER.** `주 제` 값 셀이 1개이지만 오른쪽에 담임·원장 **결재란**이 있어
    주차 영역의 70%만 덮습니다. `[판단]` 의미상 월 단위 단일 값이나 기하로는 전폭 병합이
    아니므로 `OTHER`로 정직하게 기록했습니다.
 
-6. **아이들세상 theme — OTHER.** `생활주제` 행이 `절기` 라벨·값과 **같은 행을 공유**합니다
+6. **inst_012 theme — OTHER.** `생활주제` 행이 `절기` 라벨·값과 **같은 행을 공유**합니다
    (`생활주제 | 열매 맺는 달 | 절기 | 백로, 추분`). theme 값이 주차 영역의 55%만 덮습니다.
 
-7. **괴산하나 — 페이지 간 일관.** p.1/p.2 모두 outdoor W · safety W · theme M · focus W ·
+7. **inst_021 — 페이지 간 일관.** p.1/p.2 모두 outdoor W · safety W · theme M · focus W ·
    habits W로 동일합니다. 라벨만 연령별로 다릅니다(`놀이 주제`↔`생활주제`,
    `교사의 기대`↔`목표`, `예상 놀이`↔`소주제`).
 
-8. **시립새봄 — 4페이지 전부 동일.** outdoor·safety·theme 모두 MERGED(점유율 1.0).
+8. **inst_060 — 4페이지 전부 동일.** outdoor·safety·theme 모두 MERGED(점유율 1.0).
 
 ---
 
@@ -225,13 +225,13 @@ UNREADABLE                셀 복원 불가
 |---:|---|---|---|
 | 1 | Section evidence가 실제 sample과 일치 | 각 Section에 `observed_institutions` / `denominator` / `observed_in`(origin_id) / `observed_source_labels` 수록 | `docs/template-a-validation.md` §3.1·§4.5 |
 | 2 | activation 정책이 OD-M01과 일치 | 기본 활성 4개(`theme`/`outdoor_play`/`safety_education`/`week_axis`), Optional 전부 `activated:false` | OD-M01 `RESOLVED_FOR_P0` |
-| 3 | `source_label` 보존 | `source_label_scope = PLAN_OR_TEMPLATE_INSTANCE`. 기관 단위 Mapping 테이블 없음 | 괴산하나 연령별 라벨 불일치(§0.6-7) |
+| 3 | `source_label` 보존 | `source_label_scope = PLAN_OR_TEMPLATE_INSTANCE`. 기관 단위 Mapping 테이블 없음 | inst_021 연령별 라벨 불일치(§0.6-7) |
 | 4 | `max_depth = 2` | `hierarchy_max_depth: 2`. 실제 최대 depth 2(`indoor_alternative`) | 2단 4/10 관찰, 3단 0/10 |
-| 5 | `RENDER_EMPTY_CELL` | `default_empty_value_policy` 및 모든 CONTENT Section에 설정 | 한솔빛 3p의 빈 안전교육 행 |
+| 5 | `RENDER_EMPTY_CELL` | `default_empty_value_policy` 및 모든 CONTENT Section에 설정 | inst_080 3p의 빈 안전교육 행 |
 | 6 | global display_mode default 없음 | `global_display_mode_default: null` | OD-M01 |
 | 7 | `character_greeting` 제외 | `excluded_sections`에 0/10 근거와 허용 경로 기재. `sections`에 없음 | 0/10 |
 | 8 | `SAMPLE_DERIVED_NON_NORMATIVE` 명확 | 최상위 `normative_status` + `normative_status_note` | — |
-| 9 | 아이사랑형 변이를 전국 공통 규칙으로 오해하지 않음 | `week_axis_is_not_unconditionally_required: true`, `supported_display_modes_extensible: true`, inline 유형 미수용 명시 | §0.6-1 |
+| 9 | inst_084형 변이를 전국 공통 규칙으로 오해하지 않음 | `week_axis_is_not_unconditionally_required: true`, `supported_display_modes_extensible: true`, inline 유형 미수용 명시 | §0.6-1 |
 
 ### 1.2 이번에 채워진 display_mode
 
@@ -274,10 +274,10 @@ UNREADABLE                셀 복원 불가
 
 ### 2.1 `outdoor_play` → **`WEEKLY_CELLS`**
 
-| 고려 요소 | 내용 |
+| inst_066 요소 | 내용 |
 |---|---|
 | 이번 실측 다수 | `[실측]` 주차 축이 있는 9기관 중 **W 6 : M 2 : 기관 내 상이 1** |
-| 1차 기하 검증 | `[실측]` n=3에서 예담 W · 금산 W · 시립새봄 M → **2:1로 W** |
+| 1차 기하 검증 | `[실측]` n=3에서 inst_052 W · inst_027 W · inst_060 M → **2:1로 W** |
 | Template A가 모델링하는 대표 형식 | `[판단]` Template A v0은 `Section 행 × 주차 열` 격자다. `week_axis`가 기본 활성이고 `focus`가 `WEEKLY_CELLS`인 구조에서 `outdoor_play`만 월 병합으로 두면 격자 모델과 어긋난다 |
 | 정보 손실 방향 | `[판단]` 주별 셀에 월 단위 값을 넣는 것보다, 월 병합 셀에 주별 값을 욱여넣는 쪽이 손실이 크다 |
 
@@ -285,19 +285,19 @@ UNREADABLE                셀 복원 불가
 
 ### 2.2 `safety_education` → **`WEEKLY_CELLS`**
 
-| 고려 요소 | 내용 |
+| inst_066 요소 | 내용 |
 |---|---|
 | 이번 실측 다수 | `[실측]` 9기관 중 **W 6 : M 2 : I 1** |
-| 1차 기하 검증 | `[실측]` 예담 W · 금산 W · 시립새봄 M → **2:1로 W** |
+| 1차 기하 검증 | `[실측]` inst_052 W · inst_027 W · inst_060 M → **2:1로 W** |
 | OD-M04와의 정합 | `[출처]` "안전교육 Item은 실제 week/date를 보존한다". 주별 셀 표시가 이 보존과 자연스럽게 맞는다 |
-| 표시 ≠ canonical | `[판단]` 큰빛처럼 물리 병합 셀 안에 `1주-…5주-`를 적는 형태가 있다. 이는 **canonical에 week reference를 보존한 채 표시만 병합**한 것이며, 표시 기본값을 주별로 둔다고 이 데이터를 표현하지 못하는 것은 아니다 |
+| 표시 ≠ canonical | `[판단]` inst_024처럼 물리 병합 셀 안에 `1주-…5주-`를 적는 형태가 있다. 이는 **canonical에 week reference를 보존한 채 표시만 병합**한 것이며, 표시 기본값을 주별로 둔다고 이 데이터를 표현하지 못하는 것은 아니다 |
 
 ### 2.3 권고에 붙는 조건
 
 - 두 값은 **Template A v0 인스턴스의 기본값**이며 다른 Template 인스턴스나 Override가 우선합니다.
-- `MONTHLY_MERGED_SUMMARY`를 쓰는 기관(시립새봄·아이들세상)은 **Template 인스턴스 추가 또는
+- `MONTHLY_MERGED_SUMMARY`를 쓰는 기관(inst_060·inst_012)은 **Template 인스턴스 추가 또는
   Section 단위 Override**로 처리합니다. 전국 규칙으로 만들지 않습니다.
-- `supported_display_modes`는 확장 가능으로 유지합니다. 아이사랑형 inline 유형은 아직
+- `supported_display_modes`는 확장 가능으로 유지합니다. inst_084형 inline 유형은 아직
   두 값 중 어느 쪽도 아닙니다.
 
 ---

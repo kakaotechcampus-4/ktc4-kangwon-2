@@ -9,7 +9,7 @@
     "schema_version": "institution-evidence.schema.v0",
     "ingestion_version": "institution-evidence-ingestion-v0.2.0",
     "normative_status": "CORPUS_OBSERVATION_NON_NORMATIVE",
-    "content_sha256": "7d6d9bdb29dc5e84c024acc418a092c6e01d72134cf51043ab5dfd38a1332463"
+    "content_sha256": "64c007e12366f57b2affdae1f55f77bea874906d9320cf227b84680fec46eced"
   },
   "legal_rule_version": "child-welfare-act-decree-annex6-2022-06-21",
   "review": {

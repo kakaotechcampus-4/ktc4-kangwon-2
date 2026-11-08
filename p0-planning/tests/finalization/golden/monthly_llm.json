@@ -3,7 +3,7 @@
   "activity_selections": [],
   "audit": [{"actor": null, "system_actor": "monthly_application", "type": "CREATED"}],
   "constraints": [{"affected_sections": ["safety_education"], "code": "STATUTORY_SAFETY_EDUCATION", "rule_version": "v1", "verification": "NOT_VERIFIED_SOURCE_REQUIRED"}],
-  "context_packet_fingerprint": "a63a6d953d2e3ee3f9d2c5b77b5e7de048adbd14d0213698453aae578a5d417e",
+  "context_packet_fingerprint": "2b7445e5bdd0a4569e7a40c58163f0691563068de98872271977acd485b64120",
   "generation_mode": "LLM_PLANNER",
   "parent_lineage": {"confirmed_by": "teacher_001", "has_parent_item_id": true, "has_parent_plan_id": true, "snapshot_value": "우리나라와 세계 여러 나라"},
   "schema": "monthly-golden-v2",

@@ -129,7 +129,7 @@ def test_확정하면_본문과_칸이_같이_바뀐다(db_session):
 
 
 def test_다른_원의_계획안은_없는_것과_같다(db_session):
-    mine = _center(db_session, "우리어린이집")
+    mine = _center(db_session, "햇살어린이집")
     other = _center(db_session, "남의어린이집")
     plan = _generate(_repo(db_session, mine.id))
 
@@ -138,7 +138,7 @@ def test_다른_원의_계획안은_없는_것과_같다(db_session):
 
 
 def test_남의_원_계획안을_같은_id_로_덮어쓰지_못한다(db_session):
-    mine = _center(db_session, "우리어린이집")
+    mine = _center(db_session, "햇살어린이집")
     other = _center(db_session, "남의어린이집")
     repo = _repo(db_session, mine.id)
     plan = _generate(repo)
