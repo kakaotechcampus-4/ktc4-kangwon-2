@@ -139,6 +139,7 @@ test("single response has the captured key set, in every nested cell too", async
     "description",
     "name",
     "parent_item_id",
+    "trend_applied",
   ]);
   assert.deepEqual(Object.keys(plan.parent).sort(), [
     "annual_plan_id",

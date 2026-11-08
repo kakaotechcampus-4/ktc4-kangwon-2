@@ -27,6 +27,8 @@ export type PickCandidate = {
   fields: { label: string; lines: string[] }[];
   /** 요청 사항을 반영한 후보 — 작은 표시만 단다. */
   memoApplied?: boolean;
+  /** 트렌드봇 자료를 반영한 후보(ADR-072) — 같은 자리에 빨간 ✦ 만 단다. */
+  trendApplied?: boolean;
 };
 
 /** 요청 사항을 반영한 후보의 작은 표시(Human Decision 2026-11-05). 글자 배지 대신 조용한 ✦. */
@@ -115,6 +117,7 @@ function Row({
           {c.summary && <span className="truncate text-[14px] text-ink-soft">{c.summary}</span>}
         </span>
         {c.memoApplied && <MemoMark />}
+        {c.trendApplied && <TrendMark />}
         {/* 고른 줄은 오른쪽 빈 자리에 체크 — 색만으로 고름을 알리지 않는다. */}
         {picked && <CheckStamp />}
         {picked && <span className="sr-only">(고름)</span>}
