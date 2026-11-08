@@ -18,8 +18,8 @@ from ssuksak.planning.domain.provenance import EvidenceSourceType
 from ssuksak.planning.evidence.models import ExtractionQuality, ReusePolicy
 from ssuksak.planning.evidence.ports import InstitutionEvidenceRepository
 
-EXPECTED_FILE_SHA = "3e76eb5ccdaef50f16658397da0a1e2023b6ac2283a462414d1c16cc9e263c64"
-EXPECTED_CONTENT_SHA = "64c007e12366f57b2affdae1f55f77bea874906d9320cf227b84680fec46eced"
+EXPECTED_FILE_SHA = "90f2a4a219457de506b8cb103824a6636b78f1e4007004214f85c3a59d4c69bf"
+EXPECTED_CONTENT_SHA = "ab6bb59178106f242225a163963d77b1f4cb038befc0032ba989a18fb57e50eb"
 
 
 @pytest.fixture(scope="module")
@@ -34,7 +34,7 @@ def store():
 
 def test_approved_artifact_bytes_and_lf_are_frozen():
     raw = DEFAULT_EVIDENCE_STORE_PATH.read_bytes()
-    assert len(raw) == 12_507_598
+    assert len(raw) == 12_507_559
     assert b"\r" not in raw
     assert hashlib.sha256(raw).hexdigest() == EXPECTED_FILE_SHA
 

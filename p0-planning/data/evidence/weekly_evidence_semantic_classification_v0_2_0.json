@@ -9,7 +9,7 @@
     "schema_version": "institution-evidence.schema.v0",
     "ingestion_version": "institution-evidence-ingestion-v0.2.0",
     "normative_status": "CORPUS_OBSERVATION_NON_NORMATIVE",
-    "content_sha256": "64c007e12366f57b2affdae1f55f77bea874906d9320cf227b84680fec46eced"
+    "content_sha256": "ab6bb59178106f242225a163963d77b1f4cb038befc0032ba989a18fb57e50eb"
   },
   "review": {
     "domain_owner_approval": "HUMAN_APPROVED",

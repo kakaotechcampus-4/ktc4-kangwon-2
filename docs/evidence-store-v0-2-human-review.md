@@ -9,13 +9,13 @@
 
 | 파일 (`p0-planning/data/evidence/`) | 기록 또는 판정 수 | 파일 SHA-256 |
 |---|---:|---|
-| institution_evidence_v0_2_0.json | 12,325 | `3e76eb5ccdaef50f16658397da0a1e2023b6ac2283a462414d1c16cc9e263c64` |
-| monthly_evidence_semantic_classification_v0_2_0.json | 16 | `c790c3306c294220d53fe0809d0566a7cff2590a27196d099161ba01a1756074` |
-| weekly_evidence_semantic_classification_v0_2_0.json | 179 | `2da57fd44fc5cae4ac157f631d20196197c3daffe2c9d7a8a93cf78bf48aabc0` |
-| safety_evidence_classification_v0_3_0.json | 103 | `1be141f567952a0d5bd4e1bb3bb7b4fc0bada298ba9adde79986e6d206f480cb` |
-| safety_reference_quality_v0_2_0.json | 32 | `2e4ac7d5619cf62c9b8c34989d12f7b098299e9dfa3395c05fbd024449d2ed55` |
+| institution_evidence_v0_2_0.json | 12,325 | `90f2a4a219457de506b8cb103824a6636b78f1e4007004214f85c3a59d4c69bf` |
+| monthly_evidence_semantic_classification_v0_2_0.json | 16 | `666e1ff35b5559b0b9a55dbe122ed6190f89999692f20d9441e9fcd3126a3db9` |
+| weekly_evidence_semantic_classification_v0_2_0.json | 179 | `517a5279521ee9889b90cc2824314a584c98f7cdaaf72e32c4b9f779ebd83dac` |
+| safety_evidence_classification_v0_3_0.json | 103 | `9eb2a4437798ddc9586a961ecfc4992e59013996a8cd97a0996fc59c691afa11` |
+| safety_reference_quality_v0_2_0.json | 32 | `f9b46edd1bf57b689833f956f3c2c4f543194200deac01a51c851b297557d815` |
 
-새 자료 content SHA는 `64c007e12366f57b2affdae1f55f77bea874906d9320cf227b84680fec46eced`이다. 분류 4종의 판정 항목은 이전 판과 완전히 같고, 자료 결합과 판·검토 메타데이터만 새로 기록했다. 기존 승인을 승계하지 않고 이 파일별 승인을 반영했다. 승인 칸은 이번 승인 시점에 갱신했고, 나머지 초안 검토 메모는 보존했다.
+새 자료 content SHA는 `ab6bb59178106f242225a163963d77b1f4cb038befc0032ba989a18fb57e50eb`이다. 분류 4종의 판정 항목은 이전 판과 완전히 같고, 자료 결합과 판·검토 메타데이터만 새로 기록했다. 기존 승인을 승계하지 않고 이 파일별 승인을 반영했다. 승인 칸은 이번 승인 시점에 갱신했고, 나머지 초안 검토 메모는 보존했다.
 
 > 2026-11-08 기관 가명화(ADR-074): 기관명 → `inst_NNN`, 기관 유형 칸 삭제, 원본 경로 → `references/samples/<kind>/<sha12>.pdf`, 다른 원 이름 3곳 → `○○어린이집`. 위 SHA는 가명화 뒤 값이다. record_id · 원문 · 연령 · 월 · 분류 판정은 그대로라 승인을 승계한다.
 

@@ -1,6 +1,6 @@
 {
   "build": {
-    "content_sha256": "64c007e12366f57b2affdae1f55f77bea874906d9320cf227b84680fec46eced",
+    "content_sha256": "ab6bb59178106f242225a163963d77b1f4cb038befc0032ba989a18fb57e50eb",
     "derived_from": {
       "file": "institution_evidence_v0_1_0.json",
       "file_sha256": "8479c0490a002d9336688c1b6cacf47f2d2c083201b15df01258336c07e0ba1a",
@@ -28460,7 +28460,7 @@
       "year": 2025
     },
     {
-      "activity_text": "19 2025 두루미 한마음 예술제 - 12",
+      "activity_text": "19 2025 ○○ 한마음 예술제 - 12",
       "age_evidence_type": "SINGLE_AGE_PAGE",
       "age_scope": [
         3
@@ -29330,7 +29330,7 @@
       "year": 2025
     },
     {
-      "activity_text": "19 2025 두루미 한마음 예술제 - 12",
+      "activity_text": "19 2025 ○○ 한마음 예술제 - 12",
       "age_evidence_type": "SINGLE_AGE_PAGE",
       "age_scope": [
         4
@@ -30230,7 +30230,7 @@
       "year": 2025
     },
     {
-      "activity_text": "19 2025 두루미 한마음 예술제 - 12",
+      "activity_text": "19 2025 ○○ 한마음 예술제 - 12",
       "age_evidence_type": "SINGLE_AGE_PAGE",
       "age_scope": [
         5
@@ -341059,7 +341059,7 @@
       "year": 2025
     },
     {
-      "activity_text": "12 ‘그림책과 함께하는 두루미 갤러리’ 행사 - 11",
+      "activity_text": "12 ‘그림책과 함께하는 ○○ 갤러리’ 행사 - 11",
       "age_evidence_type": "SINGLE_AGE_PAGE",
       "age_scope": [
         3
@@ -342559,7 +342559,7 @@
       "year": 2025
     },
     {
-      "activity_text": "12 ‘그림책과 함께하는 두루미갤러리’ 행사 - 11",
+      "activity_text": "12 ‘그림책과 함께하는 ○○갤러리’ 행사 - 11",
       "age_evidence_type": "SINGLE_AGE_PAGE",
       "age_scope": [
         5
@@ -361061,7 +361061,7 @@
         "row_bottom": 462.8,
         "row_top": 430.4
       },
-      "source_label": "행복한 우리 집 -5,6월 생일잔치 -오디 수확 체험 -월드림 가족운동회",
+      "source_label": "행복한 우리 집 -5,6월 생일잔치 -오디 수확 체험 -○○ 가족운동회",
       "source_path": "references/samples/yearly/f74e88e6d2a5.pdf",
       "source_section": "event",
       "source_sha256": "f74e88e6d2a572e043ed5452e9404cc16d2b5cbba424e6cd6ecd55bce3e5151d",
@@ -361090,7 +361090,7 @@
         "row_bottom": 462.8,
         "row_top": 430.4
       },
-      "source_label": "행복한 우리 집 -5,6월 생일잔치 -오디 수확 체험 -월드림 가족운동회",
+      "source_label": "행복한 우리 집 -5,6월 생일잔치 -오디 수확 체험 -○○ 가족운동회",
       "source_path": "references/samples/yearly/f74e88e6d2a5.pdf",
       "source_section": "event",
       "source_sha256": "f74e88e6d2a572e043ed5452e9404cc16d2b5cbba424e6cd6ecd55bce3e5151d",
@@ -361119,7 +361119,7 @@
         "row_bottom": 462.8,
         "row_top": 430.4
       },
-      "source_label": "행복한 우리 집 -5,6월 생일잔치 -오디 수확 체험 -월드림 가족운동회",
+      "source_label": "행복한 우리 집 -5,6월 생일잔치 -오디 수확 체험 -○○ 가족운동회",
       "source_path": "references/samples/yearly/f74e88e6d2a5.pdf",
       "source_section": "event",
       "source_sha256": "f74e88e6d2a572e043ed5452e9404cc16d2b5cbba424e6cd6ecd55bce3e5151d",
@@ -361148,7 +361148,7 @@
         "row_bottom": 462.8,
         "row_top": 430.4
       },
-      "source_label": "행복한 우리 집 -5,6월 생일잔치 -오디 수확 체험 -월드림 가족운동회",
+      "source_label": "행복한 우리 집 -5,6월 생일잔치 -오디 수확 체험 -○○ 가족운동회",
       "source_path": "references/samples/yearly/f74e88e6d2a5.pdf",
       "source_section": "event",
       "source_sha256": "f74e88e6d2a572e043ed5452e9404cc16d2b5cbba424e6cd6ecd55bce3e5151d",
@@ -362657,7 +362657,7 @@
         "row_bottom": 477.6,
         "row_top": 441.7
       },
-      "source_label": "다양한 가족의 문화 견학 -5,6월 생일잔치 -오디 수확 체험 -월드림 가족운동회",
+      "source_label": "다양한 가족의 문화 견학 -5,6월 생일잔치 -오디 수확 체험 -○○ 가족운동회",
       "source_path": "references/samples/yearly/f74e88e6d2a5.pdf",
       "source_section": "event",
       "source_sha256": "f74e88e6d2a572e043ed5452e9404cc16d2b5cbba424e6cd6ecd55bce3e5151d",
@@ -362686,7 +362686,7 @@
         "row_bottom": 477.6,
         "row_top": 441.7
       },
-      "source_label": "다양한 가족의 문화 견학 -5,6월 생일잔치 -오디 수확 체험 -월드림 가족운동회",
+      "source_label": "다양한 가족의 문화 견학 -5,6월 생일잔치 -오디 수확 체험 -○○ 가족운동회",
       "source_path": "references/samples/yearly/f74e88e6d2a5.pdf",
       "source_section": "event",
       "source_sha256": "f74e88e6d2a572e043ed5452e9404cc16d2b5cbba424e6cd6ecd55bce3e5151d",
@@ -362715,7 +362715,7 @@
         "row_bottom": 477.6,
         "row_top": 441.7
       },
-      "source_label": "다양한 가족의 문화 견학 -5,6월 생일잔치 -오디 수확 체험 -월드림 가족운동회",
+      "source_label": "다양한 가족의 문화 견학 -5,6월 생일잔치 -오디 수확 체험 -○○ 가족운동회",
       "source_path": "references/samples/yearly/f74e88e6d2a5.pdf",
       "source_section": "event",
       "source_sha256": "f74e88e6d2a572e043ed5452e9404cc16d2b5cbba424e6cd6ecd55bce3e5151d",
@@ -362744,7 +362744,7 @@
         "row_bottom": 477.6,
         "row_top": 441.7
       },
-      "source_label": "다양한 가족의 문화 견학 -5,6월 생일잔치 -오디 수확 체험 -월드림 가족운동회",
+      "source_label": "다양한 가족의 문화 견학 -5,6월 생일잔치 -오디 수확 체험 -○○ 가족운동회",
       "source_path": "references/samples/yearly/f74e88e6d2a5.pdf",
       "source_section": "event",
       "source_sha256": "f74e88e6d2a572e043ed5452e9404cc16d2b5cbba424e6cd6ecd55bce3e5151d",

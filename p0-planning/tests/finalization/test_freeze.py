@@ -112,19 +112,19 @@ FROZEN_ARTIFACTS = {
     ),
     # Human-approved 2026-11-02 (reviewer_ai_lead_001): privacy exclusions, unchanged entry decisions.
     "evidence/institution_evidence_v0_2_0.json": (
-        "3e76eb5ccdaef50f16658397da0a1e2023b6ac2283a462414d1c16cc9e263c64"
+        "90f2a4a219457de506b8cb103824a6636b78f1e4007004214f85c3a59d4c69bf"
     ),
     "evidence/monthly_evidence_semantic_classification_v0_2_0.json": (
-        "c790c3306c294220d53fe0809d0566a7cff2590a27196d099161ba01a1756074"
+        "666e1ff35b5559b0b9a55dbe122ed6190f89999692f20d9441e9fcd3126a3db9"
     ),
     "evidence/weekly_evidence_semantic_classification_v0_2_0.json": (
-        "2da57fd44fc5cae4ac157f631d20196197c3daffe2c9d7a8a93cf78bf48aabc0"
+        "517a5279521ee9889b90cc2824314a584c98f7cdaaf72e32c4b9f779ebd83dac"
     ),
     "evidence/safety_evidence_classification_v0_3_0.json": (
-        "1be141f567952a0d5bd4e1bb3bb7b4fc0bada298ba9adde79986e6d206f480cb"
+        "9eb2a4437798ddc9586a961ecfc4992e59013996a8cd97a0996fc59c691afa11"
     ),
     "evidence/safety_reference_quality_v0_2_0.json": (
-        "2e4ac7d5619cf62c9b8c34989d12f7b098299e9dfa3395c05fbd024449d2ed55"
+        "f9b46edd1bf57b689833f956f3c2c4f543194200deac01a51c851b297557d815"
     ),
 }
 
@@ -335,7 +335,7 @@ def test_safety_reference_exact_version_and_six_categories_are_frozen():
     ("filename", "version", "sha", "records"),
     [
         ("institution_evidence_v0_2_0.json", "institution-evidence-ingestion-v0.2.0",
-         "64c007e12366f57b2affdae1f55f77bea874906d9320cf227b84680fec46eced", 12_325),
+         "ab6bb59178106f242225a163963d77b1f4cb038befc0032ba989a18fb57e50eb", 12_325),
     ],
 )
 def test_evidence_store_identity_content_hash_and_non_normative_role_are_frozen(filename, version, sha, records):
