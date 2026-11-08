@@ -24,22 +24,22 @@
 
 저장소 내부의 실측 Monthly Sample만 사용했다. 외부 네트워크 접근 0건이다.
 
-| origin_id | 기관 유형 | 페이지 | 판독 페이지 |
-|---|---|---:|---|
-| `sample.monthly.inst_053.2026.09.age3` | 국공립 | 1 | 1 |
-| `sample.monthly.inst_053.2026.09.age4` | 국공립 | 1 | 1 |
-| `sample.monthly.inst_053.2026.09.age5` | 국공립 | 1 | 1 |
-| `sample.monthly.inst_021.2026.09` | 국공립 | 2 | 1, 2 |
-| `sample.monthly.inst_072.2026.09` | 국공립 | 1 | 1 |
-| `sample.monthly.inst_060.2026.09` | 국공립 | 4 | 1, 2, 3, 4 |
-| `sample.monthly.inst_094.2026.09` | 민간 | 1 | 1 |
-| `sample.monthly.inst_052.2026.09` | 민간 | 1 | 1 |
-| `sample.monthly.inst_024.2026.09` | 민간 | 2 | 1 (p.2 근거 미사용) |
-| `sample.monthly.inst_038.2026.09` | 민간 | 1 | 1 |
-| `sample.monthly.inst_027.2026.09` | 직장 | 1 | 1 |
-| `sample.monthly.inst_080.2026.03` | 민간 | 3 | 1, 2, 3 |
-| `sample.monthly.inst_012.2026.09` | 협동 | 2 | 1, 2 |
-| `sample.monthly.inst_042.2026` | 국공립 | 2 | **판독 불가** (이미지 전용) |
+| origin_id | 페이지 | 판독 페이지 |
+|---|---:|---|
+| `sample.monthly.inst_053.2026.09.age3` | 1 | 1 |
+| `sample.monthly.inst_053.2026.09.age4` | 1 | 1 |
+| `sample.monthly.inst_053.2026.09.age5` | 1 | 1 |
+| `sample.monthly.inst_021.2026.09` | 2 | 1, 2 |
+| `sample.monthly.inst_072.2026.09` | 1 | 1 |
+| `sample.monthly.inst_060.2026.09` | 4 | 1, 2, 3, 4 |
+| `sample.monthly.inst_094.2026.09` | 1 | 1 |
+| `sample.monthly.inst_052.2026.09` | 1 | 1 |
+| `sample.monthly.inst_024.2026.09` | 2 | 1 (p.2 근거 미사용) |
+| `sample.monthly.inst_038.2026.09` | 1 | 1 |
+| `sample.monthly.inst_027.2026.09` | 1 | 1 |
+| `sample.monthly.inst_080.2026.03` | 3 | 1, 2, 3 |
+| `sample.monthly.inst_012.2026.09` | 2 | 1, 2 |
+| `sample.monthly.inst_042.2026` | 2 | **판독 불가** (이미지 전용) |
 
 ### 1.1 Source count
 
@@ -48,7 +48,6 @@ source_count            : 14   (origin 항목 수)
 readable_source_count   : 13
 institution_count       : 12   (inst_084 3파일을 1기관으로 세면 12)
 readable_institution_count : 11
-기관 유형               : 국공립 6 / 민간 5 / 직장 1 / 협동 1
 evidence 총 개수        : 74
 ```
 
