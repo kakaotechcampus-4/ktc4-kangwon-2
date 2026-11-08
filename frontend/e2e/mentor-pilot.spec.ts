@@ -326,7 +326,7 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
     "유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.",
   ]);
   await page.getByRole("link", { name: "평가 점검", exact: true }).click();
-  // 화면 본문은 서류 한 장이고, 평가항목별 보기는 접혀 있다.
+  // 화면 본문은 서류 도장판이고, 평가항목별 보기는 접혀 있다.
   await page.getByText(/^평가항목별로 보기/).click();
   await expect(
     page.getByRole("region", { name: "4-1 관찰 및 실행 계획", exact: true }),

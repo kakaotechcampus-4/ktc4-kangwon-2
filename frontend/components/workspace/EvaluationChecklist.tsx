@@ -12,8 +12,14 @@ import {
 import { Message, ws } from "./WorkspaceUI";
 import EvaluationAuto from "./EvaluationAuto";
 import EvaluationSelfCheck from "./EvaluationSelfCheck";
-import EvaluationSheet, { EvaluationToday, FoldMark, sheetRows } from "./EvaluationSheet";
-import { readChecks, withFound, writeChecks, type Scan } from "@/lib/workspace/evaluation-files";
+import EvaluationSheet, {
+  DirectorFold,
+  FolderCard,
+  FoldMark,
+  StampBoard,
+  sheetRows,
+} from "./EvaluationSheet";
+import { readChecks, writeChecks, type Scan } from "@/lib/workspace/evaluation-files";
 import styles from "./Evaluation.module.css";
 
 /** 지표와 자체평가 체크는 서버(api-spec §12)에서 온다. 이 브라우저에 두는 것은 서류 점검 체크(항목 id)뿐이다. */
@@ -90,12 +96,6 @@ export default function EvaluationChecklist() {
     if (centerId !== null && checklist) writeChecks(centerId, checklist.school_year, next);
   }
 
-  /** 폴더를 고르면 이름으로 찾은 서류를 체크해 둔다. 교사가 한 체크는 그대로 둔다. */
-  function scanned(result: Scan) {
-    setScan(result);
-    saveFileChecks(withFound(fileChecks, result));
-  }
-
   if (!checklist) {
     return (
       <>
@@ -119,58 +119,52 @@ export default function EvaluationChecklist() {
   const total = selfs.reduce((sum, item) => sum + item.progress.total, 0);
 
   const rows = sheetRows(autos, scan, fileChecks);
-  const basis = `${checklist.school_year}학년도${autos[0] ? ` · ${autos[0].period.to}까지 확정한 문서 기준` : ""}`;
+  // `date`(YYYY-MM-DD)는 시간대가 없어 잘라 써도 된다.
+  const [, toMonth, toDay] = (autos[0]?.period.to ?? "").split("-").map(Number);
+  const basis = `${checklist.school_year}학년도${toDay ? ` · ${toMonth}월 ${toDay}일까지 확정한 문서 기준` : ""}`;
+  const recount = () => setReload((n) => n + 1);
+  const toggleFile = (id: string, on: boolean) =>
+    saveFileChecks(on ? [...fileChecks, id] : fileChecks.filter((v) => v !== id));
 
   /*
-   * 화면은 서류 한 장이 중심이다. 평가 당일 교사가 꺼내는 단위가 서류여서다.
-   * 왼쪽에 「오늘 몇 가지가 비었나」와 폴더 고르기를 두고, 오른쪽에 서류 한 장을 편다 —
-   * 일과 기록 · 주간 기록과 같은 짜임이다. 평가항목별 보기와 자체평가는 접어 둔다.
+   * 맨 위에 서류 도장판(전체 폭) — 평가 당일 교사가 꺼내는 단위가 서류여서 서류마다 칸 하나.
+   * 그 아래 왼쪽에 서류마다 자세히(표), 오른쪽 330px 칸에 폴더 고르기와 접힌 칸 셋(시안 ⑥, 2026-11-08).
+   * 오른쪽 칸은 페이지와 같이 스크롤한다 — 따로 스크롤하면 노트북 높이에서 접힌 칸이 안쪽 밑으로 숨었다.
    */
   return (
-    <div className={`${ws.grid} ${styles.layout}`}>
-      <div className={ws.side}>
-        <EvaluationToday
-          rows={rows}
-          basis={basis}
-          scan={scan}
-          onScan={scanned}
-          onRecount={() => setReload((n) => n + 1)}
-        />
-      </div>
-      <div className={ws.stack}>
-        <Message error>{error}</Message>
-        <EvaluationSheet
-          rows={rows}
-          scanned={!!scan}
-          checks={fileChecks}
-          onToggle={(id, on) =>
-            saveFileChecks(on ? [...fileChecks, id] : fileChecks.filter((v) => v !== id))
-          }
-          onImported={() => setReload((n) => n + 1)}
-        />
-        <details className={styles.fold} aria-label="평가항목별로 보기">
-          <summary>
-            <FoldMark />
-            평가항목별로 보기 · {autos.map((item) => item.indicator).join(" · ")}
-          </summary>
-          <div className={styles.foldBody}>
-            <EvaluationAuto items={autos} onImported={() => setReload((n) => n + 1)} />
-          </div>
-        </details>
-        <details className={styles.fold} aria-label="현장에서 보는 것 직접 확인">
-          <summary>
-            <FoldMark />
-            현장에서 보는 것 직접 확인 · {checked} / {total}
-          </summary>
-          <div className={styles.foldBody}>
-            <EvaluationSelfCheck
-              items={selfs}
-              savedAt={savedAt}
-              initiallyOpen={initiallyOpen}
-              onCheck={check}
-            />
-          </div>
-        </details>
+    <div className={ws.stack}>
+      <Message error>{error}</Message>
+      <StampBoard rows={rows} basis={basis} onToggle={toggleFile} onRecount={recount} />
+      <div className={`${ws.grid} ${styles.layout}`}>
+        <EvaluationSheet rows={rows} scanned={!!scan} onImported={recount} />
+        <div className={styles.aside}>
+          {/* 폴더 결과는 화면 메모리에만 둔다(ADR-045 결정 5). 체크 목록에 써 넣지 않는다 — 도장 근거 「내컴퓨터」 · 「직접확인」을 가르려고. */}
+          <FolderCard scan={scan} onScan={setScan} />
+          <DirectorFold checks={fileChecks} onToggle={toggleFile} />
+          <details className={styles.fold} aria-label="평가항목별로 보기">
+            <summary>
+              <FoldMark />
+              평가항목별로 보기 · {autos.map((item) => item.indicator).join(" · ")}
+            </summary>
+            <div className={styles.foldBody}>
+              <EvaluationAuto items={autos} onImported={recount} />
+            </div>
+          </details>
+          <details className={styles.fold} aria-label="현장에서 보는 것 직접 확인">
+            <summary>
+              <FoldMark />
+              현장에서 보는 것 직접 확인 · {checked} / {total}
+            </summary>
+            <div className={styles.foldBody}>
+              <EvaluationSelfCheck
+                items={selfs}
+                savedAt={savedAt}
+                initiallyOpen={initiallyOpen}
+                onCheck={check}
+              />
+            </div>
+          </details>
+        </div>
       </div>
     </div>
   );

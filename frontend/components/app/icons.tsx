@@ -32,10 +32,15 @@ export type IconName =
   | "more"
   | "pause"
   | "play"
+  | "refresh"
   | "logout";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   more: <path d="M4 7h10M4 12h16M4 17h7" />,
+  // 둘레를 도는 화살표 둘 — 「다시 세기」
+  refresh: (
+    <path d="M5 11a7 7 0 0 1 12.4-3.5M18 4.5V8h-3.5M19 13a7 7 0 0 1-12.4 3.5M6 19.5V16h3.5" />
+  ),
   pause: <path d="M9 6.5v11M15 6.5v11" />,
   play: <path d="M8.5 6.2v11.6L18 12z" />,
   lock: (

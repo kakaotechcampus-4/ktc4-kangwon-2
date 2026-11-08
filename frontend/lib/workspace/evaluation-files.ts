@@ -287,15 +287,26 @@ export function scanNames(names: string[], today: string): Scan {
   return { total: files.length, results: TEACHER_DOCS.map((doc) => checkDoc(doc, files, today)) };
 }
 
-/** 체크는 항목 id 만 이 브라우저에 남긴다(`doc:journal` · `director:annual-plan`). 파일 이름은 아동 실명을 담을 수 있어 남기지 않는다(ADR-013). */
+/**
+ * 체크는 항목 id 만 이 브라우저에 남긴다(`doc:parent` · `director:annual-plan`). 파일 이름은 아동 실명을 담을 수 있어 남기지 않는다(ADR-013).
+ *
+ * v2(2026-11-08)부터 서류 체크(`doc:*`)는 선생님이 누른 것만 담는다. 옛 키의 `doc:*` 에는 폴더 결과가 섞여 있어
+ * (옛 withFound) 「직접확인」으로 잘못 보이므로 옮기지 않고, 원장 서류 체크(`director:*`)만 처음 한 번 옮긴다.
+ */
 function checksKey(centerId: number, schoolYear: number) {
+  return `ssample:evaluation-files:v2:${centerId}:${schoolYear}`;
+}
+function legacyChecksKey(centerId: number, schoolYear: number) {
   return `ssample:evaluation-files:${centerId}:${schoolYear}`;
 }
 
 export function readChecks(centerId: number, schoolYear: number): string[] {
   try {
-    const value = JSON.parse(window.localStorage.getItem(checksKey(centerId, schoolYear)) ?? "[]");
-    return Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
+    const stored = window.localStorage.getItem(checksKey(centerId, schoolYear));
+    const raw = stored ?? window.localStorage.getItem(legacyChecksKey(centerId, schoolYear));
+    const value = JSON.parse(raw ?? "[]");
+    const checks = Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
+    return stored === null ? checks.filter((v) => v.startsWith("director:")) : checks;
   } catch {
     return [];
   }
@@ -309,8 +320,25 @@ export function writeChecks(centerId: number, schoolYear: number, checks: string
   }
 }
 
-/** 이름으로 찾은 서류를 체크에 더한다. 교사가 이미 한 체크는 지우지 않는다. */
-export function withFound(checks: string[], scan: Scan) {
-  const found = scan.results.filter((r) => r.status === "found").map((r) => `doc:${r.id}`);
-  return [...new Set([...checks, ...found])];
+/**
+ * 도장이 찍힌 근거. 한 칸에 둘 이상일 수 있어 모두 돌려준다 — 화면이 도장 안에 줄을 쌓아 보인다.
+ * - `ssample` 쌤플에서 확정한 문서(예전 서류 올리기 포함)가 기준을 채움
+ * - `folder`  폴더에서 파일 이름으로 찾음(`found` 만. 「일부 빠짐」은 도장이 아니다)
+ * - `teacher` 선생님이 직접 누름 — 쌤플이 만들지 않는 서류만 누를 수 있다
+ *
+ * 폴더 결과는 체크 목록에 써 넣지 않는다. 써 넣으면 나중에 「폴더가 찍었는지, 선생님이 찍었는지」를 가를 수 없다.
+ * 쌤플이 만드는 서류의 체크(`doc:journal` 등)는 옛 화면이 폴더 결과를 써 넣은 것이라 근거로 보지 않는다.
+ */
+export type StampSource = "ssample" | "folder" | "teacher";
+
+export function stampSources(
+  made: { done: boolean } | null,
+  result: Pick<DocResult, "status"> | undefined,
+  checked: boolean,
+): StampSource[] {
+  const sources: StampSource[] = [];
+  if (made?.done) sources.push("ssample");
+  if (result?.status === "found") sources.push("folder");
+  if (!made && checked) sources.push("teacher");
+  return sources;
 }
