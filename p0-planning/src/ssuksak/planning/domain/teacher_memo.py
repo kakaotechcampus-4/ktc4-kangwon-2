@@ -21,8 +21,12 @@ TEACHER_MEMO_EVIDENCE = EvidenceSource(
 
 
 def without_memo_evidence(evidence: tuple[EvidenceSource, ...]) -> tuple[EvidenceSource, ...]:
-    """칸별 근거 종류 검사가 볼 Evidence: 요청 사항 표시는 뺀다."""
-    return tuple(source for source in evidence if source != TEACHER_MEMO_EVIDENCE)
+    """칸별 근거 종류 검사가 볼 Evidence: 요청 사항 표시와 트렌드 표시(ADR-072)는 뺀다."""
+    return tuple(
+        source
+        for source in evidence
+        if source != TEACHER_MEMO_EVIDENCE and source.source_type is not EvidenceSourceType.TREND
+    )
 
 
 class MemoNoticeReason(str, Enum):

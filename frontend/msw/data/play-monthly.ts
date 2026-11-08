@@ -139,6 +139,7 @@ export const addPlayMonthly = (
           description: cell(label + " " + i + "을 설명해요.", name.evidence),
           content_ids: name.evidence.map((e) => e.source_id),
           parent_item_id: null,
+          trend_applied: false,
         };
       });
     const now = new Date().toISOString();
