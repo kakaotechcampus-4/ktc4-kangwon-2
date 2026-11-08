@@ -537,15 +537,17 @@ jobs:
       E2E_DATABASE_URL: postgresql://ssuksak:ci-only-not-a-secret@db:5432/ssuksak
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      # 공식 이미지에는 Python 이 없다. 러너의 setup-python 은 컨테이너 안에서 ssl 모듈이 깨진다.
+      # uv 로 독립 실행형 Python 3.12 를 받는다(GitHub 에서 받음, apt 아님).
+      - name: Python 3.12 (uv)
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          "$HOME/.local/bin/uv" venv --seed --python 3.12 /opt/venv
+          echo /opt/venv/bin >> "$GITHUB_PATH"
       - uses: actions/cache@v4
         with:
           path: ~/.npm
           key: e2e-docker-npm-${{ hashFiles('frontend/package-lock.json') }}
-      # 러너의 Python 은 컨테이너 안에서 /__t 로 보여 `pip` 스크립트의 shebang(/opt/hostedtoolcache)이
-      # 맞지 않는다. python -m pip 으로 깐다 — 새로 깔린 alembic · uvicorn 은 올바른 경로를 갖는다.
       - name: Install planning core
         working-directory: p0-planning
         run: python -m pip install -e .
