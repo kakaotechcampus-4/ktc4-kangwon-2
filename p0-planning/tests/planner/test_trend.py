@@ -12,6 +12,7 @@ from ssuksak.planning.domain.teacher_memo import TEACHER_MEMO_EVIDENCE, without_
 from ssuksak.planning.domain.trend import TREND_CONTEXT, TrendItem, TrendKind, select_trends, trend_kind
 from ssuksak.planning.planner.trend import (
     split_trend_applied,
+    trend_name_hits,
     trend_share_excess,
     usable_trends,
     with_trend_evidence,
@@ -70,6 +71,18 @@ def test_share_excess_counts_each_list_in_address_order():
     addresses = tuple(f"{s}[{i}]" for s in ("together", "free_play") for i in range(4))
     applied = {a: item(1) for a in ("together[3]", "together[0]", "together[2]", "free_play[1]")}
     assert trend_share_excess(applied, addresses, lambda a: a.split("[")[0]) == ("together[3]",)
+
+
+def test_name_hits_find_channel_words_except_the_teachers_memo():
+    day = date(2026, 10, 1)
+    pinkfong = TrendItem("youtube:p", TrendKind.SONG, "상어 가족", "", "핑크퐁", "2026-W44", day, ("핑크퐁", "아기상어"))
+    ebs = TrendItem("youtube:e", TrendKind.PLAY, "숨바꼭질", "", "EBS 키즈", "2026-W44", day, ("EBS",))
+    texts = {"together[0]": "아기 상어 율동", "together[1]": "ebs 체조 따라 하기", "free_play[0]": "상어 그림 그리기"}
+    assert trend_name_hits(texts, (pinkfong, ebs)) == ("together[0]", "together[1]")
+    assert trend_name_hits(texts, (pinkfong, ebs), memo="아기상어 율동을 넣어 주세요") == ("together[1]",)
+    assert trend_name_hits(texts, ()) == ()
+    with pytest.raises(InvalidDomainValueError):
+        TrendItem("youtube:x", TrendKind.SONG, "t", "", "s", "2026-W44", day, (" ",))
 
 
 def test_trend_evidence_is_a_marker_and_absent_context_means_no_trend():

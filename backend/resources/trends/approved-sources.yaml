@@ -19,40 +19,51 @@
 # kind (ADR-072): 계획안 생성에 넘길 때 제목에 종류 낱말이 없으면 쓰는 종류.
 #   동화 · 동요 · 만들기 · 신체 · 역할 · 게임 · 놀이 · 제외(생성에 안 넘김). 없으면 제목으로만 판단한다.
 #   이 줄을 고치는 PR 이 종류 승인이다.
+# name_words (ADR-072 결정 11): 계획안 글에 나오면 그 후보를 고쳐 쓰게 하는 채널 · 캐릭터 낱말.
+#   띄어쓰기 · 대소문자는 보지 않는다. 잘못 걸리는 낱말은 여기서 뺀다. 교사 요청 사항에 있는 낱말은 막지 않는다.
 youtube_channels:
   # 활동이 나오는 것 — 교사가 계획안 활동 칸에 옮겨 적을 수 있다
   - name: 꼬미쌤TV
     channel_id: UC_P-_dMUP0S6Yh2h6v-mxKw
     uploads_playlist_id: UU_P-_dMUP0S6Yh2h6v-mxKw
+    name_words: [꼬미쌤]
   - name: 프뢰벨키즈
     channel_id: UCv20vsnAtfa09m4OJJsjWFA
     uploads_playlist_id: UUv20vsnAtfa09m4OJJsjWFA
+    name_words: [프뢰벨]
   - name: EBS 키즈
     channel_id: UCx_dzPI6efSohgtOkAG43-A
     uploads_playlist_id: UUx_dzPI6efSohgtOkAG43-A
+    name_words: [EBS]
   - name: KBSKids
     channel_id: UCdXB-xqrg37isIQwF0Z5-Dw
     uploads_playlist_id: UUdXB-xqrg37isIQwF0Z5-Dw
+    name_words: [KBS]
   - name: 아이코리아TV
     channel_id: UClASHb00EQZH7ZM8gvhqJyA
     uploads_playlist_id: UUlASHb00EQZH7ZM8gvhqJyA
+    name_words: [아이코리아]
   - name: 꿈꾸는미술 DreamingArts
     channel_id: UCGCezcEp4e4e0U5EpuKD94A
     uploads_playlist_id: UUGCezcEp4e4e0U5EpuKD94A
+    name_words: [꿈꾸는미술]
     kind: 만들기
 
   # 동요 · 음률 · 이야기
   - name: 핑크퐁
     channel_id: UCqXwKu6dKobXEQFhdKtiJLQ
     uploads_playlist_id: UUqXwKu6dKobXEQFhdKtiJLQ
+    name_words: [핑크퐁, 아기상어]
     kind: 동요
   - name: 뽀로로랑 타요랑 뽀요TV
     channel_id: UCrlqF_4ePI1h02gKjIG0n2w
     uploads_playlist_id: UUrlqF_4ePI1h02gKjIG0n2w
+    name_words: [뽀로로, 타요, 뽀요]
     kind: 동요
   - name: 로보카폴리 인기 동요
     channel_id: UCmC5SDZ4YkrQJb7IS-32U2A
     uploads_playlist_id: UUmC5SDZ4YkrQJb7IS-32U2A
+    name_words: [로보카폴리, 폴리]
     kind: 동요
   - name: 코코키즈 놀이음악
     channel_id: UCiZutDuXF87cNN0lXn7Uaug
@@ -65,17 +76,21 @@ youtube_channels:
   - name: 하나언니가 읽어주는 신나는 동화나라
     channel_id: UCMSZGNgdr8SMqtZXbOWWwkQ
     uploads_playlist_id: UUMSZGNgdr8SMqtZXbOWWwkQ
+    name_words: [하나언니]
     kind: 동화
   - name: 코코몽 COCOMONG TV
     channel_id: UCmKH1rkv9OJ1FjM64qbeLVw
     uploads_playlist_id: UUmKH1rkv9OJ1FjM64qbeLVw
+    name_words: [코코몽]
   - name: 뽀롱뽀롱 뽀로로 이야기·동화
     channel_id: UCyyCXaPt37-4rTpDvL6niMA
     uploads_playlist_id: UUyyCXaPt37-4rTpDvL6niMA
+    name_words: [뽀로로]
     # kind 없음 — 시청자 아이 이름 쇼츠(「○○아! 같이 놀자」)가 채널 종류로 넘어가지 않게, 제목으로만.
   - name: 깨비키즈
     channel_id: UCD_-N4vf-tsqbUxrQ4CrJIA
     uploads_playlist_id: UUD_-N4vf-tsqbUxrQ4CrJIA
+    name_words: [깨비키즈]
 
 news_outlets:
   - name: 베이비뉴스

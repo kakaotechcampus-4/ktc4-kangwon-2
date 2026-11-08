@@ -30,6 +30,8 @@ class ApprovedChannel:
     # 계획안 생성에 넘길 때 제목에 종류 낱말이 없으면 쓰는 종류(ADR-072). 빈 값 = 제목으로만 판단.
     # 「제외」 = 이 채널 자료는 생성에 넘기지 않는다(배경음악 · 타이머).
     kind: str = ""
+    # 계획안 글에 나오면 고쳐 쓰게 하는 채널 · 캐릭터 낱말(ADR-072 결정 11). PR 이 승인이다.
+    name_words: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +54,7 @@ def parse(body: dict) -> ApprovedSources:
             channel_id=_required(row, "channel_id"),
             uploads_playlist_id=_required(row, "uploads_playlist_id"),
             kind=_kind(row),
+            name_words=_name_words(row),
         )
         for row in body.get("youtube_channels") or []
     )
@@ -89,6 +92,13 @@ def _kind(row: dict) -> str:
     if kind not in CHANNEL_KINDS:
         raise ApprovalError(f"kind 는 {', '.join(k for k in CHANNEL_KINDS if k)} 중 하나다: {row}")
     return kind
+
+
+def _name_words(row: dict) -> tuple[str, ...]:
+    words = row.get("name_words") or []
+    if not isinstance(words, list) or any(not str(w).strip() for w in words):
+        raise ApprovalError(f"name_words 는 빈 낱말 없는 목록이다: {row}")
+    return tuple(str(w).strip() for w in words)
 
 
 def _require_unique(values: list[str], label: str) -> None:
