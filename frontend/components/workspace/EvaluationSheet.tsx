@@ -124,6 +124,16 @@ function indicatorOf(doc: TeacherDoc) {
   return doc.basis.split(" · ")[0];
 }
 
+/** 「보육계획안 (월간 · 주간 · 일일)」 → 「보육계획안」 */
+function nameOf(doc: TeacherDoc) {
+  return doc.title.replace(/\s*\(.*\)\s*$/, "");
+}
+
+/** 「보육계획안 (월간 · 주간 · 일일)」 → 「월간 · 주간 · 일일」. 괄호가 없으면 빈 문자열 */
+function kindsOf(doc: TeacherDoc) {
+  return doc.title.match(/\(([^)]*)\)\s*$/)?.[1] ?? "";
+}
+
 /** 평가항목 번호를 뺀 나머지 설명(기간 · 횟수) */
 function basisOf(doc: TeacherDoc) {
   return doc.basis.split(" · ").slice(1).join(" · ");
@@ -451,10 +461,13 @@ function TodoCard({ row, onImported }: { row: SheetRow; onImported: () => void }
     .join(" · ");
   return (
     <article className={styles.todoCard} aria-label={doc.title}>
+      {/* 이름은 한 줄로 둔다 — 두 줄이 되면 앞의 동그라미가 옆 카드와 높이가 달라졌다(11-09).
+          괄호 안 갈래(「월간 · 주간 · 일일」)는 본문 글씨로 작게 붙인다. 그래도 넘치면 말줄임, 전체 이름은 title 에. */}
       <h3 className={styles.todoTitle}>
         <Mini state={row.done ? "done" : "empty"} />
-        <span>
-          {doc.title}
+        <span className={styles.todoName} title={doc.title}>
+          {nameOf(doc)}
+          {kindsOf(doc) && <small className={styles.todoKinds}>{kindsOf(doc)}</small>}
           <span className={styles.docIndicator}>{indicatorOf(doc)}</span>
         </span>
       </h3>

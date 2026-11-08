@@ -680,6 +680,20 @@
   font-weight: 700;
   line-height: 1.2;
 }
+/* 이름은 한 줄 — min-width: 0 이 있어야 flex 안에서 말줄임이 된다. */
+.todoName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.todoKinds {
+  margin-left: 6px;
+  font-family: var(--font-body), sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pg-ink-soft);
+}
 .need {
   font-size: 14px;
   font-weight: 700;
