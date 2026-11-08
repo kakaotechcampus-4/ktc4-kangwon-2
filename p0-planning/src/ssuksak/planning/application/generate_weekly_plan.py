@@ -56,7 +56,9 @@ from ..evidence.ports import (
     WeeklyEvidenceClassificationRepository,
 )
 from ..evidence.weekly_classification import WEEKLY_GROUNDING_SCOPE
+from ..domain.trend import TrendItem
 from ..planner.teacher_memo import normalize_teacher_memo, with_memo_evidence
+from ..planner.trend import usable_trends, with_trend_evidence
 from ..planner.weekly import (
     OUTDOOR_KEY,
     PARENT_GROUNDABLE_KEYS,
@@ -289,6 +291,7 @@ class GenerateWeeklyPlan:
                 activity_candidates=command.activity_candidates,
                 indoor_play_candidates=command.indoor_play_candidates,
                 teacher_memo=command.teacher_memo,
+                trends=usable_trends(optional_context),
             )
             fingerprint = context.fingerprint
             try:
@@ -396,11 +399,11 @@ class GenerateWeeklyPlan:
                 candidates.append(WeeklyActivityCandidate(target.activity_type, WeeklyCell(
                     item_id=item_id, section_key=target.section_key.partition(".")[0], value=proposed.value, cell_state=CellState.FILLED,
                     generation=GenerationMethodDetail(GenerationMethod.RULE_LLM, LLM_RULE_ID, outcome.prompt_version_for(target.section_key)),
-                    evidence=with_memo_evidence(
+                    evidence=with_trend_evidence(with_memo_evidence(
                         (parent_evidence, *(EvidenceSource(EvidenceSourceType.INSTITUTION_SAMPLE, ref, context.store_version,
                                                            display_name=sources[ref]) for ref in proposed.grounding_refs)),
                         target.section_key in outcome.memo_applied,
-                    ),
+                    ), outcome.trend_applied.get(target.section_key)),
                     audit=AuditHistory((AuditEvent(AuditEventType.CREATED, now, plan_id, item_id=item_id, system_actor=SYSTEM_ACTOR),)),
                     source_label=target.activity_type,
                 )))
@@ -518,6 +521,7 @@ def llm_context(
     activity_candidates: bool = False,
     indoor_play_candidates: bool = False,
     teacher_memo: str = "",
+    trends: tuple[TrendItem, ...] = (),  # ADR-072: generation only; regeneration passes none
 ) -> WeeklyLlmContext:
     theme_cell = _only_cell(parent, THEME_KEY)
     linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)
@@ -556,7 +560,7 @@ def llm_context(
     request = _weekly_request(
         parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
         daily_life=daily_life, activity_candidates=activity_candidates, indoor_play_candidates=indoor_play_candidates,
-        teacher_memo=teacher_memo,
+        teacher_memo=teacher_memo, trends=trends,
     )
     return WeeklyLlmContext(packet, fingerprint, classified, store_version, request)
 
@@ -706,7 +710,7 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
 
 def _weekly_request(
     parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
-    *, daily_life=None, activity_candidates=False, indoor_play_candidates=False, teacher_memo="",
+    *, daily_life=None, activity_candidates=False, indoor_play_candidates=False, teacher_memo="", trends=(),
 ) -> WeeklyPlanningRequest:
     """The Rule decides what the LLM may write; anything without a basis is not a target."""
     linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)
@@ -785,6 +789,7 @@ def _weekly_request(
             (c for c in parent.cells if not c.section_key.endswith("_detail")),
             memo=parent.teacher_memo, inherited=parent.parent_teacher_venues,
         ),
+        trends=trends,
     )
 
 

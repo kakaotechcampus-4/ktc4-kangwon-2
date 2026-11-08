@@ -2686,6 +2686,7 @@ memo       문자열.  선택.  요청 사항 0~300자(§4 「요청 사항」).
 
 - `activity_type`은 근거의 명시된 태그/행 이름에서 확인한 활동 종류다. 공백 표기를 통일하며 재료 메모 등 알려진 활동 종류가 아닌 태그는 그대로 유형으로 쓰지 않는다. 확인되지 않으면 `기타`다. 새 공식 분류가 아니다.
 - `name`/`description`은 후보 칸의 현재 값 `활동명: 설명`에서 읽는다. 후보 편집은 기존 칸 편집 경로다.
+- `trend_applied`(불리언, 필수)는 그 후보 칸 `evidence`에 `TREND`가 있는가다 — 원이 트렌드를 켰을 때 트렌드봇 자료를 반영한 후보(목록마다 많아야 2개, ADR-072). 화면은 빨간 ✦ 하나만 단다.
 - `activity_grids`는 운영 요일 순이다. leaf는 `cell_id`로 실제 `sections[].cells[]`를 가리킨다.
   나눈 node는 `cell_id: null`, `split_id`, `axis`, `ratio`, 두 `children`을 갖는다.
 - 후보형 `group_activity`의 `DAY` 칸은 하루 여러 개일 수 있다. 요일 순·트리 leaf 순으로 내려준다.
