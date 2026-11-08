@@ -371,11 +371,6 @@
   align-items: center;
   gap: 12px;
 }
-.stampEyebrow {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--pg-ink-soft);
-}
 .stampLead {
   font-family: var(--font-display), sans-serif;
   font-size: 27px;
@@ -505,15 +500,14 @@
 .slot:nth-child(6n + 6) .stampMark {
   --tilt: 3deg;
 }
-/* 도장 안 포스티와 걸어오는 포스티가 같은 46 × 49 상자에 겹친다. 둘 다 Posty 46px 만세라 내려앉으면 딱 맞는다. */
+/* 도장 안 포스티 상자(46 × 49). 찍힐 때는 근거 글자와 같이 그 자리에서 나타난다. */
 .stampArt {
   position: relative;
   width: 46px;
   height: 49px;
   margin-top: 2px;
 }
-.stampArt > span,
-.walker > span {
+.stampArt > span {
   position: absolute;
   inset: 0;
 }
@@ -523,8 +517,7 @@
   width: 100%;
   height: 100%;
 }
-/* 근거 두 줄은 아랫줄이 안쪽 원에 닿아서 포스티를 줄인다. 두 줄 칸에는 걸어오는 포스티가 오지 않아(빈 칸에서
-   찍히면 근거가 하나) 겹침 맞춤이 깨지지 않는다. */
+/* 근거 두 줄은 아랫줄이 안쪽 원에 닿아서 포스티를 줄인다. */
 .stampMark[data-lines="2"] .stampArt {
   width: 40px;
   height: 43px;
@@ -575,66 +568,11 @@
   color: var(--pg-ink-soft);
 }
 
-/* 포스티가 들어간다 — 방금 찍은 칸에만(`data-fresh`). 1.3초.
-   노란 포스티가 왼쪽에서 걸어 들어와(0~0.65초) 폴짝 뛰고(0.8초) 도장 안에 내려앉으며 만세(0.9초),
-   그 순간 보라 이중 원이 꾹 찍히고 근거 글자가 떠오른다(0.88~1.3초).
-   걸어온 포스티와 도장 안 포스티는 같은 상자 · 같은 모습이라 바뀌는 자리가 보이지 않는다. */
-.walker {
-  z-index: 3;
-  pointer-events: none;
-  transform-origin: 50% 100%;
-  animation: walkIn 1.3s cubic-bezier(0.3, 0.1, 0.3, 1) both;
-}
-.walkerOn {
-  animation: hideAt 1.3s step-end both;
-}
-.walkerLand {
-  animation: showAt 1.3s step-end both;
-}
-/* 걷는 동안은 칸의 기울기(--tilt)를 되돌려 똑바로 서고, 내려앉으면서 자국과 같이 기운다. */
-@keyframes walkIn {
-  0% {
-    opacity: 0;
-    transform: translate(-84px, 0) scale(1, 1) rotate(calc(var(--tilt, 0deg) * -1));
-  }
-  8% {
-    opacity: 1;
-  }
-  50% {
-    transform: translate(0, 0) scale(1, 1) rotate(calc(var(--tilt, 0deg) * -1));
-  }
-  60% {
-    transform: translate(0, -16px) scale(1, 1) rotate(calc(var(--tilt, 0deg) * -1));
-  }
-  69% {
-    transform: translate(0, 0) scale(1.08, 0.86) rotate(0deg);
-  }
-  77% {
-    opacity: 1;
-    transform: translate(0, 0) scale(1, 1) rotate(0deg);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(0, 0) scale(1, 1) rotate(0deg);
-  }
-}
-@keyframes hideAt {
-  0% {
-    opacity: 1;
-  }
-  69%,
-  100% {
-    opacity: 0;
-  }
-}
-@keyframes showAt {
-  0% {
-    opacity: 0;
-  }
-  69%,
-  100% {
-    opacity: 1;
-  }
+/* 찍히는 동작 — 방금 빈 칸에서 찍힌 칸에만(`data-fresh`). 0.45초.
+   보라 이중 원이 크게 떴다가 꾹 찍히고(0~0.32초) 칸이 한 번 눌린다. 안의 포스티와 근거 글자는 같은 느낌으로
+   그 자리에서 스르륵 나타난다(0.1~0.4초, 사용자 결정 11-08). */
+.ring[data-fresh] {
+  animation: thump 0.3s 0.12s ease-out both;
 }
 /* 끝값은 요소 제 모습이라 from 만 둔다. */
 @keyframes inkIn {
@@ -654,14 +592,11 @@
   }
 }
 .stampMark[data-fresh]::before {
-  animation: ringIn 0.32s 0.88s cubic-bezier(0.3, 0.6, 0.4, 1) both;
+  animation: ringIn 0.32s cubic-bezier(0.3, 0.6, 0.4, 1) both;
 }
 .stampMark[data-fresh] .imprint,
 .stampMark[data-fresh] .stampWords {
-  animation: inkIn 0.35s 0.95s ease-out both;
-}
-.ring[data-fresh] {
-  animation: thump 0.3s 0.88s ease-out both;
+  animation: inkIn 0.3s 0.1s ease-out both;
 }
 @keyframes thump {
   40% {
@@ -669,9 +604,6 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .walker {
-    display: none;
-  }
   .stampMark[data-fresh]::before,
   .stampMark[data-fresh] .imprint,
   .stampMark[data-fresh] .stampWords,

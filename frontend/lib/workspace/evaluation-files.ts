@@ -36,7 +36,7 @@ export const TEACHER_DOCS: TeacherDoc[] = [
   },
   {
     id: "plan",
-    title: "보육계획안 (월간 · 주간 · 일일 중 하나)",
+    title: "보육계획안 (월간 · 주간 · 일일)",
     keywords: ["보육계획안", "월간계획안", "주간계획안", "일일계획안", "계획안"],
     exclude: ["연간", "개별화"],
     rule: { kind: "months" },

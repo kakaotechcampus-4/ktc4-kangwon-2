@@ -191,19 +191,16 @@ const SOURCE_WORD: Record<StampSource, string> = {
  * 폴더에서 찾은 근거(「내컴퓨터」)는 누른다고 지워지지 않는다. 쌤플이 만드는 서류는 눌러도 바뀌지 않는다.
  * 도장 안에는 근거를 모두 적는다(한 칸에 둘까지 — 쌤플확정 + 내컴퓨터, 내컴퓨터 + 직접확인).
  *
- * `fresh` 는 방금 빈 칸에서 찍힌 칸이다. 그 칸에만 포스티가 걸어 들어와 도장이 된다. 처음 열 때는 움직이지 않는다.
+ * `fresh` 는 방금 빈 칸에서 찍힌 칸이다. 그 칸에만 이중 원이 꾹 찍히고 포스티 · 근거 글자가 나타난다. 처음 열 때는 움직이지 않는다.
  */
 function StampSlot({
   row,
   fresh,
   onPress,
-  onSettled,
 }: {
   row: SheetRow;
   fresh: boolean;
   onPress: () => void;
-  /** 걸어온 포스티가 사라지면 부른다. 안 부르면 투명해진 포스티가 다음 누름까지 제자리에서 계속 걷는다. */
-  onSettled: () => void;
 }) {
   const { doc, made, done, checked, sources } = row;
   const state = done ? "done" : doc.optional ? "opt" : "empty";
@@ -230,25 +227,11 @@ function StampSlot({
             data-lines={words.length}
             aria-hidden="true"
           >
-            {/* 도장 안 포스티와 걸어오는 포스티가 같은 46px 상자를 쓴다 — 내려앉은 만세 포스티가 도장 안 포스티와 딱 겹친다. */}
+            {/* 찍힐 때는 이 포스티가 근거 글자와 같이 그 자리에서 나타난다. */}
             <span className={styles.stampArt}>
               <span className={styles.imprint}>
                 <Posty pose="cheer" face="done" tone="note" size={46} label={null} />
               </span>
-              {fresh && (
-                <span
-                  className={styles.walker}
-                  // 안쪽 팔다리 · 흐려지기 애니메이션도 여기까지 올라온다. 바깥 걸음이 끝났을 때만 받는다.
-                  onAnimationEnd={(e) => e.target === e.currentTarget && onSettled()}
-                >
-                  <span className={styles.walkerOn}>
-                    <Posty pose="stand" walk tone="note" size={46} label={null} />
-                  </span>
-                  <span className={styles.walkerLand}>
-                    <Posty pose="cheer" face="done" tone="note" size={46} label={null} />
-                  </span>
-                </span>
-              )}
             </span>
             <span className={styles.stampWords} data-count={words.length}>
               {words.map((word) => (
@@ -292,7 +275,7 @@ function StampSlot({
 
 /**
  * 평가 서류 도장판 — 시안 ⑥ · 포스티 도장(평가 점검 디자인 시안, 2026-11-08).
- * 머리에 「오늘 평가를 받는다면 몇 칸 비었나」, 아래에 서류마다 도장 칸 하나.
+ * 머리에 「몇 칸 비었나」, 아래에 서류마다 도장 칸 하나.
  */
 export function StampBoard({
   rows,
@@ -313,12 +296,11 @@ export function StampBoard({
   function press(row: SheetRow) {
     const on = !row.checked;
     const id = row.doc.id;
-    // 포스티는 빈 칸이 찍힐 때만 걸어온다. 이미 「내컴퓨터」로 찍힌 칸에 직접확인을 더할 때는 글자만 는다.
-    // 다른 칸을 지울 때는 아직 걷고 있는 칸을 끊지 않는다.
+    // 찍히는 동작은 빈 칸이 찍힐 때만이다. 이미 「내컴퓨터」로 찍힌 칸에 직접확인을 더할 때는 글자만 는다.
+    // 다른 칸을 지울 때는 아직 찍히고 있는 칸을 끊지 않는다.
     setFresh((current) => (on && !row.done ? id : current === id ? null : current));
     onToggle(`doc:${id}`, on);
   }
-  const settle = (id: string) => setFresh((current) => (current === id ? null : current));
 
   return (
     <section
@@ -354,7 +336,6 @@ export function StampBoard({
             label={null}
           />
           <div>
-            <p className={styles.stampEyebrow}>오늘 평가를 받는다면</p>
             <p className={styles.stampLead}>
               {left ? (
                 <>
@@ -377,7 +358,6 @@ export function StampBoard({
             row={row}
             fresh={fresh === row.doc.id && row.done}
             onPress={() => press(row)}
-            onSettled={() => settle(row.doc.id)}
           />
         ))}
       </ol>
