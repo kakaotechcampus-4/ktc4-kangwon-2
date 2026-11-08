@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import type { AutoIndicator, DirectorCheck, DocumentMark } from "@/lib/api/evaluation";
 import {
@@ -453,6 +453,32 @@ function TodoCard({ row, onImported }: { row: SheetRow; onImported: () => void }
   const [open, setOpen] = useState<"found" | "import" | null>(null);
   const id = `eval-doc-${doc.id}`;
   const toggle = (panel: "found" | "import") => setOpen(open === panel ? null : panel);
+  const more = useRef<HTMLDivElement | null>(null);
+  const foundButton = useRef<HTMLButtonElement | null>(null);
+  const closeNote = () => {
+    setOpen(null);
+    foundButton.current?.focus();
+  };
+
+  // 떠 있는 쪽지는 바깥을 누르거나 Esc 로 닫는다.
+  useEffect(() => {
+    if (open !== "found") return;
+    const away = (e: PointerEvent) => {
+      if (!more.current?.contains(e.target as Node)) setOpen(null);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setOpen(null);
+      foundButton.current?.focus();
+    };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
   const need = [
     made ? made.need : "쌤플이 만들지 않는 서류예요 · 위 도장판 동그라미를 눌러 찍어요",
     folder?.status === "partial" ? `컴퓨터 파일은 ${gapText(doc, folder.gaps)}` : undefined,
@@ -474,24 +500,29 @@ function TodoCard({ row, onImported }: { row: SheetRow; onImported: () => void }
       <p className={styles.docBasis}>{basisOf(doc)}</p>
       {!row.done && need && <p className={styles.need}>{need}</p>}
       <Sources row={row} />
-      <div className={styles.todoActs}>
-        {made?.go && (
+      {made?.go && (
+        <div className={styles.todoActs}>
           <Link href={made.go.href} className={ws.primary}>
             {made.go.label}
           </Link>
-        )}
-        {made?.importKind && (
-          <button
-            type="button"
-            className={ws.secondary}
-            aria-expanded={open === "import"}
-            aria-controls={`${id}-import`}
-            onClick={() => toggle("import")}
-          >
-            {IMPORT_LABEL[made.importKind]}
-          </button>
-        )}
+          {made.importKind && (
+            <button
+              type="button"
+              className={ws.secondary}
+              aria-expanded={open === "import"}
+              aria-controls={`${id}-import`}
+              onClick={() => toggle("import")}
+            >
+              {IMPORT_LABEL[made.importKind]}
+            </button>
+          )}
+        </div>
+      )}
+      {/* 「이름 규칙」은 늘 단추 줄 밑에 둔다 — 단추가 하나뿐인 계획안에서만 옆에 붙어 위로 올라가 보였다(11-09).
+          펼친 내용은 카드 밖에 떠 있는 쪽지로 보인다. 카드 안에서 펴면 같은 줄 카드가 다 같이 늘어났다(사용자 결정 11-09). */}
+      <div className={styles.todoMore} ref={more}>
         <button
+          ref={foundButton}
           type="button"
           className={styles.linkButton}
           aria-expanded={open === "found"}
@@ -500,9 +531,12 @@ function TodoCard({ row, onImported }: { row: SheetRow; onImported: () => void }
         >
           {foundLabel(result)} ▾
         </button>
-      </div>
-      <div id={`${id}-found`} className={styles.panel} hidden={open !== "found"}>
-        <FoundDetail doc={doc} result={result} folder={folder} />
+        <div id={`${id}-found`} className={styles.foundNote} hidden={open !== "found"}>
+          <button type="button" className={styles.noteClose} aria-label="닫기" onClick={closeNote}>
+            ×
+          </button>
+          <FoundDetail doc={doc} result={result} folder={folder} />
+        </div>
       </div>
       {made?.importKind && (
         <div id={`${id}-import`} className={styles.panel} hidden={open !== "import"}>
