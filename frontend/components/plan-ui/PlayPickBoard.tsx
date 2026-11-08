@@ -43,6 +43,22 @@ export function MemoMark() {
   );
 }
 
+/**
+ * 트렌드봇 자료를 반영한 후보의 작은 표시(ADR-070, Human Decision 2026-11-08).
+ * 요청 사항 ✦ 와 같은 모양 · 자리 · 크기, 빨간색만 다르다. 화면 · 글에 다른 표시는 두지 않는다.
+ */
+export function TrendMark() {
+  return (
+    <span
+      title="트렌드를 반영한 놀이"
+      className="relative shrink-0 text-[13px] leading-none text-[#b3261e]"
+    >
+      <span aria-hidden="true">✦</span>
+      <span className="sr-only">트렌드를 반영한 놀이</span>
+    </span>
+  );
+}
+
 /** 칠판에 붙이는 쪽지 — 홈 칠판 쪽지와 같은 노란 한 색. 같은 모양이 한 장으로 붙어 보이지 않게 기울기만 번갈아. */
 const NOTE = ["-rotate-1", "rotate-1", "-rotate-[0.6deg]", "rotate-[0.6deg]"];
 const PAPER = "relative flex flex-col bg-paper shadow-pg";

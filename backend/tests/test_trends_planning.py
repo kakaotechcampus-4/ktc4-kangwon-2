@@ -1,0 +1,61 @@
+"""ADR-070: 생성이 읽는 트렌드 — 꺼짐 · 없음 · 깨짐은 트렌드 없이, 넘기는 것만 넘긴다."""
+
+from datetime import date
+
+from ssuksak.planning.application.ports import OptionalContextStatus
+from ssuksak.planning.domain.trend import TrendKind
+
+from app.features.trends.item import RawItem, save
+from app.features.trends.planning import TrendContextProvider
+
+TODAY = date(2026, 11, 8)  # W45 — W44 파일이 4주 안이다
+
+
+def raw(
+    n: str, title: str, origin: str = "꼬미쌤TV", source: str = "youtube", description: str = ""
+) -> RawItem:
+    return RawItem(source, n, title, description, f"https://x/{n}", "2026-10-20", origin)
+
+
+def provider(tmp_path, items, enabled=True):
+    save(items, date(2026, 10, 26), tmp_path)  # 2026-W44.json
+    return TrendContextProvider(enabled=enabled, today=TODAY, directory=tmp_path)
+
+
+def test_passes_only_approved_youtube_items_without_risk_marks(tmp_path):
+    result = provider(
+        tmp_path,
+        [
+            raw("a", "병뚜껑 경주 게임", description="재미있는 게임\nhttps://link\n두 번째 줄"),
+            raw("b", "가을 놀이음악", origin="꼬미쌤TV"),
+            raw("c", "유령들이 찾아왔어요", origin="핑크퐁"),
+            raw("d", "[10분 타이머] 정리", origin="타이머 놀이터"),
+            raw("e", "만들기 놀이", origin="승인 안 된 채널"),
+            raw("f", "유아 놀이 유행", origin="ibabynews.com", source="naver_news"),
+            raw("g", "커터로 자르는 만들기 놀이"),  # risk-words 「커터」
+            raw("h", "환경교육 코알라 지키기"),
+        ],
+    ).fetch("trend")
+    assert result.status is OptionalContextStatus.AVAILABLE
+    assert {(i.trend_id, i.kind) for i in result.value} == {
+        ("youtube:a", TrendKind.GAME),
+        ("youtube:c", TrendKind.SONG),
+    }
+    game = next(i for i in result.value if i.trend_id == "youtube:a")
+    assert (
+        game.summary == "재미있는 게임 두 번째 줄"
+        and game.week == "2026-W44"
+        and game.source_name == "꼬미쌤TV"
+    )
+
+
+def test_disabled_missing_or_broken_files_fall_back_without_raising(tmp_path):
+    assert (
+        provider(tmp_path, [raw("a", "게임")], enabled=False).fetch("trend").status
+        is OptionalContextStatus.UNAVAILABLE
+    )
+    empty = TrendContextProvider(enabled=True, today=TODAY, directory=tmp_path / "none")
+    assert empty.fetch("trend").status is OptionalContextStatus.UNAVAILABLE
+    (tmp_path / "2026-W45.json").write_text("{broken", encoding="utf-8")
+    broken = TrendContextProvider(enabled=True, today=TODAY, directory=tmp_path)
+    assert broken.fetch("trend").status is OptionalContextStatus.ERROR
