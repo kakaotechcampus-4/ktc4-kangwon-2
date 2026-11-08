@@ -369,15 +369,12 @@ test("요청 중에는 입력 칸과 버튼이 함께 잠긴다", () => {
     assert.ok(open > -1 && close > open, "폼을 감싸는 fieldset 이 있어야 한다");
     assert.match(source.slice(open, source.indexOf(">", open)), /disabled=\{pending\}/);
     // 보낸 뒤에도 고칠 수 있으면 화면과 서버가 어긋난다 — 입력 칸이 잠금 안에 있어야 한다.
-    for (const control of ["<textarea", "<select", "<input\n", "수정 취소", "수정 저장"]) {
+    for (const control of ["<textarea", "<input\n", "aria-pressed", "그만두기", "고친 대로 저장"]) {
       const at = source.indexOf(control.replace("\\n", "\n"), open);
       assert.ok(at > open && at < close, control);
     }
-    // 담당 반만 적는 칸 밖에 있다 — 화면 전체의 범위라, 접어 둔 채로도 바꿀 수 있어야 한다.
-    // 밖에 있으면 fieldset 이 안 잠그므로 제 손으로 잠근다.
-    const scope = source.indexOf("<select");
-    assert.ok(scope > -1 && scope < open, "담당 반 고르개는 적는 칸 밖에 있어야 한다");
-    assert.match(source.slice(scope, open), /disabled=\{pending \|\| !!editId\}/);
+    // 반 고르개는 화면 안에 없다. 반은 사이드바 한 곳에서만 고른다.
+    assert.equal(source.includes("<select"), false);
   }
 });
 
@@ -393,10 +390,6 @@ test("늦게 온 옛 조회가 최신 목록을 덮지 않는다", () => {
 
 test("서버 기록의 id와 반을 관찰일지 생성 화면으로 넘긴다", () => {
   const source = page();
-  assert.ok(
-    source.includes(
-      "/documents?record=${encodeURIComponent(record.id)}&class_id=${classServerId(record.classId)}",
-    ),
-  );
-  assert.ok(source.includes("관찰일지 만들기"));
+  assert.ok(source.includes("/records/journal?record=${encodeURIComponent(record.id)}"));
+  assert.ok(source.includes("이 기록으로 일지 만들기"));
 });

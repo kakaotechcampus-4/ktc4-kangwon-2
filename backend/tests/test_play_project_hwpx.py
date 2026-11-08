@@ -108,6 +108,9 @@ def test_template_is_blank_two_tables_with_merged_periods() -> None:
         assert sorted(covered) == [(r, c) for r in range(11) for c in range(5)]
         body = [tc for tc in table.iterfind("hp:tr/hp:tc", NS) if tc.get("header") == "0"]
         assert len(body) == 42  # 시기 2 + 10줄 × 4
+        # 열 폭 — 편집 화면(PlayProjectSheet) 열 비율이 이 값을 따른다.
+        head = table.find("hp:tr", NS).iterfind("hp:tc/hp:cellSz", NS)
+        assert [int(sz.get("width")) for sz in head] == [3000, 7000, 7500, 19000, 18492]
         assert all(not "".join(tc.itertext()).strip() for tc in body)
     files = parts(template)
     assert files["Contents/section0.xml"].decode().count("<hp:t>제목</hp:t>") == 2
@@ -121,6 +124,27 @@ def test_mimetype_is_stored_first(filled: bytes) -> None:
     with zipfile.ZipFile(BytesIO(filled)) as archive:
         first = archive.infolist()[0]
     assert (first.filename, first.compress_type) == ("mimetype", zipfile.ZIP_STORED)
+
+
+def test_a4_nine_point_layout_survives_fill_and_rebuild(filled: bytes) -> None:
+    from scripts.build_play_project_template import build
+
+    header_ns = {**NS, "hh": "http://www.hancom.co.kr/hwpml/2011/head"}
+    for content in (TEMPLATE.read_bytes(), filled, build(filled)):
+        files = parts(content)
+        header = etree.fromstring(files["Contents/header.xml"])
+        fonts = {
+            p.get("id"): int(p.get("height")) for p in header.findall(".//hh:charPr", header_ns)
+        }
+        for table in tables(content):
+            assert int(table.find("hp:sz", NS).get("height")) == 72800
+            for row in table.findall("hp:tr", NS)[1:]:
+                for cell in row.findall("hp:tc", NS):
+                    assert int(cell.find("hp:cellSz", NS).get("height")) >= 7000
+                    assert all(
+                        fonts[run.get("charPrIDRef")] >= 900
+                        for run in cell.findall(".//hp:run", NS)
+                    )
 
 
 def test_every_selected_play_lands_in_its_period_and_row(filled: bytes) -> None:
@@ -164,6 +188,36 @@ def test_titles_preview_and_metadata(filled: bytes) -> None:
     package = etree.fromstring(files["Contents/content.hpf"])
     metas = {m.get("name"): m.text for m in package.iterfind(".//opf:meta", NS)}
     assert not metas.get("creator") and not metas.get("lastsaveby")
+
+
+def test_notice_reuses_monthly_text_after_each_table(filled: bytes) -> None:
+    monthly = etree.fromstring(
+        parts((TEMPLATE.parent / "play_monthly.hwpx").read_bytes())["Contents/section0.xml"]
+    )
+    expected = monthly.xpath("//hp:t/text()", namespaces=NS)[-2:]
+    section = etree.fromstring(parts(filled)["Contents/section0.xml"])
+    assert section.find(".//hp:footer", NS) is None
+    table_paragraphs = [
+        p for p in section.findall("hp:p", NS) if p.find(".//hp:tbl", NS) is not None
+    ]
+    for p in table_paragraphs:
+        first = p.getnext()
+        second = first.getnext()
+        assert [
+            "".join(node.xpath("hp:run/hp:t/text()", namespaces=NS)) for node in (first, second)
+        ] == expected
+    assert len(section.findall(".//hp:tbl", NS)) == 2
+
+
+def test_rebuilding_template_keeps_the_notice_text(filled: bytes) -> None:
+    from scripts.build_play_project_template import build
+
+    rebuilt = etree.fromstring(parts(build(filled))["Contents/section0.xml"])
+    notices = [
+        p.getnext() for p in rebuilt.findall("hp:p", NS) if p.find(".//hp:tbl", NS) is not None
+    ]
+    assert len(notices) == 2
+    assert all("2019" in "".join(p.itertext()) for p in notices)
 
 
 def test_changed_paragraphs_drop_the_line_layout_cache(filled: bytes) -> None:

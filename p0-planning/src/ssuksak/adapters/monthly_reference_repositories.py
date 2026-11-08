@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
+from .. import timing
 from ..planning.domain.monthly_template import MonthlyTemplate
 from ..planning.domain.safety_placement import SafetyPlacementPolicy
 from ..planning.domain.safety_rule import SafetyLegalRule
@@ -16,6 +16,7 @@ _DATA = Path(__file__).resolve().parents[3] / "data"
 DEFAULT_TEMPLATE_PATH = _DATA / "templates" / "monthly_template_a_v0_1_1.json"
 FOCUS_TEMPLATE_PATH = _DATA / "templates" / "monthly_template_a_v0_2_1.json"
 INDOOR_TEMPLATE_PATH = _DATA / "templates" / "monthly_template_a_v0_2_2.json"
+DRILL_TEMPLATE_PATH = _DATA / "templates" / "monthly_template_a_v0_2_3.json"
 DEFAULT_SAFETY_RULE_PATH = _DATA / "rules" / "safety_education_legal_v1.json"
 DEFAULT_SAFETY_PLACEMENT_PATH = _DATA / "rules" / "safety_placement_policy_v1.json"
 SAFETY_PLACEMENT_PATHS = (DEFAULT_SAFETY_PLACEMENT_PATH, _DATA / "rules" / "safety_placement_policy_v2.json")
@@ -23,7 +24,8 @@ SAFETY_PLACEMENT_PATHS = (DEFAULT_SAFETY_PLACEMENT_PATH, _DATA / "rules" / "safe
 
 class JsonMonthlyTemplateRepository:
     def __init__(
-        self, paths: tuple[Path, ...] = (DEFAULT_TEMPLATE_PATH, FOCUS_TEMPLATE_PATH, INDOOR_TEMPLATE_PATH)
+        self,
+        paths: tuple[Path, ...] = (DEFAULT_TEMPLATE_PATH, FOCUS_TEMPLATE_PATH, INDOOR_TEMPLATE_PATH, DRILL_TEMPLATE_PATH),
     ) -> None:
         self._paths = tuple(Path(path) for path in paths)
         self._cache: dict[Path, MonthlyTemplate] = {}
@@ -31,7 +33,7 @@ class JsonMonthlyTemplateRepository:
     def _load(self, path: Path) -> MonthlyTemplate:
         if path not in self._cache:
             self._cache[path] = parse_monthly_template_payload(
-                json.loads(path.read_text(encoding="utf-8"))
+                timing.read_json(path)
             )
         return self._cache[path]
 
@@ -52,7 +54,7 @@ class JsonSafetyLegalRuleRepository:
     def _load(self) -> SafetyLegalRule:
         if self._cached is None:
             self._cached = parse_safety_rule_payload(
-                json.loads(self._path.read_text(encoding="utf-8"))
+                timing.read_json(self._path)
             )
         return self._cached
 
@@ -71,6 +73,6 @@ class JsonSafetyPlacementPolicyRepository:
     def get_policy(self, policy_version: str) -> SafetyPlacementPolicy | None:
         if self._cached is None:
             self._cached = tuple(
-                parse_safety_placement_payload(json.loads(path.read_text(encoding="utf-8"))) for path in self._paths
+                parse_safety_placement_payload(timing.read_json(path)) for path in self._paths
             )
         return next((policy for policy in self._cached if policy.policy_version == policy_version), None)

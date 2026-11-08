@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { AutoIndicator } from "@/lib/api/evaluation";
 import { ws } from "./WorkspaceUI";
+import EvidenceImport from "./EvidenceImport";
 import styles from "./Evaluation.module.css";
 
 const VERDICT = {
@@ -133,9 +134,18 @@ function notesFor(item: AutoIndicator) {
   ];
 }
 
-function AutoCard({ item }: { item: AutoIndicator }) {
+/** 4-1 은 일일 보육일지, 4-2 는 영유아 평가만 센다(§12). 올릴 수 있는 종류도 그것뿐이다. */
+const IMPORT = {
+  "4-1": { kind: "dailyLog", label: "예전 보육일지 올리기" },
+  "4-2": { kind: "assessment", label: "예전 평가 올리기" },
+} as const;
+
+function AutoCard({ item, onImported }: { item: AutoIndicator; onImported: () => void }) {
   const [counted, setCounted] = useState(false);
+  const [importing, setImporting] = useState(false);
   const countedId = `eval-counted-${item.indicator}`;
+  const importId = `eval-import-${item.indicator}`;
+  const upload = IMPORT[item.indicator as keyof typeof IMPORT];
   return (
     <section className={styles.card} aria-label={`${item.indicator} ${item.title}`}>
       <p className={styles.kicker}>
@@ -144,19 +154,37 @@ function AutoCard({ item }: { item: AutoIndicator }) {
       </p>
       <div className={styles.titleRow}>
         <h3>{QUESTION[item.indicator] ?? item.title}</h3>
-        {item.indicator === "4-1" && (
-          <button
-            type="button"
-            className={styles.linkButton}
-            aria-expanded={counted}
-            aria-controls={countedId}
-            onClick={() => setCounted(!counted)}
-          >
-            집계에 들어간 문서 {item.count}건 ▾
-          </button>
-        )}
+        <div className={styles.links}>
+          {upload && (
+            <button
+              type="button"
+              className={styles.linkButton}
+              aria-expanded={importing}
+              aria-controls={importId}
+              onClick={() => setImporting(!importing)}
+            >
+              {upload.label} ▾
+            </button>
+          )}
+          {item.indicator === "4-1" && (
+            <button
+              type="button"
+              className={styles.linkButton}
+              aria-expanded={counted}
+              aria-controls={countedId}
+              onClick={() => setCounted(!counted)}
+            >
+              집계에 들어간 문서 {item.count}건 ▾
+            </button>
+          )}
+        </div>
       </div>
       {/* 펼친 내용은 누른 버튼 바로 밑에 둔다. 아래에 열리면 무엇이 열렸는지 찾아야 한다. */}
+      {upload && (
+        <div id={importId} hidden={!importing}>
+          <EvidenceImport kind={upload.kind} onImported={onImported} />
+        </div>
+      )}
       <div id={countedId} className={styles.counted} hidden={!counted}>
         반마다 검토 기간의 확정 월간계획안과, 평일마다 확정한 일일 보육일지를 세요. 월간계획안{" "}
         {item.plan_ids.length}건 · 보육일지 {item.document_ids.length}건
@@ -176,17 +204,24 @@ function AutoCard({ item }: { item: AutoIndicator }) {
 }
 
 /** 문서 탭 — 확정 문서를 세기만 한다. 충족을 확인해 주지 않는다(ADR-019 · ADR-022). */
-export default function EvaluationAuto({ items }: { items: AutoIndicator[] }) {
+export default function EvaluationAuto({
+  items,
+  onImported,
+}: {
+  items: AutoIndicator[];
+  /** 예전 서류를 올리면 숫자를 다시 받는다. */
+  onImported: () => void;
+}) {
   return (
     <div className={ws.stack}>
       <div>
         <h2 className={styles.sectionTitle}>확정 문서로 확인하는 평가항목</h2>
         <p className={ws.hint}>
-          쌤플에서 확정한 문서를 세어 봐요. 세어 준 것이지 충족을 확인해 준 것이 아니에요.
+          쌤플에서 확정했거나 올린 문서를 세어 봐요. 충족했는지는 선생님께서 한 번 더 확인해 주세요.
         </p>
       </div>
       {items.map((item) => (
-        <AutoCard key={item.indicator} item={item} />
+        <AutoCard key={item.indicator} item={item} onImported={onImported} />
       ))}
     </div>
   );

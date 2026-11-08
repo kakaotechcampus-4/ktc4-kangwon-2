@@ -3,13 +3,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { today, validDate } from "@/lib/workspace/model";
 import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
-import { ROUTINES_UNMAPPED, routinesPath } from "@/lib/workspace/routines-route";
+import { DOMAIN_LOOK } from "@/lib/workspace/domain-look";
 import { isUnauthenticated, invalidFields } from "@/lib/api/client";
 import { listRecords, addRecord, editRecord, removeRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
-import { classServerId } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
+import { Posty } from "@/components/app/Posty";
+import { Icon } from "@/components/app/icons";
+import { ChildNote } from "@/components/app/ChildPicker";
+import { markFor } from "@/lib/workspace/child-mark";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
 import {
   WorkspaceViewState,
@@ -84,6 +87,8 @@ export default function RecordsPage() {
   const [picked, setDomain] = useState("");
   const domain = picked || domains[0];
   const [context, setContext] = useState("");
+  /** 아이 이름 칩을 펼쳤나. 아이를 고르면 접히고, 문장 속 이름을 누르면 다시 펼친다. */
+  const [kidsOpen, setKidsOpen] = useState(false);
   const [fact, setFact] = useState("");
   const [editId, setEditId] = useState("");
   const [message, setMessage] = useState("");
@@ -91,19 +96,21 @@ export default function RecordsPage() {
   const [classError, setClassError] = useState("");
   const classes = useClasses(setClassError);
   const [search, setSearch] = useState("");
+  /** 목록을 거르는 영역. 빈 값이면 다섯 영역 전부다. */
+  const [area, setArea] = useState("");
+  /** 목록을 거르는 날짜. 빈 값이면 모든 날이다. */
+  const [day, setDay] = useState("");
   /*
-    적는 칸은 접어 둔다.
+    적는 칸은 펴 둔다.
 
-    전에는 「새 관찰 기록」 폼이 화면 **왼쪽 절반**을 늘 차지해서, 기록을 보러 들어온
-    교사가 목록을 찾아야 했다. 보러 오는 길(홈의 「전체 기록」·「이 아이 기록 보기」)이
-    둘이나 되는데 도착한 화면의 주인공은 적는 칸이었다.
-
-    고칠 때(`editId`)는 접혀 있어도 열린다 — 누른 것이 안 보이면 안 된다.
+    한동안 접어 뒀다. 적는 칸이 화면 왼쪽 절반을 늘 차지해서 기록을 보러 온 교사가
+    목록을 찾아야 했기 때문이다. 접으니 이번에는 적으러 온 교사가 한 번 더 눌러야 했다.
+    지금은 폼을 세 줄로 줄여 목록이 바로 아래 보이게 했다 — 접지 않고도 둘 다 보인다.
   */
-  const [writing, setWriting] = useState(false);
   const classroom = classes.find((c) => c.id === classId);
   /** 적는 칸이 고른 아이. 저장할 때 보내는 값이다. */
   const child = classroom?.children.find((c) => c.id === childId);
+  const kidsShown = !editId && (!child || kidsOpen);
   /** 목록과 숫자를 거르고 있는 아이. 없으면 반 전체다. */
   const onlyChild = classroom?.children.find((c) => c.id === onlyChildId);
   // 늦게 온 옛 조회가 최신 목록을 덮지 않게 조회마다 번호를 매긴다.
@@ -156,9 +163,21 @@ export default function RecordsPage() {
   );
   // 검색은 숫자에 넣지 않는다. 치는 동안 숫자가 따라 움직이면 세고 있는 것이 뭔지 흐려진다.
   const shown = useMemo(
-    () => counted.filter((r) => `${r.fact} ${r.childName} ${r.context}`.includes(search)),
-    [counted, search],
+    () =>
+      counted.filter(
+        (r) =>
+          (!area || r.domain === area) &&
+          (!day || r.date === day) &&
+          `${r.fact} ${r.childName} ${r.context}`.includes(search),
+      ),
+    [counted, search, area, day],
   );
+  /** 영역 칩에 붙는 숫자 — 지금 보고 있는 범위(반 · 아이)에서 센다. */
+  const areaCounts = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const r of counted) n.set(r.domain, (n.get(r.domain) ?? 0) + 1);
+    return n;
+  }, [counted]);
   /** 온보딩 명단에 없는 반·아동은 수정 폼을 채울 수 없다. 화면 id 를 지어내지 않는다. */
   const canEdit = (record: ServerObservation) =>
     classes.some((c) => c.id === record.classId && c.children.some((k) => k.id === record.childId));
@@ -244,186 +263,139 @@ export default function RecordsPage() {
     return (
       <WorkspacePage
         title="관찰 기록"
-        description="아이의 말과 행동을 기록하고, 일지 작성에 활용하세요."
+        description="아이의 말과 행동을 적어 둡니다. 적은 것으로 일지를 만듭니다."
       >
         <Message error>{classError}</Message>
       </WorkspacePage>
     );
   }
-  // 목록을 못 읽은 동안 숫자는 감춘다. 0 은 「기록이 없다」는 말이라 거짓말이 된다.
-  const countable = status !== "error";
-
   return (
     <WorkspacePage
       title="관찰 기록"
-      description="아이의 말과 행동을 기록하고, 일지 작성에 활용하세요."
+      description="아이의 말과 행동을 적어 둡니다. 적은 것으로 일지를 만듭니다."
     >
-      {/* 반은 이 화면 전체의 범위다 — 숫자도 목록도 적는 칸도 이 반을 본다. 적는 칸 안에
-          두면 접었을 때 반을 못 바꾼다. 고치는 중에는 잠근다. */}
-      <div className={ws.card} style={{ marginBottom: 24, maxWidth: 320 }}>
-        <label className={ws.field}>
-          담당 반
-          <select
-            value={classId}
-            disabled={pending || !!editId}
-            {...fieldErrorProps("classId", invalid)}
-            onChange={(e) => {
-              setClassId(e.target.value);
-              setChildId("");
-              setOnlyChild("");
-              clearInvalid("classId");
-            }}
-          >
-            <option value="">반 선택</option>
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.className || "이름 없는 반"}
-              </option>
-            ))}
-          </select>
-          <FieldError name="classId" invalid={invalid} />
-        </label>
-      </div>
+      {/* 반은 사이드바 맨 위에서 고른다. 화면 안에 또 두면 두 곳에서 같은 것을 고르게 되어
+          어느 쪽이 이기는지 교사가 알 수 없다. */}
       {/* 머리말 그림판(「있는 그대로 기록하면…」)을 걷었다. 화면에서 제일 크고 노랗던
           자리인데 하는 말이 없었고, 거기 달린 단추는 다른 화면으로 나가는 길이었다.
           보러 온 교사 눈에 제일 먼저 들어오는 것이 「나가기」였다. */}
-      <div className={ws.stats} hidden={!countable}>
-        {[
-          [
-            onlyChild ? `${onlyChild.name} 기록` : `${classroom?.className ?? "우리 반"} 기록`,
-            counted.length,
-          ],
-          ["오늘 남긴 기록", counted.filter((r) => r.date === today()).length],
-          onlyChild
-            ? ["기록한 영역", new Set(counted.map((r) => r.domain)).size]
-            : ["기록한 아동", new Set(counted.map((r) => r.childId)).size],
-        ].map(([label, value]) => (
-          <div className={ws.card} key={label}>
-            <p className={ws.muted}>{label}</p>
-            <strong className={ws.count}>{value}</strong>
-          </div>
-        ))}
-      </div>
       <Message>{message}</Message>
-      <div className={ws.stack}>
-        <section className={ws.card}>
-          <div className={ws.between}>
-            <h2>{editId ? "관찰 기록 수정" : "새 관찰 기록"}</h2>
-            <span className={ws.actions}>
-              <Link href="/onboarding" className={ws.link}>
-                반·아동 관리
-              </Link>
-              {!editId && (
-                <button
-                  type="button"
-                  className={ws.secondary}
-                  aria-expanded={writing}
-                  onClick={() => setWriting((on) => !on)}
-                >
-                  {writing ? "접기" : "＋ 새 관찰 기록 쓰기"}
-                </button>
-              )}
-            </span>
+      {/* 왼쪽에 적고 오른쪽에 쌓인다 — 일과 기록 · 계획안과 같은 짜임이다.
+          폼을 화면 너비로 펴면 「본 대로 적기」 한 줄이 1,800px 로 늘어나 읽히지 않았고,
+          쌓인 기록은 폼 밑으로 밀려 스크롤해야 보였다. 폼은 따라 내려와 있어
+          오른쪽 기록을 「고치기」 하면 바로 옆에서 고친다. */}
+      <div className={`${ws.grid} ${ws.recordGrid}`}>
+        <div className={ws.side}>
+          {/* 왼쪽 · 오른쪽 머리를 같은 줄에 세운다 — 카드 안에 있던 제목이 오른쪽 「쌓인 기록」보다
+              한 칸 내려앉아 두 칸 높이가 어긋나 보였다. */}
+          <div className={ws.recordListHead}>
+            <h2 className={ws.recordListTitle}>{editId ? "기록 고치기" : "오늘 본 것 적기"}</h2>
+            {/* 기록하러 온 교사가 다음에 하려는 일이 관찰일지다. 목록 머리 작은 단추로는 눈에 안
+                띄었다. 적는 칸 바로 위, 화면을 열자마자 보이는 자리에 둔다. */}
+            <Link
+              className={ws.recordJournalLink}
+              href={
+                child
+                  ? `/records/journal?child=${encodeURIComponent(child.id)}`
+                  : "/records/journal"
+              }
+            >
+              관찰일지 만들기 →
+            </Link>
           </div>
-          {!(writing || editId) ? (
-            <p className={ws.hint}>
-              길게 적을 때 여기를 펼치세요. 한 줄만 남길 때는 우리 반 홈이 더 빨라요.
-            </p>
-          ) : !classes.some((c) => c.children.length) ? (
-            <Empty title="먼저 우리 반과 아동을 등록해주세요">
-              <Link href="/onboarding">반·아동 등록하기 →</Link>
-            </Empty>
-          ) : (
-            <form onSubmit={submit}>
-              <p className={ws.hint}>
-                기록은 서버에 저장돼요. 다른 기기에서 로그인해도 같은 목록을 볼 수 있어요.
-              </p>
-              {/* 요청 중에는 폼 전체가 잠긴다 — 보낸 값과 그 뒤 입력이 섞이지 않게. */}
-              <fieldset
-                className={ws.form}
-                disabled={pending}
-                style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
-              >
-                <div className={ws.row}>
-                  <label className={ws.field}>
-                    아동
-                    <select
-                      required
+          <section className={`${ws.card} ${ws.recordForm}`} data-tour="records-form">
+            {!classes.some((c) => c.children.length) ? (
+              <Empty title="먼저 아이를 등록해 주세요">
+                <Link href="/onboarding">아이 등록하기 →</Link>
+              </Empty>
+            ) : (
+              <form onSubmit={submit}>
+                {/* 요청 중에는 폼 전체가 잠긴다 — 보낸 값과 그 뒤 입력이 섞이지 않게. */}
+                <fieldset
+                  className={ws.recordWrite}
+                  disabled={pending}
+                  style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
+                >
+                  {/* 이름표와 회색 네모가 다섯 개 늘어선 칸이 가입 양식처럼 보였다.
+                      「오늘, 쌓기 영역에서 하늘이가 …」 로 읽히는 문장 속 빈칸으로 바꿨다. */}
+                  <p className={ws.recordSentence}>
+                    <span className={ws.recordDateBlank}>
+                      <span className={ws.recordBlank} aria-hidden="true">
+                        {dateLabel(date)}
+                      </span>
+                      <input
+                        name="date"
+                        required
+                        type="date"
+                        aria-label="날짜"
+                        max={today()}
+                        value={date}
+                        {...fieldErrorProps("date", invalid)}
+                        onClick={(e) => openPicker(e.currentTarget)}
+                        onChange={(e) => {
+                          setDate(e.target.value);
+                          clearInvalid("date");
+                        }}
+                      />
+                    </span>
+                    ,{" "}
+                    <span className={ws.recordNowrap}>
+                      <input
+                        name="context"
+                        aria-label="어디서 · 무슨 놀이"
+                        className={ws.recordBlank}
+                        maxLength={CONTEXT_MAX}
+                        value={context}
+                        {...fieldErrorProps("context", invalid)}
+                        onChange={(e) => {
+                          setContext(e.target.value);
+                          clearInvalid("context");
+                        }}
+                        placeholder="자유놀이 · 쌓기 영역"
+                      />
+                      에서
+                    </span>{" "}
+                    <button
+                      type="button"
+                      className={ws.recordBlank}
+                      data-empty={!child || undefined}
                       disabled={!!editId}
-                      value={childId}
-                      {...fieldErrorProps("childId", invalid)}
-                      onChange={(e) => {
-                        setChildId(e.target.value);
-                        clearInvalid("childId");
-                      }}
+                      aria-expanded={kidsShown}
+                      aria-controls="record-kids"
+                      onClick={() => setKidsOpen((on) => !on)}
                     >
-                      <option value="">아동 선택</option>
-                      {classroom?.children.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                    <FieldError name="childId" invalid={invalid} />
-                  </label>
-                </div>
-                {editId && <small>반과 아동은 수정할 수 없어요. 지우고 다시 등록해주세요.</small>}
-                <div className={ws.row}>
-                  <label className={ws.field}>
-                    관찰 날짜
-                    <input
-                      name="date"
-                      required
-                      type="date"
-                      max={today()}
-                      value={date}
-                      {...fieldErrorProps("date", invalid)}
-                      onChange={(e) => {
-                        setDate(e.target.value);
-                        clearInvalid("date");
-                      }}
-                    />
-                    <FieldError name="date" invalid={invalid} />
-                  </label>
-                  <label className={ws.field}>
-                    관찰 영역
-                    <select
-                      value={domain}
-                      {...fieldErrorProps("domain", invalid)}
-                      onChange={(e) => {
-                        setDomain(e.target.value);
-                        clearInvalid("domain");
-                      }}
-                    >
-                      {(domains.includes(domain) ? domains : [domain, ...domains]).map((d) => (
-                        <option key={d}>{d}</option>
-                      ))}
-                    </select>
-                    <FieldError name="domain" invalid={invalid} />
-                  </label>
-                </div>
-                <label className={ws.field}>
-                  놀이 상황 / 장소
-                  <input
-                    name="context"
-                    maxLength={CONTEXT_MAX}
-                    value={context}
-                    {...fieldErrorProps("context", invalid)}
-                    onChange={(e) => {
-                      setContext(e.target.value);
-                      clearInvalid("context");
-                    }}
-                    placeholder="예: 오전 자유놀이 · 쌓기 영역"
-                  />
-                  <small>
-                    {context.length} / {CONTEXT_MAX}자
-                  </small>
+                      {child ? subjectOf(child.name) : "누가"}
+                    </button>
+                  </p>
+                  <FieldError name="date" invalid={invalid} />
                   <FieldError name="context" invalid={invalid} />
-                </label>
-                <label className={ws.field}>
-                  실제로 관찰한 사실
+                  {kidsShown && (
+                    <div id="record-kids" className={ws.recordKids} role="group" aria-label="아이">
+                      {classroom?.children.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className={ws.recordKid}
+                          aria-pressed={c.id === childId}
+                          {...fieldErrorProps("childId", invalid)}
+                          onClick={() => {
+                            setChildId(c.id === childId ? "" : c.id);
+                            setKidsOpen(false);
+                            clearInvalid("childId");
+                          }}
+                        >
+                          <ChildNote name={c.name} mark={markFor(c.id)} size={24} />
+                          {c.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <FieldError name="childId" invalid={invalid} />
+                  {editId && <small>아이와 반은 고칠 수 없어요. 지우고 다시 적어 주세요.</small>}
                   <textarea
                     required
+                    aria-label="본 대로 적기"
+                    className={ws.recordFactInput}
                     maxLength={5000}
                     value={fact}
                     {...fieldErrorProps("fact", invalid)}
@@ -431,68 +403,130 @@ export default function RecordsPage() {
                       setFact(e.target.value);
                       clearInvalid("fact");
                     }}
-                    placeholder={
-                      "예: 오전 자유놀이 시간 쌓기 영역에서 블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다. " +
-                      "블록이 쓰러지자 넓은 블록을 아래에 놓고 다시 쌓았다. " +
-                      "옆에 있던 친구가 같은 방법으로 따라 했다. 교사는 기다리며 지켜보았다."
-                    }
+                    placeholder={"블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다."}
                   />
-                  {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
-                      그 둘이 없으면 AI 가 해석과 지원을 쓸 근거가 없다. 안내일 뿐 막지는 않는다. */}
-                  <small>
-                    {fact.length} / 5,000자 · <b>상황 → 행동 → 반응 → 교사 지원</b> 순서로 적으면
-                    일지가 잘 나와요. 다 적지 않아도 저장됩니다.
-                  </small>
                   <FieldError name="fact" invalid={invalid} />
-                </label>
-                <div className={ws.actions}>
-                  <button className={ws.primary}>{editId ? "수정 저장" : "관찰 기록 저장"}</button>
-                  {editId && (
-                    <button type="button" className={ws.secondary} onClick={cancelEdit}>
-                      수정 취소
-                    </button>
-                  )}
-                </div>
-              </fieldset>
-            </form>
-          )}
-        </section>
-        <section className={ws.stack}>
-          <div className={ws.between}>
-            <h2>
-              차곡차곡 쌓인 기록 <span className={ws.muted}>{shown.length}</span>
-            </h2>
-            <span className={ws.actions}>
-              <Link href="/records/children" className={ws.link}>
-                아이별 모아보기 →
-              </Link>
-              <RoutinesLink classId={classId} date={date} />
-              <Link href="/compare" className={ws.link}>
-                이전 기록과 비교 →
-              </Link>
-              <Link href="/documents" className={ws.link}>
-                기록으로 문서 만들기 →
-              </Link>
-            </span>
+                  {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
+                    그 둘이 없으면 AI 가 해석과 지원을 쓸 근거가 없다. 안내일 뿐 막지는 않는다. */}
+                  <p className={ws.recordGuide}>
+                    <span className={ws.recordCount}>{fact.length.toLocaleString()} / 5,000자</span>
+                    <span className={ws.recordTip} data-tour="records-order">
+                      <b>TIP!</b> “상황 → 행동 → 반응 → 교사 지원” 순서로 적어봐요!
+                    </span>
+                  </p>
+                  <div className={ws.recordAreaRow}>
+                    <span className={ws.recordAreaLabel} id="record-area-label">
+                      영역
+                    </span>
+                    {/* 평소에는 그림만, 마우스를 올리거나 고르면 옆으로 펼쳐져 이름이 보인다.
+                        이름은 늘 버튼 안에 있어 화면 낭독기는 그대로 읽는다. */}
+                    <div
+                      className={ws.recordAreas}
+                      role="group"
+                      aria-labelledby="record-area-label"
+                      {...fieldErrorProps("domain", invalid)}
+                    >
+                      {(domains.includes(domain) ? domains : [domain, ...domains]).map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          className={ws.recordArea}
+                          data-tone={DOMAIN_LOOK[d]?.tone}
+                          data-plain={!DOMAIN_LOOK[d] || undefined}
+                          aria-pressed={d === domain}
+                          onClick={() => {
+                            setDomain(d);
+                            clearInvalid("domain");
+                          }}
+                        >
+                          {DOMAIN_LOOK[d] && (
+                            <Icon name={DOMAIN_LOOK[d].icon} width={17} height={17} />
+                          )}
+                          <span>{d}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <FieldError name="domain" invalid={invalid} />
+                  <div className={ws.recordSubmit}>
+                    {editId && (
+                      <button type="button" className={ws.secondary} onClick={cancelEdit}>
+                        그만두기
+                      </button>
+                    )}
+                    <button className={ws.primary}>{editId ? "고친 대로 저장" : "기록하기"}</button>
+                  </div>
+                </fieldset>
+              </form>
+            )}
+          </section>
+        </div>
+        <section className={ws.stack} data-tour="records-list">
+          <div className={ws.recordListHead}>
+            <h2 className={ws.recordListTitle}>쌓인 기록</h2>
+            <Link href="/records/children" className={ws.recordWay}>
+              아이별 기록
+            </Link>
           </div>
           {/* 홈의 「이 아이 기록 보기」로 들어오면 목록이 한 아이만 남는다. 그 사실을 화면이
               말해 주지 않아서, 들어온 교사가 「제대로 찾아온 건가」를 알 수 없었다. */}
           {onlyChild && (
             <p className={ws.between}>
-              <span className={ws.badge}>지금 {onlyChild.name} 기록만 보고 있어요</span>
+              <span className={ws.badge}>{onlyChild.name} 기록만 보는 중</span>
               <button type="button" className={ws.link} onClick={() => setOnlyChild("")}>
-                반 전체 보기 →
+                모두 보기 →
               </button>
             </p>
           )}
-          <input
-            name="record_search"
-            aria-label="관찰 기록 검색"
-            className={ws.input}
-            placeholder="아동 이름, 놀이 내용 검색"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <div className={ws.recordFindRow}>
+            <label className={ws.recordFind}>
+              <SearchMark />
+              <input
+                name="record_search"
+                aria-label="기록 찾기"
+                placeholder="아이 이름이나 적은 내용으로 찾기"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </label>
+            {/* 날짜로 거르기. 달력 그림을 누르면 달력이 열린다. */}
+            <span className={ws.recordDayPick} data-on={day ? "" : undefined}>
+              <CalendarMark />
+              {day && <span>{dateLabel(day)}</span>}
+              <input
+                type="date"
+                aria-label="날짜로 거르기"
+                max={today()}
+                value={day}
+                onClick={(e) => openPicker(e.currentTarget)}
+                onChange={(e) => setDay(e.target.value)}
+              />
+            </span>
+          </div>
+          {day && (
+            <p className={ws.between}>
+              <span className={ws.badge}>{dateLabel(day)} 기록만 보는 중</span>
+              <button type="button" className={ws.link} onClick={() => setDay("")}>
+                모든 날짜 보기 →
+              </button>
+            </p>
+          )}
+          <div className={ws.recordFilters} role="group" aria-label="영역으로 거르기">
+            {["", ...Object.keys(DOMAIN_LOOK)].map((name) => (
+              <button
+                key={name || "all"}
+                type="button"
+                aria-pressed={area === name}
+                className={ws.recordFilter}
+                data-tone={DOMAIN_LOOK[name]?.tone}
+                onClick={() => setArea(name)}
+              >
+                {name && <Icon name={DOMAIN_LOOK[name].icon} width={14} height={14} />}
+                {name || "전체"}
+                <span>{name ? (areaCounts.get(name) ?? 0) : counted.length}</span>
+              </button>
+            ))}
+          </div>
           <RecordList
             status={status}
             error={listError}
@@ -505,22 +539,6 @@ export default function RecordsPage() {
         </section>
       </div>
     </WorkspacePage>
-  );
-}
-
-/**
- * 일과 기록으로 가는 길. 보고 있던 반·날짜를 그대로 들고 간다.
- *
- * **고른 반의 서버 번호를 모르면 보내지 않는다.** 날짜만 들려 보내면 S-J1 이 「반을 안 골랐다」로
- * 읽고 주 반을 연다 — 교사는 B 를 눌렀는데 A 가 열린다 (FR-405).
- */
-function RoutinesLink({ classId, date }: { classId: string; date: string }) {
-  const href = routinesPath(classId, date);
-  if (!href) return <small className={ws.hint}>{ROUTINES_UNMAPPED}</small>;
-  return (
-    <Link href={href} className={ws.link}>
-      일과 기록 →
-    </Link>
   );
 }
 
@@ -549,29 +567,48 @@ export function RecordList({
       loading="관찰 기록을 불러오고 있어요."
       empty={
         !records.length && (
-          <Empty title="아직 남긴 기록이 없어요">
-            첫 관찰을 입력하고 아이의 이야기를 시작해보세요.
+          <Empty
+            title="아직 남긴 기록이 없어요"
+            art={<Posty pose="sitWave" face="empty" tone="shell" size={92} label={null} />}
+          >
+            위 칸에 오늘 본 것을 한 줄 적어 보세요.
           </Empty>
         )
       }
     >
-      <div className={ws.list}>
-        {records.map((r) => (
-          <RecordItem
-            key={r.id}
-            record={r}
-            pending={pending}
-            editable={canEdit(r)}
-            onEdit={onEdit}
-            onDelete={onDelete}
-          />
+      <div className={ws.recordDays}>
+        {groupByDate(records).map(([date, day]) => (
+          <section key={date} className={ws.recordDay}>
+            <h3 className={ws.recordDate}>
+              {longDate(date)}
+              <span>{day.length}건</span>
+            </h3>
+            {/* 한 줄이 화면 끝까지 가면 긴 기록은 읽히지 않는다. 폭이 정해진 카드로 나눈다. */}
+            <div className={ws.recordCards}>
+              {day.map((r) => (
+                <RecordItem
+                  key={r.id}
+                  record={r}
+                  pending={pending}
+                  editable={canEdit(r)}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                />
+              ))}
+            </div>
+          </section>
         ))}
       </div>
     </WorkspaceViewState>
   );
 }
 
-/** 기록 카드 하나. 부모의 상태를 모른다 — 수정·삭제는 콜백으로만 알린다. */
+/**
+ * 기록 한 줄. 평소에는 글만 보이고, 줄을 누르면 그 줄에서만 할 일이 나온다.
+ *
+ * 전에는 줄마다 단추가 셋이라 기록 열세 건이면 화면에 단추가 서른아홉 개였다.
+ * 교사가 보러 온 것은 아이가 한 말이지 단추가 아니다.
+ */
 function RecordItem({
   record,
   pending,
@@ -585,39 +622,140 @@ function RecordItem({
   onEdit: (record: ServerObservation) => void;
   onDelete: (record: ServerObservation) => void;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <article className={ws.item}>
-      <div className={ws.between}>
-        <h3>
-          {record.childName} <span className={ws.muted}>· {record.className}</span>
-        </h3>
-        <span className={ws.badge}>{record.domain}</span>
-      </div>
-      <p className={ws.muted}>
-        {record.date} {record.context && `· ${record.context}`}
-      </p>
-      <p>{record.fact}</p>
-      {!editable && <small>반·아동 정보를 확인할 수 없어 수정할 수 없어요.</small>}
-      <div className={ws.actions}>
-        {editable && (
-          <Link
+    <article className={ws.recordCard} data-open={open || undefined}>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((on) => !on)}
+        className={ws.recordRow}
+      >
+        <span className={ws.recordWho}>
+          {/* 아이 표식. 이름 글자를 읽기 전에 누구 기록인지 눈에 먼저 들어온다. */}
+          <ChildNote name={record.childName} mark={markFor(record.childId)} size={28} />
+          <b>{record.childName}</b>
+          {/* 영역 이름은 위 거르기 칩이 읽어 준다. 카드에는 그림과 색만 남겨 아이가 한 말이 먼저 보이게 한다. */}
+          {DOMAIN_LOOK[record.domain] ? (
+            <span
+              className={ws.recordDomain}
+              data-tone={DOMAIN_LOOK[record.domain].tone}
+              role="img"
+              aria-label={record.domain}
+              title={record.domain}
+            >
+              <Icon name={DOMAIN_LOOK[record.domain].icon} width={15} height={15} />
+            </span>
+          ) : (
+            <span className={ws.recordDomain}>{record.domain}</span>
+          )}
+        </span>
+        <span className={ws.recordFact}>{record.fact}</span>
+      </button>
+      {open && (
+        <div className={ws.recordActions}>
+          {editable ? (
+            <Link
+              className={ws.secondary}
+              href={`/records/journal?record=${encodeURIComponent(record.id)}`}
+            >
+              이 기록으로 일지 만들기
+            </Link>
+          ) : (
+            <small>반·아이 정보를 확인할 수 없어 고칠 수 없어요.</small>
+          )}
+          <button
             className={ws.secondary}
-            href={`/documents?record=${encodeURIComponent(record.id)}&class_id=${classServerId(record.classId)}`}
+            disabled={pending || !editable}
+            onClick={() => onEdit(record)}
           >
-            관찰일지 만들기
-          </Link>
-        )}
-        <button
-          className={ws.secondary}
-          disabled={pending || !editable}
-          onClick={() => onEdit(record)}
-        >
-          기록 수정
-        </button>
-        <button className={ws.secondary} disabled={pending} onClick={() => onDelete(record)}>
-          기록 삭제
-        </button>
-      </div>
+            고치기
+          </button>
+          <button className={ws.secondary} disabled={pending} onClick={() => onDelete(record)}>
+            지우기
+          </button>
+        </div>
+      )}
     </article>
   );
+}
+
+/** 날짜 거르기 단추의 달력. */
+function CalendarMark() {
+  return (
+    <svg
+      className={ws.recordFindMark}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect x="4" y="5.5" width="16" height="14" rx="2.5" />
+      <path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" />
+    </svg>
+  );
+}
+
+/** 찾기 칸의 돋보기. 글자만 있던 칸이 목록과 같은 흰 네모라 무슨 칸인지 몰랐다. */
+function SearchMark() {
+  return (
+    <svg className={ws.recordFindMark} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="10.6" cy="10.6" r="6.4" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M15.4 15.4 20 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
+
+/** 날짜 빈칸 글자. 오늘이면 「오늘(11월 5일)」, 아니면 「11월 3일(화)」. */
+function dateLabel(date: string) {
+  const at = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(at.getTime())) return "날짜 고르기";
+  const day = `${at.getUTCMonth() + 1}월 ${at.getUTCDate()}일`;
+  return date === today() ? `오늘(${day})` : `${day}(${WEEK[at.getUTCDay()]})`;
+}
+
+/** 「김하늘」 → 「하늘이가」, 「박서아」 → 「서아가」. 문장 속 「누가」 자리에 들어간다. */
+export function subjectOf(name: string) {
+  const chars = Array.from(name.trim());
+  const given = chars.length >= 3 ? chars.slice(1).join("") : chars.join("");
+  const last = given.charCodeAt(given.length - 1) - 0xac00;
+  const closed = last >= 0 && last < 11172 && last % 28 !== 0;
+  return `${given}${closed ? "이가" : "가"}`;
+}
+
+/** 날짜 칸을 누르면 달력을 연다. 못 여는 브라우저는 그대로 둔다 — 칸은 키보드로도 고칠 수 있다. */
+export function openPicker(input: HTMLInputElement) {
+  try {
+    input.showPicker();
+  } catch {
+    /* showPicker 가 없거나 막혔다 */
+  }
+}
+
+/** 「2026-11-03」 을 「11월 3일 월요일」 로. 묶음 머리라 날짜를 다 읽어 준다. */
+function longDate(date: string) {
+  const at = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(at.getTime())) return date;
+  return `${at.getUTCMonth() + 1}월 ${at.getUTCDate()}일 ${WEEK[at.getUTCDay()]}요일`;
+}
+
+/**
+ * 같은 날 기록을 한 묶음으로 센다.
+ *
+ * 열세 건이 같은 리듬으로 흐르면 「언제 적은 것」이 안 보인다. 목록은 이미 날짜 내림차순이라
+ * 차례대로 모으기만 하면 된다 — 다시 정렬하지 않는다.
+ */
+function groupByDate(records: ServerObservation[]): [string, ServerObservation[]][] {
+  const days: [string, ServerObservation[]][] = [];
+  for (const record of records) {
+    const last = days[days.length - 1];
+    if (last && last[0] === record.date) last[1].push(record);
+    else days.push([record.date, [record]]);
+  }
+  return days;
 }

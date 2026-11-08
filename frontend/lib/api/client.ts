@@ -20,6 +20,15 @@ export class ApiError extends Error {
   }
 }
 
+/** 서버 오류의 `code`. 같은 status 라도 교사가 할 일이 다를 때 갈라 본다. */
+export function errorCode(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  const body = error.body as { error?: { code?: unknown } } | null;
+  return typeof body === "object" && body !== null && typeof body.error?.code === "string"
+    ? body.error.code
+    : null;
+}
+
 /**
  * /api/... 요청이 JSON API가 아니라 Next의 HTML(주로 404 페이지)을 받은 경우.
  * = MSW가 요청을 가로채지 못한 전송 계층 문제이므로, 실제 API의 NOT_FOUND와 절대 섞지 않는다.
@@ -83,8 +92,14 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     }
   }
   if (!response.ok) {
-    console.error("[API] " + method + " " + path + " → " + response.status, body);
-    throw new ApiError(response.status, body);
+    const error = new ApiError(response.status, body);
+    // 서버가 봉투(`{error:{code}}`)를 붙여 **의도대로 거절한** 4xx 는 호출부가 받아서
+    // 처리한다(예: 원이 이미 있다는 409). 그것을 console.error 로 적으면 Next 개발
+    // 오버레이가 뜬다. **숨기지는 않는다** — 같은 줄을 warn 으로 남기고 그대로 던진다.
+    const line = "[API] " + method + " " + path + " → " + response.status;
+    if (response.status < 500 && envelope(error) !== null) console.warn(line, body);
+    else console.error(line, body);
+    throw error;
   }
   return body as T;
 }

@@ -1,7 +1,7 @@
 # ADR-034: 양식 설정(TemplateProfile)은 원이 소유하고, 생성은 화면이 보여 준 정확한 버전을 쓴다
 
 - 2026-10-19 (결정은 2026-10-06 ~ 10-10 사용자 결정)
-- 상태 — 채택 (옮겨 적기, PM-13 C · AP-06)
+- 상태 — 채택 (옮겨 적기, PM-13 C · AP-06) · §4 의 반 override 권한은 ADR-059 가 좁힘(반 주인만)
 - 관련 — ADR-017 · ADR-027 · api-spec §9-1 · §9-2 · §9-4 · `backend/app/features/template_profiles/`
 
 ## 맥락

@@ -171,6 +171,8 @@ def test_elice_cell_request_uses_the_strict_cell_schema():
     )
     cell_request = SimpleNamespace(
         system_prompt="system",
+        memo_addresses=None,
+        detail_requested=False,
         user_content="user",
         target_section_key="focus",
         valid_grounding_refs=frozenset({"ev-1"}),
@@ -204,7 +206,7 @@ def test_play_project_request_alone_streams_with_an_output_cap():
     adapter = EliceOpenAiMonthlyAdapter(
         MonthlyLlmConfig("https://mlapi.elice.io/v1", "secret"), transport=transport
     )
-    adapter.generate_play_project(SimpleNamespace(system_prompt="system", user_content="user"))
+    adapter.generate_play_project(SimpleNamespace(system_prompt="system", user_content="user", memo_addresses=None))
     payload = transport.calls[0][2]
 
     assert payload["max_completion_tokens"] == PLAY_PROJECT_MAX_COMPLETION_TOKENS == 10000
@@ -276,7 +278,7 @@ def test_a_transport_that_cannot_stream_is_refused_before_sending():
         MonthlyLlmConfig("https://mlapi.elice.io/v1", "secret"), transport=transport
     )
     with pytest.raises(MonthlyLlmConfigurationError, match="cannot stream"):
-        adapter.generate_play_project(SimpleNamespace(system_prompt="s", user_content="u"))
+        adapter.generate_play_project(SimpleNamespace(system_prompt="s", user_content="u", memo_addresses=None))
     with pytest.raises(MonthlyLlmConfigurationError, match="cannot stream"):
         adapter.generate_monthly(request())
     assert transport.calls == 0

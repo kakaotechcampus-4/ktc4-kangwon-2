@@ -5,14 +5,21 @@ p0-planning 의 테스트가 본다. 이 파일은 「계약대로 내려주나 
 확정 뒤 수정을 막나」만 본다.
 """
 
+import json
+import logging
+from dataclasses import dataclass
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from ssuksak.planning.planner.contracts import RawLlmResponse
 
 from app.config import settings
-from app.features.centers.models import Center, Class
+from app.features.centers.models import Center, Child, Class
+from app.features.plans.memo_privacy import MemoMaskFailed, with_masked_memo
 from app.features.plans.models import Plan
 from app.main import app
+from app.shared.childCode import NameTable
 
 client = TestClient(app)
 
@@ -121,6 +128,27 @@ def test_칸을_고치면_그_달만_돌아오고_근거는_그대로다(db_sess
     assert any(e["type"] == "TEACHER_EDITED" and e["month"] == 3 for e in events)
 
 
+def test_subtheme_teacher_provenance_is_saved_and_survives_reload(db_session, mine):
+    from ssuksak.planning.domain.yearly_plan import YearlyPlan
+
+    from app.features.plans.codec import from_jsonable
+
+    created = _create(mine)
+    before = created["months"][0]
+    url = f"/api/plans/annual/{created['id']}/months/3"
+    response = client.put(url, json={"theme": before["theme"], "sub_themes": before["sub_themes"]})
+    assert response.status_code == 200, response.text
+    db_session.expire_all()
+    row = db_session.get(Plan, created["id"])
+    assert dict(from_jsonable(YearlyPlan, row.body).teacher_subthemes)[3] == ()
+    response = client.put(url, json={"theme": before["theme"], "sub_themes": ["한강공원 산책"]})
+    assert response.status_code == 200, response.text
+    db_session.expire_all()
+    row = db_session.get(Plan, created["id"])
+    assert dict(from_jsonable(YearlyPlan, row.body).teacher_subthemes)[3] == ("한강공원 산책",)
+    assert client.get(f"/api/plans/annual/{created['id']}").status_code == 200
+
+
 def test_소주제를_빼고_보내면_422_이고_아무것도_저장되지_않는다(db_session, mine):
     created = _create(mine)
 
@@ -154,7 +182,7 @@ def test_감사_기록에_생성과_확정이_남는다(db_session, mine):
     created = _create(mine)
     client.put(
         f"/api/plans/annual/{created['id']}/months/3",
-        json={"theme": "고친 주제", "sub_themes": []},
+        json={"theme": "고친 주제", "sub_themes": created["months"][0]["sub_themes"]},
     )
     client.post(f"/api/plans/annual/{created['id']}/confirm")
 
@@ -287,6 +315,33 @@ def test_생성이_실패하면_부분_결과가_남지_않는다(db_session, mi
     assert client.get("/api/plans/annual").json()["items"] == []
 
 
+def test_생성_요청마다_시간_요약이_한_줄_남는다(db_session, mine, monkeypatch):
+    """실패(409)도 남는다. 숫자와 구간 이름만이다(CLAUDE.md §21)."""
+    timing_log = logging.getLogger("app.server.timing")
+    # conftest 가 같은 프로세스에서 alembic 을 돌려 기존 로거를 꺼 둔다(fileConfig).
+    # 운영은 마이그레이션이 따로 돈다.
+    monkeypatch.setattr(timing_log, "disabled", False)
+    lines = []
+    handler = logging.Handler()
+    handler.emit = lambda record: lines.append(record.getMessage())
+    timing_log.addHandler(handler)
+    try:
+        _create(mine)
+        client.post(
+            "/api/plans/annual",
+            json={"format": "MONTHLY_THEME", "class_id": mine.id, "form_id": None},
+        )
+    finally:
+        timing_log.removeHandler(handler)
+
+    lines = [line for line in lines if line.startswith("plan_timing")]
+    assert len(lines) == 2
+    assert "kind=annual_theme outcome=ok" in lines[0]
+    assert all(f" {name}_ms=" in lines[0] for name in ("db_read", "select", "assemble", "save"))
+    assert "outcome=http_409" in lines[1]
+    assert "햇살반" not in "".join(lines)
+
+
 def test_같은_반에_연간을_두_번_만들지_못한다(db_session, mine):
     """멘토 리뷰(PR #82) — 새로고침하고 다시 누르면 두 개가 생기던 것."""
     _create(mine)
@@ -378,13 +433,14 @@ def test_확정_전_연간계획안을_지우면_다시_만들_수_있다(db_ses
     assert _create(mine)["id"] != plan_id
 
 
-def test_확정된_연간계획안은_지우지_못한다(db_session, mine):
-    """제출 문서다. 버튼 한 번으로 사라지면 안 된다."""
+def test_확정된_연간계획안도_지우면_다시_만들_수_있다(db_session, mine):
+    """확정본도 지운다(ADR-064, Human Decision 2026-11-05 하민). 고치려면 지우고 다시 만든다."""
     plan_id = _create(mine)["id"]
     assert client.post(f"/api/plans/annual/{plan_id}/confirm").status_code == 200
 
-    assert _error(client.delete(f"/api/plans/annual/{plan_id}")) == (409, "GATE_BLOCKED")
-    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 200
+    assert client.delete(f"/api/plans/annual/{plan_id}").status_code == 204
+    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 404
+    assert _create(mine)["id"] != plan_id
 
 
 def test_남의_원_연간계획안은_지울_수_없고_404(db_session, mine, teacher):
@@ -429,8 +485,8 @@ def test_켜면_확정본도_딸린_월간까지_한_번에_지운다(db_session
     )
     db_session.commit()
 
-    # 진짜 지우기는 막는다. 확정이라 걸리고, 확정이 아니었어도 딸린 월간에서 걸린다.
-    assert _error(client.delete(f"/api/plans/annual/{plan_id}")) == (409, "GATE_BLOCKED")
+    # 진짜 지우기는 딸린 월간에서 막는다(확정본은 ADR-064 부터 지운다).
+    assert _error(client.delete(f"/api/plans/annual/{plan_id}")) == (409, "IN_USE")
     assert client.delete(f"/api/plans/annual/{plan_id}/test-reset").status_code == 204
 
     assert client.get(f"/api/plans/annual/{plan_id}").status_code == 404
@@ -456,7 +512,7 @@ def test_생성한_모든_달에_소주제_초안이_저장된다(mine):
 def test_안전교육은_미입력과_배치없음을_구분하고_생략하면_보존한다(db_session, mine):
     plan = _create(mine)
     path = f"/api/plans/annual/{plan['id']}/months/3"
-    base = {"theme": "우리 반", "sub_themes": ["친구 만나기"]}
+    base = {"theme": "우리 반", "sub_themes": ["친구 만나기", "이름", "놀이", "약속"]}
     saved = client.put(path, json={**base, "safety_education": ["traffic_safety"]})
     assert saved.status_code == 200, saved.text
     assert saved.json()["safety_education_state"] == "PLACED"
@@ -524,3 +580,177 @@ def test_소주제_생성이_실패하면_부분_계획안도_남지_않는다(
     assert db_session.scalar(select(Plan).where(Plan.classroom_ref == str(mine.id))) is None
     monkeypatch.setattr("app.features.plans.router.generate_subthemes", generate_subthemes)
     assert _create(mine)["months"][0]["sub_themes"]
+
+
+# ── 가져오기 (2026-11-01 I-A) · 확정 소주제 수 검사 ─────────────────────────────
+
+ACADEMIC = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2]
+
+
+def _import_body(klass, months=ACADEMIC, **overrides) -> dict:
+    return {
+        "class_id": klass.id,
+        "source": "MANUAL",
+        "file": None,
+        "months": [
+            {"month": m, "theme": f"{m}월 주제", "sub_themes": [" 첫째 ", "", "둘째"]}
+            for m in months
+        ],
+        **overrides,
+    }
+
+
+def test_표를_가져오면_근거_없는_MANUAL_DRAFT_로_저장된다(db_session, mine):
+    response = client.post("/api/plans/annual/import", json=_import_body(mine))
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["status"] == "DRAFT" and body["format"] == "MONTHLY_THEME"
+    assert [m["month"] for m in body["months"]] == ACADEMIC
+    march = body["months"][0]
+    assert march["theme"] == "3월 주제"
+    assert march["sub_themes"] == ["첫째", "둘째"]  # strip 뒤 빈 것은 뺀다
+    assert march["week_count"] in (4, 5)
+    assert march["evidence"] == [] and march["generation"]["method"] == "MANUAL"
+    assert client.get(f"/api/plans/annual/{body['id']}").json() == body
+
+
+def test_파일에서_가져오면_IMPORTED_이고_출처_메타가_수정_뒤에도_남는다(db_session, mine):
+    file = {"format": "HWPX", "sha256": "a" * 64}
+    created = client.post(
+        "/api/plans/annual/import", json=_import_body(mine, source="FILE", file=file)
+    ).json()
+    assert {m["generation"]["method"] for m in created["months"]} == {"IMPORTED"}
+
+    client.put(
+        f"/api/plans/annual/{created['id']}/months/3", json={"theme": "고침", "sub_themes": []}
+    )
+    db_session.expire_all()
+    row = db_session.get(Plan, created["id"])
+    assert row.body["import_source"] == {"source": "FILE", "file": file}
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"months": []},  # 빈 표
+        {"source": "FILE"},  # FILE 인데 파일 정보 없음
+    ],
+)
+def test_가져오기_입력이_틀리면_422(db_session, mine, overrides):
+    response = client.post("/api/plans/annual/import", json=_import_body(mine, **overrides))
+    assert response.status_code == 422
+
+
+def test_가져오기_달_순서가_틀리면_422_이고_아무것도_안_남는다(db_session, mine):
+    response = client.post(
+        "/api/plans/annual/import", json=_import_body(mine, months=[4, 3, *ACADEMIC[2:]])
+    )
+
+    assert _error(response) == (422, "VALIDATION_FAILED")
+    assert response.json()["error"]["fields"] == ["months"]
+    assert client.get("/api/plans/annual").json()["items"] == []
+
+
+def test_반에_연간이_있으면_가져오기도_409(db_session, mine):
+    _create(mine)
+    response = client.post("/api/plans/annual/import", json=_import_body(mine))
+    assert _error(response) == (409, "ALREADY_EXISTS")
+
+
+def test_소주제_수가_주_수와_다른_달이_있으면_확정_422(db_session, mine):
+    created = _create(mine)
+    client.put(
+        f"/api/plans/annual/{created['id']}/months/10",
+        json={"theme": "고친 주제", "sub_themes": ["하나"]},
+    )
+
+    response = client.post(f"/api/plans/annual/{created['id']}/confirm")
+
+    assert _error(response) == (422, "VALIDATION_FAILED")
+    assert response.json()["error"]["fields"] == ["10"]
+    assert client.get(f"/api/plans/annual/{created['id']}").json()["status"] == "DRAFT"
+
+
+# ── 요청 사항 (ADR-060) ─────────────────────────────────────────────────────
+
+
+def _marked(month) -> bool:
+    return any(e["source_id"] == "teacher_memo" for e in month["evidence"])
+
+
+def test_요청_사항은_남고_반영한_달에만_표시가_붙는다(db_session, mine):
+    """mock 은 첫 달 소주제에 반영했다고 답한다. 주제(theme_id)는 Rule 이 고른 그대로다."""
+    plain = _create(mine)
+    client.delete(f"/api/plans/annual/{plain['id']}")
+    response = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": mine.id, "memo": "  텃밭 놀이를 넣어 주세요 "},
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert (body["memo"], body["memo_notices"]) == ("텃밭 놀이를 넣어 주세요", [])
+    assert [m["month"] for m in body["months"] if _marked(m)] == [3]
+    assert [m["theme"] for m in body["months"]] == [m["theme"] for m in plain["months"]]
+    assert client.get(f"/api/plans/annual/{body['id']}").json() == body
+    assert plain["memo"] == "" and not any(_marked(m) for m in plain["months"])
+
+
+def test_요청_사항은_300자까지(db_session, mine):
+    response = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": mine.id, "memo": "가" * 301},
+    )
+
+    assert response.status_code == 422
+    assert db_session.scalar(select(Plan).where(Plan.classroom_ref == str(mine.id))) is None
+
+
+def test_요청_사항의_아이_이름을_가명으로_못_바꾸면_LLM_없이_422(db_session, mine):
+    # 두 아이가 같은 이름(「하나」)을 쓰면 어느 아이인지 몰라 되돌릴 수 없다.
+    db_session.add_all(
+        [
+            Child(class_id=mine.id, name="김하나", code="도아"),
+            Child(class_id=mine.id, name="박하나", code="새미"),
+        ]
+    )
+    db_session.flush()
+
+    response = client.post(
+        "/api/plans/annual",
+        json={"format": "MONTHLY_THEME", "class_id": mine.id, "memo": "하나가 좋아하는 공 놀이"},
+    )
+
+    assert _error(response) == (422, "VALUE_INVALID")
+    assert response.json()["error"]["fields"] == ["memo"]
+    assert db_session.scalar(select(Plan).where(Plan.classroom_ref == str(mine.id))) is None
+
+
+@dataclass(frozen=True)
+class _Request:
+    user_content: str
+    system_prompt: str = ""
+
+
+def test_메모_속_아이_이름만_가명으로_나가고_답은_실명으로_돌아온다():
+    table = NameTable({"이가명": "도담"})
+    memo = "가명이가 좋아하는 하나씩 쌓기"
+    sent = []
+
+    class Inner:
+        def generate_weekly(self, request):
+            sent.append(request.user_content)
+            return RawLlmResponse(content='{"v": "도담이와 쌓기"}', model="m")
+
+    provider = with_masked_memo(Inner(), memo, table)
+    payload = json.dumps({"teacher_memo": {"text": memo}, "rule": "하나씩"}, ensure_ascii=False)
+
+    response = provider.generate_weekly(_Request(payload))
+
+    assert "가명" not in sent[0] and "도담이가 좋아하는" in sent[0]
+    assert '"rule": "하나씩"' in sent[0]  # 메모 밖은 건드리지 않는다
+    assert response.content == '{"v": "이가명이와 쌓기"}'
+    # 수리 요청이 앞 답(실명)을 다시 실으면 부르지 않는다.
+    with pytest.raises(MemoMaskFailed):
+        provider.generate_weekly(_Request(payload + " 이가명"))

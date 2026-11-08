@@ -11,6 +11,8 @@ from .errors import MonthlyRuleError
 
 RULE_ID = "monthly.template.section_resolution"
 RULE_VERSION = "v1"
+# DAY is weekly-only (ADR-030 WQ-02); a monthly grid never repeats by day.
+_MONTHLY_REPEAT_BY = (RepeatBy.NONE, RepeatBy.WEEK)
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,7 +33,7 @@ class ResolvedSection:
         if self.template_section.repeat_by is RepeatBy.WEEK:
             return active_week_count
         raise MonthlyRuleError(
-            RULE_ID, f"active content section lacks repeat_by: {self.section_key}"
+            RULE_ID, f"active content section requires repeat_by NONE or WEEK: {self.section_key}"
         )
 
 
@@ -43,11 +45,11 @@ def resolve_sections(template: MonthlyTemplate) -> tuple[ResolvedSection, ...]:
     missing = tuple(
         section.section_key
         for section in template.activated_sections
-        if section.role is SectionRole.CONTENT and section.repeat_by is None
+        if section.role is SectionRole.CONTENT and section.repeat_by not in _MONTHLY_REPEAT_BY
     )
     if missing:
         raise MonthlyRuleError(
-            RULE_ID, f"active content sections require repeat_by: {missing}"
+            RULE_ID, f"active content sections require repeat_by NONE or WEEK: {missing}"
         )
     return tuple(ResolvedSection(section) for section in template.activated_sections)
 
@@ -62,11 +64,11 @@ def resolve_profile_sections(
     missing = tuple(
         section.section_key
         for section in profile.ordered_sections
-        if section.role is SectionRole.CONTENT and section.repeat_by is None
+        if section.role is SectionRole.CONTENT and section.repeat_by not in _MONTHLY_REPEAT_BY
     )
     if missing:
         raise MonthlyRuleError(
-            RULE_ID, f"active content sections require repeat_by: {missing}"
+            RULE_ID, f"active content sections require repeat_by NONE or WEEK: {missing}"
         )
     return tuple(
         ResolvedSection(section) for section in profile.ordered_sections
@@ -83,11 +85,11 @@ def resolve_snapshot_sections(
     missing = tuple(
         section.section_key
         for section in snapshot.sections
-        if section.role is SectionRole.CONTENT and section.repeat_by is None
+        if section.role is SectionRole.CONTENT and section.repeat_by not in _MONTHLY_REPEAT_BY
     )
     if missing:
         raise MonthlyRuleError(
-            RULE_ID, f"active content sections require repeat_by: {missing}"
+            RULE_ID, f"active content sections require repeat_by NONE or WEEK: {missing}"
         )
     return tuple(ResolvedSection(section) for section in snapshot.sections)
 

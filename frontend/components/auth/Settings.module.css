@@ -1,0 +1,724 @@
+/* 설정 화면 전용. 쌓인 종이 위에 묶음마다 색 종이테이프 인덱스를 붙이고,
+   칸 하나하나를 쪽지로 붙인다. 고른 인덱스만 종이 위로 내려와 붙는다. */
+
+.tabs {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  padding-left: 28px;
+}
+/* 테이프 모양은 안쪽 span 이 갖는다. 단추에 clip-path 를 걸면 포커스 테두리까지 잘린다. */
+.tab {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-display), sans-serif;
+  /* 손글씨는 같은 px 에서 본문 글꼴보다 작아 보인다. 묶음 제목이라 시안 크기(19 · 고른 탭 22)를 따른다. */
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--pg-ink);
+  /* 찢긴 끝까지 그림자가 따라가게 box-shadow 가 아니라 drop-shadow 를 쓴다. */
+  filter: drop-shadow(0 1px 2px rgba(106, 96, 80, 0.2));
+  cursor: pointer;
+}
+.tab span {
+  display: block;
+  padding: 6px 24px;
+  /* 양 끝을 5.5px 톱니로 찢는다. */
+  clip-path: polygon(
+    5.5px 0,
+    calc(100% - 5.5px) 0,
+    100% 20%,
+    calc(100% - 5.5px) 40%,
+    100% 60%,
+    calc(100% - 5.5px) 80%,
+    100% 100%,
+    5.5px 100%,
+    0 80%,
+    5.5px 60%,
+    0 40%,
+    5.5px 20%
+  );
+}
+.tab[aria-selected="true"] {
+  z-index: 3;
+  font-size: 23px;
+  margin-bottom: -18px;
+  color: var(--pg-ink);
+  filter: drop-shadow(0 2px 3px rgba(106, 96, 80, 0.32));
+}
+/* 반투명 테이프. 고른 것은 더 진하게 붙인다. */
+.center {
+  transform: rotate(-2deg);
+}
+.center span {
+  background: rgba(206, 226, 213, 0.8);
+}
+.center[aria-selected="true"] span {
+  background: rgba(206, 226, 213, 0.95);
+}
+.records {
+  transform: rotate(1.5deg);
+}
+.records span {
+  background: rgba(229, 214, 240, 0.8);
+}
+.records[aria-selected="true"] span {
+  background: rgba(229, 214, 240, 0.95);
+}
+.account {
+  transform: rotate(-1deg);
+}
+.account span {
+  background: rgba(248, 220, 196, 0.8);
+}
+.account[aria-selected="true"] span {
+  background: rgba(248, 220, 196, 0.95);
+}
+
+/* 뒤에 깔린 종이 두 장. 앞 종이(.sheet)는 위치만 잡고 z-index 를 주지 않아야 이 둘 위에 그려진다. */
+.paper {
+  --settings-line: #c4b9a6;
+  position: relative;
+  z-index: 1;
+}
+.paper::before,
+.paper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: 1px solid var(--settings-line);
+  border-radius: 4px;
+  background: var(--pg-ivory);
+  /* 크림 배경과 종이 뭉치를 가른다. 맨 뒤 종이가 아래로 가장 많이 나와 그림자가 뭉치 전체를 감싼다. */
+  box-shadow: 0 6px 18px rgba(52, 49, 47, 0.12);
+}
+.paper::before {
+  transform: translate(8px, 10px) rotate(0.8deg);
+}
+.paper::after {
+  transform: translate(3px, 5px) rotate(-0.5deg);
+}
+.sheet {
+  position: relative;
+  padding: 48px;
+  border: 1px solid var(--settings-line);
+  border-radius: 4px;
+  background: var(--pg-paper);
+  box-shadow: 0 2px 8px rgba(52, 49, 47, 0.08);
+}
+
+/* 선을 세 단계로 가른다 — 공용 --pg-line(#ddd6ca)은 흰 바탕에서 1.4:1 이라 칸 · 단추 · 입력칸이
+   한 색으로 묻혔다. 설정 화면에만 둔다. 앱 전체로 넓힐지는 아직 안 정했다.
+   쪽지 선    쪽지 색마다 한 단계 진한 선
+   입력칸 선  쪽지 색마다 진한 같은 계열(--tone-edge) — 입력칸 테두리는 3:1 을 넘어야 한다(WCAG 1.4.11)
+   단추       보라 선  쪽지 선과 색으로 갈린다 */
+.sheet .action {
+  border-color: var(--pg-primary);
+  color: var(--pg-primary-ink);
+}
+/* 칸 이름은 화면 제목 「설정」과 같은 손글씨. 크기는 카드 제목 그대로 둔다. */
+.title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display), sans-serif;
+}
+.title svg {
+  flex: none;
+}
+
+/* ---------- 쪽지 (메모패드) ----------
+   색은 머리띠와 입력칸에만, 본문은 종이. 쪽지마다 네 값만 바꾼다.
+   --tone 머리띠 · --tone-line 쪽지 선 · --tone-fill 입력칸 바탕 · --tone-edge 입력칸 선 */
+.yellow {
+  --tone: var(--pg-note);
+  --tone-line: var(--pg-note-line);
+  --tone-fill: #f8eec6;
+  --tone-edge: #8f7f45;
+}
+.plum {
+  --tone: var(--pg-plum);
+  --tone-line: var(--pg-plum-line);
+  --tone-fill: #efe5f7;
+  --tone-edge: #7f6aa3;
+}
+.clay {
+  --tone: var(--pg-clay);
+  --tone-line: var(--pg-clay-line);
+  --tone-fill: #f8e0d4;
+  --tone-edge: #8a5b42;
+}
+.sage {
+  --tone: var(--pg-sage);
+  --tone-line: var(--pg-sage-line);
+  --tone-fill: #e1eee5;
+  --tone-edge: #5f8a6c;
+}
+/* 공용 .card 의 흰 바탕 · 안쪽 여백을 걷는다. 글자 크기는 .card 것을 그대로 쓴다. */
+.sheet .note {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
+  padding: 0;
+  border: 1px solid var(--tone-line);
+  border-radius: 2px;
+  background: #fffcf5;
+  box-shadow:
+    var(--pg-shadow-card),
+    0 6px 14px rgba(52, 49, 47, 0.1);
+  transform: rotate(var(--tilt, 0deg));
+}
+.tape {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  z-index: 1;
+  width: 80px;
+  height: 24px;
+  margin-left: -40px;
+  transform: rotate(-3deg);
+  background: rgba(255, 250, 240, 0.72);
+  border-inline: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 1px 2px rgba(106, 96, 80, 0.09);
+}
+.noteHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 28px 24px 16px;
+  border-bottom: 1px dashed var(--tone-line);
+  background: var(--tone);
+}
+.noteHead h2 {
+  margin-bottom: 0;
+}
+/* 공용 .card h2(20px)보다 한 단계 크게. 같은 무게의 선택자라 .title 을 겹쳐 확실히 이긴다. */
+.noteHead .title {
+  font-size: 23px;
+}
+.noteBody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 24px 22px;
+}
+.noteBody > label {
+  align-self: stretch;
+}
+/* 쪽지 아래 단추는 오른쪽 아래에 붙인다 — 연필과 같은 자리. */
+.noteBody > .action {
+  align-self: flex-end;
+  margin-top: auto;
+}
+/* 이름과 칸을 한 줄에. 공용 .field 의 세로 배치를 덮어야 해서 한 단계 좁혀 건다. */
+.noteBody .inlineField {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.noteBody .inlineField select {
+  flex: 1;
+}
+/* 단추 모양 없이 연필만. 누르는 자리는 44px 로 두고, 바깥 여백을 당겨 아이콘을 모서리에 붙인다. */
+.edit {
+  align-self: flex-end;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: auto -10px -10px 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pg-ink);
+  cursor: pointer;
+}
+.edit:hover {
+  color: var(--pg-primary-ink);
+}
+
+/* 떼어 낸 동안 제자리에는 점선 자국만 남긴다. */
+.sheet .note.lifted {
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+}
+.lifted > * {
+  visibility: hidden;
+}
+
+/* ---------- 떼어 낸 쪽지 ----------
+   날아오는 움직임은 SettingsPage 의 fly() 가 맡는다. 안은 SettingsNoteEditors 가 그린다.
+   머리띠 · 테이프 · 안내 · 스크롤되는 본문 · 아래 단추 순서. */
+.peeled {
+  width: min(560px, calc(100% - 32px));
+  max-height: calc(calc(100 * var(--app-dvh)) - 52px);
+  padding: 40px 36px 28px;
+  /* 모달 기본값은 overflow: auto 라 위로 튀어나온 테이프가 잘린다. 스크롤은 .body 가 한다. */
+  overflow: visible;
+  border: 1px solid var(--tone-line);
+  border-radius: 0;
+  background: #fffcf5;
+  color: var(--pg-ink);
+  box-shadow:
+    3px 4px 0 #dcd4c7,
+    0 18px 40px rgba(52, 49, 47, 0.22);
+  transform-origin: top left;
+}
+.peeled[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.peeled::backdrop {
+  background: rgba(52, 49, 47, 0.35);
+}
+.peeled::before {
+  content: "";
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  z-index: 1;
+  width: 96px;
+  height: 28px;
+  margin-left: -48px;
+  transform: rotate(-3deg);
+  background: rgba(255, 250, 240, 0.72);
+  border-inline: 1px solid rgba(255, 255, 255, 0.6);
+}
+.peeledHead {
+  margin: -40px -36px 2px;
+  padding: 34px 36px 14px;
+  border-bottom: 1.5px dashed var(--tone-line);
+  background: var(--tone);
+  font-size: 23px;
+  font-weight: 700;
+}
+.hint {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--pg-ink);
+}
+.body {
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding-right: 10px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+/* 비밀번호 폼은 틀(.peeled)의 줄 배치를 그대로 따르게 상자를 만들지 않는다. */
+.sheetForm {
+  display: contents;
+}
+
+/* 도장 찍힌 단추 — 누르면 그림자만큼 눌린다. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 11px 17px;
+  border: 1px solid var(--pg-primary);
+  border-radius: 6px;
+  background: var(--pg-ivory);
+  box-shadow: var(--pg-shadow-card);
+  color: var(--pg-primary-ink);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    transform 0.08s ease,
+    box-shadow 0.08s ease;
+}
+.btn:hover {
+  background: var(--pg-primary-tint);
+}
+.btn:active:not(:disabled) {
+  transform: translate(2px, 3px);
+  box-shadow: none;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.solid,
+.solid:hover {
+  border-color: var(--pg-primary-line);
+  background: var(--pg-primary);
+  color: #fff;
+}
+
+/* 칸 — 이름은 작고 연하게, 값은 크고 진하게. 값이 먼저 보인다.
+   입력칸은 쪽지 색을 연하게 채우고 같은 계열 진한 선을 두른다. */
+.field {
+  display: grid;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--pg-ink);
+}
+.peeled :is(.field input, .field select, .addrow input),
+.sheet .note select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 11px 12px;
+  border: 1.5px solid var(--tone-edge);
+  border-radius: 6px;
+  background-color: var(--tone-fill);
+  color: var(--pg-ink);
+  font-weight: 500;
+}
+.peeled :is(.field input, .field select, .addrow input) {
+  font-size: 16px;
+}
+.peeled :is(.field input, .field select, .addrow input):focus,
+.sheet .note select:focus {
+  border-color: var(--pg-primary);
+}
+.peeled input::placeholder {
+  color: var(--pg-ink-hint);
+  font-weight: 400;
+}
+.row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.err {
+  margin: 0;
+  font-size: 14px;
+  color: var(--pg-alert-ink);
+}
+
+/* 반 카드 — 상자 대신 점선으로 가른다 */
+.classcard {
+  display: grid;
+  gap: 16px;
+  padding: 16px 0 4px;
+  border-top: 1.5px dashed var(--tone-line);
+}
+.classHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.classHead b {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  color: var(--pg-ink);
+}
+.no {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--pg-cream);
+  color: var(--pg-sage-ink);
+  font-size: 12px;
+  font-weight: 400;
+}
+.del {
+  padding: 8px 12px;
+  border: 1.5px solid #fecaca;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+/* 못 고치는 칸은 칸 없이 자물쇠와 글만 */
+.locked {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--pg-ink);
+  font-weight: 400;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  position: relative;
+  padding: 8px 14px;
+  border: 1.5px solid var(--tone-line);
+  border-radius: 999px;
+  color: var(--pg-ink);
+  font-size: 14px;
+  opacity: 0.75;
+}
+.chip.on {
+  border-color: var(--pg-primary);
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+  font-weight: 700;
+}
+/* 체크박스를 칩 전체에 덮어 숨긴다. 누르는 자리가 칩 전체가 된다. */
+.chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: 999px;
+  opacity: 0;
+  cursor: pointer;
+}
+.chip:has(input:focus-visible) {
+  outline: 2px solid var(--pg-primary);
+  outline-offset: 2px;
+}
+.consent {
+  display: flex;
+  gap: 12px;
+  color: var(--pg-ink);
+  font-size: 14px;
+  font-weight: 500;
+}
+.consent input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--pg-primary);
+}
+.consent small {
+  display: block;
+  margin-top: 4px;
+  color: var(--pg-ink);
+  font-size: 13px;
+  font-weight: 400;
+}
+.addclass {
+  justify-self: start;
+  padding: 8px 0;
+  border: 0;
+  background: none;
+  color: var(--pg-primary-ink);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* 아동 명단 — 반 이름은 손글씨, 아이는 줄 하나에 한 명 */
+.classhead {
+  margin: 4px 0 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+}
+.kids {
+  display: grid;
+  gap: 8px;
+}
+.kid {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 0 6px 0 2px;
+  border-bottom: 1px solid rgba(52, 49, 47, 0.2);
+  font-size: 15px;
+  font-weight: 500;
+}
+.kid button {
+  min-height: 36px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--pg-ink);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.addrow {
+  display: flex;
+  gap: 8px;
+}
+.addrow input {
+  flex: 1;
+}
+
+.panel {
+  display: grid;
+  gap: 16px;
+}
+.panel[hidden] {
+  display: none;
+}
+/* 쪽지가 기울어져 있어 서로 겹치지 않게 사이를 넉넉히 둔다. */
+.three {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 44px;
+}
+.two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 44px;
+}
+
+.summary {
+  color: var(--pg-ink);
+}
+/* 쪽지 요약 — 정보 이름은 문장에서 빼서 손글씨 이름표로 두고, 쪽지 색 형광펜으로 칠한다.
+   이름표와 값이 나란히 오게 dl 을 두 칸 표처럼 쓴다. */
+.facts {
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px 16px;
+  margin: 0;
+}
+.facts > div {
+  display: contents;
+}
+.facts dt {
+  position: relative;
+  justify-self: start;
+  padding: 0 2px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--pg-ink);
+  isolation: isolate;
+}
+/* 형광펜 — 글자 아래쪽 절반에 평행사변형을 깐다. 펜을 비스듬히 그은 끝 모양.
+   색은 쪽지 머리띠 색을 85% 로 묽힌 것. 숫자를 낮출수록 연해진다. */
+.facts dt::after {
+  content: "";
+  position: absolute;
+  inset: 45% -3px 8% -3px;
+  z-index: -1;
+  background: color-mix(in srgb, var(--tone) 85%, transparent);
+  transform: skewX(-18deg);
+}
+.facts dd {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--pg-ink);
+  overflow-wrap: anywhere;
+}
+
+/* 내 계정 — 지금 로그인한 계정을 한 줄로(.strip 포스트잇 안). 좁으면 이메일이 다음 줄로. */
+.me {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+.meMark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--pg-plum);
+  color: var(--pg-primary-ink);
+  font-size: 16px;
+  font-weight: 700;
+}
+.meName {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--pg-ink);
+}
+.meEmail {
+  font-size: 15px;
+  color: var(--pg-ink-soft);
+  overflow-wrap: anywhere;
+}
+
+/* 내 정보를 얇은 포스트잇 한 장에. 머리띠 없이 한 줄, 글 길이만큼만. */
+.strip {
+  position: relative;
+  justify-self: start;
+  max-width: 100%;
+  margin: 6px 0 8px;
+  padding: 12px 22px 12px 14px;
+  border: 1px solid var(--pg-plum-line);
+  background: var(--pg-plum);
+  box-shadow:
+    var(--pg-shadow-card),
+    0 4px 10px rgba(52, 49, 47, 0.08);
+  transform: rotate(-1deg);
+}
+.strip::before {
+  content: "";
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  width: 60px;
+  height: 20px;
+  margin-left: -30px;
+  transform: rotate(-3deg);
+  background: rgba(255, 250, 240, 0.72);
+  border-inline: 1px solid rgba(255, 255, 255, 0.6);
+}
+.strip .meMark {
+  background: #fffcf5;
+}
+
+@media (max-width: 900px) {
+  .three,
+  .two {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 36px;
+  }
+}
+@media (max-width: 640px) {
+  .tabs {
+    gap: 6px;
+    padding-left: 8px;
+  }
+  .tab {
+    font-size: 17px;
+  }
+  .tab[aria-selected="true"] {
+    font-size: 19px;
+  }
+  .tab span {
+    padding: 6px 16px;
+  }
+  .sheet {
+    padding: 36px 20px 20px;
+  }
+  .peeled {
+    padding: 36px 20px 20px;
+  }
+  .peeledHead {
+    margin: -36px -20px 2px;
+    padding: 30px 20px 12px;
+  }
+  .row2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -6,7 +6,10 @@ export type IconName =
   | "record"
   | "doc"
   | "eval"
+  | "panel"
   | "settings"
+  | "logout"
+  | "star"
   | "search"
   | "bell"
   | "chevron"
@@ -25,9 +28,16 @@ export type IconName =
   | "users"
   | "help"
   | "sparkle"
-  | "lock";
+  | "lock"
+  | "more"
+  | "pause"
+  | "play"
+  | "logout";
 
 const PATHS: Record<IconName, React.ReactNode> = {
+  more: <path d="M4 7h10M4 12h16M4 17h7" />,
+  pause: <path d="M9 6.5v11M15 6.5v11" />,
+  play: <path d="M8.5 6.2v11.6L18 12z" />,
   lock: (
     <>
       <rect x="4.5" y="10.5" width="15" height="9" rx="2" />
@@ -59,10 +69,33 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M8.5 12.5l2.3 2.3L15.8 9.8" />
     </>
   ),
+  panel: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9.5 4v16" />
+    </>
+  ),
+  /** 로그아웃 — 문에서 밖으로 나가는 화살표. 「설정」 옆에 글자만 둘 두면 둘 다 안 읽힌다. */
+  logout: (
+    <>
+      <path d="M14 20H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h8" />
+      <path d="M17 15.5 20.5 12 17 8.5" />
+      <path d="M20 12h-9" />
+    </>
+  ),
+  /** 쌤플 마크. 사이드바 쪽지에 쓰던 ✳ 를 선으로 그린 것이라 16px 까지 줄여도 안 뭉갠다. */
+  star: (
+    <>
+      <path d="M12 3.2v17.6" />
+      <path d="M4.4 7.6 19.6 16.4" />
+      <path d="M4.4 16.4 19.6 7.6" />
+    </>
+  ),
+  // 톱니바퀴. 가운데 동그라미에 짧은 선 여덟 개를 두르던 옛 그림은 해로 읽혔다(PM 점검).
   settings: (
     <>
+      <path d="M10.2 5.2 10.6 2.9A9.2 9.2 0 0 1 13.4 2.9L13.8 5.2A7 7 0 0 1 15.5 5.9L17.4 4.6A9.2 9.2 0 0 1 19.4 6.6L18.1 8.5A7 7 0 0 1 18.8 10.2L21.1 10.6A9.2 9.2 0 0 1 21.1 13.4L18.8 13.8A7 7 0 0 1 18.1 15.5L19.4 17.4A9.2 9.2 0 0 1 17.4 19.4L15.5 18.1A7 7 0 0 1 13.8 18.8L13.4 21.1A9.2 9.2 0 0 1 10.6 21.1L10.2 18.8A7 7 0 0 1 8.5 18.1L6.6 19.4A9.2 9.2 0 0 1 4.6 17.4L5.9 15.5A7 7 0 0 1 5.2 13.8L2.9 13.4A9.2 9.2 0 0 1 2.9 10.6L5.2 10.2A7 7 0 0 1 5.9 8.5L4.6 6.6A9.2 9.2 0 0 1 6.6 4.6L8.5 5.9A7 7 0 0 1 10.2 5.2Z" />
       <circle cx="12" cy="12" r="3" />
-      <path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M6 18l1.4-1.4M16.6 7.4 18 6" />
     </>
   ),
   search: (

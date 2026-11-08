@@ -16,7 +16,7 @@ from ssuksak.planning.domain.year_month import YearMonth
 
 from app.features.plans import monthly_llm
 from app.features.plans.llm import EliceThemeTextGenerator
-from app.shared.llm import LlmFailed
+from app.shared.llm import LlmBudgetExceeded, LlmFailed
 from app.shared.llm import client as llm
 
 USAGE = {"prompt_tokens": 120, "completion_tokens": 30, "total_tokens": 150}
@@ -155,6 +155,36 @@ def test_실패한_호출은_남기지_않는다(monkeypatch, usage_lines):
     with pytest.raises(LlmFailed):
         llm.post_json("https://x", headers={}, payload={"model": "m"}, timeout=1)
     assert usage_lines == []
+
+
+def test_호출마다_시간_줄을_남기고_실패한_호출도_남긴다(monkeypatch, usage_lines):
+    """`llm_call` 은 숫자와 이름만 — 생성 요청 밖이면 run · kind · phase 가 `-` 다."""
+    timing_lines = []
+    monkeypatch.setattr(
+        llm.timing_logger, "info", lambda fmt, *args: timing_lines.append(fmt % args)
+    )
+    _answer(monkeypatch, {"choices": [{"message": {"content": "{}"}}], "usage": USAGE})
+    llm.post_json("https://x", headers={}, payload={"model": "m"}, timeout=1)
+
+    def fail(*a, **k):
+        raise urllib_error.HTTPError("u", 429, "limit", {}, None)
+
+    monkeypatch.setattr(llm.urllib_request, "urlopen", fail)
+    with pytest.raises(LlmBudgetExceeded):
+        llm.post_json("https://x", headers={}, payload={"model": "m"}, timeout=1)
+
+    ok, budget = (dict(part.split("=", 1) for part in line.split()[1:]) for line in timing_lines)
+    assert timing_lines[0].startswith("llm_call ")
+    assert {k: ok[k] for k in ("run", "kind", "phase", "outcome", "prompt", "completion")} == {
+        "run": "-",
+        "kind": "-",
+        "phase": "-",
+        "outcome": "ok",
+        "prompt": "120",
+        "completion": "30",
+    }
+    assert ok["ms"].isdigit()
+    assert budget["outcome"] == "budget" and budget["prompt"] == "-"
 
 
 def test_mock_이면_엘리스를_부르지_않는다(monkeypatch, usage_lines):

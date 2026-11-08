@@ -16,11 +16,18 @@ registerHooks({
 });
 const { setupServer } = await import("msw/node");
 const { handlers } = await import("../msw/handlers.ts");
-const { resetTestData, read } = await import("../msw/data/store.ts");
+const { resetTestData, read, commit } = await import("../msw/data/store.ts");
 const { createCenter } = await import("../lib/api/centers.ts");
 const { createClass } = await import("../lib/api/classes.ts");
-const { createAnnualPlan, listAnnualPlans, getAnnualPlan, putAnnualMonth, confirmAnnualPlan } =
-  await import("../lib/api/plans.ts");
+const {
+  createAnnualPlan,
+  listAnnualPlans,
+  getAnnualPlan,
+  putAnnualMonth,
+  confirmAnnualPlan,
+  deleteAnnualPlan,
+  testResetAnnualPlan,
+} = await import("../lib/api/plans.ts");
 const { createMonthlyPlan } = await import("../lib/api/monthly.ts");
 const { ApiError } = await import("../lib/api/client.ts");
 
@@ -76,6 +83,7 @@ const MONTH_KEYS = [
   "safety_education_state",
   "sub_themes",
   "theme",
+  "week_count",
 ];
 
 test("create · get return the server shape (§4)", async () => {
@@ -91,6 +99,8 @@ test("create · get return the server shape (§4)", async () => {
     "class_id",
     "format",
     "id",
+    "memo",
+    "memo_notices",
     "months",
     "safety_categories",
     "school_year",
@@ -151,6 +161,27 @@ test("one annual plan per class: 409 ALREADY_EXISTS · nothing added", async () 
     ["class_id"],
   );
   assert.equal(read().plans.length, 1);
+});
+
+test("봉투가 붙은 4xx 는 warn 으로 적는다 — 호출부가 처리하는 거절이 개발 오버레이를 띄우면 안 된다", async () => {
+  const klass = await newClass();
+  await createAnnualPlan({ class_id: klass.id, form_id: null, format: "MONTHLY_THEME" });
+  const lines = [];
+  const realError = console.error,
+    realWarn = console.warn;
+  console.error = (...a) => lines.push(["error", String(a[0])]);
+  console.warn = (...a) => lines.push(["warn", String(a[0])]);
+  try {
+    await createAnnualPlan({ class_id: klass.id, form_id: null, format: "MONTHLY_THEME" }).catch(
+      () => {},
+    );
+  } finally {
+    console.error = realError;
+    console.warn = realWarn;
+  }
+  const logged = lines.filter(([, text]) => text.includes("POST /api/plans/annual → 409"));
+  assert.equal(logged.length, 1, "한 줄은 남긴다 — 숨기지 않는다");
+  assert.equal(logged[0][0], "warn", "console.error 가 아니라 warn 이어야 한다");
 });
 
 test("format: 빠지거나 모르는 값 · PLAY_PROJECT+form_id 는 422 · 놀이 프로젝트 응답은 4구간 × 후보 10개", async () => {
@@ -392,4 +423,40 @@ test("안전교육 입력: 선택 · 생략 보존 · 배치 없음 · 미입력
     putAnnualMonth(plan.id, 3, { ...input, safety_education: ["unknown"] }),
     (error) => error instanceof ApiError && error.status === 422,
   );
+});
+
+test("지우기: 월간이 딸린 확정본은 409 IN_USE · test-reset 은 꺼져 있으면 404, 켜면 확정본과 그 반 월간 · 주간까지 지운다", async () => {
+  const klass = await newClass();
+  const plan = await createAnnualPlan({
+    class_id: klass.id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
+  await confirmAnnualPlan(plan.id);
+  commit((db) => {
+    db.monthlyPlans.push({ id: 900, class_id: klass.id });
+    db.weeklyPlans.push({ id: 901, class_id: klass.id });
+  });
+  await rejects(deleteAnnualPlan(plan.id), 409, "IN_USE", []);
+  await rejects(testResetAnnualPlan(plan.id), 404, "NOT_FOUND", ["id"]);
+  process.env.NEXT_PUBLIC_ALLOW_TEST_RESET = "1";
+  try {
+    await testResetAnnualPlan(plan.id);
+  } finally {
+    delete process.env.NEXT_PUBLIC_ALLOW_TEST_RESET;
+  }
+  const db = read();
+  assert.deepEqual([db.plans.length, db.monthlyPlans.length, db.weeklyPlans.length], [0, 0, 0]);
+});
+
+test("지우기: 딸린 월간이 없으면 확정본도 지운다(ADR-064)", async () => {
+  const klass = await newClass();
+  const plan = await createAnnualPlan({
+    class_id: klass.id,
+    form_id: null,
+    format: "MONTHLY_THEME",
+  });
+  await confirmAnnualPlan(plan.id);
+  await deleteAnnualPlan(plan.id);
+  assert.equal(read().plans.length, 0);
 });

@@ -159,7 +159,10 @@ const between = (source, from, to) => {
 };
 
 test("관찰 기록 빈 상태 제목은 계약 문구 그대로다", () => {
-  assert.ok(records().includes('<Empty title="아직 남긴 기록이 없어요">'));
+  // 줄바꿈까지 맞추지 않는다 — `art` 같은 prop 이 붙으면 형식이 달라진다.
+  const source = records();
+  assert.ok(source.includes("<Empty"), "Empty 를 쓰지 않는다");
+  assert.ok(source.includes('title="아직 남긴 기록이 없어요"'), "계약 문구가 아니다");
 });
 
 test("두 화면이 로딩·빈 상태·오류를 직접 분기하지 않는다", () => {
@@ -225,6 +228,7 @@ test("짚을 수 있는 칸은 모두 서버 계약의 칸 이름에서 온다",
 const workspaceModel = await import("../lib/workspace/model.ts");
 const documentApi = await import("../lib/api/documents.ts");
 const archive = await import("../lib/workspace/archive.ts");
+const archiveNavigation = await import("../lib/workspace/document-archive.ts");
 const { createSelection } = await import("../components/workspace/document-selection.ts");
 const pageCode = require("next/dist/compiled/babel/core").transformSync(documents(), {
   filename: "DocumentsPage.tsx",
@@ -293,6 +297,7 @@ function documentsHarness({
   let cursor = 0,
     mounted = false,
     selection,
+    pickClass = () => {},
     tree;
   const state = (initial) => {
     const slot = cursor++;
@@ -358,7 +363,39 @@ function documentsHarness({
     },
     "@/lib/onboarding/settings": { chosenClassFor: () => null, loadClassSettings: () => null },
     "./DailyLogSources": { default: "daily-log-sources", __esModule: true },
+    "@/components/app/icons": { Icon: "icon" },
+    "@/components/app/Posty": { Posty: "posty" },
+    "./DocumentArchiveArt": { ArchiveNoteArt: "archive-note-art" },
+    "./ChildTrackingArt": { FlowerMeadow: "flower-meadow" },
+    "./DocumentCreation.module.css": { default: {}, __esModule: true },
+    "./DocumentArchivePreview": { default: "preview", __esModule: true },
     "./DocumentEditor": { default: "editor", __esModule: true },
+    "./use-server-document": {
+      messageFor: (e) => (e instanceof Error ? e.message : "요청을 처리하지 못했어요."),
+    },
+    // 보관함 탐색(반 → 종류 → 기간)은 자기 테스트가 따로 본다. 여기서는 목록과
+    // 선택 문서 상세만 보므로, 넘겨받은 `detail` 만 그대로 그려 준다.
+    "./DocumentArchiveView": {
+      default: ({ header, documents, annual, onOpen, onPickClass, detail }) => {
+        pickClass = onPickClass;
+        return jsx("archive", {
+          children: [
+            header,
+            ...documents.map((d) =>
+              jsx("button", { children: d.title, onClick: () => onOpen(d.id) }),
+            ),
+            ...(annual ?? []).map((p) =>
+              jsx("link", {
+                children: `${p.school_year}학년도 연간 보육계획안`,
+                href: `/plans/annual/${p.id}`,
+              }),
+            ),
+            detail,
+          ],
+        });
+      },
+      __esModule: true,
+    },
     "./document-selection": {
       createSelection: (...args) => {
         selection = createSelection(...args);
@@ -414,6 +451,7 @@ function documentsHarness({
       await settle();
       render();
     },
+    pickClass: (id) => pickClass(id),
     links: () => nodes(tree).filter((node) => node.type === "link"),
     selection: () => selection,
     editor: () => nodes(tree).find((node) => node.type === "editor"),
@@ -475,35 +513,129 @@ test("목록이 비어도 이미 받은 선택 문서 상세가 있으면 조회
   assert.equal(page.errors().length, 1);
 });
 
-test("표시할 문서가 없는 조회 실패는 전체 오류를 쓰고 재시도 성공 후 기존 empty를 표시한다", async () => {
+test("표시할 문서가 없는 조회 실패는 오류와 재시도를 띄우고, 성공하면 오류를 걷는다", async () => {
   const page = documentsHarness({ fail: true });
-  assert.match(page.text(), /문서를 불러오고 있어요/);
   await page.mount();
   assert.equal(page.editor(), undefined);
   assert.equal(page.errors().length, 1);
-  assert.equal(page.text().includes("보관된 문서가 없어요"), false);
   page.fail(false);
   await page.button("다시 시도").props.onClick();
   page.render();
   assert.equal(page.errors().length, 0);
-  assert.match(page.text(), /보관된 문서가 없어요/);
+  assert.equal(page.button("다시 시도"), undefined);
 });
 
-// ── 문서 보관함에 연간계획안을 합친다 (S-J5 · FR-701) ─────────────────────────
-test("보관함은 놀이 프로젝트형 연간계획안의 둘째 줄에만 형식을 덧붙인다", async () => {
+// ── 보관함 형식 표시와 종류별 탐색을 함께 보존한다 (S-J5 · FR-701) ──
+test("보관함은 놀이 프로젝트형 연간계획안의 둘째 줄에만 형식을 덧붙인다", () => {
+  // PR의 반·종류별 보관함을 실제로 렌더한다. 평면 목록을 흉내 낸 스텁에 형식 표시를 복제하지 않는다.
+  const code = require("next/dist/compiled/babel/core").transformSync(
+    read("../components/workspace/DocumentArchiveView.tsx"),
+    {
+      filename: "DocumentArchiveView.tsx",
+      babelrc: false,
+      configFile: false,
+      presets: [
+        [require("next/dist/compiled/babel/preset-env"), { targets: { node: "current" } }],
+        [require("next/dist/compiled/babel/preset-react"), { runtime: "automatic" }],
+        require("next/dist/compiled/babel/preset-typescript"),
+      ],
+    },
+  ).code;
+  let hook = 0;
+  const imports = {
+    "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
+    react: {
+      useState: (initial) => [
+        hook++ === 0 ? "annual" : typeof initial === "function" ? initial() : initial,
+        () => {},
+      ],
+      useMemo: (fn) => fn(),
+      useEffect() {},
+      useRef: () => ({ current: null }),
+    },
+    "next/link": { __esModule: true, default: "link" },
+    "@/components/app/icons": { Icon: "icon" },
+    "@/components/app/Posty": { Posty: "posty" },
+    "@/lib/workspace/model": { ...workspaceModel, today: () => "2026-10-28" },
+    "@/lib/workspace/document-archive": archiveNavigation,
+    "@/lib/api/onboarding": { classServerId: () => 3 },
+    "@/lib/onboarding/types": {
+      selectedAgesFor: () => [4],
+      ageSelectionLabel: () => "만 4세",
+    },
+    "@/lib/api/monthly": {},
+    "@/lib/api/playMonthly": {},
+    "@/lib/api/weekly": {},
+    "./DocumentArchivePreview": { PlanArchivePreview: "plan-preview" },
+    // 같은 원 남의 반은 제 파일이 본다. 여기서는 내 반 보관함만 그린다.
+    "./ClassAccessPanels": {
+      ACCESS_LABEL: {},
+      ForeignClassPanel: "foreign-class",
+      ReceivedPanel: "received-requests",
+      useClassAccess: () => ({ others: [], received: [], reload() {} }),
+    },
+    "./WorkspaceUI": { Message: "message", ws: {} },
+    "./DocumentArchiveArt": new Proxy({}, { get: () => "art" }),
+    "./DocumentArchive.module.css": {
+      __esModule: true,
+      default: new Proxy({}, { get: (_, name) => name }),
+    },
+  };
+  const viewModule = { exports: {} };
+  new Function("require", "module", "exports", code)(
+    (name) => {
+      assert.ok(name in imports, name);
+      return imports[name];
+    },
+    viewModule,
+    viewModule.exports,
+  );
+  const resolve = (node) => {
+    if (Array.isArray(node)) return node.map(resolve);
+    if (!node || typeof node !== "object") return node;
+    if (typeof node.type === "function") return resolve(node.type(node.props));
+    return { ...node, props: { ...node.props, children: resolve(node.props.children) } };
+  };
   for (const format of ["MONTHLY_THEME", "PLAY_PROJECT"]) {
-    const page = documentsHarness({ plans: [{ ...annualPlan, format }] });
-    await page.mount();
-    const [link] = page.links().filter((node) => node.props.href === "/plans/annual/5");
-    const secondLine = nodes(link).find((node) => node.type === "p");
+    hook = 0;
+    const tree = resolve(
+      viewModule.exports.default({
+        classes: [{ id: "class-1", className: "햇살반", children: [] }],
+        classId: "class-1",
+        documents: [],
+        annual: [{ ...annualPlan, format }],
+        activeId: "",
+        editingId: "",
+        onBackToPreview() {},
+        preview: null,
+        onOpen() {},
+        onPickClass() {},
+        onCloseDetail() {},
+        onCreate() {},
+        header: null,
+        detail: null,
+      }),
+    );
+    const link = nodes(tree).find(
+      (node) => node.type === "button" && node.props.className === "docCard",
+    );
+    assert.ok(link);
+    const secondLine = nodes(link).find((node) => node.type === "small");
     assert.equal(
       texts(secondLine).join(""),
-      "햇살반 · 연간 보육계획안" + (format === "PLAY_PROJECT" ? " · 놀이 프로젝트형" : ""),
+      "햇살반" + (format === "PLAY_PROJECT" ? " · 놀이 프로젝트형" : ""),
+    );
+    const title = nodes(link).find((node) => node.props.className === "docTitle");
+    assert.equal(
+      flatten(title)
+        .filter((part) => typeof part === "string" || typeof part === "number")
+        .join(""),
+      "2026학년도 연간계획안",
     );
   }
 });
 
-test("계획 노트는 놀이 프로젝트형에만 상태 옆 둥근 배지를 보여준다", () => {
+test("계획안 첫 화면 「이어서 하기」는 확정 안 한 연간 · 월간만 최근 것부터 보여준다", () => {
   const code = require("next/dist/compiled/babel/core").transformSync(
     read("../components/plan-generator/PlanNotebookPage.tsx"),
     {
@@ -522,38 +654,105 @@ test("계획 노트는 놀이 프로젝트형에만 상태 옆 둥근 배지를 
     "react/jsx-runtime": { jsx, jsxs: jsx },
     "@/lib/workspace/model": workspaceModel,
   };
-  new Function("require", "module", "exports", code + "\nexports.PlanCard = PlanCard;")(
+  new Function("require", "module", "exports", code)(
     (name) => imports[name] ?? {},
     notebook,
     notebook.exports,
   );
-  for (const format of ["MONTHLY_THEME", "PLAY_PROJECT"]) {
-    const tree = notebook.exports.PlanCard({ plan: { ...annualPlan, format }, onReset() {} });
-    const pills = nodes(tree).filter((node) => node.props.className?.includes("rounded-full"));
-    assert.deepEqual(
-      pills.map((node) => texts(node).join("")),
-      format === "PLAY_PROJECT" ? ["확정", "놀이 프로젝트형"] : ["확정"],
-    );
-  }
+  const cards = notebook.exports.draftCards(
+    [
+      annualPlan,
+      {
+        ...annualPlan,
+        id: 6,
+        format: "PLAY_PROJECT",
+        status: "DRAFT",
+        created_at: "2026-09-12T00:00:00Z",
+      },
+    ],
+    [{ id: 8, class_id: 3, month: 4, status: "DRAFT", created_at: "2026-09-20T00:00:00Z" }],
+    [
+      { id: 9, class_id: 3, month: 5, status: "DRAFT", created_at: "2026-09-15T00:00:00Z" },
+      { id: 10, class_id: 3, month: 6, status: "CONFIRMED", created_at: "2026-09-30T00:00:00Z" },
+    ],
+    // 주간 초안도 「이어서 하기」에 — 임시저장하고 돌아오면 보인다.
+    [
+      {
+        id: 11,
+        class_id: 3,
+        week_id: "2026-04-W1",
+        status: "DRAFT",
+        created_at: "2026-09-25T00:00:00Z",
+      },
+      {
+        id: 12,
+        class_id: 3,
+        week_id: "2026-04-W2",
+        status: "CONFIRMED",
+        created_at: "2026-09-26T00:00:00Z",
+      },
+    ],
+  );
+  assert.deepEqual(
+    cards.map(({ mode, title, href }) => [mode, title, href]),
+    [
+      [
+        "월별 주제형",
+        "4월 1주 주간계획안",
+        "/plans/weekly?plan_id=11&class_id=3&week_id=2026-04-W1",
+      ],
+      ["월별 주제형", "4월 월간계획안", "/plans/monthly?plan_id=8&class_id=3&month=4"],
+      ["놀이 중심형", "5월 월간계획안", "/plans/monthly/play/9"],
+      ["놀이 중심형", "2026 연간계획안", "/plans/annual/6"],
+    ],
+  );
+  // 카드마다 단계 쪽지 — 무엇이 다시 열리는지.
+  assert.deepEqual(
+    cards.map((c) => c.step),
+    ["주간", "월간", "월간", "연간"],
+  );
+  // 가장 최근 연간이 확정됐을 때만 「월간계획안 만들기」로 바뀐다 — 더 최근 초안이 있으면 아니다.
+  const { readyAnnual } = notebook.exports;
+  assert.equal(readyAnnual([annualPlan])?.id, 5);
+  assert.equal(
+    readyAnnual([
+      annualPlan,
+      { ...annualPlan, id: 6, status: "DRAFT", created_at: "2026-09-12T00:00:00Z" },
+    ]),
+    null,
+  );
+  assert.equal(readyAnnual([]), null);
+  // 같은 반 · 학년도에서 가장 최근에 확정한 월간이 [주간계획안 만들기] 가 여는 달이다.
+  const { readyMonthly } = notebook.exports;
+  const m = {
+    class_id: 3,
+    school_year: 2026,
+    status: "CONFIRMED",
+    created_at: "2026-09-12T00:00:00Z",
+  };
+  const monthlies = [
+    { ...m, id: 1, month: 10, confirmed_at: "2026-10-01T00:00:00Z" },
+    { ...m, id: 2, month: 11, confirmed_at: "2026-11-01T00:00:00Z" },
+    { ...m, id: 3, month: 12, status: "DRAFT", confirmed_at: null },
+    { ...m, id: 4, month: 12, class_id: 9, confirmed_at: "2026-11-05T00:00:00Z" },
+  ];
+  assert.equal(readyMonthly(annualPlan, monthlies)?.month, 11);
+  assert.equal(readyMonthly(null, monthlies), null);
+  assert.equal(readyMonthly(annualPlan, [monthlies[2]]), null);
 });
 
-test("연간계획안을 일지와 섞어 최신순으로 보이고 계획안 화면으로 보낸다", async () => {
+// ── 보관함은 종류(연간 · 월간 · 주간 · 보육 · 관찰)로만 탐색한다 (S-J5 · FR-701) ──
+test("일지와 연간계획안을 각자 보관함 뷰로 넘긴다", async () => {
   const page = documentsHarness({ items: [serverDocument], plans: [annualPlan] });
   await page.mount();
-  // 계획안(09-10)이 일지(09-02)보다 최신이라 위에 온다.
-  const plan = page.text().indexOf("2026학년도 연간 보육계획안");
-  const journal = page.text().indexOf(serverDocument.title);
-  assert.ok(plan > -1 && journal > -1, "둘 다 그려야 한다");
-  assert.ok(plan < journal);
+  // 둘은 다른 API 라 한 목록으로 합치지 않는다 — 종류 칸이 각자 받는다.
+  assert.ok(page.text().includes(serverDocument.title));
+  assert.ok(page.text().includes("2026학년도 연간 보육계획안"));
   const [link] = page.links().filter((node) => node.props.href?.startsWith("/plans/"));
   assert.equal(link.props.href, "/plans/annual/5");
-  // 반 이름은 반 목록에서 찾는다. 제목 · 종류 · 날짜 · 상태만 그린다.
-  const text = page.text();
-  assert.match(text, /햇살반 · 연간 보육계획안/);
-  assert.match(text, /2026\.09\.10/);
-  assert.equal(/근거 \d+건/.test(text), false);
-  // 확정 건수에 계획안도 든다.
-  assert.ok(page.button("확정").props.children.includes(1));
+  // 지워진 전체 목록(필터 · 검색)을 다시 띄우지 않는다.
+  assert.equal(page.text().includes("전체 문서 목록"), false);
+  assert.equal(page.button("확정"), undefined);
 });
 
 test("계획안 목록만 실패하면 일지는 그대로 보이고 계획안만 다시 시도한다", async () => {
@@ -576,6 +775,17 @@ test("일지 목록만 실패해도 받은 계획안은 그린다", async () => 
   assert.ok(page.button("다시 시도"));
 });
 
+test("보관함에는 상단 문서 만들기 단추를 두지 않는다", async () => {
+  // 만들기는 종류별 화면 안의 작성 단추로만 한다 — 반을 골라도 상단에 다시 뜨면 안 된다.
+  const page = documentsHarness({ items: [serverDocument] });
+  await page.mount();
+  assert.equal(page.button("기록으로 문서 만들기"), undefined);
+  page.pickClass("class-1");
+  page.render();
+  assert.equal(page.button("기록으로 문서 만들기"), undefined);
+  assert.equal(page.text().includes("기록으로 문서 만들기"), false);
+});
+
 test("계획안 목록만 실패하고 일지가 없으면 「문서가 없다」고 하지 않는다", async () => {
   const page = documentsHarness({ planFail: true });
   await page.mount();
@@ -583,11 +793,11 @@ test("계획안 목록만 실패하고 일지가 없으면 「문서가 없다�
   assert.equal(page.text().includes("보관된 문서가 없어요"), false);
 });
 
-test("일지가 비고 계획안이 아직 오는 중이면 빈 화면 대신 불러오는 중을 띄운다", async () => {
+test("계획안이 아직 오는 중이어도 「문서가 없다」고 하지 않는다", async () => {
   const page = documentsHarness({ planPending: true });
   await page.mount();
-  assert.match(page.text(), /문서를 불러오고 있어요/);
   assert.equal(page.text().includes("보관된 문서가 없어요"), false);
+  assert.equal(page.errors().length, 0);
 });
 
 test("계획안을 먼저 받으면 일지가 오는 중이어도 계획안부터 그린다", async () => {
@@ -602,12 +812,6 @@ test("계획안을 먼저 받으면 일지가 오는 중이어도 계획안부�
   assert.equal(page.text().includes("문서를 불러오고 있어요"), false);
   assert.match(page.text(), /일지를 불러오고 있어요/);
   assert.equal(page.text().includes(serverDocument.title), false);
-  // 일지가 아직 안 왔으니 「검토 중」으로 걸러 확정된 계획안이 빠져도 「문서가 없다」고 하지 않는다.
-  page.button("검토 중").props.onClick();
-  page.render();
-  assert.equal(page.text().includes("보관된 문서가 없어요"), false);
-  page.button("전체").props.onClick();
-  page.render();
 
   await page.releaseList();
   assert.ok(page.text().includes("2026학년도 연간 보육계획안"));

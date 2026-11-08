@@ -1,0 +1,433 @@
+/* 처음 온 선생님 안내 — 먹빛 덮개에 해색 테두리 구멍, 테이프 붙인 쪽지 카드.
+   색은 화면과 같은 토큰만 쓴다. 덮개도 검정이 아니라 사이드바 먹색 쪽으로 기운다. */
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+}
+.veil {
+  position: absolute;
+  inset: 0;
+}
+/* 구멍 — 바깥으로 아주 큰 그림자를 드리워 덮개를 만든다. 구멍 안은 화면이 그대로 보인다. */
+.hole {
+  position: fixed;
+  border-radius: 12px;
+  outline: 3px solid var(--pg-sun);
+  outline-offset: 0;
+  box-shadow: 0 0 0 200vmax rgba(36, 33, 28, 0.62);
+  pointer-events: none;
+  transition:
+    top 0.2s ease,
+    left 0.2s ease,
+    width 0.2s ease,
+    height 0.2s ease;
+}
+.card {
+  position: fixed;
+  width: 340px;
+  max-width: calc(calc(100 * var(--app-vw)) - 32px);
+  padding: 22px 20px 14px 22px;
+  border: 1px solid var(--pg-note-line);
+  border-radius: 4px;
+  background: var(--pg-note-soft);
+  box-shadow:
+    var(--pg-shadow-hard),
+    0 14px 30px rgba(36, 33, 28, 0.28);
+  transform: rotate(-0.6deg);
+}
+/* 칸이 화면을 다 덮을 만큼 크면 화면 아래에 붙인다. 휴대폰은 하단 메뉴 위로 띄운다. */
+.pinned {
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%) rotate(-0.6deg);
+}
+@media (max-width: 1023px) {
+  .pinned {
+    bottom: calc(85px + env(safe-area-inset-bottom, 0px));
+  }
+}
+.tape {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  width: 74px;
+  height: 21px;
+  margin-left: -37px;
+  border-left: 1px solid rgba(255, 255, 255, 0.6);
+  border-right: 1px solid rgba(255, 255, 255, 0.6);
+  background: var(--pg-tape);
+  box-shadow: 0 1px 2px rgba(106, 96, 80, 0.12);
+  transform: rotate(-3deg);
+}
+.posty {
+  position: absolute;
+  top: -40px;
+  right: -22px;
+  transform: rotate(6deg);
+}
+/* 몇 번째 · 점을 카드 맨 위 한 줄에 — 아래 줄은 버튼만 둔다. */
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.count {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--pg-sun-ink);
+}
+.title {
+  margin: 4px 0 6px;
+  padding-right: 34px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--pg-ink);
+}
+/* 본문 — 한 줄에 한 문장. 형광펜 · 버튼 모양 · 번호 · 점 · TIP 으로 결을 준다(PM 점검). */
+.body {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--pg-ink);
+}
+.body p {
+  margin: 0;
+}
+.body p + p {
+  margin-top: 2px;
+}
+.body strong {
+  padding: 0 1px;
+  font-weight: 700;
+  color: var(--pg-primary-deep);
+  background: linear-gradient(transparent 58%, rgba(112, 83, 160, 0.2) 58%);
+}
+/* 「버튼 이름」 — 화면의 버튼처럼 그려 무엇을 누르는지 바로 알게 한다. */
+.key {
+  display: inline-block;
+  margin: 0 1px;
+  padding: 0 7px;
+  border: 1px solid var(--pg-line);
+  border-bottom-width: 2px;
+  border-radius: 7px;
+  background: var(--pg-paper);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.55;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+.flow,
+.steps,
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.flow li {
+  position: relative;
+  padding-left: 16px;
+}
+.flow li:nth-child(2) {
+  margin-left: 12px;
+}
+.flow li:nth-child(3) {
+  margin-left: 24px;
+}
+.flow li::before {
+  content: "›";
+  position: absolute;
+  left: 2px;
+  top: -1px;
+  font-weight: 800;
+  color: var(--pg-primary);
+}
+.flow li:first-child::before {
+  content: "•";
+}
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px 2px 3px;
+  border: 1px solid var(--pg-note-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  font-size: 13px;
+  font-weight: 700;
+}
+.steps i {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--pg-primary);
+  color: var(--pg-paper);
+  font-size: 11px;
+  font-style: normal;
+}
+.list {
+  margin-top: 4px;
+}
+.list li {
+  position: relative;
+  padding-left: 14px;
+}
+.list li::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0.62em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pg-primary);
+}
+.body .tip {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--pg-ink-soft);
+}
+.tip > span:first-child {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--pg-sun-ink);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--pg-sun-ink);
+  vertical-align: 1px;
+}
+.tip .key {
+  font-size: 11.5px;
+}
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--pg-note-line);
+}
+.dots {
+  display: flex;
+  gap: 5px;
+}
+.dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pg-note-line);
+}
+.dots span[data-on] {
+  width: 18px;
+  border-radius: 999px;
+  background: var(--pg-primary);
+}
+/* 이전 · 다음은 같은 크기 · 같은 보라로 붙여 한 쌍으로 읽히게 한다. 이전은 속만 비운다(PM 점검 안 1). */
+.prev,
+.primary {
+  min-height: 38px;
+  padding: 0 15px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.prev {
+  border: 1.5px solid var(--pg-primary);
+  background: var(--pg-paper);
+  color: var(--pg-primary);
+}
+.prev:hover {
+  background: var(--pg-primary-tint);
+}
+.primary {
+  border: 1px solid var(--pg-primary-line);
+  background: var(--pg-primary);
+  color: var(--pg-paper);
+}
+.primary:hover {
+  background: var(--pg-primary-deep);
+}
+/* SKIP — 나가기는 왼쪽 끝으로 뗀다. 진한 글씨에 빨간 매직 밑줄을 살짝 기울여 손으로 그은 느낌을 낸다. */
+.skip {
+  position: relative;
+  margin-right: auto;
+  padding: 4px 2px 8px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--pg-ink);
+  cursor: pointer;
+}
+.skip::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: 0;
+  bottom: 3px;
+  height: 4px;
+  border-radius: 3px 1px 3px 1px;
+  background: var(--pg-alert-strong);
+  transform: rotate(-2.5deg);
+  transition: height 0.12s ease;
+}
+.skip:hover {
+  color: var(--pg-alert-ink);
+}
+.skip:hover::after {
+  height: 6px;
+}
+.grow {
+  margin-right: auto;
+}
+.primary:focus-visible,
+.prev:focus-visible,
+.skip:focus-visible {
+  outline: 2px solid var(--pg-primary);
+  outline-offset: 3px;
+}
+/* 만드는 순서(그림 넘기기) — 가운데 큰 쪽지. 그림은 화면 비율 그대로, 넘치면 아래를 자른다. */
+.dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(36, 33, 28, 0.62);
+}
+.slide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(880px, calc(calc(100 * var(--app-vw)) - 32px));
+  padding: 22px 22px 14px;
+  border: 1px solid var(--pg-note-line);
+  border-radius: 4px;
+  background: var(--pg-note-soft);
+  box-shadow:
+    var(--pg-shadow-hard),
+    0 14px 30px rgba(36, 33, 28, 0.28);
+  transform: translate(-50%, -50%);
+}
+.slide .posty {
+  top: -34px;
+  right: -14px;
+}
+.shot {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1600 / 986;
+  margin-bottom: 14px;
+  border: 1px solid var(--pg-note-line);
+  border-radius: 4px;
+  background: var(--pg-paper);
+  object-fit: cover;
+  object-position: top;
+}
+/* 낮은 화면에서는 그림을 줄여 쪽지가 화면 안에 들게 한다(포스티 · 테이프가 잘리지 않게 넘침 스크롤은 두지 않는다). */
+@media (max-height: 760px) {
+  .shot {
+    max-height: calc(calc(100 * var(--app-vh)) - 300px);
+  }
+}
+.slide .prev,
+.slide .primary {
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .slide .dots {
+    display: none;
+  }
+  .slide .foot {
+    justify-content: flex-end;
+  }
+}
+/*
+ * 「만드는 순서 보기」 — 종이 왼쪽 위 귀퉁이가 살짝 접혀 있다.
+ * 올리면 접힌 귀퉁이가 바닥에서 들뜨고(살짝 떠오르며 그림자가 깊어진다), 누르면 슬라이드가 열린다.
+ */
+.corner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.corner:focus-visible {
+  outline: 2px solid var(--pg-primary-deep);
+  outline-offset: 2px;
+}
+.cut,
+.flapShadow,
+.flap {
+  position: absolute;
+  inset: 0;
+}
+/* 접혀서 비어 보이는 자리 — 종이 뒤 책상 색. */
+.cut {
+  background: var(--pg-cream);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.flapShadow {
+  filter: drop-shadow(1.5px 2px 1.5px rgba(52, 49, 47, 0.2));
+  transition:
+    filter 0.25s ease-out,
+    transform 0.25s ease-out;
+}
+/* 접힌 종이 뒷면 — 접힌 선 쪽이 조금 더 어둡다. */
+.flap {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 0 4px 4px 0;
+  background: linear-gradient(135deg, #e7dcc6 50%, #f4ecdc 78%, #fbf7ef 100%);
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  color: var(--pg-primary-deep);
+}
+.corner:hover .flapShadow,
+.corner:focus-visible .flapShadow {
+  filter: drop-shadow(5px 8px 6px rgba(52, 49, 47, 0.32));
+  transform: translate(-1px, -2px);
+}
+.play {
+  opacity: 0;
+  transition: opacity 0.18s ease-out;
+}
+.corner:hover .play,
+.corner:focus-visible .play {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flapShadow,
+  .play {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hole {
+    transition: none;
+  }
+}

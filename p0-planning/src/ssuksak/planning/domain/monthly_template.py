@@ -11,11 +11,13 @@ from .errors import InvalidDomainValueError
 class RepeatBy(str, Enum):
     """Time unit a Section's value repeats and is addressed by; not a rendering style.
 
-    NONE is one value for the whole document, WEEK one value per active week.
+    NONE is one value for the whole document, WEEK one value per active week,
+    DAY one value per operating day (weekly only; monthly rejects it).
     """
 
     NONE = "NONE"
     WEEK = "WEEK"
+    DAY = "DAY"
 
 
 class EmptyValuePolicy(str, Enum):

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import collections
 
+from ..venue_policy import VENUE_POLICY_TAG, venue_bound_evidence
+
 from ..domain.activity_reference import ActivityCatalog, OUTDOOR_PLAY_SLOT
 from ..domain.errors import InvalidDomainValueError
 from ..evidence.classification import EvidenceSemanticClassification, SemanticClass
@@ -22,11 +24,14 @@ from .models import (
     ReferenceCandidate,
     RetrievalRequest,
 )
-from .ranking import apply_source_diversity, balance_by_age, ngrams, rank_records
+from .ranking import apply_source_diversity, balance_by_age, fill_subtheme_gaps, ngrams, rank_records, prefer_explicit_indoor_methods
 
 RETRIEVAL_VERSION = "monthly-evidence-retrieval-v0.3.0"
 # Versioned apart so packets without safety placement keep their lineage.
 SAFETY_RETRIEVAL_VERSION = "monthly-safety-retrieval-v0.4.0"
+# Tagged only on requests carrying annual subthemes with the goals block active; others keep v0.3.0.
+GOALS_SUBTHEME_FILL_TAG = "+goals-subtheme-fill-v1"
+INDOOR_METHOD_RETRIEVAL_TAG = "+indoor-method-v1"
 DEFAULT_TOP_K = {
     BlockName.INSTITUTION_MONTHLY_EVIDENCE: 12,
     BlockName.AGE_CONTRAST_EVIDENCE: 6,
@@ -102,15 +107,24 @@ class MonthlyEvidenceRetriever:
         query_grams: frozenset[str],
         tiers: tuple[AgeMatchKind, ...],
         cap: int | None = None,
+        subthemes: tuple[str, ...] = (),
     ) -> EvidenceBlock:
+        if request.exclude_venue_bound:
+            records = [record for record in records if not venue_bound_evidence(record.text)]
         ranked = rank_records(
             records,
             requested_ages=request.ages,
             query_grams=query_grams,
             allowed_tiers=tiers,
         )
+        if name is BlockName.INDOOR_ALTERNATIVE_EVIDENCE:
+            ranked = prefer_explicit_indoor_methods(ranked)
         ranked = balance_by_age(ranked, request.ages)
         limit = self._top_k[name]
+        cap = self._cap if cap is None else cap
+        items = apply_source_diversity(ranked, top_k=limit, institution_cap=cap)
+        if subthemes:
+            items = fill_subtheme_gaps(ranked, items, subthemes, institution_cap=cap)
         return EvidenceBlock(
             name=name,
             top_k=limit,
@@ -118,9 +132,7 @@ class MonthlyEvidenceRetriever:
                 "month and section hard filters; age structural tier; Korean 2-gram "
                 "keyword score; source diversity; stable record_id tie-break"
             ),
-            items=apply_source_diversity(
-                ranked, top_k=limit, institution_cap=self._cap if cap is None else cap
-            ),
+            items=items,
             eligible_pool_size=len(ranked),
         )
 
@@ -194,6 +206,8 @@ class MonthlyEvidenceRetriever:
             request=request,
             query_grams=grams,
             tiers=tiers,
+            # Goals only: the month's top records can all sit on one subtheme (2026-11-01).
+            subthemes=request.subthemes if semantic_class is SemanticClass.GOALS else (),
         )
 
     def _references(self, request: RetrievalRequest) -> EvidenceBlock:
@@ -205,6 +219,8 @@ class MonthlyEvidenceRetriever:
             calendar_month=request.target_month.calendar_month,
             ages=request.ages,
         )
+        if request.exclude_venue_bound:
+            candidates = tuple(item for item in candidates if not venue_bound_evidence(item.label))
         ordered = sorted(
             candidates,
             key=lambda item: (
@@ -333,7 +349,12 @@ class MonthlyEvidenceRetriever:
             blocks=(institution, contrast, *classified, references, other, *safety),
             evidence_store_version=self._store.ingestion_version,
             evidence_store_sha256=self._store.content_sha256,
-            retrieval_version=RETRIEVAL_VERSION,
+            retrieval_version=RETRIEVAL_VERSION + (VENUE_POLICY_TAG if request.exclude_venue_bound else "")
+            + (
+                GOALS_SUBTHEME_FILL_TAG
+                if request.subthemes and SemanticClass.GOALS in request.grounding_classes
+                else ""
+            ) + (INDOOR_METHOD_RETRIEVAL_TAG if SemanticClass.INDOOR_ALTERNATIVE in request.grounding_classes else ""),
             activity_catalog_id=self._catalog.catalog_id if self._catalog else "",
             activity_catalog_version=self._catalog.catalog_version if self._catalog else "",
             evidence_classification_version=(

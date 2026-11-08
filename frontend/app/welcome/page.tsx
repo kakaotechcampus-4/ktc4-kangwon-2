@@ -1,10 +1,11 @@
-import LandingPage from "@/components/landing/LandingPage";
+import InteractiveLanding from "@/components/landing/InteractiveLanding";
 
 export const metadata = {
-  title: "쌤플 — 쌤의 계획이 쉬워지는 순간",
-  description: "연간부터 주간까지 우리 반에 맞는 계획, 오늘 본 아이의 말과 행동은 한 줄로.",
+  title: "쌤플 — 선생님의 기록장",
+  description:
+    "기록은 한 줄로, 계획안과 일지는 초안부터. 관찰 · 일과 · 일지 · 평가, 그리고 계획안을 한곳에.",
 };
 
 export default function Page() {
-  return <LandingPage />;
+  return <InteractiveLanding />;
 }

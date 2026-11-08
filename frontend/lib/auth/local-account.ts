@@ -9,7 +9,7 @@ import { selectedAgesFor } from "../onboarding/types";
 import { currentAccountEmail, hasDemoSession } from "./demo-session";
 import { accountKey, readAccount, readLegacyAccount, type Account } from "./account-store";
 import { loadClassSettings, sanitizeClassSettingsStorage } from "../onboarding/settings";
-import { login, signup } from "../api/auth";
+import { kakaoLogin, login, signup, type AuthResult } from "../api/auth";
 import { sanitizeBrowserChildMetadata } from "../privacy/browser-storage";
 function read(email = currentAccountEmail()): Account | null {
   return email ? readAccount(email) : null;
@@ -33,15 +33,12 @@ export function onboardingDestination():
     return "/onboarding/classes";
   return "/onboarding/children";
 }
-export function loginDestination(): string {
+/** 원 · 반이 다 찼는가. 메인 밖 메뉴는 원 · 반이 있어야 돈다. */
+export function roomReady(): boolean {
   try {
-    return hasDemoSession() &&
-      read()?.onboardingCompletedAt &&
-      onboardingDestination() === "/onboarding/children"
-      ? "/"
-      : onboardingDestination();
+    return onboardingDestination() === "/onboarding/children";
   } catch {
-    return "/onboarding/center";
+    return false;
   }
 }
 export function completeAccountOnboarding(): boolean {
@@ -65,13 +62,16 @@ export function accountName() {
     return null;
   }
 }
-export function accessRedirect(requireOnboarding = true): string | null {
-  if (!hasDemoSession()) return "/login";
-  const destination = loginDestination();
-  return requireOnboarding && destination !== "/" ? destination : null;
+/**
+ * 로그인 안 한 사람을 어디로 보낼지. 주소만 치고 들어온 첫 방문(`/`)은 소개 화면으로,
+ * 다른 화면 주소(즐겨찾기 · 링크)로 온 사람은 쓰던 중이니 로그인으로 보낸다.
+ */
+export function accessRedirect(pathname = ""): string | null {
+  if (hasDemoSession()) return null;
+  return pathname === "/" ? "/welcome" : "/login";
 }
 /**
- * 계정을 만든다.
+ * 계정을 만들고 로그인한다.
  *
  * **서버가 진짜 계정을 갖는다.** 여기 남는 기록은 이름과 온보딩 진행 상태처럼 화면이
  * 쓰는 값뿐이다 — 비밀번호 판정은 서버가 한다(docs/api-spec.md §0).
@@ -82,11 +82,10 @@ export async function registerAccount(name: string, email: string, password: str
     throw new Error("이름, 이메일과 8자 이상의 비밀번호를 입력해주세요.");
   if (read(email))
     throw new Error("이미 가입된 이메일이에요. 다른 이메일을 입력하거나 로그인해주세요.");
-  await signup(name.trim(), email.trim().toLowerCase(), password);
-  localStorage.setItem(
-    accountKey(email),
-    JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase() }),
-  );
+  const account: Account = { name: name.trim(), email: email.trim().toLowerCase() };
+  await signup(account.name, account.email, password);
+  localStorage.setItem(accountKey(email), JSON.stringify(account));
+  finishSignIn(account);
 }
 /**
  * 개발용 임시 계정. `NODE_ENV === "development"`에서만 동작하고,
@@ -119,14 +118,30 @@ export async function verifyDevAccount(email: string, password: string) {
  * 성공하면 토큰이 저장되고(`lib/api/auth.ts`), 이후 모든 요청에 실려 나간다.
  * 브라우저 기록은 이름·온보딩 상태를 위해 없으면 만들어 둔다.
  */
-export async function verifyAccount(email: string, password: string) {
-  const normalized = email.trim().toLowerCase();
-  const result = await login(normalized, password);
-  let account = read(normalized);
+export async function verifyAccount(email: string, password: string): Promise<number | null> {
+  return rememberSignIn(await login(email.trim().toLowerCase(), password));
+}
+
+/**
+ * 카카오 인가 코드로 로그인한다 (ADR-069). 이메일 로그인과 같은 브라우저 기록을 남긴다 —
+ * 열쇠가 서버가 돌려준 이메일이라, 같은 이메일로 가입했던 교사는 쓰던 반 설정을 그대로 본다.
+ */
+export async function verifyKakao(code: string): Promise<number | null> {
+  return rememberSignIn(await kakaoLogin(code));
+}
+
+function rememberSignIn(result: AuthResult): number | null {
+  const email = result.user.email.trim().toLowerCase();
+  let account = read(email);
   if (!account) {
-    account = { name: result.user.name, email: normalized };
-    localStorage.setItem(accountKey(normalized), JSON.stringify(account));
+    account = { name: result.user.name, email };
+    localStorage.setItem(accountKey(email), JSON.stringify(account));
   }
+  finishSignIn(account);
+  // 원이 있으면 화면이 서버 값으로 채운다 (#291) — 이 브라우저에 기록이 없을 수 있다.
+  return result.user.center_id;
+}
+function finishSignIn(account: Account) {
   sanitizeClassSettingsStorage(account.email);
   sanitizeBrowserChildMetadata();
   migrateLegacyData(account);

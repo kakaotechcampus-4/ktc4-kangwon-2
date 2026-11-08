@@ -1,8 +1,12 @@
 "use client";
 import Link from "next/link";
 import type { RoutineLine } from "@/lib/api/routines";
-import { Empty, ws } from "./WorkspaceUI";
+import { ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
+import { Icon } from "@/components/app/icons";
+import { ArchiveNoteArt } from "./DocumentArchiveArt";
+import { FlowerMeadow } from "./ChildTrackingArt";
+import creation from "./DocumentCreation.module.css";
 
 /**
  * 일일 보육일지의 근거 고르기 (docs/screen-spec.md S-J2 · 시안 A).
@@ -34,12 +38,19 @@ export default function DailyLogSources({
 }) {
   const usable = routines.filter((r) => r.execution);
   return (
-    <section className={ws.card}>
-      <div className={ws.between}>
-        <h2>문서에 사용할 일과</h2>
-        <span className={ws.badge}>{selected.length}줄 선택</span>
+    <section className={`${ws.card} ${creation.card} ${creation.sourcesCard}`}>
+      <div className={creation.cardHead}>
+        <span className={creation.cardIcon}>
+          <Icon name="plan" />
+        </span>
+        <div>
+          <h2>문서에 사용할 일과</h2>
+          <p className={creation.cardDescription}>
+            선택한 순서대로 「사실」 칸에 들어가요. 입력한 글은 그대로 옮겨요.
+          </p>
+        </div>
+        <span className={`${ws.badge} ${creation.count}`}>{selected.length}줄 선택</span>
       </div>
-      <p className={ws.hint}>선택한 순서대로 「사실」 칸에 들어가요. 입력한 글은 그대로 옮겨요.</p>
       <WorkspaceViewState
         status={status}
         error={error}
@@ -55,7 +66,11 @@ export default function DailyLogSources({
         <button type="button" disabled={busy} className={ws.secondary} onClick={onSelectAll}>
           {selected.length === usable.length ? "선택 해제" : "모두 선택"}
         </button>
-        <div role="group" aria-label="문서에 사용할 일과" className={ws.scroll}>
+        <div
+          role="group"
+          aria-label="문서에 사용할 일과"
+          className={`${ws.scroll} ${creation.sourceList}`}
+        >
           {routines.map((r) => (
             <RoutineRow
               key={r.id}
@@ -75,12 +90,19 @@ export default function DailyLogSources({
 /** 고를 수 있는 일과가 0개. 줄이 아예 없을 때와 활동실행이 전부 비었을 때 둘 다다. */
 function NothingToPick({ total, writeHref }: { total: number; writeHref: string | null }) {
   return (
-    <Empty title="선택할 수 있는 일과가 없어요">
-      {total
-        ? `일과 ${total}줄이 있지만 활동실행이 모두 비어 있어요. `
-        : "이 날 입력한 일과가 없어요. "}
-      {writeHref && <Link href={writeHref}>일과 기록 입력 →</Link>}
-    </Empty>
+    <div className={`${ws.empty} ${creation.empty}`}>
+      <div className={creation.emptyGarden} aria-hidden="true">
+        <FlowerMeadow className={creation.emptyFlowers} />
+        <ArchiveNoteArt tone="sage" className={creation.emptyCharacter} />
+      </div>
+      <h3>선택할 수 있는 일과가 없어요.</h3>
+      <p>
+        {total
+          ? `일과 ${total}줄이 있지만 실제로 한 것이 모두 비어 있어요. `
+          : "이 날 입력한 일과가 없어요. "}
+        {writeHref && <Link href={writeHref}>일과 기록 입력 →</Link>}
+      </p>
+    </div>
   );
 }
 
@@ -105,12 +127,12 @@ function RoutineRow({
         <input
           type="checkbox"
           disabled
-          aria-label={`${routine.name} — 활동실행이 비어 있어 선택할 수 없어요`}
+          aria-label={`${routine.name} — 실제로 한 것이 비어 있어 고를 수 없어요`}
         />
         <span>
           <b>{heading}</b>
           <small>
-            활동실행이 비어 있어요{" "}
+            실제로 한 것이 비어 있어요{" "}
             {writeHref && (
               <>
                 · <Link href={writeHref}>입력하기</Link>

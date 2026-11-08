@@ -1,0 +1,581 @@
+/* 아이별 기록 — 쪽지 벽. 칠판 띠 · 순서 · 쪽지 벽 + 오른쪽 펼침. */
+.page {
+  --tracking-green: #426d56;
+  --tracking-green-tint: #edf6f0;
+  --tracking-green-line: #c7dfd1;
+  container: child-tracking / inline-size;
+  width: 100%;
+  min-width: 0;
+  min-height: calc(calc(100 * var(--app-dvh)) - 60px);
+  margin: 0;
+  padding: 28px 32px 40px;
+  background: var(--pg-cream, #f3eee4);
+  color: var(--pg-ink);
+}
+
+.page :is(a, button):focus-visible {
+  outline: 2px solid var(--pg-ink);
+  outline-offset: 3px;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-bottom: 18px;
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid var(--pg-line);
+  border-radius: 12px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  font-size: 14.5px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.header h1 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 42px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.header p {
+  margin: 6px 0 0;
+  color: var(--pg-ink-soft);
+  font-size: 14.5px;
+}
+
+/* 칠판 띠. 판 · 나무테는 전역 .chalkboard 가 그린다. */
+.board {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 18px;
+  margin-bottom: 26px;
+  padding: 16px 22px;
+  border-radius: 4px;
+  color: var(--pg-board-ink);
+}
+/* 본문 글꼴로 — 손글씨(Gaegu)는 칠판 위 긴 문장에서 글자 사이가 벌어져 읽기 힘들었다. */
+.boardSay {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.boardSay em {
+  font-style: normal;
+  color: var(--pg-note);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+}
+.boardSub {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  color: var(--pg-board-ink-soft);
+}
+.boardGo {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  background: var(--pg-note);
+  color: var(--pg-ink);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 1fr);
+  align-items: start;
+  gap: 26px;
+}
+
+/* ── 쪽지 벽 ── */
+.wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 26px 20px;
+  margin: 0;
+  padding: 12px 4px 4px;
+  list-style: none;
+}
+.note {
+  --paper: var(--pg-note);
+  --edge: var(--pg-note-line);
+  --ink: var(--pg-sun-ink);
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  width: 100%;
+  min-height: 148px;
+  padding: 22px 16px 14px;
+  border: 1px solid var(--edge);
+  background: var(--paper);
+  color: var(--pg-ink);
+  text-align: left;
+  font: inherit;
+  box-shadow: 0 6px 12px rgb(52 49 47 / 13%);
+  rotate: -1.6deg;
+  cursor: pointer;
+  transition:
+    rotate 150ms ease,
+    translate 150ms ease,
+    box-shadow 150ms ease;
+}
+.wall li:nth-child(even) .note {
+  rotate: 1.4deg;
+}
+.wall li:nth-child(3n) .note {
+  rotate: -0.8deg;
+}
+/* 테이프 */
+.note::before {
+  content: "";
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  width: 62px;
+  height: 18px;
+  translate: -50% 0;
+  background: rgb(255 255 255 / 62%);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
+}
+.note:hover {
+  rotate: 0deg;
+  translate: 0 -3px;
+  box-shadow: 0 10px 18px rgb(52 49 47 / 18%);
+}
+.wall li .note[aria-pressed="true"] {
+  rotate: 0deg;
+  outline: 3px solid var(--pg-ink);
+  outline-offset: 4px;
+}
+/* 아이 쪽지 색 — ChildPicker 의 TONES 와 같은 순서 (markFor 의 tone). */
+.note[data-tone="1"] {
+  --paper: var(--pg-sage);
+  --edge: var(--pg-sage-line);
+  --ink: var(--pg-sage-ink);
+}
+.note[data-tone="2"] {
+  --paper: var(--pg-plum);
+  --edge: var(--pg-plum-line);
+  --ink: var(--pg-primary-deep);
+}
+.note[data-tone="3"] {
+  --paper: var(--pg-clay);
+  --edge: var(--pg-clay-line);
+  --ink: var(--pg-alert-ink);
+}
+.note[data-tone="4"] {
+  --paper: var(--pg-primary-tint);
+  --edge: var(--pg-primary-tint-line);
+  --ink: var(--pg-primary-ink);
+}
+.note[data-tone="5"] {
+  --paper: var(--pg-alert-soft);
+  --edge: var(--pg-alert-soft-line);
+  --ink: var(--pg-alert-ink);
+}
+.note[data-tone="6"] {
+  --paper: var(--pg-sun-tint);
+  --edge: var(--pg-sun);
+  --ink: var(--pg-sun-ink);
+}
+.note strong {
+  font-family: var(--font-display), sans-serif;
+  font-size: 30px;
+  line-height: 1.05;
+  color: var(--ink);
+}
+.note small {
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.note small[data-late] {
+  color: var(--pg-alert-ink);
+  font-weight: 700;
+}
+.flag {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: var(--pg-alert-ink);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.noteDomains {
+  display: flex;
+  gap: 5px;
+  margin-top: 8px;
+}
+.noteDomains i,
+.domainRow i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--tone-line);
+  border-radius: 50%;
+  background: var(--tone-bg);
+  color: var(--tone-ink);
+}
+.noteDomains i[data-off] {
+  border: 1.5px dashed #b9b0a2;
+  background: transparent;
+  color: #ada394;
+}
+
+/* 영역 색. 의사소통만 하늘 — 예술경험(자두)과 갈라야 한다. */
+.page [data-tone="body"] {
+  --tone-bg: var(--pg-clay);
+  --tone-line: var(--pg-clay-line);
+  --tone-ink: var(--pg-alert-ink);
+}
+.page [data-tone="talk"] {
+  --tone-bg: var(--pg-sky);
+  --tone-line: var(--pg-sky-line);
+  --tone-ink: var(--pg-sky-ink);
+}
+.page [data-tone="social"] {
+  --tone-bg: var(--pg-sun-tint);
+  --tone-line: var(--pg-sun);
+  --tone-ink: var(--pg-sun-ink);
+}
+.page [data-tone="art"] {
+  --tone-bg: var(--pg-plum);
+  --tone-line: var(--pg-plum-line);
+  --tone-ink: var(--pg-primary-deep);
+}
+.page [data-tone="nature"] {
+  --tone-bg: var(--pg-sage-tint);
+  --tone-line: var(--pg-sage-line);
+  --tone-ink: var(--pg-sage-ink);
+}
+
+/* ── 오른쪽 펼침 ── */
+.detail,
+.emptyState,
+.notice {
+  min-width: 0;
+  border: 1px solid var(--pg-line);
+  border-radius: 18px;
+  background: var(--pg-paper);
+}
+.detail {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+}
+.detailHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.detailHead h2 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 32px;
+  line-height: 1;
+}
+.domainSection {
+  display: grid;
+  gap: 10px;
+}
+/* 영역 칸 — 칸마다 제 색과 숫자. 빈 칸은 같은 색 점선에 0. */
+.domainRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.domainRow li {
+  --tone-bg: var(--pg-shell, #ede8e0);
+  --tone-line: var(--pg-line);
+  --tone-ink: var(--pg-ink);
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 4px;
+  padding: 12px 4px 10px;
+  border: 1px solid var(--tone-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--tone-bg) 60%, #fff);
+  text-align: center;
+}
+.domainRow i {
+  width: 34px;
+  height: 34px;
+}
+.domainRow span {
+  display: flex;
+  align-items: center;
+  min-height: 2.5em;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--tone-ink);
+  word-break: keep-all;
+}
+.domainRow b {
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.1;
+  color: var(--tone-ink);
+  font-variant-numeric: tabular-nums;
+}
+.domainRow li[data-empty] {
+  border-style: dashed;
+  border-width: 1.5px;
+  background: color-mix(in srgb, var(--tone-bg) 25%, #fff);
+}
+.domainRow li[data-empty] b,
+.domainRow li[data-empty] i {
+  opacity: 0.55;
+}
+.helper {
+  margin: 0;
+  color: var(--pg-ink-soft);
+  font-size: 12.5px;
+}
+.journalGo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  border-radius: 12px;
+  background: var(--pg-ink);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* ── 날짜별 기록 ── */
+.timeline {
+  min-width: 0;
+}
+.timelineHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.timelineHead h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 750;
+}
+.timelineCount {
+  color: var(--pg-ink-soft);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.monthLine {
+  margin: 0;
+  padding: 12px 0 2px;
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--pg-ink-soft);
+}
+.monthLine span {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.slipLine {
+  display: flex;
+  gap: 12px;
+  padding: 11px 0;
+  border-top: 1px dashed var(--pg-line);
+}
+.monthLine + .slipLine {
+  border-top: 0;
+}
+.slipLine > time {
+  flex: none;
+  width: 44px;
+  padding-top: 2px;
+  color: var(--pg-ink-soft);
+  font-size: 13px;
+}
+.slipLine > div {
+  min-width: 0;
+}
+.slipLine p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.domainTag {
+  --tone-bg: var(--tracking-green-tint);
+  --tone-ink: var(--tracking-green);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 7px;
+  background: var(--tone-bg);
+  color: var(--tone-ink);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+/* ── 비었을 때 · 실패 ── */
+.emptyState,
+.notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  min-height: 300px;
+  padding: 32px;
+  text-align: center;
+}
+.emptyState h3,
+.notice h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 750;
+}
+.emptyState p,
+.notice p,
+.rosterEmpty {
+  margin: 0;
+  color: var(--pg-ink-soft);
+  font-size: 14.5px;
+  line-height: 1.8;
+}
+.emptyArt {
+  flex: none;
+  width: 190px;
+  max-width: 65%;
+  height: 118px;
+}
+.rosterEmpty {
+  padding: 12px 4px;
+}
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 1px solid var(--tracking-green-line);
+  border-radius: 10px;
+  background: var(--tracking-green-tint);
+  color: var(--tracking-green);
+  font-weight: 700;
+  text-decoration: none;
+}
+.action svg {
+  width: 17px;
+  height: 17px;
+}
+.textLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--tracking-green);
+  font-weight: 700;
+  text-underline-offset: 3px;
+}
+
+@container child-tracking (max-width: 980px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .detail {
+    position: static;
+  }
+}
+
+@container child-tracking (max-width: 520px) {
+  .header h1 {
+    font-size: 34px;
+  }
+  .wall {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px 14px;
+  }
+  .note {
+    padding: 22px 12px 12px;
+  }
+  .note strong {
+    font-size: 26px;
+  }
+  .sep {
+    display: none;
+  }
+  .last {
+    display: block;
+  }
+  .flag {
+    top: -11px;
+    right: 6px;
+  }
+  .noteDomains {
+    gap: 3px;
+  }
+  .noteDomains i {
+    width: 22px;
+    height: 22px;
+  }
+  .detail {
+    padding: 18px 14px;
+  }
+  .domainRow {
+    gap: 5px;
+  }
+  .domainRow span {
+    font-size: 10.5px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .page {
+    padding: 22px 24px 32px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .page {
+    min-height: calc(calc(100 * var(--app-dvh)) - 60px - 84px);
+  }
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 18px 14px calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page * {
+    transition: none;
+  }
+}

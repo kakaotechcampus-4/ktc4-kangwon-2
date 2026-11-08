@@ -162,6 +162,7 @@ PR #122 리뷰에서 세 가지가 나왔다.
 - Template 승인 철회 정책 — 철회된 version 으로 만든 기존 계획안 · READY Profile 을 어떻게 할지.
 - `MONTH` · `DAY` 지원(연간 · 주간 TemplateSection 계약이 생길 때).
   - 2026-10-19 WQ-02 A: **주간 P0 는 `DAY` 를 쓰지 않는다** — 주 단위 값만, 요일별 활동은 칸 하나 안에 목록으로. `DAY` 는 후속이다.
+  - 2026-10-31 ADR-051: 주간 `group_activity` · `special_program` 에 한해 `DAY` 를 쓴다. 월간은 계속 `NONE` · `WEEK` 만.
 - `OD-N11` 의 남은 항목(테스트 전용 승인 진입점을 어디에 둘지, 미승인 Golden case 의 Fixture 형태).
 - ~~Core 의 새 오류 코드를 Backend 공개 오류 코드로 어떻게 옮길지.~~ → #162 에서 정해졌다: 생성 시 `monthly_template_not_found` ·
   `monthly_template_not_approved` 는 422 `VALIDATION_FAILED` `["profile_ref"]` 다(api-spec §9-1 오류 표).

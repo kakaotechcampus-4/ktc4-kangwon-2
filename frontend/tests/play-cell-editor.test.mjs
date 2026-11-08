@@ -163,6 +163,8 @@ test("the editor is a labelled textarea", () => {
   const { area } = mount().render();
   assert.equal(area.props.id, "cell");
   assert.equal(area.props.readOnly, undefined);
+  // 높이 고정 — 끌어서 늘리지 않고 넘치는 글은 안에서 스크롤.
+  assert.match(area.props.className, /!h-\[180px\] !resize-none overflow-y-auto/);
 });
 
 test("characters are counted as code points like the server: 300 emoji are 300 and savable", (t) => {

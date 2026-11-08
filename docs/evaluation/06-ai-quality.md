@@ -1,10 +1,16 @@
 # 06 · AI 품질
 
+- 실내대체는 방법이 명시된 적격 근거를 우선하고, 새 월간·연결형 주간의 빈 응답을 한 번 수리하며 부모 맥락과 방법 근거를 구분한다 — [ADR-050](../adr/050-monthly-v1-indoor-alternative.md) · `p0-planning/tests/application/test_monthly_application.py` · `p0-planning/tests/adapters/test_weekly_composition.py`. 실제 문장 품질은 별도 실측 전이다.
+
 **멘토 심사 기준(기술·개발 중심) ⑥ AI 품질 점검·개선 노력 — 5점**
 
 > 평가 기준·테스트셋으로 AI 응답 품질을 점검하고, 실패를 분석해 고친 기록이 있는가
 
 ---
+
+- 주간 요일 양식은 부모 월간의 기관 근거 기반 바깥놀이를 이어 쓰고 승인 생활 문장·기존 v2 작성 기준을 참고한다 — [ADR-053](../adr/053-weekly-approved-reference-context.md) · `p0-planning/tests/adapters/test_weekly_composition.py`.
+- 부모 월간의 실내대체 인용은 주간 분류·월·연령 검사를 통과한 기록만 우선하며, 두 월간의 공용 안전 지침은 약물 경고를 양의 제한으로만 쓰지 않도록 한다 — `p0-planning/tests/retrieval/test_weekly_retrieval.py` · `p0-planning/tests/planner/test_v1_curriculum_context.py`.
+- 관찰일지 초안 20건을 운영 서버(real)에서 뽑아 읽었다 — 생성 실패 0 · 숫자 오류 0 · 지어낸 사실 0 · 과해석 3건 — [docs/observation-number-check-20261103.md](../observation-number-check-20261103.md)
 
 ## 통과 조건을 먼저 정했다 — 3층 규격
 
@@ -35,6 +41,7 @@
 - 서술 기준을 글로 먼저 적었다 — [docs/references/관찰일지-서술-기준.md](../references/관찰일지-서술-기준.md) ·
   [관찰일지-챗봇-작성기준.md](../references/관찰일지-챗봇-작성기준.md)
 - 양식 라벨을 표준 키로 고정 — ADR-009
+- 월간 v1 목표 근거는 기존 선정에 글자 기준으로 맞지 않는 연간 소주제를 같은 적격 후보 풀에서 보충하며, 근거 개수와 기관 상한을 유지한다 — `p0-planning/src/ssuksak/planning/retrieval/ranking.py` · `p0-planning/tests/retrieval/test_retrieval.py`
 
 ## 품질에 손대지 않기로 한 것
 
@@ -65,7 +72,8 @@
 
 ## 아직 아닌 것
 
-- **일지 4종(보육일지 · 관찰일지 · 영유아 평가)은 real 로 한 번도 안 돌렸다.** bench 스크립트가 계획안 쪽에만 있다
+- **보육일지 · 영유아 평가는 real 로 한 번도 안 돌렸다.** 관찰일지만 20건 쟀다(위). bench 스크립트가 계획안 쪽에만 있다
+- 한글 숫자(「네 개」)는 2단 추출 대조 밖이다 — 측정 17 · 19 · 20번. 이번엔 틀린 것이 없었을 뿐 막아 주지는 않는다
 - 월간 bench 스크립트는 있는데 **결과 문서가 없다** — 돌렸는지 확인 필요
 - 품질이 「사람이 본 요약」이라 **몇 장 중 몇 장인지 말할 수 없다**
 - 교사가 "이건 못 쓰겠다"고 한 사례를 모은 적이 없다
@@ -98,3 +106,8 @@
 - [ ] 뽑은 문서를 읽고 **두 숫자만** 적는다 — 아래
 - [ ] 월간 bench 를 돌렸는지 확인하고 결과 문서 남기기
 - [ ] 반려된 생성의 사유별 건수
+- 주간 활동 후보(ADR-054): 가짜 전송으로 후보별 허용 근거·형식 수리 1회, 선택·분할 후 저장/재조회·한글 출력을 확인한다. 실제 LLM의 종류별 문장 품질은 미측정이다.
+- 주간 후보의 짧은 이름에 근거의 대상·핵심 행동을 보존하도록 생성·수리 지침을 함께 구분한다 — ADR-054 「후보 활동명의 구체성 보완」, `tests/adapters/test_weekly_activity_candidates.py`; 실제 모델의 제목 개선 효과는 미측정이다.
+- 주간 후보는 유형+이름만으로 활동이 식별되는지 별도로 검토하고, 원문 검토 7건의 `(record_id, text)` 제외를 후보 검색에만 적용한다 — ADR-054 「활동 식별성과 후보 원문 충분성 보완」, `tests/retrieval/test_weekly_retrieval.py`; 문구 지침 검사와 원문 선별 검사는 실제 모델의 의미 품질 보증이 아니다.
+- 주간 후보에 허용 원문의 사용할 활동 구간을 전달하고, 명화의 ‘감상’과 검토한 ‘편지 발표’의 제목 정보 누락을 기존 수리 경로로 거절한다 — ADR-054 「후보의 사용할 활동 범위와 이름 정보 검사」 · `tests/adapters/test_weekly_activity_candidates.py`; 일반 의미·문체의 자동 판정은 아니다.
+- 주간 후보 생성·수리에 v2 월간의 공용 놀이 문체와 기존 합니다체 1~2문장 기준을 재사용한다 — ADR-054 「기존 문체 기준 재사용」 · `tests/adapters/test_weekly_activity_candidates.py`; 새 판의 실제 말투 효과는 미측정이다.

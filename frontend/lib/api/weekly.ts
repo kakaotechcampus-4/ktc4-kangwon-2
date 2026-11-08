@@ -1,5 +1,6 @@
 import { apiRequest } from "./client";
-import type { WeeklyPlan, WeeklyPlanSummary } from "./types";
+import { downloadHwpx, type ExportFormat } from "./export";
+import type { WeeklyAuditEvent, WeeklyPlan, WeeklyPlanSummary } from "./types";
 
 /**
  * 주간계획안 (docs/weekly-plan-contract.md §13).
@@ -21,7 +22,13 @@ const cell = (id: number, itemId: string) =>
  * 그 달 월간이 확정되지 않았으면 409 `GATE_BLOCKED`, 같은 주가 이미 있으면 409 `ALREADY_EXISTS` (§4-1).
  */
 export const createWeeklyPlan = (
-  data: { class_id: number; week_id: string },
+  data: {
+    class_id: number;
+    week_id: string;
+    activity_candidates?: boolean;
+    indoor_play_candidates?: boolean;
+    memo?: string;
+  },
   signal?: AbortSignal,
 ) => apiRequest<WeeklyPlan>("/api/plans/weekly", json("POST", data, signal));
 export const getWeeklyPlan = (id: number, signal?: AbortSignal) =>
@@ -30,9 +37,14 @@ export const getWeeklyPlan = (id: number, signal?: AbortSignal) =>
  * 그 달의 주간계획안들. `month` 는 **달력 달 1~12** 다 — `YYYY-MM` 이 아니다.
  * 연도는 반의 학년도가 정한다 (월간 생성과 같은 규칙). `month` 는 `classId` 와 함께만 간다.
  */
-export const listWeeklyPlans = (classId: number, month: number, signal?: AbortSignal) =>
+/** `month` 를 빼면 그 반의 모든 달이다 — 승인받은 반을 한 번에 훑을 때 쓴다. */
+/** 둘 다 없으면 원 전체(백엔드 규칙). `month` 는 `classId` 와 함께만. */
+export const listWeeklyPlans = (classId?: number, month?: number, signal?: AbortSignal) =>
   apiRequest<{ items: WeeklyPlanSummary[] }>(
-    "/api/plans/weekly?class_id=" + classId + "&month=" + month,
+    "/api/plans/weekly" +
+      (classId === undefined
+        ? ""
+        : "?class_id=" + classId + (month === undefined ? "" : "&month=" + month)),
     { signal },
   );
 /**
@@ -60,12 +72,66 @@ export const regenerateWeeklyCell = (
     cell(id, itemId) + "/regenerate",
     json("POST", { expected_revision: expectedRevision }, signal),
   );
-/** 확정. 계획안에는 확정 취소가 없다 (ADR-030 PM-03). */
+/** 확정. 화면에는 확정 취소가 없다 — 고치려면 지우고 다시 만든다(ADR-064). */
 export const confirmWeeklyPlan = (id: number, expectedRevision: number, signal?: AbortSignal) =>
   apiRequest<WeeklyPlan>(
     "/api/plans/weekly/" + id + "/confirm",
     json("POST", { expected_revision: expectedRevision }, signal),
   );
-/** 확정 전 주간계획안을 지운다. 그 주를 다시 만들려면 먼저 지워야 한다 (G5). 확정본은 409 다. */
+/** 확정 취소. 이미 초안이면 200 · 그대로, 낡은 revision 은 409 `STALE_WRITE`. */
+export const unconfirmWeeklyPlan = (id: number, expectedRevision: number, signal?: AbortSignal) =>
+  apiRequest<WeeklyPlan>(
+    "/api/plans/weekly/" + id + "/unconfirm",
+    json("POST", { expected_revision: expectedRevision }, signal),
+  );
+/** 주간계획안을 지운다(확정본도, ADR-064). 그 주를 다시 만들려면 먼저 지워야 한다 (G5). */
 export const deleteWeeklyPlan = (id: number) =>
   apiRequest<void>("/api/plans/weekly/" + id, { method: "DELETE" });
+
+/** 변경 이력. 월간과 같은 모양이다 — 「교사 수정」 표시를 여기서 읽는다. */
+export const getWeeklyPlanAudit = (id: number, signal?: AbortSignal) =>
+  apiRequest<{ items: WeeklyAuditEvent[] }>("/api/plans/weekly/" + id + "/audit", { signal });
+/** 확정본만 내려받는다 — 확정 전이면 서버가 409 다. */
+export const downloadWeeklyHwpx = (id: number, format: ExportFormat = "hwpx") =>
+  downloadHwpx(`/api/plans/weekly/${id}/export/hwp?format=${format}`, `주간계획안.${format}`);
+
+export const copyWeeklyActivity = (
+  id: number,
+  itemId: string,
+  candidateItemId: string,
+  revision: number,
+) =>
+  apiRequest<WeeklyPlan>(
+    cell(id, itemId) + "/copy-activity",
+    json("POST", { candidate_item_id: candidateItemId, expected_revision: revision }),
+  );
+export const addWeeklyIndoorPlay = (id: number, candidateItemId: string | null, revision: number) =>
+  apiRequest<WeeklyPlan>(
+    `/api/plans/weekly/${id}/indoor-plays`,
+    json("POST", { candidate_item_id: candidateItemId, expected_revision: revision }),
+  );
+export const orderWeeklyIndoorPlays = (id: number, itemIds: string[], revision: number) =>
+  apiRequest<WeeklyPlan>(
+    `/api/plans/weekly/${id}/indoor-plays/order`,
+    json("PUT", { item_ids: itemIds, expected_revision: revision }),
+  );
+export const removeWeeklyIndoorPlay = (id: number, itemId: string, revision: number) =>
+  apiRequest<WeeklyPlan>(
+    `/api/plans/weekly/${id}/indoor-plays/${itemId}?expected_revision=${revision}`,
+    { method: "DELETE" },
+  );
+
+export const splitWeeklyActivityCell = (
+  id: number,
+  itemId: string,
+  axis: "VERTICAL" | "HORIZONTAL",
+  revision: number,
+) =>
+  apiRequest<WeeklyPlan>(
+    cell(id, itemId) + "/split",
+    json("POST", { axis, expected_revision: revision }),
+  );
+export const removeWeeklyActivityCell = (id: number, itemId: string, revision: number) =>
+  apiRequest<WeeklyPlan>(cell(id, itemId) + "/split?expected_revision=" + revision, {
+    method: "DELETE",
+  });

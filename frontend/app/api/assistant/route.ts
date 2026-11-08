@@ -36,21 +36,6 @@ const schemas: Record<string, unknown> = {
       }),
     },
   }),
-  evaluation: shape({
-    results: {
-      type: "array",
-      items: shape({
-        criterionId: string,
-        verdict: { type: "string", enum: ["근거 확인", "보완 필요", "판단 보류"] },
-        quote: string,
-        reason: string,
-      }),
-    },
-  }),
-  evidence: shape({
-    issues: { type: "array", items: shape({ documentId: string, quote: string, reason: string }) },
-    notes: strings,
-  }),
 };
 const prompts: Record<string, string> = {
   plan: "입력 연령, 기간, 요청사항을 반영한 한국어 보육계획안을 작성한다. ages 배열이 제공되면 그 배열이 정확한 대상 연령이며, 배열에 없는 연령은 임의로 포함하지 않는다. age가 mixed여도 ages가 제공되면 ages를 우선한다(예: age=mixed, ages=[3,5]이면 만 3세와 만 5세만 대상이고 만 4세는 제외한다). 활동은 미래의 제안이며 실제 관찰 사실로 쓰지 않는다. 연간은 3월부터 다음해 2월까지 12개 월별 항목, 월간은 4~5주, 주간은 월~금으로 구성한다. 일간은 하루 일과로 구성한다. 각 section.heading은 기간/활동 제목, body는 놀이 목표·활동·교사 지원·준비물. 제공된 기관 양식의 항목 순서와 문체를 각 body 안에 적용한다. 입력된 트렌드 주제는 활동 제안으로만 활용. sourceIds는 빈 배열.",
@@ -64,10 +49,6 @@ const prompts: Record<string, string> = {
     "동일 아동의 이전/현재 기록을 원문 근거와 함께 비교한다. sections는 공통으로 관찰된 점, 기록에서 달라진 점, 다음 관찰 제안으로 작성. 각 sourceIds는 해당 근거의 실제 ID. 기록에 없는 행동/빈도를 만들지 말고 기록의 차이와 실제 발달 변화를 구분한다. 미기록은 행동 부재가 아니며 기록 2개로 장기 발달이나 진단을 단정하지 않는다.",
   trends:
     "웹 검색으로 최근 6개월 내 한국의 공식 보육·유아교육 자료에서 계획안에 쓸 주제를 최대 5개 찾는다. 교육부, 교육청, 육아정책연구소, i-nuri, 한국영유아보육교육진흥원 자료를 우선한다. items의 url은 실제 검색된 원문 HTTPS 링크, publishedAt은 출처에 명시된 날짜만(없으면 날짜 미표시). summary는 짧은 요약, idea는 이 자료에서 착안한 미래 놀이 제안으로 구분한다. 확인되지 않은 URL이나 인기 순위를 만들지 않는다.",
-  evaluation:
-    "제공된 criteria의 각 항목이 document에 실제로 서술되었는지 내용 수준으로 점검한다. results에 criterionId마다 하나씩 반환. verdict는 근거 확인, 보완 필요, 판단 보류 중 하나. quote는 문서 본문에서 그대로 발췌한 연속된 원문, 없으면 빈 문자열. reason은 해당 요구사항과 근거의 관계를 설명하고 단순 키워드 포함을 충족으로 처리하지 않는다. 사용자 기준 범위에 대한 사전 검토일 뿐 공식 평가 통과를 판정하지 않는다. 출처나 기준 내용을 창작하지 않는다.",
-  evidence:
-    "대상 document와 같은 반/아동/기간의 evidence 문서를 비교한다. 서로 다른 날/활동은 모순으로 취급하지 않는다. 같은 사건/같은 기간에 한정해 실제 사실의 상충, 미관찰 발언/행동 추가, 원본을 벗어난 해석, 형식적인 지원이 있으면 issues로 반환한다. documentId는 문제를 발견한 입력 문서 id, quote는 그 문서에서 그대로 인용한 원문, reason은 반대 근거 문서명과 이유. 기록 부재는 행동 부재가 아니며 아동 발달을 진단하지 않는다. 종합 판단을 할 근거가 없으면 notes에 판단 보류 사유를 쓴다. 문제 없음은 공식 충족 판정이 아니다.",
 };
 let activeRequests = 0;
 export async function GET() {
@@ -222,38 +203,6 @@ export async function POST(request: Request) {
           !result.sections.some((s: { heading: string }) => s.heading === "지원"))
       )
         throw new Error("Missing required sections");
-    }
-    if (task === "evaluation") {
-      const input = payload as { document: SavedDocument; criteria: { id: string }[] };
-      const documentText = input.document.sections.map((s) => s.body).join("\n\n");
-      result.results = result.results.filter((r: { criterionId: string }) =>
-        input.criteria.some((c) => c.id === r.criterionId),
-      );
-      for (const item of result.results)
-        if (!item.quote || !documentText.includes(item.quote)) {
-          item.verdict = "판단 보류";
-          item.quote = "";
-          item.reason = "원문에서 검증 가능한 직접 근거가 없어 교사 확인이 필요해요.";
-        }
-      for (const criterion of input.criteria)
-        if (!result.results.some((r: { criterionId: string }) => r.criterionId === criterion.id))
-          result.results.push({
-            criterionId: criterion.id,
-            verdict: "판단 보류",
-            quote: "",
-            reason: "해당 항목의 검토 결과가 없어 직접 확인해주세요.",
-          });
-    }
-    if (task === "evidence") {
-      const input = payload as { document: SavedDocument; evidence: SavedDocument[] };
-      const documents = [input.document, ...input.evidence];
-      result.issues = result.issues.filter(
-        (r: { documentId: string; quote: string }) =>
-          r.quote &&
-          documents
-            .find((d) => d.id === r.documentId)
-            ?.sections.some((s) => s.body.includes(r.quote)),
-      );
     }
     if (task === "verify") {
       const doc = payload as SavedDocument;

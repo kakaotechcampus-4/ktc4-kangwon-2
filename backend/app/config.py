@@ -23,9 +23,8 @@ class Settings(BaseSettings):
 
     # 파일럿 전 시험용 「전부 지우기」를 켠다. **기본은 꺼짐이고, 파일럿 시작 전에 끈다.**
     #
-    # 연간계획안은 확정하면 고칠 수도 지울 수도 없다 — 계획안에는 `unconfirm` 이 없어서
-    # 빠져나올 구멍이 없다. 그래서 시험하는 동안만 확정 여부를 안 보고 딸린 월간까지
-    # 같이 지우는 길을 연다(`plans/router.py` 의 test-reset).
+    # 연간은 확정을 풀어도(ADR-055) 딸린 월간이 있으면 지울 수 없다. 그래서 시험하는 동안만
+    # 확정 여부를 안 보고 딸린 월간까지 같이 지우는 길을 연다(`plans/router.py` 의 test-reset).
     #
     # 꺼져 있으면 그 경로는 **404** 다 — 있는지조차 알리지 않는다. 화면 쪽 단추는
     # `NEXT_PUBLIC_ALLOW_TEST_RESET` 가 따로 켠다. 둘이 어긋나도 안전하다:
@@ -36,6 +35,13 @@ class Settings(BaseSettings):
     # 기본값을 두지 않는다 — 기본값이 있으면 서버에 안 넣은 채로 배포되고,
     # 그 열쇠는 저장소에 적혀 있으므로 누구나 토큰을 만들 수 있다.
     secret_key: str
+
+    # 카카오 로그인 (ADR-069). 키 · 주소가 없으면 카카오 경로만 503 이다.
+    # 이메일 로그인은 그대로 돈다.
+    # redirect_uri 는 콘솔에 등록한 값과 **글자 하나까지 같아야** 한다 — 다르면 KOE006.
+    kakao_rest_api_key: str | None = None
+    kakao_client_secret: str | None = None
+    kakao_redirect_uri: str | None = None
 
     # 트렌드 수집 (ADR-016). 없으면 그 소스만 건너뛰고 나머지는 모은다.
     # 주 1회 작업에서만 쓴다 — 교사 요청 경로에서는 부르지 않는다.

@@ -40,6 +40,8 @@ client = TestClient(app)
 
 PLAIN = TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.1.1")
 FOCUS = TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.2.1")
+INDOOR = TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.2.2")
+DRILL = TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.2.3")
 # 보이는 칸은 표시 이름을 직접 받아야 한다(Core). 고른 칸의 이름만 보낸다.
 LABELS = {
     "theme": "생활주제",
@@ -49,6 +51,8 @@ LABELS = {
     "focus": "소주제",
     "goals": "목표",
     "basic_habit": "기본생활",
+    "indoor_alternative": "실내대체",
+    "drill": "소방대피/재난대비",
 }
 
 
@@ -213,15 +217,20 @@ def test_기반_Template_목록은_실제_데이터의_승인_대기를_그대�
     assert [
         (i["template_ref"]["template_id"], i["template_ref"]["template_version"]) for i in items
     ] == [(ref.template_id, ref.template_version) for ref in profile_service.MONTHLY_TEMPLATE_REFS]
+    assert any(i["template_ref"]["template_version"] == DRILL.template_version for i in items)
     for item in items:
         template = real.get_template(**item["template_ref"])
         # 파일이 말하는 대로 보인다. v0.2.1 은 2026-10-20 승인, v0.1.1 은 아직 대기다.
         assert item["approved"] is template.is_active
         assert len(item["sections"]) == len(template.sections)
         selection = {s["section_key"]: s["selection"] for s in item["sections"]}
-        # 실내대체는 repeat_by 를 준 v0.2.2 에서만 고를 수 있다.
+        # 실내대체는 v0.2.2 부터, 훈련은 v0.2.3 부터 고를 수 있다.
         indoor = {"indoor_alternative"}
-        indoor_optional = item["template_ref"]["template_version"] == "monthly-template-a-v0.2.2"
+        version = item["template_ref"]["template_version"]
+        indoor_optional = version in (INDOOR.template_version, DRILL.template_version)
+        drill_optional = version == DRILL.template_version
+        if drill_optional:
+            assert item["approved"] is True
         assert {k for k, v in selection.items() if v == "REQUIRED"} == {
             "theme",
             "week_axis",
@@ -232,15 +241,12 @@ def test_기반_Template_목록은_실제_데이터의_승인_대기를_그대�
             "focus",
             "goals",
             "basic_habit",
-        } | (indoor if indoor_optional else set())
-        assert {k for k, v in selection.items() if v == "INSTITUTION_INPUT"} == {
-            "event_schedule",
-            "drill",
-        }
+        } | (indoor if indoor_optional else set()) | ({"drill"} if drill_optional else set())
+        assert {k for k, v in selection.items() if v == "INSTITUTION_INPUT"} == {"event_schedule"}
         assert {k for k, v in selection.items() if v == "NOT_SUPPORTED"} == {
             "emergency_response",
             "special_program",
-        } | (set() if indoor_optional else indoor)
+        } | (set() if indoor_optional else indoor) | (set() if drill_optional else {"drill"})
         assert "habits" not in selection  # Template 의 habits 는 Profile 이름으로 보인다
         week = next(s for s in item["sections"] if s["section_key"] == "week_axis")
         assert (week["role"], week["repeat_by"]) == ("AXIS", None)
@@ -321,6 +327,93 @@ def test_같은_시작_요청을_두_번_보내면_Profile_이_두_개_생긴다
     assert first.json()["profile_ref"]["profile_id"] != second.json()["profile_ref"]["profile_id"]
 
 
+def test_basic_habit을_고르면_READY_Profile이_생긴다(world):
+    response = _start(
+        world,
+        selected_optional_keys=["basic_habit"],
+        display_labels=_labels("basic_habit"),
+        focus_variant=None,
+    )
+
+    assert response.status_code == 201, response.json()
+    body = response.json()
+    assert body["status"] == "READY"
+    assert body["selected_optional_keys"] == ["basic_habit"]
+    assert next(s for s in body["sections"] if s["section_key"] == "basic_habit")["visible"] is True
+
+
+def test_v021에서_실내대체를_고르면_422이고_저장하지_않는다(world):
+    before = _versions(world["session"], world["a"])
+    response = _start(
+        world,
+        selected_optional_keys=["indoor_alternative"],
+        display_labels=_labels("indoor_alternative"),
+        focus_variant=None,
+    )
+
+    assert _error(response) == (422, "VALIDATION_FAILED", ["selected_optional_keys"])
+    assert _versions(world["session"], world["a"]) == before
+
+
+@pytest.mark.parametrize("template", [INDOOR, DRILL])
+def test_v022와_v023에서_실내대체를_고르면_READY_Profile이_생긴다(world, template):
+    response = _start(
+        world,
+        base_template_ref={
+            "template_id": template.template_id,
+            "template_version": template.template_version,
+        },
+        selected_optional_keys=["indoor_alternative"],
+        display_labels=_labels("indoor_alternative"),
+        focus_variant=None,
+    )
+
+    assert response.status_code == 201, response.json()
+    body = response.json()
+    assert body["status"] == "READY"
+    assert body["base_template_ref"]["template_version"] == template.template_version
+    assert body["selected_optional_keys"] == ["indoor_alternative"]
+    assert (
+        next(s for s in body["sections"] if s["section_key"] == "indoor_alternative")["visible"]
+        is True
+    )
+
+
+def test_v023에서_훈련을_고르면_READY_Profile이_생긴다(world):
+    response = _start(
+        world,
+        base_template_ref={
+            "template_id": DRILL.template_id,
+            "template_version": DRILL.template_version,
+        },
+        selected_optional_keys=["focus", "drill"],
+        display_labels=_labels("focus", "drill"),
+    )
+
+    assert response.status_code == 201, response.json()
+    body = response.json()
+    assert body["status"] == "READY"
+    assert body["base_template_ref"]["template_version"] == DRILL.template_version
+    assert set(body["selected_optional_keys"]) == {"focus", "drill"}
+    assert next(s for s in body["sections"] if s["section_key"] == "drill")["visible"] is True
+
+
+def test_v022에서_훈련을_고르면_422이고_저장하지_않는다(world):
+    before = _versions(world["session"], world["a"])
+    response = _start(
+        world,
+        base_template_ref={
+            "template_id": INDOOR.template_id,
+            "template_version": INDOOR.template_version,
+        },
+        selected_optional_keys=["focus", "drill"],
+        display_labels=_labels("focus", "drill"),
+    )
+
+    assert _error(response) == (422, "VALIDATION_FAILED", ["selected_optional_keys"])
+    assert _versions(world["session"], world["a"]) == before
+
+
 @pytest.mark.parametrize(
     ("overrides", "field"),
     [
@@ -329,7 +422,13 @@ def test_같은_시작_요청을_두_번_보내면_Profile_이_두_개_생긴다
         ({"selected_optional_keys": ["focus", "focus"]}, "selected_optional_keys"),
         ({"selected_optional_keys": ["focus", "habits"]}, "selected_optional_keys"),
         ({"selected_optional_keys": ["focus", "event_schedule"]}, "selected_optional_keys"),
-        ({"selected_optional_keys": ["focus", "drill"]}, "selected_optional_keys"),
+        (
+            {
+                "selected_optional_keys": ["focus", "drill"],
+                "display_labels": _labels("focus", "drill"),
+            },
+            "selected_optional_keys",
+        ),
         ({"display_labels": {"event_schedule": "행사"}}, "display_labels.event_schedule"),
         ({"display_labels": {"basic_habit": "기본생활"}}, "display_labels.basic_habit"),
         ({"display_labels": {**_labels("focus", "goals"), "focus": "   "}}, "display_labels.focus"),

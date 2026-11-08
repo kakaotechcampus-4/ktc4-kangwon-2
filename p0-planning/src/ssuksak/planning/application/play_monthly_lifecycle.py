@@ -9,12 +9,16 @@
   records a TEACHER_EDITED event with a ``link_change`` only, so the play name does not count as
   teacher-edited text. The official content text is never stored; it is read from the Reference.
 - Rows (M2-D03, I-3): a teacher adds a blank row at the end of a section or deletes a row. The
-  deleted row is archived whole in the plan; ids are never reused; there is no undo or reorder.
+  deleted row is archived whole in the plan; ids are never reused; there is no undo command.
   A new row's cells start without generation and become MANUAL on their first write.
+- Row order (Human Decision 2026-11-05, 하민): a teacher reorders the rows of one section, never
+  across sections. The order names every row of that section once; the same order is a no-op.
+  It is an ARRANGEMENT_CHANGED event with the row ids before and after, like add and delete.
 - Safety (M2-D08, I-3): each week holds at most one kept candidate; a candidate may be reused
   across weeks; ``None`` clears the week. Rows and placement are ARRANGEMENT_CHANGED events.
 - Drill (M2-D17, I-4): a teacher copies one of the plan's drill candidates into the drill cell.
-  The cell takes the candidate's value and CURRICULUM evidence as it is at that moment and
+  The cell takes 「[topic label]」, a line break and the candidate's sentence (2026-11-05), and its
+  CURRICULUM evidence, as they are at that moment, and
   becomes RULE_ONLY (``play_monthly.drill_copy``); a CANDIDATE_COPIED event names the source.
   A later edit of either cell never changes the other, and an edit keeps RULE_ONLY.
 - Confirm (M2-D09 · I-6) needs a theme, a rationale, and in each play section at least one row,
@@ -42,7 +46,8 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 
-from ..domain.errors import DomainError
+from ..domain.drill_topic_reference import drill_cell_value
+from ..domain.errors import DomainError, InvalidDomainValueError
 from ..domain.identifiers import ActorId, ItemId, PlanId
 from ..domain.play_monthly_plan import (
     DRILL_CELL_KEY,
@@ -108,6 +113,28 @@ class RemovePlayMonthlyActivityCommand:
     plan_id: PlanId
     actor_id: ActorId
     item_id: ItemId  # the play's name cell
+
+
+@dataclass(frozen=True, slots=True)
+class PickPlayMonthlyActivityCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+    item_id: ItemId  # a pooled AI candidate's name cell
+
+
+@dataclass(frozen=True, slots=True)
+class OrderPlayMonthlyHabitsCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+    item_ids: Sequence[ItemId]  # every habit cell, in the new week order
+
+
+@dataclass(frozen=True, slots=True)
+class OrderPlayMonthlyActivitiesCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+    section: str  # together · free_play
+    item_ids: Sequence[ItemId]  # the rows' name cells, in the new order
 
 
 @dataclass(frozen=True, slots=True)
@@ -300,8 +327,55 @@ class AddPlayMonthlyActivity:
         name_id = self._ids.new_item_id()
         key = f"{command.section}.{name_id.value}"
         row = PlayActivity(blank(name_id, key), blank(self._ids.new_item_id(), f"{key}.description"), ())
-        updated = plan.add_activity(command.section, row, actor_id=actor_id, occurred_at=now)
+        try:
+            updated = plan.add_activity(command.section, row, actor_id=actor_id, occurred_at=now)
+        except InvalidDomainValueError as error:
+            raise PlayMonthlyLifecycleError("play_monthly_section_full", str(error)) from error
         self._plans.save(updated.plan_id, updated)
+        return updated
+
+
+class PickPlayMonthlyActivity:
+    """Put a pooled AI candidate into the document (layout v0.3.0, 2026-11-06)."""
+
+    def __init__(self, *, plan_repository: PlanRepository[PlayMonthlyPlan], clock: Clock) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: PickPlayMonthlyActivityCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        plan.ensure_mutable("pick")
+        actor_id = _require_actor(command.actor_id)
+        pooled = next((r for r in plan.activity_pool if r.activity.cell.item_id == command.item_id), None)
+        if pooled is None:
+            raise PlayMonthlyLifecycleError(
+                "play_monthly_candidate_not_found", f"PlayMonthlyPlan candidate not found: {command.item_id}"
+            )
+        try:
+            updated = plan.pick_activity(command.item_id, actor_id=actor_id, occurred_at=self._clock.now())
+        except InvalidDomainValueError as error:
+            raise PlayMonthlyLifecycleError("play_monthly_section_full", str(error)) from error
+        self._plans.save(updated.plan_id, updated)
+        return updated
+
+
+class OrderPlayMonthlyHabits:
+    """Move habit cells between weeks (2026-11-06): the screen swaps two, the Core takes an order."""
+
+    def __init__(self, *, plan_repository: PlanRepository[PlayMonthlyPlan], clock: Clock) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: OrderPlayMonthlyHabitsCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        plan.ensure_mutable("order_habits")
+        actor_id = _require_actor(command.actor_id)
+        try:
+            updated = plan.order_habits(tuple(command.item_ids), actor_id=actor_id, occurred_at=self._clock.now())
+        except InvalidDomainValueError as error:
+            raise PlayMonthlyLifecycleError("invalid_habit_order", str(error)) from error
+        if updated is not plan:
+            self._plans.save(updated.plan_id, updated)
         return updated
 
 
@@ -320,6 +394,26 @@ class RemovePlayMonthlyActivity:
             )
         updated = plan.remove_activity(command.item_id, actor_id=actor_id, occurred_at=self._clock.now())
         self._plans.save(updated.plan_id, updated)
+        return updated
+
+
+class OrderPlayMonthlyActivities:
+    def __init__(self, *, plan_repository: PlanRepository[PlayMonthlyPlan], clock: Clock) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: OrderPlayMonthlyActivitiesCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        plan.ensure_mutable("order")
+        actor_id = _require_actor(command.actor_id)
+        try:
+            updated = plan.order_activities(
+                command.section, tuple(command.item_ids), actor_id=actor_id, occurred_at=self._clock.now()
+            )
+        except InvalidDomainValueError as error:
+            raise PlayMonthlyLifecycleError("invalid_activity_order", str(error)) from error
+        if updated is not plan:
+            self._plans.save(updated.plan_id, updated)
         return updated
 
 
@@ -363,16 +457,18 @@ class CopyPlayMonthlyDrillCandidate:
         plan = _require_plan(self._plans, command.plan_id)
         plan.ensure_mutable("copy")
         actor_id = _require_actor(command.actor_id)
-        candidate = next(
-            (d.cell for d in plan.drill_candidates if d.cell.item_id == command.candidate_item_id), None
+        drill = next(
+            (d for d in plan.drill_candidates if d.cell.item_id == command.candidate_item_id), None
         )
-        if not isinstance(command.candidate_item_id, ItemId) or candidate is None:
+        if not isinstance(command.candidate_item_id, ItemId) or drill is None:
             raise PlayMonthlyLifecycleError(
                 "play_monthly_drill_candidate_not_found",
                 f"Drill candidate not found: {command.candidate_item_id}",
             )
+        candidate = drill.cell
         if not candidate.value.strip():
             raise PlayMonthlyLifecycleError("play_monthly_drill_candidate_blank", "The drill candidate is blank")
+        value = drill_cell_value(drill.label, candidate.value)
         cell = next(t for t in plan.teacher_inputs if t.semantic_key == DRILL_CELL_KEY)
         generation = plan.drill_copy_generation
         source = next(
@@ -381,7 +477,7 @@ class CopyPlayMonthlyDrillCandidate:
         )
         # Another candidate with the same sentence is still a new source, so it is recorded.
         if (cell.value, cell.evidence, cell.generation, source) == (
-            candidate.value, candidate.evidence, generation, candidate.item_id,
+            value, candidate.evidence, generation, candidate.item_id,
         ):
             return plan  # the cell already holds this copy
         event = AuditEvent(
@@ -390,7 +486,7 @@ class CopyPlayMonthlyDrillCandidate:
             plan_id=plan.plan_id,
             item_id=cell.item_id,
             actor_id=actor_id,
-            value_change=ValueChange(cell.value, candidate.value),
+            value_change=ValueChange(cell.value, value),
             generation_change=(
                 None if cell.generation is None else GenerationMethodChange(cell.generation, generation)
             ),
@@ -399,7 +495,7 @@ class CopyPlayMonthlyDrillCandidate:
         updated = plan.replace_cell(
             replace(
                 cell,
-                value=candidate.value,
+                value=value,
                 evidence=candidate.evidence,
                 generation=generation,
                 audit=cell.audit.append(event),
@@ -538,15 +634,40 @@ class ConfirmPlayMonthlyPlan:
         return confirmed
 
 
+@dataclass(frozen=True, slots=True)
+class UnconfirmPlayMonthlyPlanCommand:
+    plan_id: PlanId
+    actor_id: ActorId
+
+
+class UnconfirmPlayMonthlyPlan:
+    """CONFIRMED → DRAFT. A DRAFT Plan comes back unchanged and is not saved."""
+
+    def __init__(self, *, plan_repository: PlanRepository[PlayMonthlyPlan], clock: Clock) -> None:
+        self._plans = plan_repository
+        self._clock = clock
+
+    def execute(self, command: UnconfirmPlayMonthlyPlanCommand) -> PlayMonthlyPlan:
+        plan = _require_plan(self._plans, command.plan_id)
+        actor_id = _require_actor(command.actor_id)
+        unconfirmed = plan.unconfirm(actor_id=actor_id, occurred_at=self._clock.now())
+        if unconfirmed is not plan:
+            self._plans.save(unconfirmed.plan_id, unconfirmed)
+        return unconfirmed
+
+
 def confirm_problems(plan: PlayMonthlyPlan) -> tuple[str, ...]:
     problems: list[str] = []
     for name in ("theme", "rationale"):
         if not getattr(plan, name).value.strip():
             problems.append(f"{name}: blank")
+    pick = plan.layout.activity_pick
     for section in ("together", "free_play"):
         rows = getattr(plan, section)
         if not rows:
             problems.append(f"{section}: no rows")
+        elif pick is not None and len(rows) != pick:
+            problems.append(f"{section}: {len(rows)} of {pick} rows")
         for row in rows:
             where = f"{section}:{row.cell.item_id.value}"
             if not row.cell.value.strip():

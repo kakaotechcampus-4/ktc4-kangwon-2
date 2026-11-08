@@ -62,6 +62,8 @@ def test_열두_달을_한_번에_보내고_받는다():
 
     def transport(url, *, headers, payload, timeout):
         sent["user"] = json.loads(payload["messages"][1]["content"])
+        assert sent["user"]["prompt_version"] == "annual-theme-text-v3+teacher-venues-v2"
+        assert "일부 소재로 임의로 좁히지 않는다" in payload["messages"][0]["content"]
         themes = [
             {"theme_id": month["theme_id"], "value": f"만든 주제 {month['month']}"}
             for month in sent["user"]["months"]
@@ -97,6 +99,12 @@ def test_unapproved_curriculum_stops_before_any_transport(monkeypatch):
     with pytest.raises(LlmUnavailable):
         generator.generate(_requests(1))
     assert calls == []
+
+
+def test_annual_theme_rejects_a_named_destination():
+    generator = _answers(json.dumps({"themes": [{"theme_id": "theme_0", "value": "배산유아숲터"}]}))
+    with pytest.raises(LlmFailed, match="지역·시설명"):
+        generator.generate(_requests(1))
 
 
 def test_curriculum_id_is_rejected_in_teacher_visible_theme():

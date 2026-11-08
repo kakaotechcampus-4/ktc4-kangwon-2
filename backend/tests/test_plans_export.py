@@ -11,6 +11,7 @@ import sys
 import zipfile
 
 import hwpx.hwp5.writer as hwp5_writer
+import pypdf
 import pytest
 from fastapi.testclient import TestClient
 from hwpx.errors import Hwp5Error
@@ -20,6 +21,7 @@ from app.features.centers.models import Center, Class
 from app.features.forms import hwp_form
 from app.features.plans.export import TEMPLATE_DIR
 from app.main import app
+from app.shared import hwpx_pdf
 from app.shared.hwpx import NS, TemplateMismatch, fill_table
 
 client = TestClient(app)
@@ -38,6 +40,24 @@ def _rows(march: list[str] | None = None) -> list[list[str]]:
 
 def _section(content: bytes) -> etree._Element:
     return etree.fromstring(zipfile.ZipFile(io.BytesIO(content)).read("Contents/section0.xml"))
+
+
+def test_weekly_split_export_rejects_an_unexpected_activity_row():
+    from app.features.plans.weekly_activity_hwpx import fill_weekly_activity_grid
+
+    with zipfile.ZipFile(TEMPLATE_DIR / "weekly_v1_mon_fri.hwpx") as original:
+        parts = {name: original.read(name) for name in original.namelist()}
+    section = etree.fromstring(parts["Contents/section0.xml"])
+    label = section.find(".//hp:tbl", NS).findall("hp:tr", NS)[11].find("hp:tc", NS)
+    for text in label.iter(f"{{{NS['hp']}}}t"):
+        text.text = "다른 줄"
+    parts["Contents/section0.xml"] = etree.tostring(section)
+    content = io.BytesIO()
+    with zipfile.ZipFile(content, "w") as modified:
+        for name, value in parts.items():
+            modified.writestr(name, value)
+    with pytest.raises(TemplateMismatch):
+        fill_weekly_activity_grid(content.getvalue(), None)
 
 
 def _cell(section: etree._Element, row: int, col: int) -> etree._Element:
@@ -174,7 +194,8 @@ def _confirmed_plan(klass) -> dict:
     assert created.status_code == 201, created.text
     plan_id = created.json()["id"]
     edited = client.put(
-        f"/api/plans/annual/{plan_id}/months/3", json={"theme": "새 친구", "sub_themes": ["인사"]}
+        f"/api/plans/annual/{plan_id}/months/3",
+        json={"theme": "새 친구", "sub_themes": ["인사", "이름", "놀이", "약속"]},
     )
     assert edited.status_code == 200, edited.text
     assert client.post(f"/api/plans/annual/{plan_id}/confirm").status_code == 200
@@ -242,10 +263,46 @@ def test_형식을_안_고르면_hwpx_다(db_session, mine):
 def test_모르는_형식은_422(db_session, mine):
     plan = _confirmed_plan(mine)
 
-    response = client.get(f"/api/plans/{plan['id']}/export/hwp?format=pdf")
+    response = client.get(f"/api/plans/{plan['id']}/export/hwp?format=docx")
 
     assert response.status_code == 422
     assert response.json()["error"]["fields"] == ["format"]
+
+
+def test_pdf_를_고르면_같은_표를_한_장_PDF_로_내려준다(db_session, mine):
+    plan = _confirmed_plan(mine)
+
+    response = client.get(f"/api/plans/{plan['id']}/export/hwp?format=pdf")
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/pdf"
+    assert f'filename="plan-{plan["id"]}.pdf"' in response.headers["content-disposition"]
+    [page] = pypdf.PdfReader(io.BytesIO(response.content)).pages
+    # 좁은 칸은 PDF 에서도 줄이 바뀐다(양식이 BREAK_WORD) — 공백 · 줄바꿈을 빼고 비교한다.
+    text = re.sub(r"\s+", "", page.extract_text())
+    assert "생활주제" in text and "소주제" in text
+    for month in plan["months"]:
+        for value in [month["theme"], *month["sub_themes"]]:
+            assert re.sub(r"\s+", "", value) in text
+
+
+def test_pdf_로_못_바꾸면_hwpx_로_받으라고_한다(db_session, mine, monkeypatch):
+    """한글 글꼴이 서버에 없을 때 · 그리다 실패할 때 모두 503 — hwpx 는 그대로 받는다."""
+    plan = _confirmed_plan(mine)
+
+    def fail(hwpx):
+        raise hwpx_pdf.FontMissing("없음")
+
+    monkeypatch.setattr(hwpx_pdf, "to_pdf", fail)
+
+    response = client.get(f"/api/plans/{plan['id']}/export/hwp?format=pdf")
+    default = client.get(f"/api/plans/{plan['id']}/export/hwp")
+
+    assert response.status_code == 503
+    body = response.json()["error"]
+    assert body["code"] == "DEPENDENCY_UNAVAILABLE"
+    assert "pdf 로 바꿀 수 없습니다. hwpx 로 받아주세요" in body["message"]
+    assert default.status_code == 200
 
 
 @pytest.mark.parametrize(
@@ -351,7 +408,7 @@ def test_연간_안전교육은_저장돼_있어도_hwpx_에_싣지_않는다(mi
         f"/api/plans/annual/{plan['id']}/months/3",
         json={
             "theme": "새 친구",
-            "sub_themes": ["친구와 인사하기"],
+            "sub_themes": ["친구와 인사하기", "이름", "놀이", "약속"],  # 3월 = 4주
             "safety_education": ["traffic_safety"],
         },
     )

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
+from .. import timing
 from ..planning.domain.errors import InvalidDomainValueError
 from ..planning.evidence.safety_quality import (
     SAFETY_QUALITY_ID,
@@ -16,7 +16,7 @@ from ..planning.evidence.safety_quality import (
 )
 
 DEFAULT_SAFETY_QUALITY_PATH = (
-    Path(__file__).resolve().parents[3] / "data" / "evidence" / "safety_reference_quality_v0_1_0.json"
+    Path(__file__).resolve().parents[3] / "data" / "evidence" / "safety_reference_quality_v0_2_0.json"
 )
 _ROOT_FIELDS = {
     "$schema_note", "schema_version", "quality_id", "quality_version", "classification_version",
@@ -84,5 +84,5 @@ class JsonSafetyReferenceQualityRepository:
 
     def get_quality(self) -> SafetyReferenceQuality:
         if self._cached is None:
-            self._cached = load_safety_quality_from_dict(json.loads(self._path.read_text(encoding="utf-8")))
+            self._cached = load_safety_quality_from_dict(timing.read_json(self._path))
         return self._cached

@@ -26,6 +26,7 @@ from ..domain.play_monthly_plan import (
     TimetableSize,
 )
 from ..domain.provenance import SplitAxis
+from ..domain.safety_placement import STATUTORY_SHORT_LABELS, SafetyKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +34,9 @@ class PlayMonthlyDocumentWeek:
     habit_label: str  # blank when the habit is blank or was not picked from an entry
     habit: str
     safety: str
+    # 「[교통안전]」 head printed above the safety sentence, as on screen: the legal category's
+    # short name, 생활안전 for the rest; blank when the sentence is blank (Human Decision 2026-11-05, 하민).
+    safety_label: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,9 +85,15 @@ def play_monthly_document(plan: PlayMonthlyPlan, daily_life: DailyLifeCatalog) -
         references.daily_life_catalog_version,
     ):
         raise InvalidDomainValueError("The habit labels must come from the plan's own daily-life catalog")
-    safety = {c.cell.item_id: c.cell.value for c in plan.safety_candidates}
+    safety = {c.cell.item_id: c for c in plan.safety_candidates}
     teacher = {t.semantic_key: t.value for t in plan.teacher_inputs}
     specialized = tuple(c.value for c in plan.specialized_timetable)
+
+    def safety_label(item_id: str | None) -> str:
+        if item_id is None or not safety[item_id].cell.value.strip():
+            return ""
+        c = safety[item_id]
+        return STATUTORY_SHORT_LABELS.get(c.category_id, "법정") if c.kind is SafetyKind.STATUTORY else "생활안전"
 
     def label(habit) -> str:
         if not (habit.entry_id and habit.cell.value.strip()):
@@ -109,7 +119,8 @@ def play_monthly_document(plan: PlayMonthlyPlan, daily_life: DailyLifeCatalog) -
             PlayMonthlyDocumentWeek(
                 label(habit.habit),
                 habit.habit.cell.value,
-                safety[placed.candidate_item_id] if placed.candidate_item_id else "",
+                safety[placed.candidate_item_id].cell.value if placed.candidate_item_id else "",
+                safety_label(placed.candidate_item_id),
             )
             for habit, placed in zip(plan.habits, plan.safety_weeks, strict=True)
         ),

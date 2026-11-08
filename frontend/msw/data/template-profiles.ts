@@ -13,11 +13,17 @@ import type {
 /**
  * 월간 양식 설정 목업 (docs/api-spec.md §9-2 · §9-4). 월간 생성 목업과 **같은 저장소**를 쓴다.
  *
- * 기반 Template 은 서버처럼 v0.1.1 · v0.2.1 둘이고 **둘 다 승인 대기**다. 승인된 경로는
- * `approveTemplateForTest` 로만 연다(서버 테스트의 OD-N11 (A) 와 같은 뜻) — 화면 코드는 부르지 않는다.
+ * 기반 Template 은 서버처럼 v0.1.1 · v0.2.1 · v0.2.2 · v0.2.3 이고, 승인 상태도 서버 데이터와 같다
+ * (store.ts `SERVER_APPROVED`). 판이 오를수록 고를 수 있는 칸이 는다 — v0.2.2 실내 대체활동,
+ * v0.2.3 소방대피 훈련. `approveTemplateForTest` 는 검토 대기 판(v0.1.1)을 여는 테스트 전용이다.
  */
 const TEMPLATE_ID = "ssuksak.monthly-template-a";
-const TEMPLATE_VERSIONS = ["monthly-template-a-v0.1.1", "monthly-template-a-v0.2.1"];
+const TEMPLATE_VERSIONS = [
+  "monthly-template-a-v0.1.1",
+  "monthly-template-a-v0.2.1",
+  "monthly-template-a-v0.2.2",
+  "monthly-template-a-v0.2.3",
+];
 /** 목업에는 로그인 계정 id 가 없다 — 목업 로그인 응답의 id(1)를 쓴다. */
 export const MOCK_USER_ID = 1;
 type Section = MonthlyTemplate["sections"][number];
@@ -28,7 +34,7 @@ const section = (
   selection: Section["selection"],
   label = section_key,
 ): Section => ({ section_key, label, role, repeat_by, selection });
-/** Template A 데이터 순서 그대로. label 은 데이터 값(칸 이름)이다. */
+/** Template A v0.1.1 · v0.2.1 데이터 순서 그대로. label 은 데이터 값(칸 이름)이다. */
 const SECTIONS: Section[] = [
   section("theme", "CONTENT", "NONE", "REQUIRED"),
   section("week_axis", "AXIS", null, "REQUIRED"),
@@ -43,8 +49,25 @@ const SECTIONS: Section[] = [
   section("special_program", "CONTENT", null, "NOT_SUPPORTED"),
   section("event_schedule", "CONTENT", null, "INSTITUTION_INPUT"),
 ];
-const REQUIRED = SECTIONS.filter((s) => s.selection === "REQUIRED").map((s) => s.section_key);
-const SELECTABLE = SECTIONS.filter((s) => s.selection === "OPTIONAL").map((s) => s.section_key);
+/** 칸을 빼고 `after` 칸 뒤에 다시 넣는다 — 새 판은 칸 위치만 옮기고 고를 수 있게 연다. */
+const move = (list: Section[], moved: Section, after: string) => {
+  const rest = list.filter((s) => s.section_key !== moved.section_key);
+  const at = rest.findIndex((s) => s.section_key === after) + 1;
+  return [...rest.slice(0, at), moved, ...rest.slice(at)];
+};
+// v0.2.2: 실내 대체활동이 바깥놀이 아래 주마다 칸으로. v0.2.3: 소방대피 훈련이 안전교육 아래 한 달 칸으로.
+const V022 = move(
+  SECTIONS,
+  section("indoor_alternative", "CONTENT", "WEEK", "OPTIONAL"),
+  "outdoor_play",
+);
+const V023 = move(V022, section("drill", "CONTENT", "NONE", "OPTIONAL"), "safety_education");
+const sectionsOf = (version: string) =>
+  ({ "monthly-template-a-v0.2.2": V022, "monthly-template-a-v0.2.3": V023 })[version] ?? SECTIONS;
+const keysOf = (version: string, selection: Section["selection"]) =>
+  sectionsOf(version)
+    .filter((s) => s.selection === selection)
+    .map((s) => s.section_key);
 const FOCUS_VARIANTS = ["SUBTHEME", "EXPECTED_PLAY", "WEEKLY_THEME"];
 const EMPTY: ProfilePointer = { profile_ref: null, changed_by: null, changed_at: null };
 
@@ -60,7 +83,7 @@ export const listTemplates = (): MonthlyTemplate[] => {
     return {
       template_ref,
       approved: approved.includes(templateKey(template_ref)),
-      sections: SECTIONS,
+      sections: sectionsOf(template_version),
       focus_variants: FOCUS_VARIANTS,
     };
   });
@@ -76,13 +99,15 @@ export const approveTemplateForTest = (ref: TemplateRef) =>
 
 /**
  * 시작 요청의 입력 문제(서버 `_check_start` 와 같은 순서). 없으면 null.
- * 고를 수 없는 칸(event_schedule · drill 포함) · 표시 이름 · focus_variant 를 본다.
+ * 고를 수 없는 칸(판마다 다르다 — event_schedule 은 늘 못 고른다) · 표시 이름 · focus_variant 를 본다.
  */
 export function startProblem(input: Required<TemplateProfileInput>): string[] | null {
   const keys = input.selected_optional_keys;
-  if (new Set(keys).size !== keys.length || !keys.every((k) => SELECTABLE.includes(k)))
+  const version = input.base_template_ref.template_version;
+  const selectable = keysOf(version, "OPTIONAL");
+  if (new Set(keys).size !== keys.length || !keys.every((k) => selectable.includes(k)))
     return ["selected_optional_keys"];
-  const chosen = [...REQUIRED, ...keys];
+  const chosen = [...keysOf(version, "REQUIRED"), ...keys];
   for (const [key, label] of Object.entries(input.display_labels))
     if (!chosen.includes(key) || !label.trim()) return ["display_labels." + key];
   const missing = chosen.filter((k) => !(k in input.display_labels)).sort();
@@ -99,18 +124,21 @@ export function startProblem(input: Required<TemplateProfileInput>): string[] | 
 /** 원 소유 READY v1. 원 기본은 걸지 않는다. 요청마다 새 Profile 이다(멱등 아님). */
 export const addReadyProfile = (centerId: number, input: Required<TemplateProfileInput>) =>
   commit((db) => {
-    const chosen = [...REQUIRED, ...input.selected_optional_keys];
+    const version = input.base_template_ref.template_version;
+    const chosen = [...keysOf(version, "REQUIRED"), ...input.selected_optional_keys];
     const profile: ReadyProfile = {
       profile_ref: { profile_id: "tprofile_mock_" + db.next++, profile_version: "v1" },
       status: "READY",
       base_template_ref: input.base_template_ref,
       selected_optional_keys: [...input.selected_optional_keys],
-      sections: SECTIONS.filter((s) => chosen.includes(s.section_key)).map((s) => ({
-        section_key: s.section_key,
-        label: input.display_labels[s.section_key] ?? null,
-        repeat_by: s.repeat_by,
-        visible: true,
-      })),
+      sections: sectionsOf(version)
+        .filter((s) => chosen.includes(s.section_key))
+        .map((s) => ({
+          section_key: s.section_key,
+          label: input.display_labels[s.section_key] ?? null,
+          repeat_by: s.repeat_by,
+          visible: true,
+        })),
       created_at: new Date().toISOString(),
     };
     db.profiles.push({ center_id: centerId, status: "READY", profile });

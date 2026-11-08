@@ -15,6 +15,8 @@ from .contracts import (
 )
 from .parser import parse_monthly_cell_proposal
 from .ports import MonthlyCellPlanningProvider
+from .teacher_memo import split_memo_applied
+from .validation import sanitize_cell_activity_detail
 
 
 class MonthlyCellPlanner:
@@ -40,17 +42,19 @@ class MonthlyCellPlanner:
         response = self._provider.generate_cell(request)
         if not is_compatible_monthly_model(response.model):
             raise ProposalRejectedError(("UNEXPECTED_MODEL",))
-        proposal = parse_monthly_cell_proposal(response.content)
+        content, memo_applied, _ = split_memo_applied(response.content, request.memo_addresses)
+        proposal = parse_monthly_cell_proposal(content)
         validation = validate_monthly_cell_proposal(
             proposal, packet, request
         )
         if not validation.is_valid:
             raise ProposalRejectedError(validation.codes)
         return MonthlyCellPlanningOutcome(
-            proposal=proposal,
+            proposal=sanitize_cell_activity_detail(proposal, packet, request),
             model=response.model,
             prompt_version=request.prompt_version,
             packet_fingerprint=request.packet_fingerprint,
             plan_snapshot_fingerprint=request.plan_snapshot_fingerprint,
             request_id=response.request_id,
+            memo_applied=bool(memo_applied),
         )

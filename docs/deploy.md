@@ -1,6 +1,7 @@
 # 배포
 
-**`main` 에 머지되면 자동으로 올라간다.** 손으로도 같은 스크립트를 돌릴 수 있다.
+**배포 브랜치에 머지되면 자동으로 올라간다.** 어느 브랜치인지는 `deploy.yml` 의 `on.push.branches` 가 정한다.
+손으로도 같은 스크립트를 돌릴 수 있다.
 
 ```
 주소      https://ssample.duckdns.org
@@ -38,13 +39,15 @@ DISCORD_WEBHOOK  Secret      실패 알림.  없으면 알림만 건너뛴다
 ## 자동 배포가 하는 일
 
 ```
-main 에 push
+배포 브랜치에 push
+  ↓
+올릴 커밋을 SHA 하나로 고정         브랜치 이름을 서버에 넘기지 않는다
   ↓
 OIDC 로 AWS 인증                  키 없음
   ↓
 scripts/deploy.sh 를 통째로 보냄   aws ssm send-command
   ↓
-서버가 그 스크립트를 실행           git reset → build → migrate → up -d
+서버가 그 스크립트를 실행           git checkout <SHA> → build → migrate → up -d
   ↓
 끝날 때까지 기다림                  최대 20분.  안 기다리면 실패해도 초록불이 뜬다
   ↓
@@ -113,19 +116,29 @@ curl -m 5 -o /dev/null -w "5432  %{http_code}\n" http://13.125.107.188:5432     
 Actions → Deploy → Run workflow → ref 에 브랜치 이름 (예: develop) → Run
 ```
 
-`push` 로 들어온 배포는 늘 `main` 이다. 고를 수 있는 건 손으로 돌릴 때뿐이다.
+`push` 로 들어온 배포는 push 된 그 커밋을 올린다. 고를 수 있는 건 손으로 돌릴 때뿐이다.
+**브랜치 이름을 넣어도 배포가 시작될 때 그 브랜치의 끝 커밋 SHA 하나로 고정해서 올린다.**
+
+**전에는 브랜치 이름을 서버에 그대로 넘겼다.** 서버는 도는 순간의 브랜치 끝을 올려서, 앞 배포가
+서버에 닿기 전에 머지가 또 들어오면 앞 run 이 뒤 커밋을 자기 이름으로 올렸다(2026-11-04 에 4번).
+기록과 실제 운영이 달랐다.
 
 **전에는 `deploy.sh` 가 `main` 을 박아 두었다.** 그래서 손으로 develop 을 올려 둔 서버에
 자동 배포를 한 번 돌리면 조용히 main 으로 되돌아갔고, 무엇이 돌고 있는지 아무도 몰랐다.
 2026-10-20 에 `DEPLOY_REF` 로 받게 고쳤다.
 
-**치울 필요가 없다.** `main` 에 머지되는 순간 자동 배포가 돌아 `main` 으로 되돌아온다.
+**치울 필요가 없다.** 다음 자동 배포가 돌면 그 커밋으로 돌아온다.
 마이그레이션으로 생긴 표는 남지만 옛 코드는 그 표를 읽지 않아 문제가 없다 — **지우지 않는다.**
 
 ### 되감을 때 (롤백)
 
 나쁜 배포가 나가면 **직전 커밋 SHA 로 다시 배포한다.** 같은 길이다 — 롤백 전용 길을
 따로 두지 않는다. 평소에 안 쓰는 길은 정작 급할 때 안 돈다.
+
+**⚠️ `docker-compose.server.yml` 이 없는 커밋으로 되감기 전에는** 서버 `.env` 의
+`COMPOSE_FILE` 줄을 지우고, 배포 디렉터리에서 `sudo docker compose config --quiet` 가
+성공하는지 확인한 뒤 workflow_dispatch 를 돌린다. 다시 켤 때는 그 파일이 들어간 배포가
+끝난 뒤 「서버 로그」의 켜는 순서를 따른다.
 
 ```
 Actions → Deploy → Run workflow → ref 에 직전 커밋 SHA → Run
@@ -254,6 +267,53 @@ cd / && rm -rf "$d"
 # cron 과 같은 조건으로 확인 — ktc-ec2-ssm-role 이 나와야 한다
 env -i PATH=/usr/bin:/bin HOME=/root aws sts get-caller-identity --query Arn --output text
 ```
+
+### 서버 로그 — 배포 뒤에도 남기려면
+
+배포마다 backend 컨테이너를 새로 만들어 json-file 로그가 사라진다(2026-10-22 확인).
+운영 서버는 journald 에 남긴다(ADR-058).
+
+**켜는 순서 (한 번만)** — 이 변경이 들어간 배포가 **끝난 뒤에** 한다.
+
+① 서버 `.env` 에 한 줄을 넣는다.
+
+```text
+COMPOSE_FILE=docker-compose.yml:docker-compose.server.yml
+```
+
+**⚠️ ① 을 배포 전에 넣지 않는다.** 서버에 아직 없는 파일을 가리켜 `docker compose` 명령이
+전부 실패한다. 밤 백업(`scripts/backup.sh` 도 `docker compose` 를 쓴다)까지 멈춘다.
+
+② backend 를 다시 만들고 ③ 로그 드라이버를 확인한다.
+
+```bash
+sudo docker compose up -d backend
+sudo docker inspect "$(sudo docker compose ps -q backend)" --format '{{.HostConfig.LogConfig.Type}}'  # journald
+```
+
+바꾸는 순간 지금 컨테이너의 json-file 로그는 마지막으로 한 번 사라진다. 남기려면 ② 전에
+`sudo docker compose logs backend --no-color > backend-before-journald.log` 로 떠 둔다.
+사용자 ID 가 들어 있으니 서버 밖으로 옮기지 않는다.
+
+**보존 30일 (한 번만).** 서버 전체 journal 에 걸린다. 용량 상한은 기본값(파일시스템 10%, 최대 4G)이다.
+파일 단위로 지워서 30일보다 조금 더 남을 수 있다.
+
+```bash
+sudo mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nMaxRetentionSec=30day\n' | sudo tee /etc/systemd/journald.conf.d/ssample.conf
+sudo systemctl restart systemd-journald
+```
+
+**읽는 법:**
+
+```bash
+sudo journalctl CONTAINER_TAG=ssample-backend --since -24h -o cat --no-pager | grep unexpected_error
+bash scripts/llm-usage.sh
+```
+
+되돌리려면 ① 의 줄을 지우고 `sudo docker compose up -d backend` 를 돌린다.
+파일이 없는 커밋으로 되감을 때는 「되감을 때 (롤백)」의 경고를 먼저 본다.
+로컬에서는 켜지 않는다 — OrbStack · Docker Desktop 에는 journald 가 없다.
 
 ---
 

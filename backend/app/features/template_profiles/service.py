@@ -22,6 +22,7 @@ MONTHLY_TEMPLATE_REFS = (
     TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.1.1"),
     TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.2.1"),
     TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.2.2"),
+    TemplateRef("ssuksak.monthly-template-a", "monthly-template-a-v0.2.3"),
 )
 
 

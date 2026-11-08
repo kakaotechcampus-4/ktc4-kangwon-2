@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import functools
 import json
 from pathlib import Path
 
+from .. import timing
 from ..planning.domain.errors import InvalidDomainValueError
 from ..planning.domain.provenance import EvidenceSourceType
 from ..planning.evidence.artifact import (
@@ -31,7 +33,7 @@ DEFAULT_EVIDENCE_STORE_PATH = (
     Path(__file__).resolve().parents[3]
     / "data"
     / "evidence"
-    / "institution_evidence_v0_1_0.json"
+    / "institution_evidence_v0_2_0.json"
 )
 
 _RECORD_FIELDS = {
@@ -207,18 +209,23 @@ class JsonInstitutionEvidenceRepository:
     ) -> None:
         self._path = Path(path)
         self._expected = expected_content_sha256
-        self._cached: InstitutionEvidenceStore | None = None
 
     def get_store(self) -> InstitutionEvidenceStore:
-        if self._cached is None:
-            try:
-                payload = json.loads(self._path.read_text(encoding="utf-8"))
-            except (FileNotFoundError, json.JSONDecodeError) as exc:
-                raise EvidenceStoreError(f"Cannot read Evidence Store: {self._path}") from exc
-            self._cached = load_evidence_store_from_dict(
-                payload, expected_content_sha256=self._expected
-            )
-        return self._cached
+        return _load_store(self._path, self._expected)
+
+
+# Cached per process, not per instance: the compositions build a new repository on
+# every request, so a per-instance cache never hit and every Monthly / Weekly
+# generation re-read and re-validated the 14 MB store (about 0.3 s, 76 MB peak).
+# The file is a pinned read-only artifact, so one load per (path, pin) is safe.
+# A failed load raises and is not cached; the next call tries again.
+@functools.lru_cache(maxsize=4)
+def _load_store(path: Path, expected: str | None) -> InstitutionEvidenceStore:
+    try:
+        payload = timing.read_json(path)
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        raise EvidenceStoreError(f"Cannot read Evidence Store: {path}") from exc
+    return load_evidence_store_from_dict(payload, expected_content_sha256=expected)
 
 
 class InMemoryInstitutionEvidenceRepository:

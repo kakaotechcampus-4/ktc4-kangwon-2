@@ -41,7 +41,7 @@ from ssuksak.adapters.safety_evidence_classification_repository import (
 )
 from ssuksak.adapters.safety_reference_quality_repository import JsonSafetyReferenceQualityRepository
 from ssuksak.planning.application.generate_play_monthly_plan import (
-    PLAY_MONTHLY_LAYOUT_V0_2,
+    PLAY_MONTHLY_LAYOUT_V0_3,
     GeneratePlayMonthlyPlan,
     GeneratePlayMonthlyPlanCommand,
     PlayMonthlyGenerationError,
@@ -79,8 +79,8 @@ from ssuksak.planning.planner.play_monthly import (
 
 T0 = datetime(2027, 2, 1, tzinfo=UTC)
 LEGAL = "child-welfare-act-decree-annex6-2022-06-21"
-CLASSIFICATION = "safety-evidence-classification-v0.2.0"
-QUALITY = "safety-reference-quality-v0.1.0"
+CLASSIFICATION = SAFETY_CLASSIFICATION_VERSION
+QUALITY = SAFETY_QUALITY_VERSION
 SELECTED = ("cand9", "cand2", "cand4", "cand5", "cand7")  # teacher order, not numeric order
 
 CURRICULUM = CurriculumCatalog(
@@ -172,11 +172,11 @@ def _valid(request) -> dict:
         "rationale": "봄에는 바깥에서 새싹과 꽃을 만나는 놀이가 이어질 것으로 예상합니다.",
         "together": [
             {"name": f"함께 놀이 {n}", "description": f"함께 놀이 {n}을 설명해요.", "content_ids": ids[:2], "parent_ref": None}
-            for n in range(1, 6)
+            for n in range(1, 9)
         ],
         "free_play": [
             {"name": f"자유놀이 {n}", "description": f"자유놀이 {n}을 설명해요.", "content_ids": ids[2:3], "parent_ref": None}
-            for n in range(1, 6)
+            for n in range(1, 9)
         ],
         # Contains safety words (교통안전 …) on purpose: ordinary here, not leakage.
         "safety": [
@@ -243,6 +243,11 @@ CLASSIFIED = JsonSafetyEvidenceClassificationRepository().get_classification()
 QUALITY_TABLE = JsonSafetyReferenceQualityRepository().get_quality()
 
 
+def _pool(plan, section: str) -> tuple:
+    """Layout v0.3.0: the generated rows are pooled candidates until the teacher picks them."""
+    return tuple(r.activity for r in plan.activity_pool if r.section == section)
+
+
 def _run(
     *edits,
     parent=None,
@@ -253,6 +258,7 @@ def _run(
     classification=CLASSIFIED,
     quality=QUALITY_TABLE,
     provider=None,
+    optional_context=None,
     **command_changes,
 ):
     parents = InMemoryPlanRepository()
@@ -274,6 +280,7 @@ def _run(
         provider=provider,
         clock=FixedClock(datetime(2027, 2, 20, tzinfo=UTC)),
         id_generator=DeterministicIdGenerator(),
+        optional_context=optional_context,
     )
     command = GeneratePlayMonthlyPlanCommand(
         **{
@@ -307,7 +314,12 @@ def test_generates_one_draft_with_the_fixed_initial_shape():
     assert plans.save_count == 1 and plans.get(plan.plan_id) == plan
     assert parents.save_count == 1  # only the fixture save; the parent is never written
     assert len(provider.requests) == 1
-    assert (len(plan.together), len(plan.free_play)) == (5, 5)
+    from ssuksak.planning.planner.v1_guidance import NATURAL_PLAY_GUIDANCE, SAFETY_TEXT_GUIDANCE
+    assert NATURAL_PLAY_GUIDANCE in provider.requests[0].system_prompt
+    assert SAFETY_TEXT_GUIDANCE in provider.requests[0].system_prompt
+    assert "소재나 도구 이름만으로 배움을 연결" in provider.requests[0].system_prompt
+    assert (len(_pool(plan, "together")), len(_pool(plan, "free_play"))) == (8, 8)
+    assert (plan.together, plan.free_play) == ((), ())  # the teacher picks five of each
     kinds = [c.kind for c in plan.safety_candidates]
     assert kinds == [SafetyKind.STATUTORY] * 6 + [SafetyKind.SUPPLEMENTAL] * 2
     assert [c.category_id for c in plan.safety_candidates[:6]] == [c.category_id for c in RULE.categories]
@@ -319,7 +331,7 @@ def test_generates_one_draft_with_the_fixed_initial_shape():
     assert (plan.health.cell.value, plan.health.entry_id) == ("합성 건강 1", "he1")
     assert (plan.nutrition.cell.value, plan.nutrition.entry_id) == ("합성 영양 1", "nu1")
     # Teacher-input cells: blank, never generated, each with its own CREATED event.
-    assert tuple(t.semantic_key for t in plan.teacher_inputs) == PLAY_MONTHLY_LAYOUT_V0_2.teacher_input_keys
+    assert tuple(t.semantic_key for t in plan.teacher_inputs) == PLAY_MONTHLY_LAYOUT_V0_3.teacher_input_keys
     assert all(t.value == "" and t.generation is None and t.evidence == () for t in plan.teacher_inputs)
     cells = plan.cells()
     assert all(
@@ -327,7 +339,7 @@ def test_generates_one_draft_with_the_fixed_initial_shape():
     )
     assert len({c.item_id for c in cells}) == len(cells)
     # A list row's semantic key carries its own item id, not its position.
-    assert all(a.cell.semantic_key == f"together.{a.cell.item_id.value}" for a in plan.together)
+    assert all(a.cell.semantic_key == f"together.{a.cell.item_id.value}" for a in _pool(plan, "together"))
     # The direction and header strings are Rule copies (layout v0.2.0); the rest is RULE_LLM.
     copies = {plan.direction.item_id, *(c.item_id for c in plan.display.cells())}
     generated = [c for c in cells if c.generation is not None and c.item_id not in copies]
@@ -336,7 +348,7 @@ def test_generates_one_draft_with_the_fixed_initial_shape():
     }
     assert {
         (c.generation.method, c.generation.rule_version) for c in cells if c.item_id in copies and c.generation
-    } == {(GenerationMethod.RULE_ONLY, "play-monthly-layout-v0.2.0")}
+    } == {(GenerationMethod.RULE_ONLY, "play-monthly-layout-v0.3.0")}
     assert [e.event_type for e in plan.audit] == [AuditEventType.CREATED]
 
 
@@ -356,7 +368,7 @@ def test_snapshot_keeps_parent_references_and_request_fingerprint():
     )
     assert (refs.legal_rule_version, refs.evidence_store_sha256) == (LEGAL, STORE.content_sha256)
     assert (refs.safety_classification_version, refs.safety_quality_version) == (CLASSIFICATION, QUALITY)
-    assert plan.layout.layout_version == "play-monthly-layout-v0.2.0"
+    assert plan.layout.layout_version == "play-monthly-layout-v0.3.0"
 
     other, emphasized, *_ = _run(emphasized_row_keys=("cand4",))
     assert other.execute(emphasized).references.request_fingerprint != refs.request_fingerprint
@@ -383,12 +395,12 @@ def test_a_row_cites_the_parent_only_when_it_builds_on_one_play():
     use_case, command, *_ = _run(cite)
     plan = use_case.execute(command)
 
-    cited = plan.together[1]
+    cited = _pool(plan, "together")[1]
     parent_sources = [e for e in cited.cell.evidence if e.source_type is EvidenceSourceType.PARENT_PLAN]
     assert [(e.source_id, e.display_name) for e in parent_sources] == [("parent-1", "m03_m05 놀이 4")]
     assert cited.parent_snapshot.parent_item_id == ItemId("m03_m05-4-name")
     assert cited.parent_snapshot.snapshot_value == "m03_m05 놀이 4"
-    others = [a for a in plan.together + plan.free_play if a is not cited]
+    others = [a for a in _pool(plan, "together") + _pool(plan, "free_play") if a is not cited]
     assert all(a.parent_snapshot is None and a.cell.cites_only(EvidenceSourceType.CURRICULUM) for a in others)
 
 
@@ -646,12 +658,15 @@ def test_repair_fixes_only_the_flagged_row():
     plan = use_case.execute(command)
 
     assert plans.save_count == 1 and len(provider.requests) == 2
+    from ssuksak.planning.planner.v1_guidance import NATURAL_PLAY_GUIDANCE, SAFETY_TEXT_GUIDANCE
+    assert NATURAL_PLAY_GUIDANCE in provider.requests[1].system_prompt
+    assert SAFETY_TEXT_GUIDANCE in provider.requests[1].system_prompt
     repair = json.loads(provider.requests[1].user_content)
     assert repair["issues"] == [{"location": "together[2]", "code": "UNKNOWN_CONTENT_ID"}]
-    versions = [a.cell.generation.rule_version for a in plan.together]
+    versions = [a.cell.generation.rule_version for a in _pool(plan, "together")]
     assert versions == [PLAY_MONTHLY_PROMPT_VERSION] * 2 + [PLAY_MONTHLY_REPAIR_PROMPT_VERSION] + [
         PLAY_MONTHLY_PROMPT_VERSION
-    ] * 2
+    ] * 5
     assert plan.theme.generation.rule_version == PLAY_MONTHLY_PROMPT_VERSION
     assert plan.references.prompt_version == PLAY_MONTHLY_PROMPT_VERSION
 
@@ -762,7 +777,7 @@ def test_the_real_drill_file_is_approved_and_a_withdrawn_copy_is_rejected():
     real = JsonDrillTopicReferenceRepository()
     drills = real.get_catalog("ssuksak.emergency-drill-topics", "emergency-drill-topics-v0.1.0")
     assert drills.activation_status is ActivationStatus.HUMAN_APPROVED
-    assert len(drills.for_month(4)) >= PLAY_MONTHLY_LAYOUT_V0_2.drill_candidate_count
+    assert len(drills.for_month(4)) >= PLAY_MONTHLY_LAYOUT_V0_3.drill_candidate_count
     assert {t.content_id for t in drills.topics} == {"nuri2019.1.3.4"}
     use_case, command, plans, provider, _ = _run(
         drills=replace(drills, activation_status=ActivationStatus.PENDING_HUMAN_REVIEW),
@@ -963,13 +978,13 @@ def test_each_activity_pairs_a_document_name_with_an_edit_screen_description():
     use_case, command, *_ = _run()
     plan = use_case.execute(command)
 
-    for activity in plan.together + plan.free_play:
+    for activity in _pool(plan, "together") + _pool(plan, "free_play"):
         name, description = activity.cell, activity.description
         assert description.semantic_key == f"{name.semantic_key}.description"
         assert description.item_id != name.item_id and description.evidence == name.evidence
         assert description.value == f"{name.value}을 설명해요."
         assert description.generation.method is GenerationMethod.RULE_LLM
-    assert plan.together[0].cell.semantic_key == f"together.{plan.together[0].cell.item_id.value}"
+    assert _pool(plan, "together")[0].cell.semantic_key == f"together.{_pool(plan, "together")[0].cell.item_id.value}"
 
 
 @pytest.mark.parametrize(
@@ -998,7 +1013,7 @@ def test_a_description_repair_stays_inside_the_description(second, versions):
 
     issues = json.loads(provider.requests[1].user_content)["issues"]
     assert issues == [{"location": "together[1].description", "code": "UNSUPPORTED_FACT"}]
-    row = plan.together[1]
+    row = _pool(plan, "together")[1]
     assert (row.cell.generation.rule_version, row.description.generation.rule_version) == (
         PLAY_MONTHLY_PROMPT_VERSION,
         PLAY_MONTHLY_REPAIR_PROMPT_VERSION,
@@ -1009,7 +1024,7 @@ def test_a_description_repair_stays_inside_the_description(second, versions):
 def test_domain_keeps_a_description_paired_with_its_name():
     use_case, command, *_ = _run()
     plan = use_case.execute(command)
-    first, second = plan.together[:2]
+    first, second = _pool(plan, "together")[:2]
 
     with pytest.raises(InvalidDomainValueError):
         replace(first, description=second.description)
@@ -1022,7 +1037,7 @@ def test_a_repair_that_removes_the_internal_id_is_stored_clean():
 
     issues = json.loads(provider.requests[1].user_content)["issues"]
     assert issues == [{"location": "together[3]", "code": "SOURCE_IDENTIFIER_LEAKAGE"}]
-    assert plans.save_count == 1 and plan.together[3].cell.value == "함께 놀이 4"
+    assert plans.save_count == 1 and _pool(plan, "together")[3].cell.value == "함께 놀이 4"
 
 
 def test_theme_and_rationale_cite_the_parent_period_they_were_written_from():
@@ -1037,3 +1052,239 @@ def test_theme_and_rationale_cite_the_parent_period_they_were_written_from():
             "m03_m05",
         )
         assert source.display_name == PLAY_PROJECT_LAYOUT_V0_2.periods[0].label
+
+
+def test_a_teacher_memo_reaches_the_prompt_marks_its_cells_and_keeps_skipped_requests():
+    memo = "재난안전을 세 번 넣고, 물놀이 느낌이 나게 해 주세요"
+
+    def answer(data):
+        data["memo_applied"] = ["free_play[0]", "safety:disaster_preparedness_safety"]
+        data["memo_skipped"] = [{"summary": "물놀이 기구 사용", "reason": "OUT_OF_RANGE"}]
+        # 2층: 횟수 · 주 요청은 뽑기만 한다. 2주차가 겹치고, 아동학대 예방은 둘 주가 남지 않는다.
+        data["safety_requests"] = [
+            {"slot": "disaster_preparedness_safety", "weeks": ["2027-04-W2"], "min_weeks": 3},
+            # 같은 주를 두 번 짚어도 한 번이다(MEMO-01) — 교통안전은 한 주만 놓인다.
+            {"slot": "traffic_safety", "weeks": ["2027-04-W2", "2027-04-W2"], "min_weeks": 0},
+            {"slot": "child_abuse_prevention", "weeks": [], "min_weeks": 2},
+        ]
+
+    use_case, command, plans, provider, _ = _run(answer, teacher_memo=memo)
+    plan = use_case.execute(command)
+
+    (request,) = provider.requests
+    assert request.prompt_version.endswith("+teacher-memo-v1+memo-share-v1+safety-requests-v1")
+    assert "많아야 3개 후보에만" in request.system_prompt
+    assert json.loads(request.user_content)["teacher_memo"]["text"] == memo
+    assert "life_safety_1" not in request.safety_request_slots
+    marked = {
+        cell.semantic_key
+        for cell in (
+            plan.theme,
+            *(a.cell for a in _pool(plan, "together") + _pool(plan, "free_play")),
+            *(c.cell for c in plan.safety_candidates[:8]),
+        )
+        if any(s.source_id == "teacher_memo" for s in cell.evidence)
+    }
+    # the LLM marked free_play[0] and the disaster sentence; the Rule's placement marks traffic too
+    assert marked == {
+        _pool(plan, "free_play")[0].cell.semantic_key,
+        "safety_education.disaster_preparedness_safety",
+        "safety_education.traffic_safety",
+    }
+    assert _pool(plan, "free_play")[0].cell.generation.rule_version.endswith("+teacher-memo-v1+memo-share-v1+safety-requests-v1")
+    assert plan.teacher_memo == memo
+
+    # The Rule placed them: the named week first, then the earliest free weeks; a different
+    # official item for each further disaster week (RULE_ONLY), never the LLM's sentence twice.
+    by_id = {c.cell.item_id: c for c in plan.safety_candidates}
+    placed = [by_id[s.candidate_item_id] for s in plan.safety_weeks]
+    assert [c.category_id for c in placed] == [
+        "disaster_preparedness_safety",
+        "disaster_preparedness_safety",
+        "disaster_preparedness_safety",
+        "traffic_safety",
+    ]
+    assert [c.cell.evidence[0].source_id for c in placed[:3]] == [
+        "annex6:disaster_preparedness_safety:2",
+        "annex6:disaster_preparedness_safety:1",
+        "annex6:disaster_preparedness_safety:3",
+    ]
+    extras = plan.safety_candidates[8:]
+    assert [c.cell.generation.method.value for c in extras] == ["RULE_ONLY", "RULE_ONLY"]
+    assert all(c.cell.evidence[-1].source_id == "teacher_memo" for c in extras)
+    assert len({c.cell.value for c in placed[:3]}) == 3
+    assert [(n.summary, n.reason.value) for n in plan.memo_notices] == [
+        ("물놀이 기구 사용", "OUT_OF_RANGE"),
+        ("교통안전: 2주차에는 넣지 못했어요", "RULE_CONFLICT"),
+        ("아동학대 예방 2번 중 0번만 넣었어요", "RULE_CONFLICT"),
+    ]
+
+    # Without a memo the request is unchanged and an answer with memo fields is a parse error.
+    plain_case, plain_command, *_ = _run(answer)
+    with pytest.raises(ProposalParseError):
+        plain_case.execute(plain_command)
+
+
+
+# ── ADR-072: 트렌드봇 자료 ─────────────────────────────────────────────────────
+
+
+def _trends(n: int = 3):
+    from datetime import date
+
+    from ssuksak.planning.domain.trend import TrendItem, TrendKind
+
+    return tuple(
+        TrendItem(f"youtube:v{k}", TrendKind.GAME, f"합성 놀이 영상 {k}", "공을 굴려 보는 놀이", "합성 채널", "2027-W14",
+                  date(2027, 4, 1), name_words=("별토끼",))
+        for k in range(n)
+    )
+
+
+class _Context:
+    def __init__(self, status="AVAILABLE", value=None, raises=False) -> None:
+        self.status, self.value, self.raises = status, value, raises
+
+    def fetch(self, name):
+        from ssuksak.planning.application.ports import OptionalContextResult, OptionalContextStatus
+
+        if self.raises:
+            raise RuntimeError("trend files broken")
+        return OptionalContextResult(name, OptionalContextStatus(self.status), self.value)
+
+
+def _applied(*pairs):
+    def answer(data):
+        data["trend_applied"] = [{"address": a, "trend_id": t} for a, t in pairs]
+
+    return answer
+
+
+def _trend_marked(plan):
+    return {
+        (section, i)
+        for section in ("together", "free_play")
+        for i, a in enumerate(_pool(plan, section))
+        if any(e.source_type is EvidenceSourceType.TREND for e in a.cell.evidence)
+    }
+
+
+def test_a_trend_reaches_the_prompt_and_marks_only_the_candidate_it_changed():
+    from ssuksak.planning.planner.play_monthly import play_monthly_response_schema
+
+    trends = _trends()
+    use_case, command, plans, provider, _ = _run(
+        _applied(("together[1]", "youtube:v2")), optional_context=_Context(value=trends)
+    )
+    plan = use_case.execute(command)
+
+    (request,) = provider.requests
+    assert request.prompt_version == PLAY_MONTHLY_PROMPT_VERSION + "+trend-v1"
+    payload = json.loads(request.user_content)
+    assert [t["trend_id"] for t in payload["trends"]] == ["youtube:v0", "youtube:v1", "youtube:v2"]
+    assert payload["trend_addresses"][0] == "together[0]" and len(payload["trend_addresses"]) == 16
+    assert "trend_applied" in play_monthly_response_schema(request)["properties"]
+    assert _trend_marked(plan) == {("together", 1)}
+    row = _pool(plan, "together")[1]
+    for cell in (row.cell, row.description):
+        source = cell.evidence[-1]
+        assert (source.source_type, source.source_id, source.source_version) == (
+            EvidenceSourceType.TREND, "youtube:v2", "2027-W14"
+        )
+        assert cell.generation.method is GenerationMethod.RULE_LLM
+        assert cell.generation.rule_version.endswith("+trend-v1")
+
+
+@pytest.mark.parametrize(
+    "pairs", [(("together[1]", "youtube:nope"),), (("together[9]", "youtube:v0"),), (("theme", "youtube:v0"),)]
+)
+def test_a_trend_outside_the_passed_list_or_addresses_is_rejected(pairs):
+    use_case, command, plans, provider, _ = _run(_applied(*pairs), optional_context=_Context(value=_trends()))
+
+    with pytest.raises(InvalidDomainValueError):
+        use_case.execute(command)
+    assert len(provider.requests) == 1 and plans.save_count == 0
+
+
+def test_a_third_trend_in_one_list_is_rewritten_without_it_in_the_one_repair():
+    from ssuksak.planning.planner.play_monthly import TREND_REPAIR_INSTRUCTION, play_monthly_response_schema
+
+    three = _applied(("together[0]", "youtube:v0"), ("together[3]", "youtube:v1"), ("together[5]", "youtube:v2"),
+                     ("free_play[0]", "youtube:v0"))
+    rewrite = _set(("together", 5, "name"), "공을 굴려 보아요")
+    use_case, command, plans, provider, _ = _run(three, rewrite, optional_context=_Context(value=_trends()))
+    plan = use_case.execute(command)
+
+    first, repair = provider.requests
+    assert TREND_REPAIR_INSTRUCTION in repair.system_prompt
+    assert TREND_REPAIR_INSTRUCTION not in first.system_prompt
+    assert play_monthly_response_schema(repair) == RESPONSE_SCHEMA  # no trend fields in the repair
+    assert json.loads(repair.user_content)["issues"] == [
+        {"location": "together[5]", "code": "TREND_SHARE_EXCEEDED"},
+        {"location": "together[5].description", "code": "TREND_SHARE_EXCEEDED"},
+    ]
+    assert _trend_marked(plan) == {("together", 0), ("together", 3), ("free_play", 0)}
+    assert _pool(plan, "together")[5].cell.generation.rule_version == PLAY_MONTHLY_REPAIR_PROMPT_VERSION
+
+    # The repair left that candidate as it was: the existing repair failure.
+    use_case, command, plans, provider, _ = _run(three, None, optional_context=_Context(value=_trends()))
+    with pytest.raises(ProposalRejectedError) as error:
+        use_case.execute(command)
+    assert error.value.validation_codes == ("TREND_SHARE_EXCEEDED",)
+    assert plans.save_count == 0
+
+
+@pytest.mark.parametrize(
+    "context", [None, _Context("UNAVAILABLE"), _Context("ERROR"), _Context(raises=True), _Context(value=())]
+)
+def test_without_usable_trends_the_request_is_the_one_before_trends(context):
+    use_case, command, _, provider, _ = _run(optional_context=context)
+    use_case.execute(command)
+    plain_case, plain_command, _, plain, _ = _run()
+    plain_case.execute(plain_command)
+
+    (request,), (before,) = provider.requests, plain.requests
+    assert request == before and request.fingerprint == before.fingerprint
+    assert request.trend_addresses is None and "trends" not in json.loads(request.user_content)
+
+
+def test_a_trend_name_in_a_candidate_goes_to_the_one_repair_unless_the_memo_asked_for_it():
+    from ssuksak.planning.planner.play_monthly import TREND_NAME_REPAIR_INSTRUCTION
+
+    named = _set(("together", 2, "name"), "별 토끼와 공 굴리기")  # 띄어쓰기가 달라도 걸린다
+
+    def opening(data):
+        named(data)
+        data["trend_applied"] = []
+
+    use_case, command, plans, provider, _ = _run(opening, None, optional_context=_Context(value=_trends()))
+    plan = use_case.execute(command)
+
+    _, repair = provider.requests
+    assert TREND_NAME_REPAIR_INSTRUCTION in repair.system_prompt
+    assert json.loads(repair.user_content)["issues"] == [
+        {"location": "together[2]", "code": "TREND_NAME_IN_TEXT"},
+        {"location": "together[2].description", "code": "TREND_NAME_IN_TEXT"},
+    ]
+    assert _pool(plan, "together")[2].cell.value == "함께 놀이 3"
+
+    # The repair kept the name: the existing repair failure.
+    use_case, command, plans, provider, _ = _run(opening, named, optional_context=_Context(value=_trends()))
+    with pytest.raises(ProposalRejectedError) as error:
+        use_case.execute(command)
+    assert error.value.validation_codes == ("TREND_NAME_IN_TEXT",)
+    assert plans.save_count == 0
+
+    # The teacher wrote that word in the memo: no repair.
+    def memo_answer(data):
+        opening(data)
+        data.update(memo_applied=[], memo_skipped=[], safety_requests=[])
+
+    use_case, command, plans, provider, _ = _run(
+        memo_answer, teacher_memo="별토끼 놀이를 넣어 주세요", optional_context=_Context(value=_trends())
+    )
+    assert use_case.execute(command) and len(provider.requests) == 1
+
+    # Without trends nothing is checked.
+    use_case, command, plans, provider, _ = _run(named)
+    assert use_case.execute(command) and len(provider.requests) == 1

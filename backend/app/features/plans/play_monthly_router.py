@@ -7,23 +7,29 @@
 """
 
 import logging
+from dataclasses import replace
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Query, Response, status
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from ssuksak import timing
 from ssuksak.adapters.elice_openai_monthly import (
     MonthlyLlmConfigurationError,
     MonthlyLlmProviderError,
 )
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
+from ssuksak.adapters.json_daily_life_reference_repository import (
+    JsonDailyLifeReferenceRepository,
+)
 from ssuksak.adapters.play_monthly_composition import (
     play_monthly_command,
     play_monthly_generation,
 )
 from ssuksak.planning import InvalidDomainValueError, ItemId, PlanId
 from ssuksak.planning.application.generate_play_monthly_plan import PlayMonthlyGenerationError
+from ssuksak.planning.application.play_monthly_document import play_monthly_document
 from ssuksak.planning.application.play_monthly_lifecycle import (
     AddPlayMonthlyActivity,
     AddPlayMonthlyActivityCommand,
@@ -35,11 +41,25 @@ from ssuksak.planning.application.play_monthly_lifecycle import (
     EditPlayMonthlyCellCommand,
     EditPlayMonthlyContentIds,
     EditPlayMonthlyContentIdsCommand,
+    OrderPlayMonthlyActivities,
+    OrderPlayMonthlyActivitiesCommand,
+    OrderPlayMonthlyHabits,
+    OrderPlayMonthlyHabitsCommand,
+    PickPlayMonthlyActivity,
+    PickPlayMonthlyActivityCommand,
     PlacePlayMonthlySafety,
     PlacePlayMonthlySafetyCommand,
     PlayMonthlyLifecycleError,
     RemovePlayMonthlyActivity,
     RemovePlayMonthlyActivityCommand,
+    RemovePlayMonthlyTimetableCell,
+    RemovePlayMonthlyTimetableCellCommand,
+    ResizePlayMonthlyTimetable,
+    ResizePlayMonthlyTimetableCommand,
+    SplitPlayMonthlyTimetableCell,
+    SplitPlayMonthlyTimetableCellCommand,
+    UnconfirmPlayMonthlyPlan,
+    UnconfirmPlayMonthlyPlanCommand,
     play_monthly_notices,
 )
 from ssuksak.planning.domain.errors import InvalidStateTransitionError
@@ -47,23 +67,27 @@ from ssuksak.planning.domain.play_monthly_plan import (
     PlayActivity,
     PlayMonthlyCell,
     PlayMonthlyPlan,
+    TimetableNode,
+    TimetableSize,
 )
 from ssuksak.planning.domain.play_project_plan import (  # 공개 창구에 없다
     PLAY_PROJECT_FORMAT,
     PlayProjectYearlyPlan,
 )
+from ssuksak.planning.domain.provenance import EvidenceSourceType, SplitAxis
 from ssuksak.planning.domain.week_period import WeekId
 from ssuksak.planning.planner.contracts import ProposalParseError, ProposalRejectedError
 
 from app.db import get_session
+from app.features.centers.models import Center
 from app.features.plans import monthly_llm, play_project
 from app.features.plans import play_monthly_schemas as s
+from app.features.plans.memo_privacy import memo_name_table, raise_if_mask_failed, with_masked_memo
 from app.features.plans.models import Plan
 from app.features.plans.monthly_router import (
     _ALREADY_CONFIRMED,
     _ALREADY_EXISTS,
     _CELL_NOT_FOUND,
-    _NOT_DELETABLE,
     _NOT_FOUND,
     _STALE_WRITE,
     MONTHLY_UNIQUE,
@@ -73,19 +97,27 @@ from app.features.plans.monthly_router import (
     _gate,
     _generation,
     _is_play_monthly,
+    _lock_parent,
+    _parent_changed,
     _target_month,
 )
 from app.features.plans.monthly_schemas import GenerationChangeOut, RevisionIn, ValueChangeOut
+from app.features.plans.play_monthly_hwpx import TEMPLATE as PLAY_MONTHLY_TEMPLATE
+from app.features.plans.play_monthly_hwpx import fill_play_monthly
 from app.features.plans.play_project import ConfirmIn, format_of
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.router import _exception_chain
 from app.features.plans.runtime import SystemClock, UuidGenerator
-from app.features.plans.schemas import EvidenceOut, GenerationOut
+from app.features.plans.schemas import EvidenceOut, GenerationOut, memo_notices_out
+from app.features.trends.planning import TrendContextProvider
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_class
+from app.shared.auth.ownership import foreign_class_refs, require_own_class
+from app.shared.hwpx import Format, download
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
+from app.shared.school_year import KST
 
 _log = logging.getLogger(__name__)
+_TIMING_LOG = logging.getLogger("app.server.timing")
 
 router = APIRouter(prefix="/plans/monthly/play", tags=["plans"])
 
@@ -156,11 +188,13 @@ def _generation_error(error: Exception):
 
 
 @router.post("", response_model=s.PlayMonthlyPlanOut, status_code=status.HTTP_201_CREATED)
+@timing.timed("monthly_play", _TIMING_LOG.info)
 def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, user: CurrentUser):
     """한 달치를 만들어 DRAFT 로 저장한다. 실패하면 아무것도 남지 않는다(기존 월간과 같다)."""
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     klass = require_own_class(session, user, body.class_id)
     center_id, class_id, class_name = user.center_id, klass.id, klass.name
+    names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-060)
     school_year = klass.school_year
     month = _target_month(school_year, body.month)
     if _existing(session, center_id, class_id, month) is not None:
@@ -187,6 +221,11 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
         provider = monthly_llm.play_monthly_provider()
     except LlmUnavailable as error:
         raise _UNAVAILABLE from error
+    center = session.get(Center, center_id)
+    trends = TrendContextProvider(  # ADR-072: 원이 껐으면(기본값) 넘기지 않는다
+        enabled=center is not None and center.trends_enabled,
+        today=SystemClock().now().astimezone(KST).date(),
+    )
     # 읽기를 여기서 끝낸다. LLM 을 기다리는 동안 transaction · 연결을 잡지 않는다.
     session.commit()
 
@@ -197,9 +236,10 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
     use_case = play_monthly_generation(
         parent_repository=parents,
         plan_repository=InMemoryPlanRepository(),  # 운영 저장은 C 에서 한다
-        provider=provider,
+        provider=with_masked_memo(provider, body.memo, names),
         clock=SystemClock(),
         id_generator=UuidGenerator(),
+        optional_context=trends,
     )
     try:
         plan = use_case.execute(
@@ -210,15 +250,23 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
                 target_month=month,
                 emphasized_row_keys=tuple(body.emphasized_row_keys),
                 class_name=class_name,
+                teacher_memo=body.memo,
             )
         )
     except Exception as error:
+        raise_if_mask_failed(error)
         mapped = _generation_error(error)
         if mapped is None:
             raise
         raise mapped from error
+    finally:
+        # 트렌드를 썼는지 · 대체 경로였는지 한 단어로(ADR-072 결정 8). 제목 · 프롬프트는 안 남긴다.
+        for result in use_case.last_optional_context:
+            _TIMING_LOG.info("plan_trend kind=monthly_play status=%s", result.status.value)
 
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
+    timing.phase("save")
+    _lock_parent(session, parent_id, "연간계획안을 먼저 만들어 확정해주세요.")
     if _existing(session, center_id, class_id, month) is not None:
         raise _ALREADY_EXISTS
     try:
@@ -240,8 +288,11 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
 def list_play_monthly_plans(session: DbSession, user: CurrentUser, class_id: int | None = None):
     query = select(Plan).where(Plan.center_id == user.center_id, Plan.kind == "monthly")
     if class_id is not None:
-        require_own_class(session, user, class_id)
+        require_own_class(session, user, class_id, read_only=True)
         query = query.where(Plan.classroom_ref == str(class_id))
+    else:
+        # 반을 안 짚은 목록은 내 반만 — 승인받은 반은 반을 짚어야 보인다.
+        query = query.where(Plan.classroom_ref.not_in(foreign_class_refs(user)))
     rows = session.scalars(query.order_by(Plan.target_month, Plan.id)).all()
     return s.PlayMonthlyListOut(
         items=[
@@ -264,28 +315,22 @@ def list_play_monthly_plans(session: DbSession, user: CurrentUser, class_id: int
 
 @router.get("/{plan_id}", response_model=s.PlayMonthlyPlanOut)
 def get_play_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser):
-    row = _own_row(session, user, plan_id)
+    row = _own_row(session, user, plan_id, read_only=True)
     return _out(session, user, row, _repo(session, user).get(PlanId(row.plan_ref)))
 
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_play_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> Response:
-    """확정 전만 지운다. revision 을 받지 않는다 — 기존 월간 삭제와 같다."""
+    """초안이든 확정본이든 지운다(ADR-064, Human Decision 2026-11-05 하민). revision 을 받지
+    않는다 — 기존 월간 삭제와 같다. 놀이 월간 아래에는 주간을 만들 수 없어 자식 검사가 없다."""
     row = _own_row(session, user, plan_id)
-    if row.status == "CONFIRMED":
-        raise _NOT_DELETABLE
-    # 상태 확인과 삭제를 한 SQL 로 한다 — 읽은 뒤 확정되면 확정본이 사라지지 않게 DRAFT 조건을 건다.
     deleted = session.execute(
         delete(Plan).where(
-            Plan.id == row.id,
-            Plan.center_id == user.center_id,
-            Plan.kind == "monthly",
-            Plan.status == "DRAFT",
+            Plan.id == row.id, Plan.center_id == user.center_id, Plan.kind == "monthly"
         )
     ).rowcount
-    if not deleted:  # 그 사이 바뀌었다 — 없어졌으면 404, 확정됐으면 409
-        _own_row(session, user, plan_id)
-        raise _NOT_DELETABLE
+    if not deleted:  # 그 사이 사라졌다
+        raise _NOT_FOUND
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -319,8 +364,36 @@ _LIFECYCLE_ERRORS = {
     ),
     "play_monthly_safety_candidate_not_found": _invalid("candidate_item_id"),
     "invalid_content_ids": _invalid("content_ids"),
+    "invalid_activity_order": _invalid("item_ids"),
+    "invalid_habit_order": _invalid("item_ids"),
+    "play_monthly_candidate_not_found": _error(
+        404, "NOT_FOUND", "그 후보를 찾을 수 없습니다.", ["item_id"]
+    ),
+    "play_monthly_section_full": _error(
+        422, "VALIDATION_FAILED", "이미 다 골랐어요. 하나를 빼고 넣어 주세요.", ["item_id"]
+    ),
     "play_monthly_drill_candidate_blank": _invalid("item_id"),
     "curriculum_reference_unavailable": _REFERENCE_UNAVAILABLE,
+    # 특별활동 시간표(ADR-047). 한도 수치는 Core 가 정하고 문구는 교사가 고칠 방법을 말한다.
+    "play_monthly_timetable_cell_not_found": _error(
+        404, "NOT_FOUND", "그 시간표 칸을 찾을 수 없습니다.", ["item_id"]
+    ),
+    "timetable_boundary_not_found": _error(
+        404, "NOT_FOUND", "그 시간표 경계를 찾을 수 없습니다.", ["split_id"]
+    ),
+    "timetable_split_limit": _error(
+        422, "VALIDATION_FAILED", "한 요일은 네 번까지 나눌 수 있습니다.", ["item_id"]
+    ),
+    "timetable_last_cell": _error(
+        422,
+        "VALIDATION_FAILED",
+        "요일의 마지막 칸은 지울 수 없습니다. 글을 비워 주세요.",
+        ["item_id"],
+    ),
+    "timetable_width_limit": _error(
+        422, "VALIDATION_FAILED", "칸이 너무 좁아집니다. 조금 덜 줄여 주세요.", []
+    ),
+    "invalid_timetable_size": _invalid("ratio"),
 }
 
 
@@ -436,6 +509,59 @@ def add_activity(plan_id: int, body: s.AddActivityIn, session: DbSession, user: 
     )
 
 
+@router.put("/{plan_id}/activities/order", response_model=s.PlayMonthlyPlanOut)
+def order_activities(plan_id: int, body: s.ActivityOrderIn, session: DbSession, user: CurrentUser):
+    """한 목록(함께 하는 활동 · 자유놀이) 안의 줄 순서(Human Decision 2026-11-05). 주간
+    `PUT /plans/weekly/{id}/indoor-plays/order` 와 같은 모양이다. 그 목록의 줄을 한 번씩 다 적어야
+    하고, 같은 순서면 200 · 무변경이다."""
+    items = tuple(_item(value, "item_ids") for value in body.item_ids)
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: OrderPlayMonthlyActivities(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(
+            OrderPlayMonthlyActivitiesCommand(plan.plan_id, _actor(user), body.section, items)
+        ),
+    )
+
+
+@router.post("/{plan_id}/activities/{item_id}/pick", response_model=s.PlayMonthlyPlanOut)
+def pick_activity(
+    plan_id: int, item_id: str, body: s.RevisionIn, session: DbSession, user: CurrentUser
+):
+    """AI 후보 하나를 문서 그 목록 끝에 넣는다(layout v0.3.0). 뺄 때는 DELETE 와 같다 — AI 후보는
+    후보 목록으로 돌아간다."""
+    item = _item(item_id)
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: PickPlayMonthlyActivity(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(PickPlayMonthlyActivityCommand(plan.plan_id, _actor(user), item)),
+    )
+
+
+@router.put("/{plan_id}/habits/order", response_model=s.PlayMonthlyPlanOut)
+def order_habits(plan_id: int, body: s.HabitOrderIn, session: DbSession, user: CurrentUser):
+    """기본생활습관 칸을 주 사이에서 옮긴다(2026-11-06). 화면은 두 주를 맞바꾸고, 같은 순서면
+    200 · 무변경이다."""
+    items = tuple(_item(value, "item_ids") for value in body.item_ids)
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: OrderPlayMonthlyHabits(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(OrderPlayMonthlyHabitsCommand(plan.plan_id, _actor(user), items)),
+    )
+
+
 @router.delete("/{plan_id}/activities/{item_id}", response_model=s.PlayMonthlyPlanOut)
 def remove_activity(
     plan_id: int,
@@ -474,6 +600,90 @@ def place_safety(
         lambda drafts, plan: PlacePlayMonthlySafety(
             plan_repository=drafts, clock=SystemClock()
         ).execute(PlacePlayMonthlySafetyCommand(plan.plan_id, _actor(user), week, candidate)),
+    )
+
+
+# ── 특별활동 시간표 나누기 · 지우기 · 크기 (ADR-047). 경로는 주간 칸 나누기와 같은 모양이다. ──
+
+
+@router.post("/{plan_id}/cells/{item_id}/split", response_model=s.PlayMonthlyPlanOut)
+def split_timetable_cell(
+    plan_id: int, item_id: str, body: s.SplitTimetableIn, session: DbSession, user: CurrentUser
+):
+    """원래 칸(id · 글 · 이력)은 위 · 왼쪽에 남고 아래 · 오른쪽에 빈 새 칸이 50:50 으로 생긴다."""
+    item = _item(item_id)
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: SplitPlayMonthlyTimetableCell(
+            plan_repository=drafts, id_generator=UuidGenerator(), clock=SystemClock()
+        ).execute(
+            SplitPlayMonthlyTimetableCellCommand(
+                plan.plan_id, _actor(user), item, SplitAxis(body.axis)
+            )
+        ),
+    )
+
+
+@router.delete("/{plan_id}/cells/{item_id}/split", response_model=s.PlayMonthlyPlanOut)
+def remove_timetable_cell(
+    plan_id: int,
+    item_id: str,
+    session: DbSession,
+    user: CurrentUser,
+    expected_revision: Annotated[int, Query(ge=1)],
+):
+    """칸을 문서에서 뺀다. 형제 칸(묶음)이 자리를 채우고, 뺀 칸은 이력과 함께 보관된다."""
+    item = _item(item_id)
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        expected_revision,
+        lambda drafts, plan: RemovePlayMonthlyTimetableCell(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(RemovePlayMonthlyTimetableCellCommand(plan.plan_id, _actor(user), item)),
+    )
+
+
+@router.put("/{plan_id}/timetable/splits/{split_id}", response_model=s.PlayMonthlyPlanOut)
+def resize_timetable_split(
+    plan_id: int, split_id: str, body: s.TimetableRatioIn, session: DbSession, user: CurrentUser
+):
+    """경계 하나의 첫 갈래(위 · 왼쪽) 비율. 같은 값이면 200 · 무변경."""
+    split = _item(split_id, "split_id")
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: ResizePlayMonthlyTimetable(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(
+            ResizePlayMonthlyTimetableCommand(
+                plan.plan_id, _actor(user), split_id=split, ratio=body.ratio
+            )
+        ),
+    )
+
+
+@router.put("/{plan_id}/timetable/size", response_model=s.PlayMonthlyPlanOut)
+def resize_timetable(plan_id: int, body: s.TimetableSizeIn, session: DbSession, user: CurrentUser):
+    """요일 열 폭 다섯(합 100) · 표 높이(mm). 같은 값이면 200 · 무변경."""
+    try:
+        size = TimetableSize(tuple(body.column_widths), body.height_mm)
+    except InvalidDomainValueError as error:
+        raise _invalid("column_widths", "height_mm") from error
+    return _mutate(
+        session,
+        user,
+        plan_id,
+        body.expected_revision,
+        lambda drafts, plan: ResizePlayMonthlyTimetable(
+            plan_repository=drafts, clock=SystemClock()
+        ).execute(ResizePlayMonthlyTimetableCommand(plan.plan_id, _actor(user), size=size)),
     )
 
 
@@ -547,18 +757,90 @@ def confirm_play_monthly_plan(
     return detail
 
 
+@router.post("/{plan_id}/unconfirm", response_model=s.PlayMonthlyPlanOut)
+def unconfirm_play_monthly_plan(
+    plan_id: int,
+    session: DbSession,
+    user: CurrentUser,
+    body: Annotated[ConfirmIn | None, Body()] = None,
+):
+    """CONFIRMED → DRAFT. 확정과 같은 본문 · 순서다. 이미 DRAFT 면 Core 도 쓰기도 없이 200."""
+    row = _own_row(session, user, plan_id)
+    repo = _repo(session, user)
+    if row.status != "CONFIRMED":
+        return _out(session, user, row, _plan(repo, row))
+    expected = None if body is None else body.expected_revision
+    if expected is None:
+        raise _invalid("expected_revision")
+    if row.revision != expected:
+        raise _STALE_WRITE
+    plan = _plan(repo, row)
+    drafts: InMemoryPlanRepository[PlayMonthlyPlan] = InMemoryPlanRepository()
+    drafts.save(plan.plan_id, plan)
+    changed = UnconfirmPlayMonthlyPlan(plan_repository=drafts, clock=SystemClock()).execute(
+        UnconfirmPlayMonthlyPlanCommand(plan.plan_id, _actor(user))
+    )
+    plan_id = row.id  # rollback 이 row 를 만료시킨다
+    written = repo.update_if_revision(
+        changed.plan_id, changed, expected_revision=expected, status="CONFIRMED"
+    )
+    if written is None:  # 그 사이 바뀌었다 — 먼저 풀었으면 이미 DRAFT 와 같다(200)
+        session.rollback()
+        row = _own_row(session, user, plan_id)
+        if row.status == "CONFIRMED":
+            raise _STALE_WRITE
+        return _out(session, user, row, _plan(repo, row))
+    session.refresh(row)
+    detail = _out(session, user, row, changed)
+    session.commit()
+    return detail
+
+
+_NOT_EXPORTABLE = _error(409, "GATE_BLOCKED", "확정된 계획안만 내보낼 수 있습니다.", [])
+
+
+@router.get("/{plan_id}/export/hwp")
+def export_play_monthly_plan(
+    plan_id: int, session: DbSession, user: CurrentUser, format: Format = "hwpx"
+) -> Response:
+    """확정한 놀이 월간을 양식 `play_monthly.hwpx` 에 채워 내려준다(다른 내보내기와 같은 규칙).
+
+    교사가 나눈 특별활동 시간표 모양 · 열 폭 · 높이 그대로다. 근거 · 이력 · 보관한 칸은 싣지 않는다.
+    """
+    # 다른 내보내기처럼 읽기 — 승인받은 남의 반도 내려받는다(ADR-059).
+    row = _own_row(session, user, plan_id, read_only=True)
+    if row.status != "CONFIRMED":
+        raise _NOT_EXPORTABLE
+    plan = _plan(_repo(session, user), row)
+    references = plan.references
+    daily_life = JsonDailyLifeReferenceRepository().get_catalog(
+        references.daily_life_catalog_id, references.daily_life_catalog_version
+    )
+    if daily_life is None:  # 계획안이 읽은 판이 없어졌다 — 습관 이름표를 지어낼 수 없다
+        raise _UNAVAILABLE
+    require_own_class(session, user, int(plan.classroom_ref), read_only=True)
+    # 제목과 문서 머리 반 이름이 같은 값(확정 때 찍은 것)이어야 한다.
+    document = replace(play_monthly_document(plan, daily_life), class_name=row.class_name)
+    content = fill_play_monthly(PLAY_MONTHLY_TEMPLATE.read_bytes(), document)
+    title = f"{plan.target_month.calendar_month}월 놀이계획안 - {row.class_name}"
+    return download(content, f"play-monthly-{row.id}", title, format)
+
+
 @router.get("/{plan_id}/audit", response_model=s.PlayMonthlyAuditOut)
 def get_play_monthly_audit(plan_id: int, session: DbSession, user: CurrentUser):
-    """저장된 이벤트를 읽기만 한다. 지운 행의 칸 이벤트도 싣는다."""
-    row = _own_row(session, user, plan_id)
+    """저장된 이벤트를 읽기만 한다. 지운 행 · 후보 목록에 있는 행(ADR-065)의 칸 이벤트도 싣는다."""
+    row = _own_row(session, user, plan_id, read_only=True)
     plan = _plan(_repo(session, user), row)
     removed = [
-        c for r in plan.removed_activities for c in (r.activity.cell, r.activity.description)
+        c
+        for r in (*plan.removed_activities, *plan.activity_pool)
+        for c in (r.activity.cell, r.activity.description)
     ]
     keyed = [
         ((e.occurred_at, 0, 0, i), _audit_event(e, False)) for i, e in enumerate(plan.audit.events)
     ]
-    # 활성 칸(응답 순서) → 지운 행의 칸(쌓인 순서). 한 칸 안에서는 저장 순서다.
+    # 활성 칸(응답 순서) → 지운 행의 칸(쌓인 순서) → 후보 목록의 칸(생성 순서).
+    # 한 칸 안에서는 저장 순서다.
     for position, cell in enumerate((*plan.cells(), *removed)):
         keyed += [
             ((e.occurred_at, 1, position, i), _audit_event(e, True))
@@ -601,7 +883,21 @@ def _audit_event(e, is_cell: bool) -> s.PlayMonthlyAuditEventOut:
             scope=arr.scope, before=list(arr.before), after=list(arr.after)
         ),
         copied_from=None if e.copied_from is None else e.copied_from.value,
+        timetable_change=None
+        if e.timetable_change is None
+        else _timetable_change(e.timetable_change),
     )
+
+
+def _timetable_change(change) -> dict:
+    ids = {k: getattr(change, k) for k in ("split_id", "cell_id", "new_cell_id")}
+    return {
+        "operation": change.operation.value,
+        **{k: None if v is None else v.value for k, v in ids.items()},
+        "axis": None if change.axis is None else change.axis.value,
+        "before": list(change.before),
+        "after": list(change.after),
+    }
 
 
 def _repo(session: Session, user) -> PostgresPlanRepository[PlayMonthlyPlan]:
@@ -611,18 +907,22 @@ def _repo(session: Session, user) -> PostgresPlanRepository[PlayMonthlyPlan]:
 
 
 def _out(session: Session, user, row: Plan, plan: PlayMonthlyPlan) -> s.PlayMonthlyPlanOut:
-    annual_id = session.scalar(
-        select(Plan.id).where(
+    annual = session.scalar(
+        select(Plan).where(
             Plan.plan_ref == plan.parent.lineage.parent_plan_id.value,
             Plan.center_id == user.center_id,
             Plan.kind == "annual",
         )
     )
-    return _detail(row, plan, annual_id)
+    changed = _parent_changed(annual, plan.parent.lineage.confirmed_at)
+    return _detail(row, plan, None if annual is None else annual.id, parent_changed=changed)
 
 
-def _own_row(session: Session, user, plan_id: int) -> Plan:
-    """이 원의 놀이 월간 행. 없거나 남의 원이면 404, 기존 월간이면 409."""
+def _own_row(session: Session, user, plan_id: int, *, read_only: bool = False) -> Plan:
+    """이 원의 놀이 월간 행. 없거나 남의 원이면 404, 기존 월간이면 409.
+
+    남의 반 계획안이면 반 검사를 거친다(ADR-059). 기본이 쓰기다 — 읽기만 `read_only=True`.
+    """
     row = session.scalar(
         select(Plan)
         .where(Plan.id == plan_id, Plan.center_id == user.center_id, Plan.kind == "monthly")
@@ -630,6 +930,7 @@ def _own_row(session: Session, user, plan_id: int) -> Plan:
     )
     if row is None:
         raise _NOT_FOUND
+    require_own_class(session, user, int(row.classroom_ref), read_only=read_only)
     if not _is_play_monthly(row):
         raise _LEGACY_MONTHLY
     return row
@@ -660,6 +961,17 @@ def _cell(cell: PlayMonthlyCell) -> s.CellOut:
     )
 
 
+def _timetable_part(node: TimetableNode) -> s.TimetablePartOut:
+    if node.cell is not None:
+        return s.TimetablePartOut(cell=_cell(node.cell))
+    return s.TimetablePartOut(
+        split_id=node.split_id.value,
+        axis=node.axis.value,
+        ratio=node.ratio,
+        children=[_timetable_part(c) for c in node.children],
+    )
+
+
 def _activity(activity: PlayActivity) -> s.ActivityOut:
     parent = activity.parent_snapshot
     return s.ActivityOut(
@@ -668,13 +980,34 @@ def _activity(activity: PlayActivity) -> s.ActivityOut:
         description=_cell(activity.description),
         content_ids=list(activity.content_ids),
         parent_item_id=None if parent is None else parent.parent_item_id.value,
+        # ADR-072: 표시용. 그 후보 칸 Evidence 에 TREND 가 있는가.
+        trend_applied=any(
+            e.source_type is EvidenceSourceType.TREND for e in activity.cell.evidence
+        ),
     )
 
 
-def _detail(row: Plan, plan: PlayMonthlyPlan, annual_id: int | None) -> s.PlayMonthlyPlanOut:
+def _habit_label(catalog, habit) -> str:
+    """한글 문서(`play_monthly_document`)와 같은 규칙의 「[분류]」.
+
+    판이 없어졌으면 지어내지 않고 "" 다."""
+    if catalog is None or not (habit.entry_id and habit.cell.value.strip()):
+        return ""
+    entry = catalog.get(habit.entry_id)
+    return entry.label if entry is not None else ""
+
+
+def _detail(
+    row: Plan, plan: PlayMonthlyPlan, annual_id: int | None, *, parent_changed: bool = False
+) -> s.PlayMonthlyPlanOut:
     parent = plan.parent
+    habit_entries = JsonDailyLifeReferenceRepository().get_catalog(
+        plan.references.daily_life_catalog_id, plan.references.daily_life_catalog_version
+    )
     return s.PlayMonthlyPlanOut(
         id=row.id,
+        memo=plan.teacher_memo,
+        memo_notices=memo_notices_out(plan),
         class_id=int(plan.classroom_ref),
         school_year=plan.school_year,
         month=plan.target_month.calendar_month,
@@ -713,12 +1046,31 @@ def _detail(row: Plan, plan: PlayMonthlyPlan, annual_id: int | None) -> s.PlayMo
                 for p in parent.plays
             ],
         ),
+        parent_changed=parent_changed,
         theme=_cell(plan.theme),
         rationale=_cell(plan.rationale),
         together=[_activity(a) for a in plan.together],
         free_play=[_activity(a) for a in plan.free_play],
+        activity_pick=plan.layout.activity_pick,
+        activity_candidates=[i.value for i in plan.activity_candidates],
+        activity_pool=[
+            s.PooledActivityOut(**_activity(r.activity).model_dump(), section=r.section)
+            for r in plan.activity_pool
+        ],
+        direction=_cell(plan.direction),
+        display=s.DisplayOut(
+            title=_cell(plan.display.title),
+            age=_cell(plan.display.age),
+            class_name=_cell(plan.display.class_name),
+            period=_cell(plan.display.period),
+        ),
         habits=[
-            s.HabitOut(week_id=h.week_id.value, entry_id=h.habit.entry_id, cell=_cell(h.habit.cell))
+            s.HabitOut(
+                week_id=h.week_id.value,
+                entry_id=h.habit.entry_id,
+                label=_habit_label(habit_entries, h.habit),
+                cell=_cell(h.habit.cell),
+            )
             for h in plan.habits
         ],
         safety_candidates=[
@@ -748,6 +1100,12 @@ def _detail(row: Plan, plan: PlayMonthlyPlan, annual_id: int | None) -> s.PlayMo
         teacher_inputs=[
             s.TeacherInputOut(key=t.semantic_key, cell=_cell(t)) for t in plan.teacher_inputs
         ],
+        specialized_timetable=[_cell(c) for c in plan.specialized_timetable],
+        special_activity=[_timetable_part(day) for day in plan.special_activity],
+        special_activity_size=s.TimetableSizeOut(
+            column_widths=list(plan.special_activity_size.column_widths),
+            height_mm=plan.special_activity_size.height_mm,
+        ),
         notices=[
             s.NoticeOut(code=n.code, week_id=None if n.week_id is None else n.week_id.value)
             for n in play_monthly_notices(plan)

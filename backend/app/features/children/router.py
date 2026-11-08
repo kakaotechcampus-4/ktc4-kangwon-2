@@ -62,7 +62,17 @@ def create_child(
 
     # 빈 반도 같은 행을 잠근다. READ COMMITTED에서 대기 후 다음 명단 조회는
     # 선행 등록의 커밋을 보므로 code 중복과 양방향 이름 충돌을 함께 막는다.
-    session.get(Class, class_id, with_for_update=True, populate_existing=True)
+    classroom = session.get(Class, class_id, with_for_update=True, populate_existing=True)
+    # 잠근 행으로 본다 — 동의 끄기(PATCH /api/classes/{id})와 겹쳐도 어긋나지 않는다.
+    if classroom.consent_confirmed_at is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "GATE_BLOCKED",
+                "message": "법정대리인 동의를 확인한 반에만 아이를 넣을 수 있습니다.",
+                "fields": ["class_id"],
+            },
+        )
     try:
         code = allocate_for_class(
             load_pool(),
@@ -96,7 +106,7 @@ def list_children(
 
     **아동 실명이 내려오는 자리다.** 로그인만으로는 부족해서 자기 원인지까지 본다.
     """
-    require_own_class(session, user, class_id)
+    require_own_class(session, user, class_id, read_only=True)
     return ChildListResponse(items=_children_of(session, class_id))
 
 
@@ -108,7 +118,7 @@ def track_children(class_id: int, session: DbSession, user: CurrentUser) -> Chil
     `GET /api/observations?child_id=` 로 따로 받는다. 반 전체 기록을 받아 화면에서 나누면
     아이 수 × 기록 수만큼 실명 · 본문이 한꺼번에 내려온다.
     """
-    classroom = require_own_class(session, user, class_id)
+    classroom = require_own_class(session, user, class_id, read_only=True)
     # 영역 칸은 **그 원이 쓰는 축**만 센다 (observations/models.py AXES). 축을 바꾼 원이면
     # 옛 축으로 쌓은 기록도 그대로 남아 있다 — 지금 축에 없는 이름은 뒤에 따로 붙인다.
     center = session.get(Center, classroom.center_id)

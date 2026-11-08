@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from .. import timing
 from ..planning.domain.errors import InvalidDomainValueError
 from ..planning.evidence.artifact import EXPECTED_NORMATIVE_STATUS, EXPECTED_STORE_ID
 from ..planning.evidence.safety_classification import (
@@ -21,7 +22,7 @@ from ..planning.evidence.safety_classification import (
 _EVIDENCE = Path(__file__).resolve().parents[3] / "data" / "evidence"
 SAFETY_CLASSIFICATION_V0_1_0_PATH = _EVIDENCE / "safety_evidence_classification_v0_1_0.json"
 # Runtime default: the latest version. It is used only once HUMAN_APPROVED.
-DEFAULT_SAFETY_CLASSIFICATION_PATH = _EVIDENCE / "safety_evidence_classification_v0_2_0.json"
+DEFAULT_SAFETY_CLASSIFICATION_PATH = _EVIDENCE / "safety_evidence_classification_v0_3_0.json"
 _ROOT_FIELDS = {
     "$schema_note", "schema_version", "classification_id", "classification_version", "supersedes",
     "evidence_store", "legal_rule_version", "review", "matching", "key", "item_tag_rule",
@@ -115,7 +116,7 @@ class JsonSafetyEvidenceClassificationRepository:
     def get_classification(self) -> SafetyEvidenceClassification:
         if self._cached is None:
             try:
-                payload = json.loads(self._path.read_text(encoding="utf-8"))
+                payload = timing.read_json(self._path)
             except (FileNotFoundError, json.JSONDecodeError) as exc:
                 raise SafetyEvidenceClassificationError(f"Cannot read safety classification: {self._path}") from exc
             self._cached = load_safety_classification_from_dict(payload)

@@ -99,19 +99,93 @@ def balance_by_age(
     return result + rest
 
 
+def prefer_explicit_indoor_methods(ranked: Sequence[RetrievedEvidence]) -> list[RetrievedEvidence]:
+    """Prefer explicit methods at equal lexical relevance; this is not a semantic verdict."""
+    method = re.compile(
+        r"몸으로|신체로|(?:블록|스카프|천|신문지|종이|공|집게|컵|카드).{0,20}"
+        r"(?:구성|표현|그리|만들|쌓|던|굴|뒤집|옮|나르|쓸|건너)"
+    )
+    return sorted(ranked, key=lambda item: (
+        AGE_TIER_ORDER.index(item.trace.age_match),
+        not item.trace.theme_page_match,
+        -item.trace.keyword_overlap,
+        0 if method.search(item.record.text) else 1,
+        item.record_id,
+    ))
+
+
 def apply_source_diversity(
-    ranked: Sequence[RetrievedEvidence], *, top_k: int, institution_cap: int = DEFAULT_INSTITUTION_CAP
+    ranked: Sequence[RetrievedEvidence],
+    *,
+    top_k: int,
+    institution_cap: int = DEFAULT_INSTITUTION_CAP,
+    fill: bool = False,
 ) -> tuple[RetrievedEvidence, ...]:
+    """fill=True makes the cap an order preference: capped items fill leftover slots in ranked order."""
     if top_k < 1:
         return ()
     used: collections.Counter[str] = collections.Counter()
     selected = []
+    capped = []
     for item in ranked:
         group = item.trace.diversity_group
         if used[group] >= institution_cap:
+            capped.append(item)
             continue
         used[group] += 1
         selected.append(item)
         if len(selected) == top_k:
             break
+    if fill:
+        selected.extend(capped[: top_k - len(selected)])
     return tuple(selected)
+
+
+def fill_subtheme_gaps(
+    ranked: Sequence[RetrievedEvidence],
+    selected: Sequence[RetrievedEvidence],
+    subthemes: Sequence[str],
+    *,
+    institution_cap: int = DEFAULT_INSTITUTION_CAP,
+) -> tuple[RetrievedEvidence, ...]:
+    """Swap in one ranked record for each subtheme no selected record matches.
+
+    Size, institution cap and already matched subthemes are kept: the record swapped out is the
+    lowest-ranked one whose removal leaves every matched subtheme matched. Matching is lexical
+    (Korean 2-gram overlap, at least two or all of a short subtheme's grams) after dropping grams
+    shared by more than half the subthemes, such as 나라 in 우리나라 / 세계 여러 나라. A subtheme with
+    no grams left is skipped. A match is not proof the record covers the subtheme's meaning.
+    """
+    subthemes = [subtheme for subtheme in subthemes if ngrams(subtheme)]
+    shared = collections.Counter(gram for subtheme in subthemes for gram in ngrams(subtheme))
+    common = {gram for gram, count in shared.items() if count * 2 > len(subthemes)}
+    grams = {subtheme: ngrams(subtheme) - common for subtheme in subthemes}
+
+    def matches(item: RetrievedEvidence, subtheme: str) -> bool:
+        wanted = grams[subtheme]
+        return bool(wanted) and len(ngrams(item.record.text) & wanted) >= min(2, len(wanted))
+
+    order = {item.record_id: index for index, item in enumerate(ranked)}
+    chosen = list(selected)
+    for subtheme in subthemes:
+        if not grams[subtheme] or any(matches(item, subtheme) for item in chosen):
+            continue
+        ids = {item.record_id for item in chosen}
+        candidates = [item for item in ranked if item.record_id not in ids and matches(item, subtheme)]
+        if not candidates:
+            continue
+        add = max(
+            candidates,
+            key=lambda item: (len(ngrams(item.record.text) & grams[subtheme]), -order[item.record_id]),
+        )
+        groups = collections.Counter(item.trace.diversity_group for item in chosen)
+        same_group_only = groups[add.trace.diversity_group] >= institution_cap
+        matched = [other for other in subthemes if any(matches(item, other) for item in chosen)]
+        for out in sorted(chosen, key=lambda item: -order[item.record_id]):
+            if same_group_only and out.trace.diversity_group != add.trace.diversity_group:
+                continue
+            rest = [item for item in chosen if item is not out]
+            if all(any(matches(item, other) for item in rest) for other in matched):
+                chosen = sorted([*rest, add], key=lambda item: order[item.record_id])
+                break
+    return tuple(chosen)

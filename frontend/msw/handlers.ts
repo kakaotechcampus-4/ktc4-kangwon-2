@@ -1,9 +1,10 @@
 import { http, HttpResponse } from "msw";
 import { failure, scenario } from "./scenarios";
+import { commit } from "./data/store";
 import {
   findCenter,
   addCenter,
-  patchCenter,
+  mockDaycares,
   putConfig,
   currentCenterId,
   findGreetings,
@@ -12,7 +13,7 @@ import {
   putCenterSettings,
 } from "./data/centers";
 import type { Greetings } from "../lib/api/centers";
-import { findClass, listClasses, addClass } from "./data/classes";
+import { findClass, listClasses, addClass, classNameTaken, patchClass } from "./data/classes";
 import { hasChild, listChildren, addChild, removeChild } from "./data/children";
 import {
   findPlan,
@@ -25,11 +26,16 @@ import {
   samePlayCellValue,
   confirmPlan,
   confirmPlayPlan,
+  subThemeMismatch,
+  unconfirmPlan,
   listAnnualAudit,
   safetyCategories,
+  removePlan,
+  resetPlan,
 } from "./data/annual-plans";
 import {
   confirmPlayMonthly,
+  addPlayMonthly,
   copyPlayMonthlyDrill,
   editPlayMonthlyCell,
   findPlayMonthly,
@@ -40,21 +46,54 @@ import {
   placePlayMonthlySafety,
   playCells,
   removePlayMonthly,
+  orderPlayMonthlyActivities,
+  orderPlayMonthlyHabits,
+  pickPlayMonthlyActivity,
   removePlayMonthlyActivity,
+  removePlayMonthlyTimetable,
+  resizePlayMonthlySplit,
+  resizePlayMonthlyTable,
+  splitPlayMonthlyTimetable,
+  unconfirmPlayMonthly,
 } from "./data/play-monthly";
+import {
+  CELL_MIN_WIDTH,
+  MAX_DEPTH,
+  RATIO_RANGE,
+  boundaries,
+  locate,
+  narrowest,
+  splitLeaf,
+  tooNarrow,
+  validSize,
+  withRatio,
+} from "../lib/plan-generator/playMonthlyTimetable";
 import {
   REGENERATABLE,
   addMonthly,
+  annualChanged,
   annualFor,
   confirmMonthly,
+  copyMonthlyDrill,
   editCell,
+  editTableCell,
   findCell,
   findMonthly,
   findMonthlyFor,
+  findTableCell,
   listAudit,
   listMonthly,
+  placeMonthlySafety,
   regenerateCell,
+  removeTableCell,
+  resizeTable,
+  resizeTableSplit,
+  safetyView,
+  splitTableCell,
+  tablesOf,
   targetMonthOf,
+  unconfirmMonthly,
+  removeMonthly,
 } from "./data/monthly-plans";
 import {
   REGENERATABLE as WEEKLY_REGENERATABLE,
@@ -66,8 +105,12 @@ import {
   findWeeklyCell,
   findWeeklyFor,
   listWeekly,
+  monthlyChanged,
   regenerateWeeklyCellValue,
   removeWeekly,
+  unconfirmWeekly,
+  changeWeeklyActivity,
+  changeWeeklyIndoor,
 } from "./data/weekly-plans";
 import {
   addReadyProfile,
@@ -84,16 +127,35 @@ import {
 import type {
   CenterInput,
   ClassInput,
+  ClassUpdate,
   PlanConfig,
   AnnualInput,
   MonthInput,
+  MonthlyPlan,
   ProfileRef,
+  WeeklyPlan,
 } from "../lib/api/types";
 const text = (v: unknown): v is string => typeof v === "string" && !!v.trim();
 const integer = (v: unknown): v is number => Number.isInteger(v);
 const bad = (field: string) => failure("VALIDATION_FAILED", "입력값을 확인해주세요.", field);
+/** 요청 사항(ADR-060). 서버처럼 앞뒤 공백을 떼고 300자까지 — 틀리면 null. 목업은 반영 못한 요청을 만들지 않는다. */
+const memoOf = (b: Record<string, unknown>) =>
+  b.memo == null
+    ? ""
+    : typeof b.memo === "string" && b.memo.trim().length <= 300
+      ? b.memo.trim()
+      : null;
+/** 서버처럼 메모를 계획안에 남긴다 — 다시 읽어도 돌아온다. 목업은 반영 못한 요청을 만들지 않는다. */
+const withMemo = <T extends { id: number }>(
+  plan: T,
+  memo: string,
+  table: "plans" | "monthlyPlans" | "weeklyPlans",
+) => {
+  const fields = { memo, memo_notices: [] };
+  commit((db) => Object.assign(db[table].find((p) => p.id === plan.id) ?? {}, fields));
+  return Object.assign(plan, fields);
+};
 const missing = () => failure("NOT_FOUND", "대상을 찾을 수 없습니다.");
-const MOCK_INVITE = "MOCK234567";
 async function body(request: Request): Promise<Record<string, unknown> | null> {
   try {
     const b = await request.json();
@@ -108,10 +170,120 @@ const mockAuth = (email: string, name: string) => ({
   user: { id: 1, email, name, center_id: null },
 });
 
+async function weeklyActivity(
+  request: Request,
+  id: number,
+  itemId: string,
+  operation: "copy" | "split" | "remove",
+) {
+  const plan = myWeekly(id);
+  if (!plan) return weeklyMissing();
+  const b: Record<string, unknown> | null =
+    operation === "remove"
+      ? { expected_revision: Number(new URL(request.url).searchParams.get("expected_revision")) }
+      : await body(request);
+  if (!b || !integer(b.expected_revision) || Number(b.expected_revision) < 1)
+    return bad("expected_revision");
+  if (plan.status === "CONFIRMED")
+    return failure("ALREADY_CONFIRMED", "확정된 계획안은 바꿀 수 없습니다.");
+  if (plan.revision !== b.expected_revision) return stale();
+  if (
+    !plan.sections
+      .find((section) => section.section_key === "group_activity")
+      ?.cells.some((cell) => cell.item_id === itemId)
+  )
+    return failure("NOT_FOUND", "그 칸을 찾을 수 없습니다.", "item_id");
+  if (operation === "split" && b.axis !== "VERTICAL" && b.axis !== "HORIZONTAL") return bad("axis");
+  try {
+    return HttpResponse.json(
+      weeklyOut(
+        changeWeeklyActivity(
+          id,
+          itemId,
+          operation,
+          typeof b.candidate_item_id === "string" ? b.candidate_item_id : undefined,
+          b.axis === "VERTICAL" || b.axis === "HORIZONTAL" ? b.axis : undefined,
+        ),
+      ),
+    );
+  } catch {
+    return bad("value");
+  }
+}
+
+async function weeklyIndoor(
+  request: Request,
+  id: number,
+  operation: "add" | "order" | "remove",
+  itemId?: string,
+) {
+  const plan = myWeekly(id);
+  if (!plan) return weeklyMissing();
+  const b: Record<string, unknown> | null =
+    operation === "remove"
+      ? { expected_revision: Number(new URL(request.url).searchParams.get("expected_revision")) }
+      : await body(request);
+  if (!b || !integer(b.expected_revision) || Number(b.expected_revision) < 1)
+    return bad("expected_revision");
+  if (plan.status === "CONFIRMED")
+    return failure("ALREADY_CONFIRMED", "확정된 계획안은 바꿀 수 없습니다.");
+  if (plan.revision !== b.expected_revision) return stale();
+  if (!plan.indoor_play_selection) return bad("value");
+  if (operation === "add" && b.candidate_item_id != null && typeof b.candidate_item_id !== "string")
+    return bad("candidate_item_id");
+  if (
+    operation === "order" &&
+    (!Array.isArray(b.item_ids) || !b.item_ids.every((id) => typeof id === "string"))
+  )
+    return bad("item_ids");
+  if (
+    operation === "remove" &&
+    !plan.sections
+      .find((s) => s.section_key === "indoor_play")
+      ?.cells.some((c) => c.item_id === itemId)
+  )
+    return failure("NOT_FOUND", "그 칸을 찾을 수 없습니다.", "item_id");
+  try {
+    return HttpResponse.json(
+      weeklyOut(
+        changeWeeklyIndoor(id, operation, {
+          candidateId: typeof b.candidate_item_id === "string" ? b.candidate_item_id : null,
+          itemIds: operation === "order" ? (b.item_ids as string[]) : undefined,
+          itemId,
+        }),
+      ),
+    );
+  } catch {
+    return bad("value");
+  }
+}
+
 export const handlers = [
+  http.post("*/api/plans/weekly/:id/indoor-plays", ({ request, params }) =>
+    weeklyIndoor(request, Number(params.id), "add"),
+  ),
+  http.put("*/api/plans/weekly/:id/indoor-plays/order", ({ request, params }) =>
+    weeklyIndoor(request, Number(params.id), "order"),
+  ),
+  http.delete("*/api/plans/weekly/:id/indoor-plays/:itemId", ({ request, params }) =>
+    weeklyIndoor(request, Number(params.id), "remove", String(params.itemId)),
+  ),
+  http.post("*/api/plans/weekly/:id/cells/:itemId/copy-activity", ({ request, params }) =>
+    weeklyActivity(request, Number(params.id), String(params.itemId), "copy"),
+  ),
+  http.post("*/api/plans/weekly/:id/cells/:itemId/split", ({ request, params }) =>
+    weeklyActivity(request, Number(params.id), String(params.itemId), "split"),
+  ),
+  http.delete("*/api/plans/weekly/:id/cells/:itemId/split", ({ request, params }) =>
+    weeklyActivity(request, Number(params.id), String(params.itemId), "remove"),
+  ),
   // MSW interception 판정 전용 probe — 실제 백엔드 API가 아니다.
   // 이 응답이 오면 fetch가 정말 MSW handler를 통과했다는 뜻이다.
   http.get("*/api/__msw_health", () => HttpResponse.json({ msw: true })),
+  // 계획안 밖 화면(관찰 · 일과 · 일지 · 반 공유 요청)은 목업 데이터가 없다 — 빈 목록으로 답해 404 이슈만 막는다.
+  ...["observations", "routines", "documents", "access-requests/received"].map((path) =>
+    http.get(`*/api/${path}`, () => HttpResponse.json({ items: [] })),
+  ),
   // 인증 (docs/api-spec.md §0). **목업은 토큰을 검증하지 않는다** —
   // 진짜 검증은 서버가 하고, 여기서는 화면이 토큰을 받고 저장하는 흐름만 흉내낸다.
   http.post("*/api/auth/signup", async ({ request }) => {
@@ -127,6 +299,21 @@ export const handlers = [
     for (const k of ["email", "password"]) if (!text(b[k])) return bad(k);
     return HttpResponse.json(mockAuth(String(b.email), "교사"));
   }),
+  // 카카오 (docs/api-spec.md §0-1). 목업은 카카오로 가지 않고 콜백으로 바로 돌려보낸다 —
+  // 키 없이도 「단추 → 콜백 → 메인」 흐름을 끝까지 눌러 볼 수 있다. 목업 계정은 이메일 하나로 고정.
+  http.get("*/api/auth/kakao/authorize", ({ request }) => {
+    const state = new URL(request.url).searchParams.get("state") ?? "";
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(state)) return bad("state");
+    return HttpResponse.json({
+      url: `/login/kakao?code=mock-kakao-code&state=${encodeURIComponent(state)}`,
+    });
+  }),
+  http.post("*/api/auth/kakao", async ({ request }) => {
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (!text(b.code)) return bad("code");
+    return HttpResponse.json(mockAuth("kakao-teacher@example.com", "카카오 선생님"));
+  }),
   http.get("*/api/auth/me", ({ request }) => {
     const token = request.headers.get("Authorization")?.replace(/^Bearer /, "");
     if (!token?.startsWith("mock.")) return failure("UNAUTHENTICATED", "다시 로그인해주세요.");
@@ -141,42 +328,30 @@ export const handlers = [
     if (!b) return bad("body");
     for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
       if (!text(b[k])) return bad(k);
-    return HttpResponse.json(addCenter(b as unknown as CenterInput), { status: 201 });
-  }),
-  // §1. 원 정보 고치기. 서버처럼 보낸 칸만 바꾸고, 지역은 두 칸을 함께 받는다.
-  http.patch("*/api/centers/:centerId", async ({ request, params }) => {
-    const id = Number(params.centerId);
-    if (!findCenter(id) || id !== currentCenterId()) return missing();
-    const b = await body(request);
-    if (!b) return bad("body");
-    for (const k of ["name", "director_name", "region_sido", "region_sigungu"])
-      if (k in b && !text(b[k])) return bad(k);
-    if ("region_sido" in b !== "region_sigungu" in b) return bad("region_sido");
-    return HttpResponse.json(patchCenter(id, b as Partial<CenterInput>));
-  }),
-  // 초대 코드 (§1-1). 목업은 계정이 하나라 코드를 하나로 고정한다.
-  http.post("*/api/centers/:centerId/invites", ({ params }) => {
-    const id = Number(params.centerId);
-    if (!findCenter(id) || id !== currentCenterId()) return missing();
-    const expires_at = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-    return HttpResponse.json({ code: MOCK_INVITE, expires_at }, { status: 201 });
-  }),
-  http.post("*/api/centers/join", async ({ request }) => {
-    const b = await body(request);
-    if (!b || !text(b.code)) return bad("code");
-    // 실제 서버와 같은 순서다 — 이미 원이 있으면 409, 코드가 틀리면 404.
-    if (currentCenterId() !== null) return failure("ALREADY_EXISTS", "이미 등록한 원이 있습니다.");
-    if (b.code.trim().toUpperCase() !== MOCK_INVITE)
-      return failure("NOT_FOUND", "초대 코드가 없거나 만료됐습니다.", "code");
-    // 목업은 계정이 하나라 초대한 원이 없다. 들어갈 원을 그 자리에서 만든다.
+    // 목업은 계정이 하나라 「같은 원으로 들어가기」(200 · joined)는 서버에서만 본다.
     return HttpResponse.json(
-      addCenter({
-        name: "초대받은 어린이집",
-        director_name: "김원장",
-        region_sido: "강원특별자치도",
-        region_sigungu: "춘천시",
-      }),
+      { ...addCenter(b as unknown as CenterInput), joined: false },
+      { status: 201 },
     );
+  }),
+  // §1 「어린이집 찾기」. 이름에 q 가 든 곳만.
+  http.get("*/api/daycares", ({ request }) => {
+    const url = new URL(request.url);
+    const q = (url.searchParams.get("q") ?? "").replace(/\s/g, "");
+    const items = mockDaycares(
+      url.searchParams.get("sido") ?? "",
+      url.searchParams.get("sigungu") ?? "",
+    )
+      .filter((d) => d.name.includes(q))
+      .map((d) => ({ ...d, teacher_count: 0 }));
+    return HttpResponse.json({ items });
+  }),
+  // §1. 원 정보 읽기. 서버처럼 자기 원만 읽는다.
+  http.get("*/api/centers/:centerId", ({ params }) => {
+    const id = Number(params.centerId);
+    const center = findCenter(id);
+    if (!center || id !== currentCenterId()) return missing();
+    return HttpResponse.json(center);
   }),
   // §3-2. 주 1회 모은 자료. 목업에서는 한 건만 둔다 — 화면이 비어 보이면 안 된다.
   http.get("*/api/trends", async ({ request }) => {
@@ -280,7 +455,50 @@ export const handlers = [
     if (Number(b.age_min) > Number(b.age_max)) return bad("age_min");
     if (b.child_count != null && (!integer(b.child_count) || Number(b.child_count) < 1))
       return bad("child_count");
-    return HttpResponse.json(addClass(id, b as unknown as ClassInput), { status: 201 });
+    if (classNameTaken(id, (b.name as string).trim()))
+      return failure("ALREADY_EXISTS", "같은 이름의 반이 이미 있습니다.", "name");
+    return HttpResponse.json(
+      addClass(id, { ...(b as unknown as ClassInput), name: (b.name as string).trim() }),
+      { status: 201 },
+    );
+  }),
+  // §2 반 수정. 서버처럼 보낸 칸만 바꾸고, 연령은 두 칸을 함께 받는다.
+  http.patch("*/api/classes/:classId", async ({ request, params }) => {
+    const s = await scenario(request, "class-update");
+    if (s) return s;
+    const id = Number(params.classId);
+    const current = findClass(id);
+    if (!current) return missing();
+    const b = await body(request);
+    if (!b) return bad("body");
+    const allowed = ["name", "age_min", "age_max", "teacher_name", "consent_confirmed"];
+    for (const k of Object.keys(b)) if (!allowed.includes(k)) return bad(k);
+    // 없거나 null 이면 안 보낸 것이다.
+    const sent = (k: string) => b[k] != null;
+    for (const k of ["name", "teacher_name"]) {
+      if (!sent(k)) continue;
+      if (!text(b[k]) || (b[k] as string).trim().length > 50) return bad(k);
+      b[k] = (b[k] as string).trim();
+    }
+    if (sent("age_min") !== sent("age_max"))
+      return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", "age_min", "age_max");
+    if (sent("age_min")) {
+      const [lo, hi] = [b.age_min, b.age_max];
+      if (!integer(lo) || !integer(hi) || lo < 3 || hi > 5 || lo > hi)
+        return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", "age_min", "age_max");
+    }
+    if (sent("consent_confirmed") && typeof b.consent_confirmed !== "boolean")
+      return bad("consent_confirmed");
+    // 아이 명단이 있는 반은 동의를 끌 수 없다. 막히면 같이 보낸 칸도 적용하지 않는다.
+    if (b.consent_confirmed === false && listChildren(id).length > 0)
+      return failure(
+        "GATE_BLOCKED",
+        "아이 명단이 있는 반은 동의를 끌 수 없습니다.",
+        "consent_confirmed",
+      );
+    if (typeof b.name === "string" && classNameTaken(current.center_id, b.name, id))
+      return failure("ALREADY_EXISTS", "같은 이름의 반이 이미 있습니다.", "name");
+    return HttpResponse.json(patchClass(id, b as ClassUpdate));
   }),
   http.get("*/api/centers/:centerId/classes", async ({ request, params }) => {
     const s = await scenario(request, "classes");
@@ -303,6 +521,13 @@ export const handlers = [
     if (!findClass(id)) return missing();
     const b = await body(request);
     if (!b || !text(b.name) || Object.keys(b).some((k) => k !== "name")) return bad("name");
+    const klass = findClass(id);
+    if (klass && !klass.consent_confirmed_at)
+      return failure(
+        "GATE_BLOCKED",
+        "법정대리인 동의를 확인한 반에만 아이를 넣을 수 있습니다.",
+        "class_id",
+      );
     return HttpResponse.json(addChild(id, b.name.trim()), { status: 201 });
   }),
   http.delete("*/api/children/:id", async ({ request, params }) => {
@@ -347,6 +572,8 @@ export const handlers = [
     if (b.format !== "MONTHLY_THEME" && b.format !== "PLAY_PROJECT") return bad("format");
     if (b.form_id != null && !integer(b.form_id)) return bad("form_id");
     if (b.format === "PLAY_PROJECT" && b.form_id != null) return bad("form_id");
+    const memo = memoOf(b);
+    if (memo === null) return bad("memo");
     // 연간 목업은 「지금 원」 소유 검사를 하지 않는다(서버는 남의 원 반이면 404) — 화면 목업 흐름 유지.
     const klass = findClass(Number(b.class_id));
     if (!klass) return classMissing();
@@ -355,9 +582,12 @@ export const handlers = [
       return failure("ALREADY_EXISTS", "이 반의 연간계획안이 이미 있습니다.", "class_id");
     if (request.signal.aborted) return HttpResponse.error();
     // 실제 서버는 교육과정 참고자료 승인 전까지 503을 반환하지만, 화면 작업용 목업은 승인 뒤 응답 모양을 만든다.
-    return HttpResponse.json(addPlan(b as unknown as AnnualInput, klass.school_year), {
-      status: 201,
-    });
+    return HttpResponse.json(
+      withMemo(addPlan(b as unknown as AnnualInput, klass.school_year), memo, "plans"),
+      {
+        status: 201,
+      },
+    );
   }),
   http.get("*/api/plans/annual", async ({ request }) => {
     const s = await scenario(request, "annual-list");
@@ -374,6 +604,19 @@ export const handlers = [
     const plan = findPlan(Number(params.id));
     return plan ? HttpResponse.json(plan) : annualMissing();
   }),
+  http.delete("*/api/plans/annual/:id", ({ params }) => {
+    const id = Number(params.id);
+    if (!findPlan(id)) return annualMissing();
+    if (removePlan(id) === "IN_USE")
+      return failure("IN_USE", "이 연간계획안으로 만든 월간계획안이 있습니다. 먼저 지워주세요.");
+    return new HttpResponse(null, { status: 204 });
+  }),
+  // 시험용 — 서버처럼 꺼져 있으면 없는 경로(404)다. 켜기: .env.local NEXT_PUBLIC_ALLOW_TEST_RESET=1
+  http.delete("*/api/plans/annual/:id/test-reset", ({ params }) =>
+    process.env.NEXT_PUBLIC_ALLOW_TEST_RESET === "1" && resetPlan(Number(params.id))
+      ? new HttpResponse(null, { status: 204 })
+      : annualMissing(),
+  ),
   http.put("*/api/plans/annual/:id/months/:month", async ({ request, params }) => {
     const s = await scenario(request, "month");
     if (s) return s;
@@ -489,8 +732,28 @@ export const handlers = [
       if (lacking.length) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...lacking);
       return HttpResponse.json(confirmPlayPlan(id));
     }
-    // 재호출은 200 · 같은 응답 · 상태 변화 없음(§7). 서버는 빈 소주제로 확정을 막지 않는다.
+    // 재호출은 200 · 같은 응답 · 상태 변화 없음(§7). 처음 확정이면 달마다 소주제 수 = 주 수여야 한다 (I-A).
+    const mismatch = plan.status === "CONFIRMED" ? [] : subThemeMismatch(plan);
+    if (mismatch.length) return failure("VALIDATION_FAILED", "입력값을 확인해주세요.", ...mismatch);
     return HttpResponse.json(confirmPlan(id));
+  }),
+  // 확정 취소 (U). 본문은 그 형식의 confirm 과 같고, 이미 초안이면 200 · 그대로다.
+  http.post("*/api/plans/annual/:id/unconfirm", async ({ request, params }) => {
+    const s = await scenario(request, "annual-unconfirm");
+    if (s) return s;
+    const id = Number(params.id),
+      plan = findPlan(id);
+    if (!plan) return annualMissing();
+    if (plan.format === "PLAY_PROJECT") {
+      const b = await body(request);
+      const given = b?.expected_revision;
+      const present = given !== undefined && given !== null;
+      if (present && badRevision(b!)) return bad("expected_revision");
+      if (plan.status !== "CONFIRMED") return HttpResponse.json(plan);
+      if (!present) return bad("expected_revision");
+      if (plan.revision !== given) return stale();
+    } else if (plan.status !== "CONFIRMED") return HttpResponse.json(plan);
+    return HttpResponse.json(unconfirmPlan(id));
   }),
   // 실제 서버: 확정본은 200 hwpx(가짜 파일), 미확정은 형식 상관없이 409 — 문구만 형식별 (§9).
   http.get("*/api/plans/:id/export/hwp", async ({ request, params }) => {
@@ -507,10 +770,14 @@ export const handlers = [
           : "확정된 계획안만 내보낼 수 있습니다.",
       );
     }
-    const name = `plan-${id}.hwpx`;
-    return new HttpResponse("MSW hwpx", {
+    // `?format=pdf|hwpx|hwp` (ADR-039 · ADR-061). 다른 값은 서버처럼 422.
+    const format = new URL(request.url).searchParams.get("format") ?? "hwpx";
+    const type = { hwpx: "application/hwp+zip", hwp: "application/x-hwp", pdf: "application/pdf" };
+    if (!(format in type)) return bad("format");
+    const name = `plan-${id}.${format}`;
+    return new HttpResponse(`MSW ${format}`, {
       headers: {
-        "Content-Type": "application/hwp+zip",
+        "Content-Type": type[format as keyof typeof type],
         "Content-Disposition": `attachment; filename="${name}"; filename*=UTF-8''${name}`,
       },
     });
@@ -544,6 +811,7 @@ export const handlers = [
       new Set(trimmed).size === trimmed.length
         ? []
         : ["emphasized_row_keys"]),
+      ...(memoOf(b) === null ? ["memo"] : []),
     ];
     if (wrong.length) return invalid(wrong);
     const klass = myClass(Number(b.class_id));
@@ -565,11 +833,10 @@ export const handlers = [
           ? "연간계획안을 먼저 확정해주세요."
           : null;
     if (gate) return failure("GATE_BLOCKED", gate, "class_id");
-    // 서버는 생성 규칙이 아직 없어 게이트 뒤에서 항상 503 이다. 아무것도 저장하지 않는다.
-    return failure(
-      "DEPENDENCY_UNAVAILABLE",
-      "지금은 이 반의 놀이 중심 월간계획안을 만들 수 없습니다. 관리자에게 문의해 주세요.",
-    );
+    // 서버는 생성한 초안을 201 로 준다. 목업은 고정 합성 데이터에 달 · 강조 놀이만 바꾼다.
+    return HttpResponse.json(addPlayMonthly(klass.id, false, Number(b.month), trimmed, true), {
+      status: 201,
+    });
   }),
   http.get("*/api/plans/monthly/play", async ({ request }) => {
     const s = await scenario(request, "play-monthly-list");
@@ -595,9 +862,7 @@ export const handlers = [
     if (s) return s;
     const plan = playOwn(String(params.id));
     if (plan instanceof Response) return plan;
-    if (plan.status === "CONFIRMED")
-      return failure("GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.");
-    removePlayMonthly(plan.id);
+    removePlayMonthly(plan.id); // 확정본도 지운다(ADR-064)
     return new HttpResponse(null, { status: 204 });
   }),
   http.put("*/api/plans/monthly/play/:id/cells/:itemId", async ({ request, params }) => {
@@ -617,6 +882,71 @@ export const handlers = [
     // 같은 값은 422 — 빈 값 → 빈 값(공백만 든 칸 포함)도 같다.
     if (value === cell.value || !(value || cell.value.trim())) return invalid(["value"]);
     return HttpResponse.json(editPlayMonthlyCell(plan.id, itemId, value));
+  }),
+  http.put("*/api/plans/monthly/play/:id/activities/order", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-activity");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      b.section !== "together" && b.section !== "free_play"
+        ? ["section"]
+        : Array.isArray(b.item_ids) &&
+            b.item_ids.every((i: unknown) => typeof i === "string" && i.trim())
+          ? []
+          : ["item_ids"],
+    );
+    if (b instanceof Response) return b;
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const section = b.section as "together" | "free_play";
+    const ids = b.item_ids as string[];
+    const rows = plan[section].map((a) => a.activity_id);
+    // 그 목록의 행을 빠짐없이 한 번씩.
+    if (
+      ids.length !== rows.length ||
+      new Set(ids).size !== ids.length ||
+      ids.some((i) => !rows.includes(i))
+    )
+      return invalid(["item_ids"]);
+    return HttpResponse.json(orderPlayMonthlyActivities(plan.id, section, ids));
+  }),
+  // ADR-065 — AI 후보 하나를 그 목록 끝에. 후보 목록에 없으면 404, 그 목록이 이미 다 찼으면 422.
+  http.post("*/api/plans/monthly/play/:id/activities/:itemId/pick", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-activity");
+    if (s) return s;
+    const b = await playInput(request, params.id, () => []);
+    if (b instanceof Response) return b;
+    const itemId = decodeURIComponent(String(params.itemId));
+    if (!itemId.trim()) return invalid(["item_id"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const found = plan.activity_pool?.find((a) => a.activity_id === itemId);
+    if (!found) return failure("NOT_FOUND", "그 후보를 찾을 수 없습니다.", "item_id");
+    if (plan[found.section].length >= (plan.activity_pick ?? 0))
+      return failure("VALIDATION_FAILED", "이미 다 골랐어요. 하나를 빼고 넣어 주세요.", "item_id");
+    return HttpResponse.json(pickPlayMonthlyActivity(plan.id, itemId));
+  }),
+  http.put("*/api/plans/monthly/play/:id/habits/order", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-activity");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      Array.isArray(b.item_ids) &&
+      b.item_ids.every((i: unknown) => typeof i === "string" && i.trim())
+        ? []
+        : ["item_ids"],
+    );
+    if (b instanceof Response) return b;
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const ids = b.item_ids as string[];
+    const cells = plan.habits.map((h) => h.cell.item_id);
+    // 습관 칸을 빠짐없이 한 번씩.
+    if (
+      ids.length !== cells.length ||
+      new Set(ids).size !== ids.length ||
+      ids.some((i) => !cells.includes(i))
+    )
+      return invalid(["item_ids"]);
+    return HttpResponse.json(orderPlayMonthlyHabits(plan.id, ids));
   }),
   http.delete("*/api/plans/monthly/play/:id/activities/:itemId", async ({ request, params }) => {
     const s = await scenario(request, "play-monthly-activity");
@@ -670,6 +1000,108 @@ export const handlers = [
       return HttpResponse.json(copyPlayMonthlyDrill(plan.id, itemId));
     },
   ),
+  // 특별활동 시간표(ADR-047) — 경로 · 코드는 제안이다. 순서는 위 변경과 같고, 내용 검사는 Core 순서다.
+  http.post("*/api/plans/monthly/play/:id/cells/:itemId/split", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-split");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      b.axis === "VERTICAL" || b.axis === "HORIZONTAL" ? [] : ["axis"],
+    );
+    if (b instanceof Response) return b;
+    const itemId = decodeURIComponent(String(params.itemId));
+    if (!itemId.trim()) return invalid(["item_id"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const found = locate(plan.special_activity, itemId);
+    if (!found) return timetableCellMissing();
+    if (found.path.length - 1 >= MAX_DEPTH)
+      return failure("VALIDATION_FAILED", "한 요일은 네 번까지 나눌 수 있습니다.", "item_id");
+    const axis = b.axis as "VERTICAL" | "HORIZONTAL";
+    const day = plan.special_activity[found.day];
+    const probe = splitLeaf(day, itemId, axis, "probe", { ...found.path.at(-1)!.cell! });
+    if (narrowest(probe, plan.special_activity_size.column_widths[found.day]) < CELL_MIN_WIDTH)
+      return tooNarrowFailure();
+    return HttpResponse.json(splitPlayMonthlyTimetable(plan.id, itemId, axis));
+  }),
+  http.delete("*/api/plans/monthly/play/:id/cells/:itemId/split", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-split-remove");
+    if (s) return s;
+    const b = await playInput(request, params.id, () => [], true);
+    if (b instanceof Response) return b;
+    const itemId = decodeURIComponent(String(params.itemId));
+    if (!itemId.trim()) return invalid(["item_id"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const found = locate(plan.special_activity, itemId);
+    if (!found) return timetableCellMissing();
+    if (found.path.length === 1)
+      return failure(
+        "VALIDATION_FAILED",
+        "요일의 마지막 칸은 지울 수 없습니다. 글을 비워 주세요.",
+        "item_id",
+      );
+    return HttpResponse.json(removePlayMonthlyTimetable(plan.id, itemId));
+  }),
+  http.put(
+    "*/api/plans/monthly/play/:id/timetable/splits/:splitId",
+    async ({ request, params }) => {
+      const s = await scenario(request, "play-monthly-split-ratio");
+      if (s) return s;
+      const b = await playInput(request, params.id, (b) => (integer(b.ratio) ? [] : ["ratio"]));
+      if (b instanceof Response) return b;
+      const splitId = decodeURIComponent(String(params.splitId));
+      if (!splitId.trim()) return invalid(["split_id"]);
+      const plan = playGate(params.id, b);
+      if (plan instanceof Response) return plan;
+      const ratio = Number(b.ratio);
+      const day = plan.special_activity.findIndex((d) =>
+        boundaries(d).some((x) => x.split_id === splitId),
+      );
+      if (day < 0) return failure("NOT_FOUND", "그 시간표 경계를 찾을 수 없습니다.", "split_id");
+      if (ratio < RATIO_RANGE[0] || ratio > RATIO_RANGE[1]) return invalid(["ratio"]);
+      const days = plan.special_activity.map((d, i) =>
+        i === day ? withRatio(d, splitId, ratio) : d,
+      );
+      if (tooNarrow(days, plan.special_activity_size.column_widths)) return tooNarrowFailure();
+      return HttpResponse.json(resizePlayMonthlySplit(plan.id, splitId, ratio));
+    },
+  ),
+  http.put("*/api/plans/monthly/play/:id/timetable/size", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-size");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      Array.isArray(b.column_widths) && b.column_widths.every(integer) && integer(b.height_mm)
+        ? []
+        : ["column_widths", "height_mm"],
+    );
+    if (b instanceof Response) return b;
+    const size = { column_widths: b.column_widths as number[], height_mm: Number(b.height_mm) };
+    if (!validSize(size)) return invalid(["column_widths", "height_mm"]);
+    const plan = playGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    if (tooNarrow(plan.special_activity, size.column_widths)) return tooNarrowFailure();
+    return HttpResponse.json(resizePlayMonthlyTable(plan.id, size));
+  }),
+  // 확정본만 한글 파일로 — 실제 서버는 양식에 나눈 모양 · 폭 · 높이 그대로 채운다. 목업은 가짜 파일.
+  http.get("*/api/plans/monthly/play/:id/export/hwp", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-export");
+    if (s) return s;
+    // 쿼리 형식 422 가 소유 404 보다 먼저다(FastAPI 스키마).
+    const format = new URL(request.url).searchParams.get("format") ?? "hwpx";
+    const type = { hwpx: "application/hwp+zip", hwp: "application/x-hwp", pdf: "application/pdf" };
+    if (!(format in type)) return bad("format");
+    const plan = playOwn(String(params.id));
+    if (plan instanceof Response) return plan;
+    if (plan.status !== "CONFIRMED")
+      return failure("GATE_BLOCKED", "확정된 계획안만 내보낼 수 있습니다.");
+    const name = `play-monthly-${plan.id}.${format}`;
+    return new HttpResponse(`MSW ${format}`, {
+      headers: {
+        "Content-Type": type[format as keyof typeof type],
+        "Content-Disposition": `attachment; filename="${name}"; filename*=UTF-8''${name}`,
+      },
+    });
+  }),
   // 확정 순서: 스키마(본문이 있으면 정수 1 이상 — 확정본이어도) → 소유 404 · 기존 월간 409 → 이미 확정이면 200
   // → 본문 없음 422 → revision 409 → 부족 422. 본문을 읽는 사이 바뀔 수 있어 소유 · 상태는 그 뒤에 본다.
   http.post("*/api/plans/monthly/play/:id/confirm", async ({ request, params }) => {
@@ -692,6 +1124,18 @@ export const handlers = [
     if (lacking.length) return invalid(lacking);
     return HttpResponse.json(confirmPlayMonthly(plan.id));
   }),
+  http.post("*/api/plans/monthly/play/:id/unconfirm", async ({ request, params }) => {
+    const s = await scenario(request, "play-monthly-unconfirm");
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (badRevision(b)) return bad("expected_revision");
+    const plan = playOwn(params.id);
+    if (plan instanceof Response) return plan;
+    if (plan.status !== "CONFIRMED") return HttpResponse.json(plan);
+    if (plan.revision !== b.expected_revision) return stale();
+    return HttpResponse.json(unconfirmPlayMonthly(plan.id));
+  }),
   http.get("*/api/plans/monthly/play/:id/audit", async ({ request, params }) => {
     const s = await scenario(request, "play-monthly-audit");
     if (s) return s;
@@ -712,6 +1156,8 @@ export const handlers = [
     if (typeof ref !== "object" || ref === null) return bad("profile_ref");
     for (const k of ["profile_id", "profile_version"])
       if (typeof ref[k] !== "string" || !ref[k]) return bad("profile_ref." + k);
+    const memo = memoOf(b);
+    if (memo === null) return bad("memo");
     const klass = myClass(b.class_id);
     if (!klass) return classMissing();
     if (
@@ -749,7 +1195,12 @@ export const handlers = [
         "profile_ref",
       );
     if (request.signal.aborted) return HttpResponse.error();
-    return HttpResponse.json(addMonthly(klass, annual, b.month, profile), { status: 201 });
+    return HttpResponse.json(
+      monthlyOut(withMemo(addMonthly(klass, annual, b.month, profile), memo, "monthlyPlans")),
+      {
+        status: 201,
+      },
+    );
   }),
   http.get("*/api/plans/monthly", async ({ request }) => {
     const s = await scenario(request, "monthly-list");
@@ -768,7 +1219,17 @@ export const handlers = [
     const s = await scenario(request, "monthly-get");
     if (s) return s;
     const plan = myMonthly(Number(params.id));
-    return plan ? HttpResponse.json(plan) : planMissing(Number(params.id));
+    return plan ? HttpResponse.json(monthlyOut(plan)) : planMissing(Number(params.id));
+  }),
+  // 확정본도 지운다(ADR-064). 이 월간으로 만든 주간이 있으면 409 IN_USE.
+  http.delete("*/api/plans/monthly/:id", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-delete");
+    if (s) return s;
+    const plan = myMonthly(Number(params.id));
+    if (!plan) return planMissing(Number(params.id));
+    if (removeMonthly(plan.id) === "IN_USE")
+      return failure("IN_USE", "이 월간계획안으로 만든 주간계획안이 있습니다. 먼저 지워주세요.");
+    return new HttpResponse(null, { status: 204 });
   }),
   // 변경 이력 (§9-5). 소유를 먼저 본다 — 남의 계획안이면 item_id 를 보기 전에 404 ["id"].
   http.get("*/api/plans/monthly/:id/audit", async ({ request, params }) => {
@@ -784,8 +1245,33 @@ export const handlers = [
   http.put("*/api/plans/monthly/:id/cells/:itemId", async ({ request, params }) => {
     const s = await scenario(request, "monthly-cell");
     if (s) return s;
+    // 교사 표 칸(Human Decision 2026-11-05) — 생성 방식은 처음 쓸 때 MANUAL, 검사는 다시 돌지 않는다.
+    const own = myMonthly(Number(params.id));
+    const itemId = decodeURIComponent(String(params.itemId));
+    if (own && findTableCell(own, itemId)) {
+      const b = await playInput(request, params.id, (b) =>
+        typeof b.value === "string" ? [] : ["value"],
+      );
+      if (b instanceof Response) return b;
+      const plan = monthlyGate(params.id, b);
+      if (plan instanceof Response) return plan;
+      if (findTableCell(plan, itemId)!.cell.value === b.value)
+        return failure(
+          "VALIDATION_FAILED",
+          "칸의 값이 바뀌지 않았거나 쓸 수 없는 값입니다.",
+          "value",
+        );
+      return HttpResponse.json(monthlyOut(editTableCell(plan.id, itemId, String(b.value))));
+    }
     const w = await cellWrite(request, String(params.id), String(params.itemId), true);
     if (w instanceof Response) return w;
+    // 후보 모드의 주별 안전교육 칸은 배치가 정한다 — 서버 Core 가 막는다(monthly_safety_cell_not_editable).
+    if (
+      w.plan.safety_candidates?.length &&
+      w.section.section_key === "safety_education" &&
+      !w.plan.safety_candidates.some((c) => c.cell.item_id === w.cell.item_id)
+    )
+      return failure("VALIDATION_FAILED", "이 칸은 고칠 수 없습니다.", "item_id");
     if (w.cell.value === w.b.value)
       return failure(
         "VALIDATION_FAILED",
@@ -793,9 +1279,150 @@ export const handlers = [
         "value",
       );
     return HttpResponse.json(
-      editCell(w.plan.id, w.cell.item_id, String(w.b.value), w.section.section_key),
+      monthlyOut(editCell(w.plan.id, w.cell.item_id, String(w.b.value), w.section.section_key)),
     );
   }),
+  // 교사 표 나누기 · 빼기 · 크기 — 놀이 월간 시간표와 같은 경로 · 본문 · 한도(서버 monthly_router).
+  http.post("*/api/plans/monthly/:id/cells/:itemId/split", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-split");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      b.axis === "VERTICAL" || b.axis === "HORIZONTAL" ? [] : ["axis"],
+    );
+    if (b instanceof Response) return b;
+    const plan = monthlyGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const itemId = decodeURIComponent(String(params.itemId));
+    const table = tablesOf(plan).find((t) => locate(t.columns, itemId));
+    if (!table) return tableCellMissing();
+    const found = locate(table.columns, itemId)!;
+    if (found.path.length - 1 >= MAX_DEPTH)
+      return failure("VALIDATION_FAILED", "한 칸은 네 번까지 나눌 수 있습니다.", "item_id");
+    const axis = b.axis as "VERTICAL" | "HORIZONTAL";
+    const probe = splitLeaf(table.columns[found.day], itemId, axis, "probe", {
+      ...found.path.at(-1)!.cell!,
+    });
+    if (narrowest(probe, table.column_widths[found.day]) < CELL_MIN_WIDTH)
+      return tooNarrowFailure();
+    return HttpResponse.json(monthlyOut(splitTableCell(plan.id, itemId, axis)));
+  }),
+  http.delete("*/api/plans/monthly/:id/cells/:itemId/split", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-split-remove");
+    if (s) return s;
+    const b = await playInput(request, params.id, () => [], true);
+    if (b instanceof Response) return b;
+    const plan = monthlyGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const itemId = decodeURIComponent(String(params.itemId));
+    const table = tablesOf(plan).find((t) => locate(t.columns, itemId));
+    if (!table) return tableCellMissing();
+    if (locate(table.columns, itemId)!.path.length === 1)
+      return failure(
+        "VALIDATION_FAILED",
+        "열의 마지막 칸은 뺄 수 없습니다. 글을 비워 주세요.",
+        "item_id",
+      );
+    return HttpResponse.json(monthlyOut(removeTableCell(plan.id, itemId)));
+  }),
+  http.put("*/api/plans/monthly/:id/timetable/splits/:splitId", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-split-ratio");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) => (integer(b.ratio) ? [] : ["ratio"]));
+    if (b instanceof Response) return b;
+    const plan = monthlyGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const splitId = decodeURIComponent(String(params.splitId));
+    const table = tablesOf(plan).find((t) =>
+      t.columns.some((c) => boundaries(c).some((x) => x.split_id === splitId)),
+    );
+    if (!table) return failure("NOT_FOUND", "그 표 경계를 찾을 수 없습니다.", "split_id");
+    const ratio = Number(b.ratio);
+    if (ratio < RATIO_RANGE[0] || ratio > RATIO_RANGE[1]) return invalid(["ratio"]);
+    const columns = table.columns.map((c) => withRatio(c, splitId, ratio));
+    if (tooNarrow(columns, table.column_widths)) return tooNarrowFailure();
+    return HttpResponse.json(monthlyOut(resizeTableSplit(plan.id, splitId, ratio)));
+  }),
+  http.put("*/api/plans/monthly/:id/timetable/size", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-size");
+    if (s) return s;
+    const b = await playInput(request, params.id, (b) =>
+      Array.isArray(b.column_widths) && b.column_widths.every(integer) && integer(b.height_mm)
+        ? []
+        : ["column_widths", "height_mm"],
+    );
+    if (b instanceof Response) return b;
+    const plan = monthlyGate(params.id, b);
+    if (plan instanceof Response) return plan;
+    const table = tablesOf(plan).find((t) => t.table_key === b.table_key);
+    if (!table) return failure("NOT_FOUND", "그 표를 찾을 수 없습니다.", "table_key");
+    const widths = b.column_widths as number[];
+    const height = Number(b.height_mm);
+    if (
+      widths.length !== table.columns.length ||
+      widths.some((w) => w < 5) ||
+      widths.reduce((x, y) => x + y, 0) !== 100 ||
+      height < 10 ||
+      height > 80
+    )
+      return invalid(["ratio"]);
+    if (tooNarrow(table.columns, widths)) return tooNarrowFailure();
+    return HttpResponse.json(
+      monthlyOut(
+        resizeTable(plan.id, table.table_key, { column_widths: widths, height_mm: height }),
+      ),
+    );
+  }),
+  // 안전교육 놓기 · 훈련 후보 복사 — 서버 monthly_router 와 같은 순서 · 같은 오류다.
+  http.put("*/api/plans/monthly/:id/safety-weeks/:weekId", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-safety");
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (!("candidate_item_id" in b)) return bad("candidate_item_id");
+    const candidate = b.candidate_item_id;
+    if (candidate !== null && (typeof candidate !== "string" || !candidate.trim()))
+      return invalid(["candidate_item_id"]);
+    if (badRevision(b)) return bad("expected_revision");
+    const weekId = decodeURIComponent(String(params.weekId));
+    if (!/^\d{4}-(0[1-9]|1[0-2])-W[1-9]\d?$/.test(weekId)) return invalid(["week_id"]);
+    const plan = myMonthly(Number(params.id));
+    if (!plan) return planMissing(Number(params.id));
+    if (plan.status === "CONFIRMED")
+      return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+    if (plan.revision !== b.expected_revision) return stale();
+    if (!plan.safety_candidates?.length)
+      return failure("VALIDATION_FAILED", "이 월간계획안에는 안전교육 후보가 없습니다.");
+    if (!plan.safety_weeks.some((w) => w.week_id === weekId))
+      return failure("NOT_FOUND", "그 주를 찾을 수 없습니다.", "week_id");
+    if (candidate !== null && !plan.safety_candidates.some((c) => c.cell.item_id === candidate))
+      return invalid(["candidate_item_id"]);
+    return HttpResponse.json(
+      monthlyOut(placeMonthlySafety(plan.id, weekId, candidate as string | null)),
+    );
+  }),
+  http.post(
+    "*/api/plans/monthly/:id/drill-candidates/:itemId/copy",
+    async ({ request, params }) => {
+      const s = await scenario(request, "monthly-drill");
+      if (s) return s;
+      const b = await body(request);
+      if (!b) return bad("body");
+      if (badRevision(b)) return bad("expected_revision");
+      const itemId = decodeURIComponent(String(params.itemId));
+      if (!itemId.trim()) return invalid(["item_id"]);
+      const plan = myMonthly(Number(params.id));
+      if (!plan) return planMissing(Number(params.id));
+      if (plan.status === "CONFIRMED")
+        return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+      if (plan.revision !== b.expected_revision) return stale();
+      if (!plan.sections.some((s) => s.section_key === "drill" && s.cells.length))
+        return failure("VALIDATION_FAILED", "이 월간계획안에는 소방대피 · 재난대비 칸이 없습니다.");
+      const drill = plan.drill_candidates?.find((d) => d.cell.item_id === itemId);
+      if (!drill) return failure("NOT_FOUND", "그 훈련 후보를 찾을 수 없습니다.", "item_id");
+      if (!drill.cell.value.trim()) return invalid(["item_id"]);
+      return HttpResponse.json(monthlyOut(copyMonthlyDrill(plan.id, itemId)));
+    },
+  ),
   // LLM 을 부르지 않는다 — 다음 revision 을 넣은 고정 문장으로 바꾼다.
   http.post("*/api/plans/monthly/:id/cells/:itemId/regenerate", async ({ request, params }) => {
     const s = await scenario(request, "monthly-regenerate", 1200);
@@ -806,7 +1433,9 @@ export const handlers = [
       return failure("VALIDATION_FAILED", "이 칸은 다시 만들 수 없습니다.", "item_id");
     if (request.signal.aborted) return HttpResponse.error();
     const label = w.section.label ?? w.section.section_key;
-    return HttpResponse.json(regenerateCell(w.plan.id, w.cell.item_id, label, w.plan.revision + 1));
+    return HttpResponse.json(
+      monthlyOut(regenerateCell(w.plan.id, w.cell.item_id, label, w.plan.revision + 1)),
+    );
   }),
   http.post("*/api/plans/monthly/:id/confirm", async ({ request, params }) => {
     const s = await scenario(request, "monthly-confirm");
@@ -817,9 +1446,22 @@ export const handlers = [
     const plan = myMonthly(Number(params.id));
     if (!plan) return planMissing(Number(params.id));
     // 이미 확정이면 revision 과 상관없이 200 · 저장된 그대로 (D-M5-CONFIRM-01).
-    if (plan.status === "CONFIRMED") return HttpResponse.json(plan);
+    if (plan.status === "CONFIRMED") return HttpResponse.json(monthlyOut(plan));
     if (plan.revision !== b.expected_revision) return stale();
-    return HttpResponse.json(confirmMonthly(plan.id));
+    return HttpResponse.json(monthlyOut(confirmMonthly(plan.id)));
+  }),
+  // 확정 취소 (U). 하위 주간이 있어도 풀린다. 이미 초안이면 revision 과 상관없이 200 · 그대로.
+  http.post("*/api/plans/monthly/:id/unconfirm", async ({ request, params }) => {
+    const s = await scenario(request, "monthly-unconfirm");
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (badRevision(b)) return bad("expected_revision");
+    const plan = myMonthly(Number(params.id));
+    if (!plan) return planMissing(Number(params.id));
+    if (plan.status !== "CONFIRMED") return HttpResponse.json(monthlyOut(plan));
+    if (plan.revision !== b.expected_revision) return stale();
+    return HttpResponse.json(monthlyOut(unconfirmMonthly(plan.id)));
   }),
   // 주간계획안 (docs/weekly-plan-contract.md §13). 월간과 같은 모양 · 같은 공개 오류 코드다.
   http.post("*/api/plans/weekly", async ({ request }) => {
@@ -830,6 +1472,8 @@ export const handlers = [
     if (!integer(b.class_id)) return bad("class_id");
     if (typeof b.week_id !== "string" || !/^\d{4}-\d{2}-W\d+$/.test(b.week_id))
       return bad("week_id");
+    const memo = memoOf(b);
+    if (memo === null) return bad("memo");
     const klass = myClass(b.class_id);
     if (!klass) return classMissing();
     // G5 — 같은 반 · 같은 주가 이미 있으면 DRAFT 든 CONFIRMED 든 거절한다.
@@ -846,28 +1490,55 @@ export const handlers = [
     if (!week || !week.active) return bad("week_id");
     if (request.signal.aborted) return HttpResponse.error();
     const saturday = !!findCenterSettings(klass.center_id).weekly_saturday_enabled;
-    return HttpResponse.json(addWeekly(klass, monthly, b.week_id, saturday), { status: 201 });
+    return HttpResponse.json(
+      weeklyOut(
+        withMemo(
+          addWeekly(
+            klass,
+            monthly,
+            b.week_id,
+            saturday,
+            b.activity_candidates === true || b.indoor_play_candidates === true,
+            b.indoor_play_candidates === true,
+          ),
+          memo,
+          "weeklyPlans",
+        ),
+      ),
+      { status: 201 },
+    );
   }),
   http.get("*/api/plans/weekly", async ({ request }) => {
     const s = await scenario(request, "weekly-list");
     if (s) return s;
     const query = new URL(request.url).searchParams;
     const raw = query.get("class_id");
-    const month = Number(query.get("month"));
-    // `month` 는 **달력 달 1~12** 다. 연도는 반의 학년도가 정한다 (월간 생성과 같은 규칙).
-    if (raw === null || !/^-?\d+$/.test(raw)) return bad("class_id");
-    if (!Number.isInteger(month) || month < 1 || month > 12) return bad("month");
+    const rawMonth = query.get("month");
+    const month = Number(rawMonth);
+    // 백엔드와 같다: 둘 다 고를 수 있다. `month` 는 **달력 달 1~12** 이고 `class_id` 와 함께만 받는다 —
+    // 연도는 반의 학년도가 정한다 (월간 생성과 같은 규칙). 둘 다 없으면 원 전체.
+    if (rawMonth !== null && (raw === null || !Number.isInteger(month) || month < 1 || month > 12))
+      return bad("month");
+    if (raw === null) {
+      const center = currentCenterId();
+      const ids = center === null ? [] : listClasses(center).map((c) => c.id);
+      return HttpResponse.json({ items: listWeekly(ids) });
+    }
+    if (!/^-?\d+$/.test(raw)) return bad("class_id");
     const klass = myClass(Number(raw));
     if (!klass) return classMissing();
     return HttpResponse.json({
-      items: listWeekly([klass.id], targetMonthOf(klass.school_year, month)),
+      items: listWeekly(
+        [klass.id],
+        rawMonth === null ? undefined : targetMonthOf(klass.school_year, month),
+      ),
     });
   }),
   http.get("*/api/plans/weekly/:id", async ({ request, params }) => {
     const s = await scenario(request, "weekly-get");
     if (s) return s;
     const plan = myWeekly(Number(params.id));
-    return plan ? HttpResponse.json(plan) : weeklyMissing();
+    return plan ? HttpResponse.json(weeklyOut(plan)) : weeklyMissing();
   }),
   http.put("*/api/plans/weekly/:id/cells/:itemId", async ({ request, params }) => {
     const s = await scenario(request, "weekly-cell");
@@ -880,7 +1551,9 @@ export const handlers = [
         "칸의 값이 바뀌지 않았거나 쓸 수 없는 값입니다.",
         "value",
       );
-    return HttpResponse.json(editWeeklyCellValue(w.plan.id, w.cell.item_id, String(w.b.value)));
+    return HttpResponse.json(
+      weeklyOut(editWeeklyCellValue(w.plan.id, w.cell.item_id, String(w.b.value))),
+    );
   }),
   http.post("*/api/plans/weekly/:id/cells/:itemId/regenerate", async ({ request, params }) => {
     const s = await scenario(request, "weekly-regenerate", 1200);
@@ -890,12 +1563,16 @@ export const handlers = [
     // 교사 입력 칸은 만든 적이 없어 다시 만들 것도 없다 (§6-2).
     if (TEACHER_INPUT.includes(w.section.section_key))
       return failure("VALIDATION_FAILED", "교사가 적는 칸이라 다시 만들 수 없습니다.", "item_id");
-    if (!WEEKLY_REGENERATABLE.includes(w.section.section_key))
+    if (
+      !WEEKLY_REGENERATABLE.includes(w.section.section_key) ||
+      (w.plan.indoor_play_selection && w.section.section_key === "indoor_play") ||
+      (w.plan.activity_grids?.length && w.section.section_key === "group_activity")
+    )
       return failure("VALIDATION_FAILED", "이 칸은 다시 만들 수 없습니다.", "item_id");
     if (request.signal.aborted) return HttpResponse.error();
     const label = w.section.label ?? w.section.section_key;
     return HttpResponse.json(
-      regenerateWeeklyCellValue(w.plan.id, w.cell.item_id, label, w.plan.revision + 1),
+      weeklyOut(regenerateWeeklyCellValue(w.plan.id, w.cell.item_id, label, w.plan.revision + 1)),
     );
   }),
   http.post("*/api/plans/weekly/:id/confirm", async ({ request, params }) => {
@@ -907,22 +1584,32 @@ export const handlers = [
     const plan = myWeekly(Number(params.id));
     if (!plan) return weeklyMissing();
     // 이미 확정이면 revision 과 상관없이 200 — 재시도 · 더블클릭은 실패가 아니다 (월간과 같다).
-    if (plan.status === "CONFIRMED") return HttpResponse.json(plan);
+    if (plan.status === "CONFIRMED") return HttpResponse.json(weeklyOut(plan));
     if (plan.revision !== b.expected_revision) return stale();
     // 놀이 주제가 비면 확정할 수 없다 (§6-2 「확정 필수」).
     const theme = plan.sections.find((s2) => s2.section_key === "theme")?.cells[0];
     if (theme && !theme.value.trim())
       return failure("VALIDATION_FAILED", "놀이 주제를 적어야 확정할 수 있습니다.", "theme");
-    return HttpResponse.json(confirmWeekly(plan.id));
+    return HttpResponse.json(weeklyOut(confirmWeekly(plan.id)));
+  }),
+  http.post("*/api/plans/weekly/:id/unconfirm", async ({ request, params }) => {
+    const s = await scenario(request, "weekly-unconfirm");
+    if (s) return s;
+    const b = await body(request);
+    if (!b) return bad("body");
+    if (badRevision(b)) return bad("expected_revision");
+    const plan = myWeekly(Number(params.id));
+    if (!plan) return weeklyMissing();
+    if (plan.status !== "CONFIRMED") return HttpResponse.json(weeklyOut(plan));
+    if (plan.revision !== b.expected_revision) return stale();
+    return HttpResponse.json(weeklyOut(unconfirmWeekly(plan.id)));
   }),
   http.delete("*/api/plans/weekly/:id", async ({ request, params }) => {
     const s = await scenario(request, "weekly-delete");
     if (s) return s;
     const plan = myWeekly(Number(params.id));
     if (!plan) return weeklyMissing();
-    if (plan.status === "CONFIRMED")
-      return failure("GATE_BLOCKED", "확정된 계획안은 지울 수 없습니다.");
-    removeWeekly(plan.id);
+    removeWeekly(plan.id); // 확정본도 지운다(ADR-064)
     return new HttpResponse(null, { status: 204 });
   }),
   // 월간 양식 설정 조회 (§9-2).
@@ -1063,6 +1750,15 @@ const myWeekly = (id: number) => {
   const plan = findWeekly(id);
   return plan && myClass(plan.class_id) ? plan : undefined;
 };
+/** `parent_changed` 는 저장하지 않고 응답마다 부모를 보고 계산한다 (U). */
+const monthlyOut = (p: MonthlyPlan) => ({
+  ...p,
+  parent_changed: annualChanged(p.parent.annual_plan_id, p.parent.confirmed_at),
+  drill_candidates: p.drill_candidates ?? [],
+  teacher_tables: tablesOf(p),
+  ...safetyView(p),
+});
+const weeklyOut = (p: WeeklyPlan) => ({ ...p, parent_changed: monthlyChanged(p) });
 const weeklyMissing = () => failure("NOT_FOUND", "주간계획안을 찾을 수 없습니다.", "id");
 /** 주간 칸 편집 · 재생성 공통. 월간 `cellWrite` 와 같은 순서로 본다. */
 async function weeklyCellWrite(request: Request, id: string, itemId: string, needsValue: boolean) {
@@ -1126,6 +1822,19 @@ async function playInput(
     ...(b ? [...(badRevision(b) ? ["expected_revision"] : []), ...check(b)] : ["body"]),
   ];
   return wrong.length ? invalid(wrong) : b!;
+}
+const timetableCellMissing = () =>
+  failure("NOT_FOUND", "그 시간표 칸을 찾을 수 없습니다.", "item_id");
+const tooNarrowFailure = () =>
+  failure("VALIDATION_FAILED", "칸이 너무 좁아집니다. 조금 덜 줄여 주세요.");
+const tableCellMissing = () => failure("NOT_FOUND", "그 표 칸을 찾을 수 없습니다.", "item_id");
+/** 주제형 월간 교사 표 — 소유 → 확정 → revision (서버 `_read_draft`). */
+function monthlyGate(rawId: unknown, b: Record<string, unknown>) {
+  const plan = myMonthly(Number(rawId));
+  if (!plan) return planMissing(Number(rawId));
+  if (plan.status === "CONFIRMED")
+    return failure("ALREADY_CONFIRMED", "확정된 계획안은 수정할 수 없습니다.");
+  return plan.revision === b.expected_revision ? plan : stale();
 }
 /** 소유 → 형식 → 확정 → revision. 통과하면 계획안을 준다. */
 function playGate(rawId: unknown, b: Record<string, unknown>) {

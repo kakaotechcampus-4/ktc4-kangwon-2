@@ -24,7 +24,14 @@ CENTER = {
     "region_sido": "충청북도",
     "region_sigungu": "충주시",
 }
-CLASSROOM = {"name": "햇님반", "age_min": 3, "age_max": 4, "teacher_name": "김선생"}
+# 아이를 넣으려면 동의를 확인한 반이어야 한다(§2-1).
+CLASSROOM = {
+    "name": "햇님반",
+    "age_min": 3,
+    "age_max": 4,
+    "teacher_name": "김선생",
+    "consent_confirmed": True,
+}
 
 
 def signup(db_session, **overrides) -> str:

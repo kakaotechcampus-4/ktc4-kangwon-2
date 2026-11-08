@@ -13,12 +13,15 @@ import re
 from ..domain.errors import DomainError, InvalidDomainValueError
 from ..domain.monthly_template import RepeatBy, SectionRole, TemplateSection
 from ..domain.monthly_template_profile import (
+    DRILL_SECTION_KEY,
     INSTITUTION_INPUT_SECTION_KEYS,
     TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS,
 )
-from ..domain.monthly_template_snapshot import TemplateSnapshot
+from ..domain.monthly_template_snapshot import ACTIVITY_DETAIL_SECTION_KEYS, TemplateSnapshot
+from ..domain.teacher_memo import MemoNotice, SafetyRequest
 from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
+from .indoor_alternative import INDOOR_ALTERNATIVE_TAG
 
 MONTHLY_PROMPT_VERSION = "monthly-planner-v18"
 MONTHLY_CELL_PROMPT_VERSION = "monthly-cell-planner-v10"
@@ -28,19 +31,27 @@ MONTHLY_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v13"
 MONTHLY_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v16"
 MONTHLY_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v16"
 # v1 requests carrying approved curriculum or confirmed annual subthemes.
-MONTHLY_CONTEXT_PROMPT_VERSION = "monthly-planner-v19"
-MONTHLY_CONTEXT_CELL_PROMPT_VERSION = "monthly-cell-planner-v11"
-MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v14"
-MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v17"
-MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v17"
+MONTHLY_CONTEXT_PROMPT_VERSION = "monthly-planner-v23"
+MONTHLY_CONTEXT_CELL_PROMPT_VERSION = "monthly-cell-planner-v15"
+MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION = "monthly-planner-repair-v18"
+MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION = "monthly-planner-safety-v21"
+MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION = "monthly-planner-safety-repair-v21"
 # Appended to any version above when indoor_alternative is an LLM target; requests
 # without it keep their version and prompt bytes.
-MONTHLY_INDOOR_PROMPT_TAG = "+indoor-alternative-v1"
+MONTHLY_INDOOR_PROMPT_TAG = INDOOR_ALTERNATIVE_TAG
+# ADR-066: appended when a v1 (curriculum / subtheme) request asks outdoor_play or
+# indoor_alternative week cells for their hidden detail sentence.
+MONTHLY_ACTIVITY_DETAIL_PROMPT_TAG = "+activity-detail-v1"
 # Appended when the Context Packet carries the eight safety candidates (S-1).
-MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG = "+safety-candidates-v1"
+MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG = "+safety-candidates-v4"
 # A candidate is a month_sections entry keyed safety_education.<slot>; Template
 # section keys hold no dot, so these never collide with a Section.
 SAFETY_CANDIDATE_PREFIX = "safety_education."
+# Appended when the Context Packet carries drill topics.
+MONTHLY_DRILL_CANDIDATES_PROMPT_TAG = "+drill-candidates-v1"
+# A drill candidate is a month_sections entry keyed drill.<topic_id>.
+DRILL_CANDIDATE_PREFIX = "drill."
+CANDIDATE_PREFIXES = (SAFETY_CANDIDATE_PREFIX, DRILL_CANDIDATE_PREFIX)
 MONTHLY_MODEL = "openai/gpt-6.1-sol"
 # Providers may report the requested family without the vendor prefix, or the
 # dated snapshot they resolved it to (e.g. "gpt-6.1-sol-2026-10-07"). Elice answers
@@ -76,7 +87,13 @@ def generation_target_sections(snapshot: TemplateSnapshot) -> tuple[TemplateSect
     never invented, and Template-specific Sections have no approved generation
     policy. They all stay in the Snapshot; they are just not generation targets.
     """
-    excluded = INSTITUTION_INPUT_SECTION_KEYS | TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS
+    # A detail Section is written through its parent cell's ``detail`` field (ADR-066).
+    excluded = (
+        INSTITUTION_INPUT_SECTION_KEYS
+        | TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS
+        | {DRILL_SECTION_KEY}
+        | set(ACTIVITY_DETAIL_SECTION_KEYS.values())
+    )
     return tuple(
         section
         for section in snapshot.sections
@@ -166,9 +183,17 @@ class ProposedSectionValue:
     unresolved: bool
     grounding_refs: tuple[str, ...] = ()
     reference_id: str | None = None
+    # ADR-066: an outdoor_play / indoor_alternative week cell's hidden description; "" = none.
+    detail: str = ""
 
     def __post_init__(self) -> None:
         _require_text("ProposedSectionValue.section_key", self.section_key)
+        if not isinstance(self.detail, str) or (
+            self.detail and (self.unresolved or self.section_key not in ACTIVITY_DETAIL_SECTION_KEYS)
+        ):
+            raise InvalidDomainValueError(
+                "ProposedSectionValue.detail belongs to a resolved weekly activity cell only"
+            )
         if self.section_key == "habits":
             raise InvalidDomainValueError(
                 "ProposedSectionValue requires canonical section keys"
@@ -291,8 +316,20 @@ class MonthlyPlanningRequest:
     # Repair only: the cells (week_id or None for month, section_key) the repair may
     # patch and the fields it may change there. Empty for an initial request.
     repair_targets: tuple[tuple[str | None, str, tuple[str, ...]], ...] = ()
+    # ADR-060: the cell addresses memo_applied may name; None = no teacher memo.
+    memo_addresses: tuple[str, ...] | None = None
+    # ADR-060 2층: statutory categories safety_requests may name; None = not asked.
+    safety_request_slots: tuple[str, ...] | None = None
+    # ADR-066: parent section keys whose week cells also return ``detail``; () = not asked.
+    detail_section_keys: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        if not isinstance(self.detail_section_keys, tuple) or not set(self.detail_section_keys) <= set(
+            ACTIVITY_DETAIL_SECTION_KEYS
+        ):
+            raise InvalidDomainValueError(
+                "MonthlyPlanningRequest.detail_section_keys must name weekly activity sections"
+            )
         for name in (
             "task",
             "prompt_version",
@@ -407,8 +444,17 @@ class MonthlyCellPlanningRequest:
     packet_fingerprint: str = ""
     plan_snapshot_fingerprint: str = ""
     allowed_grounding_refs_by_section: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    memo_addresses: tuple[str, ...] | None = None
+    # ADR-066 (Human Decision 2026-11-06): the target weekly activity cell also returns ``detail``.
+    detail_requested: bool = False
 
     def __post_init__(self) -> None:
+        if self.detail_requested is not False and (
+            self.detail_requested is not True or self.target_section_key not in ACTIVITY_DETAIL_SECTION_KEYS
+        ):
+            raise InvalidDomainValueError(
+                "MonthlyCellPlanningRequest.detail_requested belongs to a weekly activity target only"
+            )
         for name in (
             "task",
             "prompt_version",
@@ -544,6 +590,10 @@ class MonthlyPlanningOutcome:
     # every other cell (initial value, or only deterministically normalized) the initial prompt.
     initial_prompt_version: str | None = None
     repaired_cells: frozenset[tuple[str | None, str]] = frozenset()
+    # ADR-060: cells the LLM says the teacher memo changed (planner.teacher_memo.cell_address).
+    memo_applied: frozenset[str] = frozenset()
+    memo_skipped: tuple[MemoNotice, ...] = ()  # requests the LLM could not apply
+    safety_requests: tuple[SafetyRequest, ...] = ()  # count / week requests; the Rule places them
 
     def prompt_version_for(self, week_id: str | None, section_key: str) -> str:
         """The prompt version that produced this cell's current value."""
@@ -560,3 +610,4 @@ class MonthlyCellPlanningOutcome:
     packet_fingerprint: str
     plan_snapshot_fingerprint: str
     request_id: str | None = None
+    memo_applied: bool = False

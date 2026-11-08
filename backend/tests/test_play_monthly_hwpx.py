@@ -20,6 +20,7 @@ from ssuksak.planning.domain.provenance import SplitAxis
 
 from app.features.plans.play_monthly_hwpx import HWPUNIT_PER_MM, TEMPLATE, fill_play_monthly
 from app.features.plans.play_project_hwpx import TEMPLATE as PLAY_PROJECT_TEMPLATE
+from app.shared import hwpx_pdf
 from app.shared.hwpx import NS, TemplateMismatch, to_hwp
 
 CLASS = "만 3·4세 햇살반"
@@ -64,7 +65,10 @@ def document(weeks: int = 5, plays: int = 5) -> PlayMonthlyDocument:
         free_play=tuple(f"자유 놀이 {i}" for i in range(1, plays + 1)),
         weeks=tuple(
             PlayMonthlyDocumentWeek(
-                "청결" if i > 1 else "", f"습관 {i}", f"안전 {i}" if i % 2 else ""
+                "청결" if i > 1 else "",
+                f"습관 {i}",
+                f"안전 {i}" if i % 2 else "",
+                "교통안전" if i % 2 else "",
             )
             for i in range(1, weeks + 1)
         ),
@@ -228,8 +232,35 @@ def test_values_land_in_their_cells(filled: bytes) -> None:
         *(["[청결]", f"습관 {i}"] for i in range(2, 6)),
     ]
     assert [lines(tc) for tc in week_row(filled, 10)] == [
-        [f"안전 {i}" if i % 2 else ""] for i in range(1, 6)
+        ["[교통안전]", f"안전 {i}"] if i % 2 else [""] for i in range(1, 6)
     ]
+
+
+def test_the_safety_cell_is_its_head_over_the_sentence_centred_like_the_screen(
+    filled: bytes,
+) -> None:
+    # Human Decision 2026-11-05(하민): 화면처럼 「[교통안전]」 다음 줄에 글, 가운데 맞춤.
+    template = week_row(TEMPLATE.read_bytes(), 10)[0]
+    expected = template.find("hp:subList/hp:p", NS).get("paraPrIDRef")
+    assert template.find("hp:subList", NS).get("vertAlign") == "CENTER"
+    header = zipfile.ZipFile(BytesIO(filled)).read("Contents/header.xml")
+    para = etree.fromstring(header).find(f".//{{*}}paraPr[@id='{expected}']/{{*}}align")
+    assert para.get("horizontal") == "CENTER"
+    for tc in week_row(filled, 10):
+        assert tc.find("hp:subList", NS).get("vertAlign") == "CENTER"
+        assert {p.get("paraPrIDRef") for p in tc.iterfind("hp:subList/hp:p", NS)} == {expected}
+    # 2026-11-06: 화면처럼 「[..]」 만 굵게 — 안전교육 머리 · 건강 머리.
+    bold = {e.getparent().get("id") for e in etree.fromstring(header).iterfind(".//{*}bold")}
+
+    def runs(tc: etree._Element) -> list[tuple[str, bool]]:
+        return [
+            ("".join(r.itertext()), r.get("charPrIDRef") in bold)
+            for r in tc.iterfind("hp:subList/hp:p/hp:run", NS)
+            if "".join(r.itertext())
+        ]
+
+    assert runs(week_row(filled, 10)[0]) == [("[교통안전]", True), ("안전 1", False)]
+    assert runs(cells(filled)[(12, 3)]) == [("[건강]", True), (" 합성 건강", False)]
 
 
 def test_footer_and_labels_stay_as_the_template(filled: bytes) -> None:
@@ -331,6 +362,32 @@ def test_column_widths_and_height_are_drawn() -> None:
     assert x_span(thursday, content) == x_span(header[3], content)
 
 
+def test_a_long_day_over_split_rows_gets_room_in_the_pdf() -> None:
+    """화요일만 나누면 월요일 칸이 두 줄에 걸친다 — PDF 도 그 칸의 긴 글 높이를 잰다(PDF-R01)."""
+    long = "\n".join(f"활동 안내 {i:02d}" for i in range(20))
+    tuesday = PlayMonthlyDocumentPart(
+        axis=V, ratio=50, parts=(PlayMonthlyDocumentPart("위"), PlayMonthlyDocumentPart("아래"))
+    )
+    rest = tuple(PlayMonthlyDocumentPart("") for _ in range(3))
+    doc = replace(document(), special_activity=(PlayMonthlyDocumentPart(long), tuesday, *rest))
+    content = fill_play_monthly(TEMPLATE.read_bytes(), doc)
+    hwpx_pdf._register_fonts()
+    with zipfile.ZipFile(BytesIO(content)) as package:
+        header = hwpx_pdf._Header(etree.fromstring(package.read("Contents/header.xml")))
+    drawn = hwpx_pdf._table(table(content), header)
+
+    monday = next(tc for tc in special_cells(content) if "활동 안내 00" in text(tc))
+    addr, span = monday.find("hp:cellAddr", NS), monday.find("hp:cellSpan", NS)
+    r, c = int(addr.get("rowAddr")), int(addr.get("colAddr"))
+    rs, cs = int(span.get("rowSpan")), int(span.get("colSpan"))
+    style = drawn._cellStyles[r][c]
+    inner = sum(drawn._colWidths[c : c + cs]) - style.leftPadding - style.rightPadding
+    need = sum(p.wrap(inner, 10**6)[1] for p in drawn._cellvalues[r][c])
+    need += style.topPadding + style.bottomPadding
+    assert rs == 2
+    assert sum(drawn._rowHeights[r : r + rs]) >= need - 0.01
+
+
 def test_a_wrong_number_of_special_activity_days_is_refused() -> None:
     doc = replace(document(), special_activity=document().special_activity[:4])
     with pytest.raises(TemplateMismatch):
@@ -347,7 +404,12 @@ def test_a_four_week_month_gets_four_equal_columns_in_the_first_four_colors() ->
         fills = [tc.get("borderFillIDRef") for tc in got]
         assert fills == [tc.get("borderFillIDRef") for tc in template[:4]]
     assert [lines(tc) for tc in week_row(content, 8)] == [[f"{i}주"] for i in range(1, 5)]
-    assert [lines(tc) for tc in week_row(content, 10)] == [["안전 1"], [""], ["안전 3"], [""]]
+    assert [lines(tc) for tc in week_row(content, 10)] == [
+        ["[교통안전]", "안전 1"],
+        [""],
+        ["[교통안전]", "안전 3"],
+        [""],
+    ]
     assert len(table(content).findall("hp:tr/hp:tc", NS)) == 74
 
 

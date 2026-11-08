@@ -6,11 +6,12 @@ approved yet), no repair, no select / edit / regenerate / confirm. A rejected pr
 
 from __future__ import annotations
 
+from ... import timing
 from dataclasses import dataclass
 from typing import Protocol
 
 from ..domain.curriculum_reference import CurriculumCatalog
-from ..domain.errors import DomainError
+from ..domain.errors import DomainError, InvalidDomainValueError
 from ..domain.plan import PlanItem, PlanStatus
 from ..domain.play_project_plan import (
     PlayPeriod,
@@ -30,12 +31,13 @@ from ..domain.provenance import (
 )
 from ..planner.contracts import ProposalRejectedError
 from ..planner.play_project import (
-    PLAY_PROJECT_PROMPT_VERSION,
     PlayProjectProvider,
     build_play_project_request,
     parse_play_project_proposal,
+    split_memo_reflected,
     validate_play_project,
 )
+from ..planner.teacher_memo import normalize_teacher_memo, split_memo_applied, with_memo_evidence
 from ..rules.yearly_reference_rules import validate_age_set
 from .ports import Clock, IdGenerator, PlanRepository
 
@@ -78,6 +80,12 @@ class GeneratePlayProjectPlanCommand:
     curriculum_catalog_version: str
     layout: PlayProjectLayout = PLAY_PROJECT_LAYOUT_V0_2
     avoid_play_names: tuple[str, ...] = ()  # other periods' plays in the same year
+    # ADR-060: the teacher's request note, applied only inside the Rule range.
+    teacher_memo: str = ""
+
+    def __post_init__(self) -> None:
+        if normalize_teacher_memo(self.teacher_memo) != self.teacher_memo:
+            raise InvalidDomainValueError("teacher_memo must be normalized")
 
 
 class GeneratePlayProjectPlan:
@@ -97,6 +105,13 @@ class GeneratePlayProjectPlan:
         self._ids = id_generator
 
     def execute(self, command: GeneratePlayProjectPlanCommand) -> PlayProjectYearlyPlan:
+        return self.generate_period(command)[0]
+
+    def generate_period(
+        self, command: GeneratePlayProjectPlanCommand
+    ) -> tuple[PlayProjectYearlyPlan, tuple[str, ...]]:
+        """execute 와 같고, 이 구간이 반영한 메모 원문 조각(remaining_memo_notices 용)을 함께 준다."""
+        timing.phase("select")
         ages = validate_age_set(command.target_ages)
         period = command.layout.period(command.period_key)
         if period is None:
@@ -109,26 +124,31 @@ class GeneratePlayProjectPlan:
         if not catalog.is_active:
             raise PlayProjectGenerationError("CURRICULUM_REFERENCE_NOT_ACTIVE")
 
+        timing.phase("prompt")
         request = build_play_project_request(
             period=period,
             ages=ages,
             row_count=command.layout.candidates_per_period,
             catalog=catalog,
             avoid_play_names=command.avoid_play_names,
+            teacher_memo=command.teacher_memo,
         )
-        proposal = parse_play_project_proposal(
-            self._provider.generate_play_project(request).content
-        )
+        response = self._provider.generate_play_project(request)
+        timing.phase("validate")
+        content, memo_applied, memo_skipped = split_memo_applied(response.content, request.memo_addresses)
+        content, memo_reflected = split_memo_reflected(content, request)
+        proposal = parse_play_project_proposal(content)
         codes = validate_play_project(proposal, request)
         if codes:
             raise ProposalRejectedError(codes)
 
+        timing.phase("assemble")
         plan_id = self._ids.new_plan_id()
         now = self._clock.now()
         generation = GenerationMethodDetail(
             method=GenerationMethod.RULE_LLM,
             rule_id=RULE_ID,
-            rule_version=PLAY_PROJECT_PROMPT_VERSION,
+            rule_version=request.prompt_version,
         )
 
         def item(value: str, evidence: tuple[EvidenceSource, ...] = ()) -> PlanItem:
@@ -145,21 +165,25 @@ class GeneratePlayProjectPlan:
         rows = []
         for index, row in enumerate(proposal.rows, 1):
             contents = [catalog.get(content_id) for content_id in row.learning_content_ids]
+            marked = f"cand{index}" in memo_applied
             rows.append(
                 PlayRow(
                     row_key=f"cand{index}",
-                    play_name=item(row.play_name),
-                    materials=item(row.materials),
-                    support_direction=item(row.support_direction),
+                    play_name=item(row.play_name, with_memo_evidence((), marked)),
+                    materials=item(row.materials, with_memo_evidence((), marked)),
+                    support_direction=item(row.support_direction, with_memo_evidence((), marked)),
                     learning=item(
                         "\n".join(c.display for c in contents),
-                        tuple(
-                            EvidenceSource(
-                                source_type=EvidenceSourceType.CURRICULUM,
-                                source_id=c.content_id,
-                                source_version=catalog.catalog_version,
-                            )
-                            for c in contents
+                        with_memo_evidence(
+                            tuple(
+                                EvidenceSource(
+                                    source_type=EvidenceSourceType.CURRICULUM,
+                                    source_id=c.content_id,
+                                    source_version=catalog.catalog_version,
+                                )
+                                for c in contents
+                            ),
+                            marked,
                         ),
                     ),
                 )
@@ -183,6 +207,8 @@ class GeneratePlayProjectPlan:
                     ),
                 )
             ),
+            teacher_memo=command.teacher_memo,
+            memo_notices=memo_skipped,
         )
         self._plans.save(plan.plan_id, plan)
-        return plan
+        return plan, memo_reflected

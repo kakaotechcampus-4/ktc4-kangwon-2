@@ -57,6 +57,14 @@ class Center(Base):
     region_sigungu: Mapped[str] = mapped_column(
         String(30), comment="시·군·구. 지역사회 연계 활동 선별에 쓴다"
     )
+    registry_key: Mapped[str | None] = mapped_column(
+        String(300),
+        unique=True,
+        comment=(
+            "정부 어린이집 목록의 열쇠(시도|시군구|이름|주소, ADR-068). "
+            "같은 열쇠를 고른 교사는 이 원으로 든다. 직접 적은 원은 NULL"
+        ),
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -102,11 +110,41 @@ class Class(Base):
         comment="현재 원아 수. 선택. 아동 명단 입력 진행률에 쓴다 (docs/PRD.md S2)"
     )
     teacher_id: Mapped[int | None] = mapped_column(
-        comment="담임 계정. users.id 예정. FK 와 인덱스는 인증 PR(8주차)에서"
+        ForeignKey("users.id"),
+        index=True,
+        comment="반 주인 — 반을 만든 계정(ADR-059). NULL 은 이 결정 전에 만든 옛 반이다",
     )
     consent_confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         comment="동의 확인 시각. 아동 0명이면 아동 수로 복원할 수 없다 (docs/PRD.md S2)",
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ClassAccessRequest(Base):
+    """남의 반을 보겠다는 요청 한 줄 (ADR-059). 한 계정이 한 반에 줄 하나만 갖는다.
+
+    거절 · 취소 뒤에 다시 요청하면 새 줄이 아니라 같은 줄을 PENDING 으로 되돌린다.
+    """
+
+    __tablename__ = "class_access_requests"
+    __table_args__ = (
+        UniqueConstraint("class_id", "requester_id"),
+        CheckConstraint("status IN ('PENDING','APPROVED','REJECTED','REVOKED')", name="status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    class_id: Mapped[int] = mapped_column(
+        ForeignKey("classes.id"), index=True, comment="보고 싶은 반"
+    )
+    requester_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True, comment="요청한 계정"
+    )
+    status: Mapped[str] = mapped_column(
+        String(10), comment="PENDING | APPROVED | REJECTED | REVOKED. 승인은 보기만 허락한다"
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -134,25 +172,3 @@ class Child(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-
-
-class CenterInvite(Base):
-    """같은 원의 다른 교사를 들이는 초대 코드 (docs/api-spec.md §1-1, ADR-029).
-
-    **한 번 쓰면 끝이고 7일이면 만료된다.** 코드로 들어온 교사는 그 원의 아동 명단을
-    볼 수 있다. 단톡방에 남은 코드가 몇 달 뒤에도 통하면 안 된다.
-    """
-
-    __tablename__ = "center_invites"
-    __table_args__ = (UniqueConstraint("code"),)
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    center_id: Mapped[int] = mapped_column(ForeignKey("centers.id"), index=True)
-    code: Mapped[str] = mapped_column(String(20), comment="secrets 로 만든 10자. 추측할 수 없다")
-    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), comment="코드를 만든 교사")
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    used_by: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id"), comment="코드로 들어온 교사. 쓰기 전에는 NULL"
-    )
-    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
