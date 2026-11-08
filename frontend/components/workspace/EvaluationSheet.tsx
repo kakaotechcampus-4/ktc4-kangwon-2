@@ -597,7 +597,6 @@ export default function EvaluationSheet({
   const stamped = listed.filter((row) => row.done).length;
 
   return (
-    // 높이는 오른쪽 칸에 맞춰 늘어난다 — 찍힌 서류 목록이 남는 높이를 채운다(.doneList).
     <section className={styles.sheet} aria-label="서류마다 자세히" data-tour="eval-sheet">
       {todo.length > 0 && (
         <>

@@ -621,14 +621,13 @@
 }
 
 /* ── 도장판 아래 — 시안 ⑤ 「빈 칸 먼저」(2026-11-08) ──
-   채울 서류는 점선 카드로 크게, 찍힌 서류는 한 줄씩. 칸 높이는 오른쪽 칸에 맞춰 늘어난다 — 찍힌 서류 목록이
-   남는 높이를 채운다. `ws.grid` 의 align-items: start 를 이 칸만 덮는다. 한 줄로 쌓이면(1260px 아래) 늘릴 짝이 없다. */
+   채울 서류는 점선 카드로 크게, 찍힌 서류는 한 줄씩. 높이는 내용만큼이다 — 오른쪽 칸 높이에 맞춰 늘이면
+   오른쪽 접힌 칸을 펼칠 때 찍힌 서류 목록이 빈 칸으로 같이 늘어났다(사용자 결정 11-09). */
 .sheet {
   container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  align-self: stretch;
   min-width: 0;
 }
 .secTitle {
@@ -704,7 +703,6 @@
   border-top: 1px dashed var(--pg-line);
 }
 .doneList {
-  flex: 1;
   margin: 0;
   padding: 0;
   list-style: none;
