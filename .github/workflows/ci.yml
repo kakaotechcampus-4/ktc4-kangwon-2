@@ -368,11 +368,16 @@ jobs:
   # 화면이 실제 API 를 타는지 본다 — 가입부터 관찰 기록까지(frontend/e2e). ADR-028.
   # 다른 job 은 백엔드와 화면을 따로 본다. 둘이 어긋나도(칸 이름·주소) 각자 통과한다.
   e2e:
-    name: e2e (playwright)
+    # (시험) 워커 수 비교 — 머지하지 않는다.
+    name: e2e (playwright) w${{ matrix.workers }}
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        workers: [1, 2, 3, 4, 6]
     services:
       db:
         image: postgres:15
@@ -487,12 +492,12 @@ jobs:
           [ -z "$missing" ] || { echo "Playwright 가 요구하는데 없는 패키지:"; echo "$missing"; exit 1; }
       - name: playwright
         working-directory: frontend
-        run: npm run e2e
+        run: npm run e2e -- --workers=${{ matrix.workers }}
       - name: 실패 기록 올리기
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-report
+          name: e2e-report-w${{ matrix.workers }}
           path: |
             frontend/playwright-report/
             frontend/test-results/
