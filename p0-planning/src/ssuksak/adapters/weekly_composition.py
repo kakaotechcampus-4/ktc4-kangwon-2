@@ -35,7 +35,7 @@ from ssuksak.adapters.weekly_evidence_classification_repository import (
     JsonWeeklyEvidenceClassificationRepository,
 )
 from ssuksak.planning.application.generate_weekly_plan import GenerateWeeklyPlan
-from ssuksak.planning.application.ports import MonthlyTemplateRepository
+from ssuksak.planning.application.ports import MonthlyTemplateRepository, OptionalContextProvider
 from ssuksak.planning.application.weekly_activities import WeeklyActivities
 from ssuksak.planning.application.weekly_lifecycle import (
     ConfirmWeeklyPlan,
@@ -79,6 +79,7 @@ def weekly_generation(
     clock,
     id_generator,
     template_repository: MonthlyTemplateRepository | None = None,
+    optional_context: OptionalContextProvider | None = None,
 ) -> GenerateWeeklyPlan:
     """GenerateWeeklyPlan on the LLM planner path with the approved References.
 
@@ -103,6 +104,7 @@ def weekly_generation(
         evidence_repository=JsonInstitutionEvidenceRepository(),
         weekly_classification_repository=JsonWeeklyEvidenceClassificationRepository(),
         daily_life_loader=_daily_life_catalog,
+        optional_context=optional_context,
     )
 
 

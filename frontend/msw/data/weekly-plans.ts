@@ -242,6 +242,7 @@ export const addWeekly = (
           activity_type: kind,
           name,
           description,
+          trend_applied: false,
           cell: {
             ...cell("group_activity"),
             item_id: `item_${id}_candidate_${index}`,
@@ -280,6 +281,7 @@ export const addWeekly = (
           activity_type: kind,
           name,
           description,
+          trend_applied: false,
           cell: {
             ...cell("indoor_play"),
             item_id: `item_${id}_indoor_candidate_${index}`,

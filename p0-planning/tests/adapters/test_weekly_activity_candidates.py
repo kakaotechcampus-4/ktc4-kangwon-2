@@ -290,3 +290,139 @@ def test_real_title_omissions_repair_once_and_persistent_omissions_are_rejected(
     assert target["activity_basis"] == basis and target["required_name_terms"] == list(terms)
     with pytest.raises(ValueError, match="allowed evidence"):
         replace(request, targets=(request.targets[0], replace(request.targets[1], activity_basis="근거에 없는 활동")))
+
+
+# ── ADR-070: 트렌드봇 자료를 주간 활동 후보에 ─────────────────────────────────
+
+def _trend_items():
+    from datetime import date
+
+    from ssuksak.planning.domain.trend import TrendItem, TrendKind
+
+    return tuple(TrendItem(f"youtube:t{n}", kind, f"{kind.value} 자료 {n}", "자료 설명", "테스트 채널", "2026-W44",
+                           date(2026, 10, 28)) for n, kind in enumerate(TrendKind))
+
+
+class _Trends:
+    def __init__(self, items=(), *, fail=False):
+        self.items, self.fail = items, fail
+
+    def fetch(self, name):
+        from ssuksak.planning.application.ports import OptionalContextResult, OptionalContextStatus
+
+        if self.fail:
+            return OptionalContextResult(name, OptionalContextStatus.ERROR, detail="unreadable")
+        if not self.items:
+            return OptionalContextResult(name, OptionalContextStatus.UNAVAILABLE, detail="none")
+        return OptionalContextResult(name, OptionalContextStatus.AVAILABLE, self.items)
+
+
+def _trend_generate(provider, trends):
+    from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateRepository
+    from ssuksak.adapters.weekly_composition import weekly_generation
+
+    harness = WeeklyHarness()
+    parent = harness.monthly_parent(mode=MonthlyGenerationMode.LLM_PLANNER)
+    use_case = weekly_generation(
+        parent_plan_repository=harness.monthly_plans, plan_repository=harness.weekly_plans, provider=provider,
+        clock=harness.clock, id_generator=harness.weekly_ids, optional_context=trends,
+        template_repository=JsonMonthlyTemplateRepository(
+            paths=(Path(__file__).parents[2] / "data/templates/weekly_template_a_v0_2_0.json",)),
+    )
+    command = replace(_day_command(parent), activity_candidates=True, indoor_play_candidates=True,
+                      optional_context_names=() if trends is None else ("trend",))
+    return harness, use_case.execute(command).plan
+
+
+def _trend_source(cell):
+    from ssuksak.planning.domain.provenance import EvidenceSourceType
+
+    return [s for s in cell.evidence if s.source_type is EvidenceSourceType.TREND]
+
+
+def test_trend_goes_only_to_fitting_candidates_and_leaves_trend_evidence():
+    from ssuksak.planning.planner.trend import TREND_PROMPT, TREND_PROMPT_TAG
+    from ssuksak.planning.planner.weekly import (
+        INDOOR_PLAY_TREND_KINDS,
+        TREND_KINDS_BY_ACTIVITY_TYPE,
+        weekly_response_schema,
+    )
+
+    provider = RequestAwareWeeklyLlm()
+    _, plan = _trend_generate(provider, _Trends(_trend_items()))
+    request = provider.requests[0]
+    assert request.trend_options and TREND_PROMPT_TAG in request.prompt_version
+    assert TREND_PROMPT in request.system_prompt and "trend_applied" in weekly_response_schema(request)["properties"]
+    kinds = {i.trend_id: i.kind for i in request.trends}
+    for address, ids in request.trend_options:  # Rule: the kind fits the candidate's type; candidates only
+        target = request.target(address)
+        fits = INDOOR_PLAY_TREND_KINDS if address.startswith("indoor_play.candidate.") else {
+            TREND_KINDS_BY_ACTIVITY_TYPE[w] for w in target.activity_type.split("·") if w in TREND_KINDS_BY_ACTIVITY_TYPE}
+        assert target.activity_type and ids and {kinds[i] for i in ids} <= fits
+    body = json.loads(request.user_content)
+    assert all("trend_ids" not in t for t in body["targets"] if not t.get("activity_type"))
+    trended = [c for c in plan.activity_candidates if _trend_source(c.cell)]
+    assert len(trended) == 1
+    source = _trend_source(trended[0].cell)[0]
+    assert (source.source_id, source.source_version) == (request.trend_options[0][1][0], "2026-W44")
+    assert TREND_PROMPT_TAG in trended[0].cell.generation.rule_version
+
+
+def test_trend_not_allowed_for_that_candidate_is_rejected_and_nothing_saved():
+    from ssuksak.planning.planner.contracts import ProposalParseError, RawLlmResponse
+
+    class WrongTrend(RequestAwareWeeklyLlm):
+        def generate_weekly(self, request):
+            response = super().generate_weekly(request)
+            answer = json.loads(response.content)
+            address, ids = request.trend_options[0]
+            other = next(i.trend_id for i in request.trends if i.trend_id not in ids)
+            answer["trend_applied"] = [{"address": address, "trend_id": other}]
+            return RawLlmResponse(json.dumps(answer, ensure_ascii=False), response.model)
+
+    provider = WrongTrend()
+    with pytest.raises(WeeklyApplicationError) as error:
+        _trend_generate(provider, _Trends(_trend_items()))
+    assert isinstance(error.value.__cause__, ProposalParseError) and len(provider.requests) == 1
+
+
+def test_third_trend_in_one_list_is_repaired_once_without_its_mark():
+    from ssuksak.planning.planner.contracts import RawLlmResponse
+    from ssuksak.planning.planner.weekly import weekly_response_schema
+
+    class ThreeIndoor(RequestAwareWeeklyLlm):
+        def generate_weekly(self, request):
+            response = super().generate_weekly(request)
+            if request.repair_targets:
+                return response
+            answer = json.loads(response.content)
+            indoor = [(a, ids) for a, ids in request.trend_options if a.startswith("indoor_play.")][:3]
+            answer["trend_applied"] = [{"address": a, "trend_id": ids[0]} for a, ids in indoor]
+            return RawLlmResponse(json.dumps(answer, ensure_ascii=False), response.model)
+
+    provider = ThreeIndoor()
+    _, plan = _trend_generate(provider, _Trends(_trend_items()))
+    assert len(provider.requests) == 2
+    repair = provider.requests[1]
+    third = [a for a, _ in provider.requests[0].trend_options if a.startswith("indoor_play.")][2]
+    assert json.loads(repair.user_content)["fix_sections"] == [{"section_key": third, "issue": "TREND_SHARE_EXCEEDED"}]
+    assert "trend_applied" not in weekly_response_schema(repair)["properties"]
+    indoor = [c for c in plan.activity_candidates if c.cell.section_key == "indoor_play"]
+    assert [bool(_trend_source(c.cell)) for c in indoor[:3]] == [True, True, False]
+    assert indoor[2].cell.generation.rule_version == provider.requests[0].repair_prompt_version
+
+
+@pytest.mark.parametrize("trends", [_Trends(fail=True), _Trends(())])
+def test_no_trend_or_failed_provider_sends_the_same_request(trends):
+    from ssuksak.planning.planner.weekly import weekly_response_schema
+
+    def first(trend_provider):
+        provider = RequestAwareWeeklyLlm()
+        _, plan = _trend_generate(provider, trend_provider)
+        assert not any(_trend_source(c.cell) for c in plan.activity_candidates)
+        request = provider.requests[0]
+        return (request.prompt_version, request.system_prompt, request.user_content,
+                request.request_fingerprint, json.dumps(weekly_response_schema(request), sort_keys=True))
+
+    assert first(trends) == first(None)
+    assert "+trend-v1" not in first(trends)[0]

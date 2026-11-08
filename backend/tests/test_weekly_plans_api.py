@@ -144,6 +144,47 @@ def _create(world, week: str = WEEK):
     )
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_trend_applied_follows_the_center_setting_and_the_candidate_evidence(
+    world, enabled, monkeypatch
+):
+    """ADR-070: 원이 켜면 트렌드를 넘기고, 반영한 후보만 trend_applied · TREND Evidence."""
+    from ssuksak.planning.application.ports import OptionalContextResult, OptionalContextStatus
+    from ssuksak.planning.domain.trend import TrendItem, TrendKind
+
+    items = tuple(
+        TrendItem(
+            f"youtube:t{n}", kind, f"{kind.value} 자료", "", "채널", "2026-W36", date(2026, 9, 1)
+        )
+        for n, kind in enumerate(TrendKind)
+    )
+    seen = []
+
+    class Trends:
+        def __init__(self, *, enabled, today):
+            seen.append(enabled)
+            self._enabled = enabled
+
+        def fetch(self, name):
+            if not self._enabled:
+                return OptionalContextResult(name, OptionalContextStatus.UNAVAILABLE)
+            return OptionalContextResult(name, OptionalContextStatus.AVAILABLE, items)
+
+    monkeypatch.setattr(weekly_router, "TrendContextProvider", Trends)
+    world["session"].get(Center, world["mine"]["center"]).trends_enabled = enabled
+    world["session"].flush()
+    response = client.post(
+        "/api/plans/weekly",
+        json={"class_id": world["mine"]["class"], "week_id": WEEK, "indoor_play_candidates": True},
+    )
+    assert response.status_code == 201, response.text
+    candidates = response.json()["activity_candidates"]
+    assert seen == [enabled]
+    assert sum(c["trend_applied"] for c in candidates) == enabled  # mock: 맞는 첫 후보 하나에만
+    for c in candidates:
+        assert c["trend_applied"] == any(e["source_type"] == "TREND" for e in c["cell"]["evidence"])
+
+
 @pytest.mark.parametrize("saturday", [False, True])
 def test_activity_candidates_copy_split_reload_and_export(world, saturday):
     center = world["session"].get(Center, world["mine"]["center"])

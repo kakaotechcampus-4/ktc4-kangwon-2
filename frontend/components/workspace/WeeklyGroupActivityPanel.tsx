@@ -9,6 +9,7 @@
  */
 
 import type { WeeklyActivityCandidate, WeeklyCell, WeeklyPlan } from "@/lib/api/types";
+import { TrendMark } from "@/components/plan-ui/PlayPickBoard";
 import { DAY_NAMES } from "@/lib/weekly/section-labels";
 import {
   DROP,
@@ -175,6 +176,7 @@ export default function WeeklyGroupActivityPanel({
                     <span className="line-clamp-2 text-[13px] text-ink-soft">{note}</span>
                   )}
                 </span>
+                {ok && c.trend_applied && <TrendMark />}
                 <button
                   type="button"
                   aria-label={`${here}요일에 넣기: ${ok ? c.name : "빈 후보"}`}

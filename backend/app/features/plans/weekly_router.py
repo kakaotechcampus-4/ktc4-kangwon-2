@@ -13,7 +13,7 @@
 """
 
 import logging
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -51,12 +51,14 @@ from ssuksak.planning.application.weekly_lifecycle import (  # 공개 창구에 
     UnconfirmWeeklyPlanCommand,
 )
 from ssuksak.planning.domain.identifiers import ItemId
-from ssuksak.planning.domain.provenance import SplitAxis
+from ssuksak.planning.domain.provenance import EvidenceSourceType, SplitAxis
+from ssuksak.planning.domain.trend import TREND_CONTEXT
 from ssuksak.planning.domain.weekly_plan import WEEKLY_INSTITUTION_INPUT_SECTION_KEYS
 
 from app.config import settings
 from app.db import get_session
 from app.features.centers.models import Center
+from app.features.evaluation.judge import today_kst
 from app.features.plans.memo_privacy import (
     REGEN_MASK_FAILED,
     memo_name_table,
@@ -119,6 +121,7 @@ from app.features.plans.weekly_schemas import (
     WeeklySectionOut,
     WeekPeriodOut,
 )
+from app.features.trends.planning import TrendContextProvider
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import foreign_class_refs, require_own_class
 from app.shared.llm import LlmBudgetExceeded, LlmUnavailable, is_mock
@@ -239,7 +242,10 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     if parent.status.value != "CONFIRMED":
         raise _gate("월간계획안을 먼저 확정해주세요.")
     # 만들 때의 원 설정을 계획안에 복사한다 — 뒤에 설정을 바꿔도 이 계획안은 그대로다(§3-5).
-    saturday = session.get(Center, center_id).weekly_saturday_enabled
+    center = session.get(Center, center_id)
+    saturday = center.weekly_saturday_enabled
+    # ADR-070: 원이 켠 경우에만 트렌드를 읽는다. 오늘 = 서버의 한국 날짜.
+    trends = TrendContextProvider(enabled=center.trends_enabled, today=today_kst(datetime.now(UTC)))
     try:
         provider = _weekly_provider()
     except LlmUnavailable as error:
@@ -256,9 +262,10 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
         provider=with_masked_memo(provider, body.memo, names),
         clock=SystemClock(),
         id_generator=UuidGenerator(),
+        optional_context=trends,
     )
     try:
-        plan = use_case.execute(
+        result = use_case.execute(
             GenerateWeeklyPlanCommand(
                 parent_monthly_plan_id=parent.plan_id,
                 week_id=week,
@@ -272,8 +279,9 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
                 activity_candidates=body.activity_candidates or body.indoor_play_candidates,
                 indoor_play_candidates=body.indoor_play_candidates,
                 teacher_memo=body.memo,
+                optional_context_names=(TREND_CONTEXT,),
             )
-        ).plan
+        )
     except MonthlyApplicationError as error:
         raise_if_mask_failed(error)
         _log.warning(
@@ -282,6 +290,12 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
             type(error.__cause__).__name__ if error.__cause__ else "-",
         )
         raise _generation_error(error) from error
+    plan = result.plan
+    # 트렌드 상태 한 단어(AVAILABLE · UNAVAILABLE · ERROR). 제목 · 프롬프트는 남기지 않는다.
+    _log.info(
+        "weekly trend=%s",
+        next((r.status.value for r in result.optional_context if r.name == TREND_CONTEXT), "-"),
+    )
 
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
     timing.phase("save")
@@ -498,6 +512,9 @@ def _detail(
                 activity_type=c.activity_type,
                 name=c.name,
                 description=c.description,
+                trend_applied=any(
+                    s.source_type is EvidenceSourceType.TREND for s in c.cell.evidence
+                ),
                 cell=_cell(c.cell),
             )
             for c in plan.activity_candidates
