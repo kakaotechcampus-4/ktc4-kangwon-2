@@ -149,7 +149,7 @@ class ActivityOut(BaseModel):
     description: CellOut
     content_ids: list[str]
     parent_item_id: str | None
-    trend_applied: bool  # 트렌드봇 자료를 반영한 후보인가 — 고르기 판의 빨간 ✦ 표시용(ADR-070)
+    trend_applied: bool  # 트렌드봇 자료를 반영한 후보인가 — 고르기 판의 빨간 ✦ 표시용(ADR-072)
 
 
 class PooledActivityOut(ActivityOut):

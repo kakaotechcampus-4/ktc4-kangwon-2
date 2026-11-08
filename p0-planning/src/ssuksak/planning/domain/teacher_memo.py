@@ -21,7 +21,7 @@ TEACHER_MEMO_EVIDENCE = EvidenceSource(
 
 
 def without_memo_evidence(evidence: tuple[EvidenceSource, ...]) -> tuple[EvidenceSource, ...]:
-    """칸별 근거 종류 검사가 볼 Evidence: 요청 사항 표시와 트렌드 표시(ADR-070)는 뺀다."""
+    """칸별 근거 종류 검사가 볼 Evidence: 요청 사항 표시와 트렌드 표시(ADR-072)는 뺀다."""
     return tuple(
         source
         for source in evidence

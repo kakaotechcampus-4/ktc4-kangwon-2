@@ -273,7 +273,7 @@ def test_요청_사항은_남고_반영한_활동에만_표시가_붙는다(worl
 def test_트렌드를_반영한_후보에만_trend_applied_가_붙는다(
     world, parent, monkeypatch, tmp_path, enabled
 ):
-    """ADR-070. 원 설정이 켜져 있을 때만 넘긴다. mock 은 첫 후보에 첫 자료를 반영했다고 답한다."""
+    """ADR-072. 원 설정이 켜져 있을 때만 넘긴다. mock 은 첫 후보에 첫 자료를 반영했다고 답한다."""
     from datetime import date
 
     from app.features.centers.models import Center

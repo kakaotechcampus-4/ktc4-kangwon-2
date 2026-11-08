@@ -247,7 +247,7 @@ class GeneratePlayMonthlyPlan:
         optional_context: OptionalContextProvider | None = None,
     ) -> None:
         self._optional_context = optional_context
-        # ADR-070: the last run's trend fetch result, for the caller's one-word log line.
+        # ADR-072: the last run's trend fetch result, for the caller's one-word log line.
         self.last_optional_context: tuple[OptionalContextResult, ...] = ()
         self._parents = parent_repository
         self._plans = plan_repository
@@ -273,7 +273,7 @@ class GeneratePlayMonthlyPlan:
         period = next(p for p in parent.periods if p.period.key == snapshot.period_key)
         layout = PLAY_MONTHLY_LAYOUT_V0_3
         counts = {"together": layout.together_count, "free_play": layout.free_play_count}
-        # ADR-070: optional; a missing, disabled or broken source means no trends (CLAUDE.md §7).
+        # ADR-072: optional; a missing, disabled or broken source means no trends (CLAUDE.md §7).
         self.last_optional_context = fetch_optional_context((TREND_CONTEXT,), self._optional_context)
         trends = usable_trends(self.last_optional_context)
         timing.phase("prompt")
@@ -329,7 +329,7 @@ class GeneratePlayMonthlyPlan:
         content, safety_requests = split_safety_requests(content, request.safety_request_slots, request.week_ids)
         proposal = parse_play_monthly_proposal(content)
         issues = validate_play_monthly(proposal, request)
-        # ADR-070: more than TREND_SHARE trend candidates in a list — the extra ones are rewritten
+        # ADR-072: more than TREND_SHARE trend candidates in a list — the extra ones are rewritten
         # without trends by the one existing repair (name and description are both that candidate).
         excess = trend_share_excess(trend_applied, request.trend_addresses or (), section_of)
         issues += tuple(

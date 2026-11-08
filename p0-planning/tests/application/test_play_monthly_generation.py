@@ -1126,7 +1126,7 @@ def test_a_teacher_memo_reaches_the_prompt_marks_its_cells_and_keeps_skipped_req
 
 
 
-# ── ADR-070: 트렌드봇 자료 ─────────────────────────────────────────────────────
+# ── ADR-072: 트렌드봇 자료 ─────────────────────────────────────────────────────
 
 
 def _trends(n: int = 3):

@@ -83,7 +83,7 @@ REPAIR_INSTRUCTION = (
     " 이번 요청은 수리다. original 은 처음 요청, previous_response 는 앞선 응답, issues 는 문제가 된 자리다. "
     "previous_response 를 같은 형식으로 다시 쓰되 issues 의 location 에 해당하는 값만 고친다. 다른 자리는 한 글자도 바꾸지 않는다."
 )
-# ADR-070: 놀이 중심 월간의 두 후보 목록에 맞는 트렌드 종류.
+# ADR-072: 놀이 중심 월간의 두 후보 목록에 맞는 트렌드 종류.
 TREND_SLOT_GUIDANCE = """- trends는 together · free_play 후보에만 쓴다. together(함께 하는 활동)에는 게임 · 신체 · 동요 · 동화,
   free_play(유아 예상 자유놀이)에는 만들기 · 역할 · 놀이 · 신체 종류가 맞는다.
 """
@@ -144,7 +144,7 @@ class PlayMonthlyRequest:
     memo_addresses: tuple[str, ...] | None = None
     # ADR-060 2층: statutory categories safety_requests may name; None = not asked.
     safety_request_slots: tuple[str, ...] | None = None
-    # ADR-070: the candidate addresses trend_applied may name; None = no trends (or a repair).
+    # ADR-072: the candidate addresses trend_applied may name; None = no trends (or a repair).
     trend_addresses: tuple[str, ...] | None = None
     trends: tuple[TrendItem, ...] = ()
 
@@ -302,7 +302,7 @@ def build_play_monthly_request(
         payload["safety_request_slots"] = list(safety_request_slots)
         prompt_version += SAFETY_REQUESTS_PROMPT_TAG
         system_prompt += SAFETY_REQUESTS_PROMPT
-    # ADR-070: 트렌드가 없으면 아무것도 붙지 않는다 — 요청 · fingerprint 가 그대로다.
+    # ADR-072: 트렌드가 없으면 아무것도 붙지 않는다 — 요청 · fingerprint 가 그대로다.
     trend_addresses = (
         tuple(f"{section}[{i}]" for section in ACTIVITY_SECTIONS for i in range(counts[section])) if trends else None
     )

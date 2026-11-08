@@ -2959,7 +2959,7 @@ activity_pool         문서에 넣지 않은 AI 후보 — together · free_pla
 content_ids           그 놀이에 지금 걸린 누리과정 내용 ID.  **응답은 0~3개** — 생성한 행은 1~3개이고 행 추가 직후의 빈 행은 0개다.  연결 바꾸기 요청과 확정 조건은 1~3개.  공식 문구는 저장하지 않는다(Reference 에서 읽는다)
                       name.evidence 의 CURRICULUM 은 만들 때의 연결이고 바뀌지 않는다
 parent_item_id        이 행이 부모 연간의 놀이 하나를 이은 것이면 그 놀이명 칸의 item_id.  아니면 null.  name.evidence 에 PARENT_PLAN 이 있을 때만 값이 있다
-trend_applied         그 행이 트렌드봇 자료를 반영했는가(표시용, ADR-070).  name.evidence 에 TREND 가 있을 때 true.  꺼짐 · 자료 없음 · 옛 계획안은 false
+trend_applied         그 행이 트렌드봇 자료를 반영했는가(표시용, ADR-072).  name.evidence 에 TREND 가 있을 때 true.  꺼짐 · 자료 없음 · 옛 계획안은 false
 safety_candidates     candidates 의 주소는 cell.item_id 다 (경로의 {item_id} · 본문의 candidate_item_id)
 kind                  STATUTORY (법정 여섯 영역, category_id 만) | SUPPLEMENTAL (생활안전, topic_group 만)
 habits[].label        한글 문서가 「[분류]」로 찍는 일상생활 항목 이름(entry_id 의 label, 계획안이 읽은 판에서).  문장이 비었거나 항목에서 고르지 않았거나 판이 없어졌으면 ""(하민 결정 2026-11-06).  화면은 「[분류]」 다음 줄에 문장을 쓴다

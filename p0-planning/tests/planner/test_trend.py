@@ -1,4 +1,4 @@
-"""ADR-070: 트렌드 Rule · 응답 확인."""
+"""ADR-072: 트렌드 Rule · 응답 확인."""
 
 import json
 from datetime import date

@@ -222,7 +222,7 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
     except LlmUnavailable as error:
         raise _UNAVAILABLE from error
     center = session.get(Center, center_id)
-    trends = TrendContextProvider(  # ADR-070: 원이 껐으면(기본값) 넘기지 않는다
+    trends = TrendContextProvider(  # ADR-072: 원이 껐으면(기본값) 넘기지 않는다
         enabled=center is not None and center.trends_enabled,
         today=SystemClock().now().astimezone(KST).date(),
     )
@@ -260,7 +260,7 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
             raise
         raise mapped from error
     finally:
-        # 트렌드를 썼는지 · 대체 경로였는지 한 단어로(ADR-070 결정 8). 제목 · 프롬프트는 안 남긴다.
+        # 트렌드를 썼는지 · 대체 경로였는지 한 단어로(ADR-072 결정 8). 제목 · 프롬프트는 안 남긴다.
         for result in use_case.last_optional_context:
             _TIMING_LOG.info("plan_trend kind=monthly_play status=%s", result.status.value)
 
@@ -980,7 +980,7 @@ def _activity(activity: PlayActivity) -> s.ActivityOut:
         description=_cell(activity.description),
         content_ids=list(activity.content_ids),
         parent_item_id=None if parent is None else parent.parent_item_id.value,
-        # ADR-070: 표시용. 그 후보 칸 Evidence 에 TREND 가 있는가.
+        # ADR-072: 표시용. 그 후보 칸 Evidence 에 TREND 가 있는가.
         trend_applied=any(
             e.source_type is EvidenceSourceType.TREND for e in activity.cell.evidence
         ),
