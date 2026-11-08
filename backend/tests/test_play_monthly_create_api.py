@@ -271,7 +271,7 @@ def test_요청_사항은_남고_반영한_활동에만_표시가_붙는다(worl
 
 @pytest.mark.parametrize("enabled", [True, False])
 def test_트렌드를_반영한_후보에만_trend_applied_가_붙는다(
-    world, parent, monkeypatch, tmp_path, caplog, enabled
+    world, parent, monkeypatch, tmp_path, enabled
 ):
     """ADR-070. 원 설정이 켜져 있을 때만 넘긴다. mock 은 첫 후보에 첫 자료를 반영했다고 답한다."""
     from datetime import date
@@ -293,8 +293,10 @@ def test_트렌드를_반영한_후보에만_trend_applied_가_붙는다(
         ),
     )
 
-    with caplog.at_level("INFO", logger="app.server.timing"):
-        response = _post(world)
+    # alembic fileConfig 가 앞서 만든 로거를 끄므로 caplog 대신 로거 호출을 받는다.
+    lines: list[str] = []
+    monkeypatch.setattr(play_monthly_router._TIMING_LOG, "info", lambda m, *a: lines.append(m % a))
+    response = _post(world)
 
     assert response.status_code == 201, response.text
     body = response.json()
@@ -305,5 +307,5 @@ def test_트렌드를_반영한_후보에만_trend_applied_가_붙는다(
     assert any(e["source_type"] == "TREND" for e in first["evidence"]) is enabled
     assert first["generation"]["rule_version"].endswith("+trend-v1") is enabled
     status = "AVAILABLE" if enabled else "UNAVAILABLE"
-    assert f"plan_trend kind=monthly_play status={status}" in caplog.text
+    assert f"plan_trend kind=monthly_play status={status}" in lines
     assert client.get(f"{URL}/{body['id']}").json() == body
