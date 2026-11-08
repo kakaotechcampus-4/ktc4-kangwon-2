@@ -128,7 +128,7 @@ export default function EvaluationChecklist() {
 
   /*
    * 맨 위에 서류 도장판(전체 폭) — 평가 당일 교사가 꺼내는 단위가 서류여서 서류마다 칸 하나.
-   * 그 아래 왼쪽에 서류마다 자세히(표), 오른쪽 330px 칸에 폴더 고르기와 접힌 칸 셋(시안 ⑥, 2026-11-08).
+   * 그 아래 왼쪽에 채울 서류 카드 · 찍힌 서류 목록(시안 ⑤), 오른쪽 330px 칸에 폴더 쪽지(시안 ③)와 접힌 칸 셋(2026-11-08).
    * 오른쪽 칸은 페이지와 같이 스크롤한다 — 따로 스크롤하면 노트북 높이에서 접힌 칸이 안쪽 밑으로 숨었다.
    */
   return (
@@ -136,7 +136,7 @@ export default function EvaluationChecklist() {
       <Message error>{error}</Message>
       <StampBoard rows={rows} basis={basis} onToggle={toggleFile} onRecount={recount} />
       <div className={`${ws.grid} ${styles.layout}`}>
-        <EvaluationSheet rows={rows} scanned={!!scan} onImported={recount} />
+        <EvaluationSheet rows={rows} onImported={recount} />
         <div className={styles.aside}>
           {/* 폴더 결과는 화면 메모리에만 둔다(ADR-045 결정 5). 체크 목록에 써 넣지 않는다 — 도장 근거 「내컴퓨터」 · 「직접확인」을 가르려고. */}
           <FolderCard scan={scan} onScan={setScan} />
@@ -150,10 +150,11 @@ export default function EvaluationChecklist() {
               <EvaluationAuto items={autos} onImported={recount} />
             </div>
           </details>
-          <details className={styles.fold} aria-label="직접 확인">
+          {/* 도장 근거 「직접확인」과 이름이 겹쳐 바꿨다(시안 ⑤, 11-08). 쌤플이 세지 않는 평가항목을 선생님이 체크한다. */}
+          <details className={styles.fold} aria-label="나머지 평가항목 체크">
             <summary>
               <FoldMark />
-              직접 확인 · {checked} / {total}
+              나머지 평가항목 체크 · {checked} / {total}
             </summary>
             <div className={styles.foldBody}>
               <EvaluationSelfCheck

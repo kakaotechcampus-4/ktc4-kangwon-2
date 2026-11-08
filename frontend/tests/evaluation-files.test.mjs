@@ -107,3 +107,45 @@ test("도장 근거는 쌤플 확정 · 폴더 · 교사 체크를 따로 세고
   assert.deepEqual(stampSources(null, undefined, true), ["teacher"]);
   assert.deepEqual(stampSources(null, undefined, false), []);
 });
+
+test("도장 근거 줄은 쌤플 · 폴더 · 직접확인을 따로 적고 상태를 나눈다", async () => {
+  const { sourceLines } = await import("../lib/workspace/evaluation-files.ts");
+  const brief = (lines) => lines.map((l) => `${l.source}:${l.state}:${l.text}`);
+  const partial = { status: "partial", matched: ["a", "b"], missing: ["2026-10-15", "2026-10-22"] };
+  // 쌤플 서류 — 확정 0건 · 폴더는 일부 빠짐(빈 평일 수로 적는다)
+  assert.deepEqual(
+    brief(
+      sourceLines(doc("journal"), { done: false, some: false, text: "확정 0건" }, partial, false),
+    ),
+    ["ssample:none:확정 0건", "folder:short:일부 빠짐 · 빈 평일 2일"],
+  );
+  // 계획안은 달로 센다 · 확정은 있지만 모자라면 점선
+  assert.deepEqual(
+    brief(
+      sourceLines(
+        doc("plan"),
+        { done: false, some: true, text: "확정 1건" },
+        { ...partial, missing: ["2026-11"] },
+        false,
+      ),
+    ),
+    ["ssample:short:확정 1건", "folder:short:일부 빠짐 · 빈 달 1개"],
+  );
+  // 폴더를 안 골랐으면 「폴더를 고르면」 · 쌤플이 만들지 않는 서류는 쌤플 줄이 없고 누른 것만 직접확인
+  assert.deepEqual(brief(sourceLines(doc("parent"), null, undefined, true)), [
+    "folder:none:폴더를 고르면 이름으로 찾아봐요",
+    "teacher:on:도장판에서 눌렀어요",
+  ]);
+  // 쌤플 서류의 옛 체크는 직접확인 줄을 만들지 않는다
+  assert.deepEqual(
+    brief(
+      sourceLines(
+        doc("journal"),
+        { done: true, some: true, text: "확정 3건" },
+        { status: "found", matched: ["a"], missing: [] },
+        true,
+      ),
+    ),
+    ["ssample:on:확정 3건", "folder:on:이름으로 찾음 · 1건"],
+  );
+});

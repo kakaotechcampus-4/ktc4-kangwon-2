@@ -194,8 +194,11 @@ const TOURS: Record<string, Step[]> = {
     },
     {
       at: "eval-sheet",
-      title: "서류마다 자세히",
-      lines: ["줄마다 **쌤플에서 확정한 것**과 **내 컴퓨터**를 따로 봐요."],
+      title: "채울 서류부터",
+      lines: [
+        "**빈 칸**인 서류가 위에 크게 나와요.",
+        "도장 근거는 **쌤플확정 · 내컴퓨터 · 직접확인**으로 봐요.",
+      ],
     },
   ],
   "/records/children": [

@@ -342,3 +342,48 @@ export function stampSources(
   if (!made && checked) sources.push("teacher");
   return sources;
 }
+
+/** 「빈 평일 3일」 · 「빈 달 1개」. 「일부 빠짐」은 평일 · 달 규칙에만 나온다. */
+export function gapText(doc: TeacherDoc, result: Pick<DocResult, "missing">) {
+  return doc.rule.kind === "weekdays"
+    ? `빈 평일 ${result.missing.length}일`
+    : `빈 달 ${result.missing.length}개`;
+}
+
+/**
+ * 도장 근거 한 줄 — 도장 안 낱말과 같은 말로, 그 근거가 어디까지 왔는지(시안 ⑤, 2026-11-08).
+ * `on` 은 도장을 찍은 근거, `short` 는 있지만 모자람, `none` 은 아직 없음.
+ * 쌤플 숫자와 폴더 결과는 **줄을 나눠** 둔다. 세는 법이 달라 더하지 않는다(ADR-045).
+ */
+export interface SourceLine {
+  source: StampSource;
+  state: "on" | "short" | "none";
+  text: string;
+}
+
+export function sourceLines(
+  doc: TeacherDoc,
+  made: { done: boolean; some: boolean; text: string } | null,
+  result: DocResult | undefined,
+  checked: boolean,
+): SourceLine[] {
+  const lines: SourceLine[] = [];
+  if (made) {
+    const state = made.done ? "on" : made.some ? "short" : "none";
+    lines.push({ source: "ssample", state, text: made.text });
+  }
+  if (!result)
+    lines.push({ source: "folder", state: "none", text: "폴더를 고르면 이름으로 찾아봐요" });
+  else if (result.status === "found")
+    lines.push({
+      source: "folder",
+      state: "on",
+      text: `이름으로 찾음 · ${result.matched.length}건`,
+    });
+  else if (result.status === "partial")
+    lines.push({ source: "folder", state: "short", text: `일부 빠짐 · ${gapText(doc, result)}` });
+  else lines.push({ source: "folder", state: "none", text: "못 찾음" });
+  // 직접확인은 누른 시각을 아직 남기지 않는다 — 서버 저장(PR ②) 뒤에 날짜를 붙인다.
+  if (!made && checked) lines.push({ source: "teacher", state: "on", text: "도장판에서 눌렀어요" });
+  return lines;
+}

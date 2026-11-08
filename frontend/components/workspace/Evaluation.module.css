@@ -621,64 +621,156 @@
   }
 }
 
-/* ── 서류마다 자세히 — 도장판 아래 표 ── */
-/* 표 칸은 오른쪽 칸(폴더 · 접힌 칸 셋) 높이에 맞춰 늘어난다 — 표 상자가 남는 높이를 채운다.
-   `ws.grid` 의 align-items: start 를 이 칸만 덮는다. 한 줄로 쌓이면(1260px 아래) 늘릴 짝이 없다. */
-.detail {
+/* ── 도장판 아래 — 시안 ⑤ 「빈 칸 먼저」(2026-11-08) ──
+   채울 서류는 점선 카드로 크게, 찍힌 서류는 한 줄씩. 칸 높이는 오른쪽 칸에 맞춰 늘어난다 — 찍힌 서류 목록이
+   남는 높이를 채운다. `ws.grid` 의 align-items: start 를 이 칸만 덮는다. 한 줄로 쌓이면(1260px 아래) 늘릴 짝이 없다. */
+.sheet {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   align-self: stretch;
   min-width: 0;
 }
-/* 좁은 화면에서는 표만 옆으로 밀어 본다. 페이지가 옆으로 늘지 않는다.
-   relative 가 없으면 머리글의 sr-only(absolute)가 이 상자 밖에 자리 잡아 스마트폰에서 페이지를 27px 밀었다. */
-.tableBox {
-  position: relative;
+.secTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0 2px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.secTitle:not(:first-child) {
+  margin-top: 14px;
+}
+.secTitle em {
+  font-style: normal;
+  color: var(--pg-alert-ink);
+}
+.secTitle span {
+  font-family: var(--font-body), sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--pg-ink-soft);
+}
+/* 카드가 하나여도 반 폭을 지킨다(auto-fill) — 하나만 남았을 때 화면 끝까지 늘어나면 목록처럼 보였다. */
+.todo {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+  gap: 16px;
+}
+.todoCard {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  padding: 20px 20px 18px;
+  border: 1.5px dashed var(--pg-ink-hint);
+  border-radius: 10px;
+  background: var(--pg-paper);
+}
+.todoTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 23px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.need {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--pg-sun-ink);
+}
+.todoActs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 4px;
+}
+/* 카드 안 단추는 글자만 한 단계 작게(시안 ⑤). 누르는 높이 44px 은 다른 단추와 같다. */
+.todoActs > :is(a, button):not(.linkButton) {
+  padding: 9px 14px;
+  font-size: 14px;
+}
+.panel {
+  padding-top: 10px;
+  border-top: 1px dashed var(--pg-line);
+}
+.doneList {
   flex: 1;
-  overflow-x: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
   border: 1px solid var(--pg-line);
   border-radius: 12px;
   background: var(--pg-paper);
+  overflow: hidden;
 }
-.docTable {
-  width: 100%;
-  min-width: 560px;
-  border-collapse: collapse;
-  font-size: 13.5px;
-}
-.docTable thead th {
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--pg-line);
-  background: var(--pg-ivory);
-  font-size: 12.5px;
-  font-weight: 700;
-  text-align: left;
-  color: var(--pg-ink-soft);
-}
-.docTable tbody th,
-.docTable tbody td {
+.doneRow {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  gap: 14px;
+  align-items: center;
   padding: 12px 16px;
-  font-weight: 400;
-  text-align: left;
-  vertical-align: middle;
 }
-/* 숨긴 펼침 줄도 형제로 세므로, 둘째 줄부터 위에 선을 긋는다. */
-.docTable tbody tr + tr > * {
+.doneRow + .doneRow {
   border-top: 1px solid var(--pg-line);
 }
-.panelRow > td {
+.doneRow[data-opt] {
   background: var(--pg-ivory);
 }
-.docTitle {
+.doneName {
   font-size: 14.5px;
   font-weight: 700;
 }
+.optNote {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--pg-ink-soft);
+}
+.donePanel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding-top: 10px;
+  border-top: 1px dashed var(--pg-line);
+}
+/* display: grid 가 hidden 의 display: none 을 덮어, 닫힌 「자세히」가 늘 펴져 보였다. */
+.donePanel[hidden] {
+  display: none;
+}
+.donePanel > * {
+  justify-self: stretch;
+}
+.donePanel > button {
+  justify-self: start;
+}
+/* 좁으면(스마트폰) 근거 · 단추를 이름 밑으로 내린다. */
+@container (max-width: 560px) {
+  .doneRow {
+    grid-template-columns: 40px minmax(0, 1fr);
+    row-gap: 8px;
+  }
+  .doneRow > :nth-child(n + 3):not(.donePanel) {
+    grid-column: 2;
+  }
+}
 .docIndicator {
   margin-left: 6px;
+  font-family: var(--font-body), sans-serif;
   font-size: 12px;
   font-weight: 600;
   color: var(--pg-primary-ink);
+  white-space: nowrap;
 }
 .docBasis {
   display: block;
@@ -693,11 +785,14 @@
   align-items: center;
   gap: 0 14px;
 }
-.acts .linkButton {
+.acts .linkButton,
+.todoActs .linkButton,
+.donePanel .linkButton {
   display: inline-flex;
   align-items: center;
   font-weight: 600;
 }
+/* 도장판 칸 아래 숫자 */
 .madeDone {
   font-weight: 700;
   color: var(--pg-success);
@@ -706,10 +801,79 @@
   font-weight: 700;
   color: var(--pg-sun-ink);
 }
-.rowFaint {
+
+/* 도장 근거 — 도장 안 낱말(쌤플확정 · 내컴퓨터 · 직접확인)을 그대로 쓴다.
+   보라 실선은 도장을 찍은 근거, 노란 점선은 있지만 모자람, 회색 점선은 아직 없음. */
+.srcs {
+  display: grid;
+  gap: 6px;
+}
+.srcs[data-inline] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.src {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.45;
+}
+.src > b {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1.5px solid;
+  border-radius: 999px;
+  background: var(--pg-paper);
+  font-family: var(--font-display), sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+}
+.src[data-state="on"] > b {
+  border-color: var(--pg-primary);
+  color: var(--pg-primary);
+}
+.src[data-state="short"] > b {
+  border-color: var(--pg-sun);
+  border-style: dashed;
+  background: var(--pg-sun-tint);
+  color: var(--pg-sun-ink);
+}
+.src[data-state="none"] > b {
+  border-color: var(--pg-line);
+  border-style: dashed;
   color: var(--pg-ink-soft);
+}
+.src[data-state="none"] {
+  color: var(--pg-ink-soft);
+}
+/* 줄 맨 앞 작은 동그라미 — 찍힌 서류는 도장판과 같은 보라 이중 원 */
+.mini {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+.mini[data-state="done"] {
+  border: 2.5px solid var(--pg-primary);
+  background: var(--pg-paper);
+  box-shadow:
+    inset 0 0 0 2.5px var(--pg-paper),
+    inset 0 0 0 4px var(--pg-primary);
+  transform: rotate(-6deg);
+}
+.mini[data-state="empty"] {
+  border: 2px dashed var(--pg-ink-hint);
+}
+.mini[data-state="opt"] {
+  border: 1.5px dashed var(--pg-line);
 }
 
 /* ── 아래 짜임 — 왼쪽 표, 오른쪽 330px 칸(폴더 · 접힌 칸 셋) ── */
@@ -730,10 +894,20 @@
   align-content: start;
   min-width: 0;
 }
-.folder {
+/* 내 컴퓨터 폴더 — 테이프로 붙인 노란 쪽지(시안 ③). 사이드바 쪽지 · 시작 설정 쪽지와 같은 색이다. */
+.folderNote {
+  position: relative;
   display: grid;
   gap: 10px;
-  padding: 20px 22px;
+  margin: 8px 4px 6px;
+  padding: 24px 20px 18px;
+  border: 1px solid var(--pg-note-line);
+  background: var(--pg-note);
+  box-shadow: 0 8px 16px rgba(52, 49, 47, 0.16);
+  transform: rotate(1.5deg);
+}
+.noteTape {
+  left: 38%;
 }
 .folderTitle {
   margin: 0;
@@ -744,13 +918,22 @@
 .folderLead {
   font-size: 13px;
   line-height: 1.7;
-  color: var(--pg-ink-soft);
 }
-/* `ws.card` 의 공통 `.card p`(15px · 줄높이 1.9)를 칸 안에서 다시 잡는다. */
-.folder .folderLead {
-  max-width: none;
+.scanStat {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--pg-note-line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--pg-paper) 55%, transparent);
+}
+.scanStat b {
+  font-size: 13.5px;
+}
+.scanStat span {
   font-size: 13px;
   line-height: 1.7;
+  color: var(--pg-ink-soft);
 }
 
 /* 원장님 서류처럼 평소에 안 보는 묶음은 접어 둔다. */
@@ -797,6 +980,32 @@
 .fold > p {
   padding: 0 22px;
 }
+/* 원장님 서류 — 항목 이름 밑에 기준을 작게(시안 ⑤) */
+.directorBody {
+  padding: 10px 22px 14px;
+}
+.directorItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 40px;
+  padding: 6px 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.directorItem input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--pg-primary);
+}
+.directorItem small {
+  display: block;
+  font-size: 12px;
+  color: var(--pg-ink-soft);
+}
 .foldBody {
   padding: 2px 4px 10px;
 }
@@ -839,7 +1048,8 @@
     padding: 24px 16px 20px;
   }
   .fold > summary,
-  .fold > p {
+  .fold > p,
+  .directorBody {
     padding-left: 16px;
     padding-right: 16px;
   }
