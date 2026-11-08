@@ -42,10 +42,12 @@ from .teacher_memo import (
 from .trend import (
     TREND_PROMPT,
     TREND_PROMPT_TAG,
+    TREND_NAME_IN_TEXT,
     TREND_SHARE_EXCEEDED,
     split_trend_applied,
     trend_payload,
     trend_properties,
+    trend_name_hits,
     trend_share_excess,
 )
 from .text_policy import normalize_visible_text, visible_text_violations
@@ -141,6 +143,7 @@ TREND_KINDS_BY_ACTIVITY_TYPE = {
 INDOOR_PLAY_TREND_KINDS = frozenset({TrendKind.PLAY})
 # 실내놀이 후보의 영역은 indoor_play_type 이 한 표기로 맞춘다(역할 · 역할 놀이 · 역할영역 → 「역할놀이」).
 INDOOR_AREA_TREND_KINDS = {"역할놀이": frozenset({TrendKind.ROLE, TrendKind.PLAY})}
+TREND_NAME_REPAIR = "채널 · 프로그램 · 캐릭터 이름을 빼고 놀이 내용만 다시 쓴다"  # ADR-072 결정 11
 WEEKLY_TREND_PROMPT = (
     " trend_ids가 있는 후보 target만 트렌드를 쓸 수 있고, 그 칸에 허용된 trend_id만 쓴다. "
     "트렌드를 쓴 후보는 activity_basis 대신 그 자료의 title · summary를 원문 활동으로 삼는다 — "
@@ -175,12 +178,14 @@ class WeeklyIssueCode(str, Enum):
     DAY_VALUE_REPEATED = "DAY_VALUE_REPEATED"
     TREND_SHARE_EXCEEDED = TREND_SHARE_EXCEEDED  # ADR-072: a third trend candidate in one list
     TREND_GROUNDING_MIXED = "TREND_GROUNDING_MIXED"  # ADR-072: a trend candidate also cited an institution record
+    TREND_NAME_IN_TEXT = TREND_NAME_IN_TEXT  # ADR-072 결정 11: a channel or character name in a candidate
 
 
 # Same idea as the monthly REPAIRABLE_CODES: wording or a ref choice inside a fixed slot.
 REPAIRABLE = frozenset({
     WeeklyIssueCode.TREND_SHARE_EXCEEDED,
     WeeklyIssueCode.TREND_GROUNDING_MIXED,
+    WeeklyIssueCode.TREND_NAME_IN_TEXT,
     WeeklyIssueCode.ACTIVITY_CANDIDATE_INVALID,
     WeeklyIssueCode.TEXT_POLICY,
     WeeklyIssueCode.SOURCE_TEXT_COPY,
@@ -247,6 +252,7 @@ class WeeklyPlanningRequest:
     # ADR-072: the passed trends and, per candidate address, the trend_ids the Rule allows there.
     trends: tuple[TrendItem, ...] = ()
     trend_options: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    teacher_memo: str = ""  # ADR-072 결정 11: names the teacher wrote here are not blocked
 
     @property
     def trend_addresses(self) -> tuple[str, ...] | None:
@@ -517,6 +523,7 @@ def build_weekly_request(
         teacher_venue_text="\n".join((teacher_memo, *teacher_venues)),
         trends=passed,
         trend_options=options,
+        teacher_memo=teacher_memo,
     )
 
 
@@ -846,6 +853,15 @@ def validate_weekly(
     for target in request.targets:
         if target.section_key not in seen:
             issues.append(WeeklyIssue(WeeklyIssueCode.MISSING_SECTION, target.section_key))
+    if request.trends:  # ADR-072 결정 11: every candidate, trend-written or not
+        texts = {
+            v.section_key: v.value for v in values
+            if isinstance(v, ProposedSectionValue) and (t := request.target(v.section_key)) and t.activity_type is not None
+        }
+        issues += [
+            WeeklyIssue(WeeklyIssueCode.TREND_NAME_IN_TEXT, address)
+            for address in trend_name_hits(texts, request.trends, request.teacher_memo)
+        ]
     return tuple(issues)
 
 
@@ -985,7 +1001,8 @@ class WeeklyPlanner:
                     "previous_answer": json.loads(content),
                     "fix_sections": [
                         {"section_key": i.section_key, "issue": i.code.value, **({"day": i.day} if i.day else {}),
-                         **({"reason": "UNREQUESTED_VENUE"} if "UNREQUESTED_VENUE" in i.detail else {})}
+                         **({"reason": "UNREQUESTED_VENUE"} if "UNREQUESTED_VENUE" in i.detail else {}),
+                         **({"reason": TREND_NAME_REPAIR} if i.code is WeeklyIssueCode.TREND_NAME_IN_TEXT else {})}
                         for i in issues
                     ],
                 }, ensure_ascii=False, sort_keys=True),

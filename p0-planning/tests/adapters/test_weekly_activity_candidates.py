@@ -317,7 +317,7 @@ class _Trends:
         return OptionalContextResult(name, OptionalContextStatus.AVAILABLE, self.items)
 
 
-def _trend_generate(provider, trends):
+def _trend_generate(provider, trends, memo=""):
     from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateRepository
     from ssuksak.adapters.weekly_composition import weekly_generation
 
@@ -329,7 +329,7 @@ def _trend_generate(provider, trends):
         template_repository=JsonMonthlyTemplateRepository(
             paths=(Path(__file__).parents[2] / "data/templates/weekly_template_a_v0_2_0.json",)),
     )
-    command = replace(_day_command(parent), activity_candidates=True, indoor_play_candidates=True,
+    command = replace(_day_command(parent), activity_candidates=True, indoor_play_candidates=True, teacher_memo=memo,
                       optional_context_names=() if trends is None else ("trend",))
     return harness, use_case.execute(command).plan
 
@@ -453,6 +453,46 @@ def test_trend_candidate_citing_an_institution_record_is_repaired_once_or_reject
     trended = next(c for c in plan.activity_candidates if _trend_source(c.cell))
     assert not any(s.source_type.value == "INSTITUTION_SAMPLE" for s in trended.cell.evidence)
     assert trended.cell.generation.rule_version == provider.requests[0].repair_prompt_version
+
+
+def _untrended_candidate(request):
+    """A candidate the mock does not write from a trend: the name check covers every candidate."""
+    return next(t.section_key for t in request.targets if t.activity_type and t.section_key != request.trend_options[0][0])
+
+
+@pytest.mark.parametrize("case", ["fixed", "unfixed", "memo"])
+def test_channel_or_character_name_in_a_candidate_is_repaired_once_unless_the_teacher_wrote_it(case):
+    from ssuksak.planning.planner.contracts import ProposalRejectedError, RawLlmResponse
+
+    class Named(RequestAwareWeeklyLlm):
+        def generate_weekly(self, request):
+            response = super().generate_weekly(request)
+            if request.repair_targets and case == "fixed":
+                return response
+            answer = json.loads(response.content)
+            address = _untrended_candidate(self.requests[0])
+            section = next(s for s in answer["sections"] if s["section_key"] == address)
+            section["value"] = section["value"].replace(": ", ": 뽀 로로와 함께 ", 1)  # spacing is not looked at
+            return RawLlmResponse(json.dumps(answer, ensure_ascii=False), response.model)
+
+    trends = _Trends(tuple(replace(item, name_words=("뽀로로",)) for item in _trend_items()))
+    provider = Named()
+    memo = "뽀로로 노래로 놀이해요" if case == "memo" else ""
+    if case == "unfixed":
+        with pytest.raises(WeeklyApplicationError) as error:
+            _trend_generate(provider, trends, memo)
+        assert isinstance(error.value.__cause__, ProposalRejectedError) and len(provider.requests) == 2
+        assert "TREND_NAME_IN_TEXT" in error.value.__cause__.validation_codes
+        return
+    _trend_generate(provider, trends, memo)
+    if case == "memo":
+        assert len(provider.requests) == 1
+        return
+    assert len(provider.requests) == 2
+    address = _untrended_candidate(provider.requests[0])
+    assert {"section_key": address, "issue": "TREND_NAME_IN_TEXT",
+            "reason": "채널 · 프로그램 · 캐릭터 이름을 빼고 놀이 내용만 다시 쓴다"} in json.loads(
+        provider.requests[1].user_content)["fix_sections"]
 
 
 @pytest.mark.parametrize("trends", [_Trends(fail=True), _Trends(())])
