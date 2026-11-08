@@ -343,8 +343,11 @@ def _trend_source(cell):
 def test_trend_goes_only_to_fitting_candidates_and_leaves_trend_evidence():
     from ssuksak.planning.planner.trend import TREND_PROMPT, TREND_PROMPT_TAG
     from ssuksak.planning.planner.weekly import (
+        INDOOR_AREA_TREND_KINDS,
         INDOOR_PLAY_TREND_KINDS,
         TREND_KINDS_BY_ACTIVITY_TYPE,
+        WeeklyTarget,
+        trend_options,
         weekly_response_schema,
     )
 
@@ -356,7 +359,8 @@ def test_trend_goes_only_to_fitting_candidates_and_leaves_trend_evidence():
     kinds = {i.trend_id: i.kind for i in request.trends}
     for address, ids in request.trend_options:  # Rule: the kind fits the candidate's type; candidates only
         target = request.target(address)
-        fits = INDOOR_PLAY_TREND_KINDS if address.startswith("indoor_play.candidate.") else {
+        fits = INDOOR_AREA_TREND_KINDS.get(target.activity_type, INDOOR_PLAY_TREND_KINDS) if address.startswith(
+            "indoor_play.candidate.") else {
             TREND_KINDS_BY_ACTIVITY_TYPE[w] for w in target.activity_type.split("·") if w in TREND_KINDS_BY_ACTIVITY_TYPE}
         assert target.activity_type and ids and {kinds[i] for i in ids} <= fits
     body = json.loads(request.user_content)
@@ -366,6 +370,11 @@ def test_trend_goes_only_to_fitting_candidates_and_leaves_trend_evidence():
     source = _trend_source(trended[0].cell)[0]
     assert (source.source_id, source.source_version) == (request.trend_options[0][1][0], "2026-W44")
     assert TREND_PROMPT_TAG in trended[0].cell.generation.rule_version
+    assert not any(s.source_type.value == "INSTITUTION_SAMPLE" for s in trended[0].cell.evidence)
+    role, play = (next(i for i in request.trends if i.kind.value == k) for k in ("역할", "놀이"))
+    assert trend_options((WeeklyTarget("indoor_play.candidate.1", activity_type="역할놀이"),
+                          WeeklyTarget("indoor_play.candidate.2", activity_type="쌓기놀이")), (role, play)) == (
+        ("indoor_play.candidate.1", (role.trend_id, play.trend_id)), ("indoor_play.candidate.2", (play.trend_id,)))
 
 
 def test_trend_not_allowed_for_that_candidate_is_rejected_and_nothing_saved():
@@ -398,6 +407,9 @@ def test_third_trend_in_one_list_is_repaired_once_without_its_mark():
             answer = json.loads(response.content)
             indoor = [(a, ids) for a, ids in request.trend_options if a.startswith("indoor_play.")][:3]
             answer["trend_applied"] = [{"address": a, "trend_id": ids[0]} for a, ids in indoor]
+            for section in answer["sections"]:
+                if section["section_key"] in dict(indoor):
+                    section["grounding_refs"] = []
             return RawLlmResponse(json.dumps(answer, ensure_ascii=False), response.model)
 
     provider = ThreeIndoor()
@@ -410,6 +422,37 @@ def test_third_trend_in_one_list_is_repaired_once_without_its_mark():
     indoor = [c for c in plan.activity_candidates if c.cell.section_key == "indoor_play"]
     assert [bool(_trend_source(c.cell)) for c in indoor[:3]] == [True, True, False]
     assert indoor[2].cell.generation.rule_version == provider.requests[0].repair_prompt_version
+
+
+@pytest.mark.parametrize("fixed", [True, False])
+def test_trend_candidate_citing_an_institution_record_is_repaired_once_or_rejected(fixed):
+    from ssuksak.planning.planner.contracts import ProposalRejectedError, RawLlmResponse
+
+    class Mixed(RequestAwareWeeklyLlm):
+        def generate_weekly(self, request):
+            response = super().generate_weekly(request)
+            answer = json.loads(response.content)
+            address = self.requests[0].trend_options[0][0]
+            section = next(s for s in answer["sections"] if s["section_key"] == address)
+            refs = list(request.target(address).allowed_grounding_refs[:1])
+            section["grounding_refs"] = [] if request.repair_targets and fixed else refs
+            return RawLlmResponse(json.dumps(answer, ensure_ascii=False), response.model)
+
+    provider = Mixed()
+    if not fixed:
+        with pytest.raises(WeeklyApplicationError) as error:
+            _trend_generate(provider, _Trends(_trend_items()))
+        assert "TREND_GROUNDING_MIXED" in error.value.__cause__.validation_codes
+        assert isinstance(error.value.__cause__, ProposalRejectedError) and len(provider.requests) == 2
+        return
+    _, plan = _trend_generate(provider, _Trends(_trend_items()))
+    assert len(provider.requests) == 2
+    address = provider.requests[0].trend_options[0][0]
+    assert json.loads(provider.requests[1].user_content)["fix_sections"] == [
+        {"section_key": address, "issue": "TREND_GROUNDING_MIXED"}]
+    trended = next(c for c in plan.activity_candidates if _trend_source(c.cell))
+    assert not any(s.source_type.value == "INSTITUTION_SAMPLE" for s in trended.cell.evidence)
+    assert trended.cell.generation.rule_version == provider.requests[0].repair_prompt_version
 
 
 @pytest.mark.parametrize("trends", [_Trends(fail=True), _Trends(())])

@@ -129,7 +129,8 @@ DAY_PROMPT = (
 )
 DAY_CELL_PROMPT = " 이번에는 days 의 요일 하나만 쓰고, current_plan 에 있는 같은 Section 다른 요일 값과 같은 문장을 쓰지 않는다."
 # ADR-070 결정 10: 칸마다 쓸 수 있는 트렌드는 Rule 이 이 표로 정한다. 대·소집단 후보는 activity_type
-# 낱말(「동요·음률」이면 둘 다)로, 실내놀이 후보는 역할 · 놀이 자료만. 표에 없는 유형의 칸에는 붙이지 않는다.
+# 낱말(「동요·음률」이면 둘 다)로, 실내놀이 후보는 영역으로 — 일반 놀이 자료는 모든 실내놀이 후보에, 역할 자료는
+# 역할놀이 영역에만(Human Decision 2026-11-08 하민). 표에 없는 유형의 칸에는 붙이지 않는다.
 TREND_KINDS_BY_ACTIVITY_TYPE = {
     "동요": TrendKind.SONG, "새노래": TrendKind.SONG, "음률": TrendKind.SONG, "음악": TrendKind.SONG,
     "동화": TrendKind.STORY, "동극": TrendKind.STORY,
@@ -137,7 +138,9 @@ TREND_KINDS_BY_ACTIVITY_TYPE = {
     "신체": TrendKind.MOVEMENT,
     "미술": TrendKind.CRAFT,
 }
-INDOOR_PLAY_TREND_KINDS = frozenset({TrendKind.ROLE, TrendKind.PLAY})
+INDOOR_PLAY_TREND_KINDS = frozenset({TrendKind.PLAY})
+# 실내놀이 후보의 영역은 indoor_play_type 이 한 표기로 맞춘다(역할 · 역할 놀이 · 역할영역 → 「역할놀이」).
+INDOOR_AREA_TREND_KINDS = {"역할놀이": frozenset({TrendKind.ROLE, TrendKind.PLAY})}
 WEEKLY_TREND_PROMPT = (
     " trend_ids가 있는 후보 target만 트렌드를 쓸 수 있고, 그 칸에 허용된 trend_id만 쓴다. "
     "트렌드를 쓴 후보는 activity_basis 대신 그 자료의 title · summary를 원문 활동으로 삼는다 — "
@@ -171,11 +174,13 @@ class WeeklyIssueCode(str, Enum):
     DAY_MISMATCH = "DAY_MISMATCH"  # days must be exactly the requested days, in order
     DAY_VALUE_REPEATED = "DAY_VALUE_REPEATED"
     TREND_SHARE_EXCEEDED = TREND_SHARE_EXCEEDED  # ADR-070: a third trend candidate in one list
+    TREND_GROUNDING_MIXED = "TREND_GROUNDING_MIXED"  # ADR-070: a trend candidate also cited an institution record
 
 
 # Same idea as the monthly REPAIRABLE_CODES: wording or a ref choice inside a fixed slot.
 REPAIRABLE = frozenset({
     WeeklyIssueCode.TREND_SHARE_EXCEEDED,
+    WeeklyIssueCode.TREND_GROUNDING_MIXED,
     WeeklyIssueCode.ACTIVITY_CANDIDATE_INVALID,
     WeeklyIssueCode.TEXT_POLICY,
     WeeklyIssueCode.SOURCE_TEXT_COPY,
@@ -340,7 +345,7 @@ def trend_options(
     for target in targets:
         if target.activity_type is None:
             continue  # only the two candidate lists; day cells · theme · safety · outdoor never get trends
-        kinds = INDOOR_PLAY_TREND_KINDS if target.section_key.startswith("indoor_play.candidate.") else {
+        kinds = INDOOR_AREA_TREND_KINDS.get(target.activity_type, INDOOR_PLAY_TREND_KINDS) if target.section_key.startswith("indoor_play.candidate.") else {
             TREND_KINDS_BY_ACTIVITY_TYPE[word] for word in target.activity_type.split("·")
             if word in TREND_KINDS_BY_ACTIVITY_TYPE
         }
@@ -792,8 +797,8 @@ def validate_weekly(
     trended: frozenset[str] = frozenset(),
 ) -> tuple[WeeklyIssue, ...]:
     """``trended``: candidates written from a trend (ADR-070). Their source activity is the trend
-    title · summary, so the institution basis checks (name terms, a cited ref) do not apply;
-    every other check does."""
+    title · summary, so the institution name terms do not apply and it cites no institution
+    record (TREND_GROUNDING_MIXED); every other check does."""
     issues: list[WeeklyIssue] = []
     seen: set[str] = set()
     candidate_names: set[tuple[str, str]] = set()
@@ -878,6 +883,8 @@ def _value_issues(
             return issues  # the value is the catalog label (with_reference_labels)
     if v.reference_id is not None:
         issues.append(WeeklyIssue(WeeklyIssueCode.REFERENCE_FORBIDDEN, key))
+    if trended and v.grounding_refs:  # its source activity is the trend; it cites no institution record
+        issues.append(WeeklyIssue(WeeklyIssueCode.TREND_GROUNDING_MIXED, key, day=day))
     visible = normalize_visible_text(v.value)
     inherited = bool(target.parent_value.strip()) and visible == normalize_visible_text(target.parent_value)
     if (
