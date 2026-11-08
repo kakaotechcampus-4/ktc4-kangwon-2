@@ -108,6 +108,10 @@ class AutoResult:
     plan_ids: tuple[int, ...]
     document_ids: tuple[int, ...]
     period: Window
+    # 4-1 만 — 두 조건을 따로 채운 반 수.
+    # 화면이 서류(보육일지 · 계획안)마다 도장을 찍는다(ADR-074 결정 2).
+    journal_classes: Ratio | None = None
+    plan_classes: Ratio | None = None
 
 
 def _verdict(count: int, ratio: Ratio) -> str:
@@ -140,8 +144,9 @@ def judge_4_1(
     for log in daily_logs:
         log_days[log.class_id].add(log.day)
     weekdays = set(window.weekdays())
-    met = sum(plan_counts[c] >= min_plans_per_class and weekdays <= log_days[c] for c in roster)
-    ratio = Ratio(met, len(roster))
+    plan_ok = {c for c in roster if plan_counts[c] >= min_plans_per_class}
+    journal_ok = {c for c in roster if weekdays <= log_days[c]}
+    ratio = Ratio(len(plan_ok & journal_ok), len(roster))
     plan_ids = tuple(sorted(plan.plan_id for plan in plans))
     document_ids = tuple(sorted(log.document_id for log in daily_logs))
     count = len(plan_ids) + len(document_ids)
@@ -154,6 +159,8 @@ def judge_4_1(
         plan_ids=plan_ids,
         document_ids=document_ids,
         period=window,
+        journal_classes=Ratio(len(journal_ok), len(roster)),
+        plan_classes=Ratio(len(plan_ok), len(roster)),
     )
 
 

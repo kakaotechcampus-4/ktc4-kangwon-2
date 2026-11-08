@@ -3911,11 +3911,13 @@ SELF_CHECK 의 평가요소도 일부만 보인다. 6-3 의 실제 평가요소�
     { "indicator": "4-1", "area": "…", "title": "…", "content": "평가내용 원문",
       "kind": "AUTO", "verdict": "INSUFFICIENT", "required": null, "count": 3,
       "children": null, "classes": { "met": 1, "total": 2 },
+      "journal_classes": { "met": 1, "total": 2 }, "plan_classes": { "met": 2, "total": 2 },
       "plan_ids": [4], "document_ids": [9, 15],
       "period": { "from": "2026-09-01", "to": "2026-10-02" } },
     { "indicator": "4-2", "area": "…", "title": "…", "content": "평가내용 원문",
       "kind": "AUTO", "verdict": "INSUFFICIENT", "required": 2, "count": 4,
       "children": { "met": 2, "total": 3 }, "classes": null,
+      "journal_classes": null, "plan_classes": null,
       "plan_ids": [], "document_ids": [7, 8, 11, 12],
       "period": { "from": "2025-10-01", "to": "2026-10-02" } },
     { "indicator": "6-3", "area": "…", "title": "…", "content": "평가내용 원문",
@@ -3924,8 +3926,18 @@ SELF_CHECK 의 평가요소도 일부만 보인다. 6-3 의 실제 평가요소�
         { "element": "6-3-1", "text": "…", "checked": true,
           "checked_at": "2026-10-01T10:00:00+09:00" },
         { "element": "6-3-2", "text": "…", "checked": false, "checked_at": null } ],
-      "progress": { "checked": 1, "total": 3 }, "complete": false } ] }
+      "progress": { "checked": 1, "total": 3 }, "complete": false } ],
+  "documents": [
+    { "doc": "journal", "checked": false, "checked_at": null,
+      "folder": { "status": "partial", "scanned_at": "2026-10-03T06:12:00Z",
+                  "period": { "from": "2026-09-01", "to": "2026-10-02" }, "files": 21, "gaps": 3 } },
+    { "doc": "parent", "checked": true, "checked_at": "2026-10-03T06:15:00Z", "folder": null } ],
+  "director": [
+    { "item": "annual-plan", "checked": true, "checked_at": "2026-10-02T01:00:00Z" },
+    { "item": "day-papers", "checked": false, "checked_at": null } ] }
 ```
+
+`documents` · `director` 도 일부만 보였다. **실제로는 늘 6줄 · 5줄이다**(아래 「평가 서류 도장 근거」).
 
 **숫자는 응답 모양을 보이는 예시다. 실제 기간 집계가 아니다.** 평가요소 원문은 `…` 로 둔다.
 
@@ -3942,6 +3954,7 @@ SELF_CHECK 의 평가요소도 일부만 보인다. 6-3 의 실제 평가요소�
 | `count` | `int` | 센 문서 수다. **`count` = `plan_ids` 길이 + `document_ids` 길이**다. 4-1 일지는 평일 · 주말 · 같은 날 여러 건을 모두 센다. 4-2 는 `total` 에 든 모든 아동의 센 평가 문서 수의 합이다 |
 | `children` | `{ met: int, total: int } \| null` | **아동 단위 지표만** 값이 있다. `total` = 이 원의 **오늘 학년도 반에 등록된 아동 수**(`children` 행. 반의 `child_count` 가 아니다). `met` = 그중 기준을 채운 아이 수. 나머지는 `null` |
 | `classes` | `{ met: int, total: int } \| null` | **반 단위 지표만** 값이 있다(4-1). `total` = 이 원의 **오늘 학년도 반 수**(`classes.school_year`). `met` = 그중 기준을 채운 반 수. 나머지는 `null` |
+| `journal_classes` · `plan_classes` | `{ met: int, total: int } \| null` | **4-1 만** 값이 있다. 두 조건을 **따로** 채운 반 수 — `journal_classes` 는 기간 안 평일마다 확정 일일 보육일지가 있는 반, `plan_classes` 는 확정 월간계획안이 1건 이상인 반. `total` 은 `classes.total` 과 같다. `classes.met` 은 두 조건을 다 채운 반이다. 화면의 서류 도장(보육일지 · 계획안)이 쓴다(ADR-074 결정 2). 4-2 는 `null` |
 | `plan_ids` | `int[]` | 센 계획안의 id. 계획안을 세지 않는 지표는 `[]` 다. `document_ids` 에 섞지 않는다(ADR-019) |
 | `document_ids` | `int[]` | 4-1 은 기간 안 `total` 에 든 모든 반의 확정 일일 보육일지 id 다(평일 · 주말 · 같은 날 여러 건 모두 포함). 4-2 는 `total` 에 든 모든 아동의 센 평가 문서 id 다(§11). 화면이 「근거 보기」로 연다 |
 | `period` | `{ from: string, to: string }` | AUTO 의 검토 기간. `from` · `to` 는 ISO 날짜다. 화면이 「9/1~10/2 기준」을 그린다 |
@@ -4070,6 +4083,83 @@ hwp 서식 기준 평가요소는 **19개 — 5-1:3 · 5-2:3 · 5-3:2 · 6-1:2 �
 공식 자체평가 서식은 평가요소별 5점 척도다. **우리는 체크(예/아니오, `checked: bool`)로 정했다(2026-10-03).**
 평가 준비가 됐는지만 확인하는 기능이라 점수는 필요 없다.
 **v2의 원문·승인 기록은 변경하지 않는다.** 이 파일의 승인·내용 해시 검사를 통과한 자료만 사용한다.
+
+### 평가 서류 도장 근거 — `documents` · `director` (구현됨, ADR-074)
+
+**평가 서류 6종의 도장 근거 가운데 저장하는 것**이다. 쌤플확정은 저장하지 않는다 — 화면이 AUTO 항목(`journal_classes` ·
+`plan_classes` · 4-2 `children`)에서 센다. 근거끼리 숫자를 더하지 않는다.
+
+```
+documents   로그인한 교사의 서류 6종 — 직접확인 · 마지막 폴더 검사 결과    교사 단위(원 · 학년도 · 교사)
+director    원장님이 챙기는 서류 5종의 체크                               원 단위 — 같은 원 교사가 같이 본다
+```
+
+**늘 6줄 · 5줄을 아래 순서로 준다.** 저장된 것이 없으면 `checked: false` · `folder: null` 이다.
+
+```
+doc     journal · plan · assessment · parent · training · iep
+item    operation-plan · annual-plan · interaction-record · duty-training · day-papers
+```
+
+키는 화면 `frontend/lib/workspace/evaluation-files.ts` 의 `TEACHER_DOCS` · `DIRECTOR_ITEMS` id 와 같다.
+
+| 필드 | 타입 | |
+|---|---|---|
+| `documents[].doc` | `string` | 서류 키 |
+| `documents[].checked` · `checked_at` | `bool` · `string \| null` | 직접확인. **쌤플이 만들지 않는 서류(parent · training · iep)만** `true` 가 될 수 있다. 시각은 처음 누른 때다 |
+| `documents[].folder` | `object \| null` | 그 교사가 마지막으로 고른 폴더의 결과. 검사한 적이 없거나 새 폴더에 그 서류가 없었으면 `null` |
+| `folder.status` | `string` | `found`(이름으로 찾음) · `partial`(일부 빠짐) · `missing`(못 찾음). **「충족」이 아니다**(ADR-045) |
+| `folder.scanned_at` | `string` | 폴더를 고른 시각(UTC, `Z`). 서버가 저장할 때 정한다 |
+| `folder.period` | `{ from, to }` | 그 검사가 본 기간(ISO 날짜). 화면이 오늘로 정해 보낸 값 그대로다 |
+| `folder.files` · `folder.gaps` | `int` | 이름으로 센 파일 수 · 빈 평일 또는 빈 달 수. **파일 이름 · 빈 날짜는 저장하지 않는다**(ADR-013 · ADR-074 결정 5) |
+| `director[].item` | `string` | 원장 서류 키 |
+| `director[].checked` · `checked_at` | `bool` · `string \| null` | 같은 원 교사 누구나 같은 값을 본다. 풀면 `false` · `null` |
+
+#### 서류 저장 — `PUT /api/centers/{center_id}/evaluation-checklist/documents` (구현됨)
+
+**로그인한 교사의 줄만 바꾼다.** 다른 교사의 직접확인 · 폴더 결과는 그대로다.
+
+```json
+{ "checks": [ { "doc": "parent", "checked": true } ],
+  "folder_scan": { "results": [
+    { "doc": "journal", "status": "partial", "files": 21, "gaps": 3,
+      "period": { "from": "2026-09-01", "to": "2026-10-02" } },
+    { "doc": "parent", "status": "found", "files": 6, "gaps": 0,
+      "period": { "from": "2025-10-04", "to": "2026-10-03" } } ] } }
+```
+
+- **`checks` · `folder_scan` 중 하나는 있어야 한다.** 둘 다 비면 422 다.
+- **`checks`** — `doc` 은 parent · training · iep 만 받는다. 쌤플이 만드는 서류는 확정 문서로만 도장이 찍힌다(ADR-074 결정 3).
+  이미 체크된 것을 다시 `true` 로 보내면 시각이 바뀌지 않는다. `false` 면 푼다. 풀었다가 다시 체크하면 새 시각이다.
+- **`folder_scan`** — 새 폴더 검사 한 번이다. **그 교사의 폴더 결과를 통째로 바꾼다.** `results` 에 없는 서류의 옛 결과는 지운다.
+  `results` 는 1~6줄이고 같은 `doc` 이 두 번 오면 안 된다. **파일 이름 칸이 없다** — 모르는 칸(`names` 등)은 422 다.
+  `status` 와 숫자가 맞아야 한다 — `missing` 이면 `files = 0`, 그 밖에는 `files ≥ 1`, `partial` 일 때만 `gaps ≥ 1`.
+  `period.from` 이 `to` 보다 늦으면 422 다.
+- 체크도 폴더 결과도 남지 않은 줄은 지운다.
+
+**Response** `200` — GET 과 같은 전체 응답이다.
+
+#### 원장 서류 저장 — `PUT /api/centers/{center_id}/evaluation-checklist/director` (구현됨)
+
+```json
+{ "checks": [ { "item": "annual-plan", "checked": true },
+              { "item": "day-papers", "checked": false } ] }
+```
+
+**원 단위다.** 자체평가 체크(아래 「체크 저장」)와 같은 모양이다 — ☐ 에서 ☑ 로 바뀐 시각을 남기고, 풀면 지운다.
+`checks` 는 1개 이상이고 같은 `item` 이 두 번 오면 안 된다.
+
+**Response** `200` — GET 과 같은 전체 응답이다.
+
+**에러** — 두 PUT 공통. 공통 에러 봉투를 쓴다.
+
+| code | status | 언제 | `fields` |
+|---|---|---|---|
+| `UNAUTHENTICATED` | 401 | 토큰이 없거나 못 믿는다(§0) | `[]` |
+| `NOT_FOUND` | 404 | 없는 원. **남의 원도 404 다**(ADR-017) | `["center_id"]` |
+| `VALIDATION_FAILED` | 422 | 없는 키 · 받지 않는 서류의 직접확인 · `checked` 가 bool 이 아님 · 같은 키 두 번 · 상태와 숫자가 안 맞음 · 뒤집힌 기간 · 모르는 칸 · 빈 요청 | 칸 위치(`checks.0.doc` · `folder_scan.results.0.period`). 묶음 규칙은 그 묶음 — `folder_scan` 의 같은 서류 두 번은 `["folder_scan"]`, 상태와 숫자가 안 맞으면 `["folder_scan.results.0"]`. 요청 전체 규칙(빈 요청 · `checks` 의 같은 키 두 번)은 `[]` |
+
+**하나라도 틀리면 아무것도 저장하지 않는다.**
 
 ### 체크 저장 — `PUT /api/centers/{center_id}/evaluation-checklist/checks` (구현됨)
 
