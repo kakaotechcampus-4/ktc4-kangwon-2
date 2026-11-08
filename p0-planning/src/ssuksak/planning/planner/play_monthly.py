@@ -22,6 +22,7 @@ from ..domain.curriculum_reference import CurriculumCatalog
 from ..domain.daily_life_reference import DailyLifeEntry
 from ..domain.safety_placement import SafetyCandidateSlot as SafetySlot
 from ..domain.safety_placement import SafetyKind
+from ..domain.trend import TrendItem
 from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
 from .teacher_memo import (
@@ -35,6 +36,7 @@ from .teacher_memo import (
     safety_request_properties,
 )
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
+from .trend import TREND_PROMPT, TREND_PROMPT_TAG, TREND_SHARE_EXCEEDED, trend_payload, trend_properties
 from .v1_guidance import NATURAL_PLAY_GUIDANCE, SAFETY_TEXT_GUIDANCE
 from .weekly import unsupported_facts
 from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG, venue_memo
@@ -80,6 +82,14 @@ SYSTEM_PROMPT = (
 REPAIR_INSTRUCTION = (
     " 이번 요청은 수리다. original 은 처음 요청, previous_response 는 앞선 응답, issues 는 문제가 된 자리다. "
     "previous_response 를 같은 형식으로 다시 쓰되 issues 의 location 에 해당하는 값만 고친다. 다른 자리는 한 글자도 바꾸지 않는다."
+)
+# ADR-070: 놀이 중심 월간의 두 후보 목록에 맞는 트렌드 종류.
+TREND_SLOT_GUIDANCE = """- trends는 together · free_play 후보에만 쓴다. together(함께 하는 활동)에는 게임 · 신체 · 동요 · 동화,
+  free_play(유아 예상 자유놀이)에는 만들기 · 역할 · 놀이 · 신체 종류가 맞는다.
+"""
+TREND_REPAIR_INSTRUCTION = (
+    f" issues 의 code 가 {TREND_SHARE_EXCEEDED} 인 후보는 트렌드 자료를 반영한 후보가 목록마다 정한 개수를 넘었다 — "
+    "이 후보는 트렌드 자료 없이 원래 기준대로 다시 쓴다."
 )
 
 _ACTIVITY_SCHEMA = _object_schema(
@@ -134,6 +144,9 @@ class PlayMonthlyRequest:
     memo_addresses: tuple[str, ...] | None = None
     # ADR-060 2층: statutory categories safety_requests may name; None = not asked.
     safety_request_slots: tuple[str, ...] | None = None
+    # ADR-070: the candidate addresses trend_applied may name; None = no trends (or a repair).
+    trend_addresses: tuple[str, ...] | None = None
+    trends: tuple[TrendItem, ...] = ()
 
     @property
     def source_refs(self) -> frozenset[str]:
@@ -209,11 +222,15 @@ def play_monthly_memo_addresses(
 
 
 def play_monthly_response_schema(request: PlayMonthlyRequest) -> dict:
-    if request.memo_addresses is None:
+    if request.memo_addresses is None and request.trend_addresses is None:
         return RESPONSE_SCHEMA
-    properties = dict(RESPONSE_SCHEMA["properties"], **memo_properties(request.memo_addresses))
+    properties = dict(RESPONSE_SCHEMA["properties"])
+    if request.memo_addresses is not None:
+        properties.update(memo_properties(request.memo_addresses))
     if request.safety_request_slots is not None:
         properties.update(safety_request_properties(request.safety_request_slots, request.week_ids))
+    if request.trend_addresses is not None:
+        properties.update(trend_properties(request.trend_addresses, request.trends))
     return _object_schema(properties)
 
 
@@ -240,6 +257,7 @@ def build_play_monthly_request(
     reference_versions: tuple[str, ...],
     teacher_memo: str = "",
     teacher_venues: tuple[str, ...] = (),
+    trends: tuple[TrendItem, ...] = (),
 ) -> PlayMonthlyRequest:
     def entries(values: tuple[DailyLifeEntry, ...]) -> list[dict]:
         return [{"entry_id": e.entry_id, "label": e.label, "text": e.text} for e in values]
@@ -284,6 +302,14 @@ def build_play_monthly_request(
         payload["safety_request_slots"] = list(safety_request_slots)
         prompt_version += SAFETY_REQUESTS_PROMPT_TAG
         system_prompt += SAFETY_REQUESTS_PROMPT
+    # ADR-070: 트렌드가 없으면 아무것도 붙지 않는다 — 요청 · fingerprint 가 그대로다.
+    trend_addresses = (
+        tuple(f"{section}[{i}]" for section in ACTIVITY_SECTIONS for i in range(counts[section])) if trends else None
+    )
+    if trend_addresses is not None:
+        payload.update(trend_payload(trends, trend_addresses))
+        prompt_version += TREND_PROMPT_TAG
+        system_prompt += TREND_PROMPT + TREND_SLOT_GUIDANCE
     user_content = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     return PlayMonthlyRequest(
         prompt_version=prompt_version,
@@ -303,6 +329,8 @@ def build_play_monthly_request(
         fingerprint=_fingerprint(prompt_version, system_prompt, user_content, *reference_versions),
         memo_addresses=memo,
         safety_request_slots=safety_request_slots,
+        trend_addresses=trend_addresses,
+        trends=trends,
     )
 
 
@@ -319,6 +347,8 @@ def build_repair_request(
         sort_keys=True,
     )
     system_prompt = SYSTEM_PROMPT + VENUE_GUIDANCE + REPAIR_INSTRUCTION
+    if any(i.code == TREND_SHARE_EXCEEDED for i in issues):
+        system_prompt += TREND_REPAIR_INSTRUCTION
     return PlayMonthlyRequest(
         **{
             **{name: getattr(request, name) for name in PlayMonthlyRequest.__dataclass_fields__},
@@ -330,6 +360,7 @@ def build_repair_request(
             ),
             "memo_addresses": None,  # the repair answers in the first schema, without memo fields
             "safety_request_slots": None,
+            "trend_addresses": None,  # the repair answers in the first schema, without trend fields
         }
     )
 

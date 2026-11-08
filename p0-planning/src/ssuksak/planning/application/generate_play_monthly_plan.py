@@ -87,11 +87,27 @@ from ..planner.teacher_memo import (
     split_safety_requests,
     with_memo_evidence,
 )
+from ..planner.trend import (
+    TREND_SHARE_EXCEEDED,
+    split_trend_applied,
+    trend_share_excess,
+    usable_trends,
+    with_trend_evidence,
+)
+from ..domain.trend import TREND_CONTEXT
 from ..rules.monthly_week_periods import canonical_week_periods
 from .drill_topics import DrillTopicError, DrillTopicReferenceRepository, select_drill_topics
 from .generate_play_project_plan import CurriculumReferenceRepository
 from .play_project_lifecycle import PLAY_PROJECT_LAYOUTS
-from .ports import Clock, IdGenerator, PlanRepository, SafetyLegalRuleRepository
+from .ports import (
+    Clock,
+    IdGenerator,
+    OptionalContextProvider,
+    OptionalContextResult,
+    PlanRepository,
+    SafetyLegalRuleRepository,
+)
+from .yearly_support import fetch_optional_context
 from .safety_candidates import (
     SafetyCandidateError,
     apply_safety_requests,
@@ -228,7 +244,11 @@ class GeneratePlayMonthlyPlan:
         provider: PlayMonthlyProvider,
         clock: Clock,
         id_generator: IdGenerator,
+        optional_context: OptionalContextProvider | None = None,
     ) -> None:
+        self._optional_context = optional_context
+        # ADR-070: the last run's trend fetch result, for the caller's one-word log line.
+        self.last_optional_context: tuple[OptionalContextResult, ...] = ()
         self._parents = parent_repository
         self._plans = plan_repository
         self._curriculum = curriculum_repository
@@ -253,6 +273,9 @@ class GeneratePlayMonthlyPlan:
         period = next(p for p in parent.periods if p.period.key == snapshot.period_key)
         layout = PLAY_MONTHLY_LAYOUT_V0_3
         counts = {"together": layout.together_count, "free_play": layout.free_play_count}
+        # ADR-070: optional; a missing, disabled or broken source means no trends (CLAUDE.md §7).
+        self.last_optional_context = fetch_optional_context((TREND_CONTEXT,), self._optional_context)
+        trends = usable_trends(self.last_optional_context)
         timing.phase("prompt")
         request = build_play_monthly_request(
             target_month=month.value,
@@ -296,14 +319,24 @@ class GeneratePlayMonthlyPlan:
                  for field in ("play_name", "materials", "support_direction")),
                 memo=parent.teacher_memo,
             ),
+            trends=trends,
         )
 
         response = self._provider.generate_play_monthly(request)
         timing.phase("validate")
         content, memo_applied, memo_skipped = split_memo_applied(response.content, request.memo_addresses)
+        content, trend_applied = split_trend_applied(content, request.trend_addresses, request.trends)
         content, safety_requests = split_safety_requests(content, request.safety_request_slots, request.week_ids)
         proposal = parse_play_monthly_proposal(content)
         issues = validate_play_monthly(proposal, request)
+        # ADR-070: more than TREND_SHARE trend candidates in a list — the extra ones are rewritten
+        # without trends by the one existing repair (name and description are both that candidate).
+        excess = trend_share_excess(trend_applied, request.trend_addresses or (), section_of)
+        issues += tuple(
+            PlayMonthlyIssue(location, TREND_SHARE_EXCEEDED)
+            for address in excess
+            for location in (address, f"{address}.description")
+        )
         changed: frozenset[str] = frozenset()
         if issues:
             timing.phase("repair")
@@ -313,9 +346,15 @@ class GeneratePlayMonthlyPlan:
                 raise ProposalRejectedError(("VENUE_NAME_ONLY_REMOVAL",))
             changed = changed_locations(proposal, repaired)
             remaining = validate_play_monthly(repaired, request) + repair_scope_issues(changed, issues)
+            remaining += tuple(
+                PlayMonthlyIssue(address, TREND_SHARE_EXCEEDED)
+                for address in excess
+                if not {address, f"{address}.description"} & changed
+            )
             if remaining:
                 raise _rejected(remaining)
             proposal = repaired
+            trend_applied = {a: t for a, t in trend_applied.items() if a not in excess}
 
         timing.phase("assemble")
         plan_id = self._ids.new_plan_id()
@@ -423,6 +462,7 @@ class GeneratePlayMonthlyPlan:
                         snapshot_value=play.play_name,
                     )
                 evidence = memo(f"{section}[{index}]", evidence)
+                evidence = with_trend_evidence(evidence, trend_applied.get(f"{section}[{index}]"))
                 name = cell(f"{section}[{index}]", None, row.name, evidence)
                 description = cell(
                     f"{section}[{index}].description", f"{name.semantic_key}.description", row.description, evidence
