@@ -280,6 +280,10 @@ export const handlers = [
   // MSW interception 판정 전용 probe — 실제 백엔드 API가 아니다.
   // 이 응답이 오면 fetch가 정말 MSW handler를 통과했다는 뜻이다.
   http.get("*/api/__msw_health", () => HttpResponse.json({ msw: true })),
+  // 계획안 밖 화면(관찰 · 일과 · 일지 · 반 공유 요청)은 목업 데이터가 없다 — 빈 목록으로 답해 404 이슈만 막는다.
+  ...["observations", "routines", "documents", "access-requests/received"].map((path) =>
+    http.get(`*/api/${path}`, () => HttpResponse.json({ items: [] })),
+  ),
   // 인증 (docs/api-spec.md §0). **목업은 토큰을 검증하지 않는다** —
   // 진짜 검증은 서버가 하고, 여기서는 화면이 토큰을 받고 저장하는 흐름만 흉내낸다.
   http.post("*/api/auth/signup", async ({ request }) => {
@@ -1509,14 +1513,25 @@ export const handlers = [
     if (s) return s;
     const query = new URL(request.url).searchParams;
     const raw = query.get("class_id");
-    const month = Number(query.get("month"));
-    // `month` 는 **달력 달 1~12** 다. 연도는 반의 학년도가 정한다 (월간 생성과 같은 규칙).
-    if (raw === null || !/^-?\d+$/.test(raw)) return bad("class_id");
-    if (!Number.isInteger(month) || month < 1 || month > 12) return bad("month");
+    const rawMonth = query.get("month");
+    const month = Number(rawMonth);
+    // 백엔드와 같다: 둘 다 고를 수 있다. `month` 는 **달력 달 1~12** 이고 `class_id` 와 함께만 받는다 —
+    // 연도는 반의 학년도가 정한다 (월간 생성과 같은 규칙). 둘 다 없으면 원 전체.
+    if (rawMonth !== null && (raw === null || !Number.isInteger(month) || month < 1 || month > 12))
+      return bad("month");
+    if (raw === null) {
+      const center = currentCenterId();
+      const ids = center === null ? [] : listClasses(center).map((c) => c.id);
+      return HttpResponse.json({ items: listWeekly(ids) });
+    }
+    if (!/^-?\d+$/.test(raw)) return bad("class_id");
     const klass = myClass(Number(raw));
     if (!klass) return classMissing();
     return HttpResponse.json({
-      items: listWeekly([klass.id], targetMonthOf(klass.school_year, month)),
+      items: listWeekly(
+        [klass.id],
+        rawMonth === null ? undefined : targetMonthOf(klass.school_year, month),
+      ),
     });
   }),
   http.get("*/api/plans/weekly/:id", async ({ request, params }) => {

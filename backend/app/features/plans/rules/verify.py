@@ -18,11 +18,11 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from ssuksak import timing
 from ssuksak.adapters.monthly_reference_repositories import DEFAULT_SAFETY_RULE_PATH
 
 VIOLATION = "VIOLATION"
@@ -52,7 +52,7 @@ class Violation:
 
 def load_legal_rules() -> Mapping[str, Any]:
     """법령 전사 파일을 읽는다. 값을 보완하거나 추측하지 않는다."""
-    return json.loads(LEGAL_RULES_PATH.read_text(encoding="utf-8"))
+    return timing.read_json(LEGAL_RULES_PATH)
 
 
 def safety_categories() -> list[dict[str, str]]:

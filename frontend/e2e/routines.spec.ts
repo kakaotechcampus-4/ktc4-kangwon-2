@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { completeOnboarding } from "./onboarding";
+import { verifyHwpx } from "./hwpx";
 import { execFileSync } from "node:child_process";
 
 /** TASK 2: 실제 Next → FastAPI → PostgreSQL. 응답을 fulfill하거나 MSW로 대체하지 않는다. */
@@ -1052,9 +1053,9 @@ test("후속 #16 — 초안에서 삭제된 근거를 제외하고, 전부 빼�
 });
 
 for (const sourceKind of ["dailyLog", "routine"] as const) {
-  test(`주간 보육일지 — ${sourceKind} 근거로 생성한 문서를 편집·확정하고 같은 달 목록에서 다시 연다`, async ({
+  test(`주간 보육일지 — ${sourceKind} 근거로 생성한 문서를 편집·확정·한글 다운로드하고 같은 달 목록에서 다시 연다`, async ({
     page,
-  }) => {
+  }, info) => {
     const { classId } = await enterHome(page);
     const start = "2026-09-28";
     const end = "2026-10-02";
@@ -1116,6 +1117,10 @@ for (const sourceKind of ["dailyLog", "routine"] as const) {
     expect(saved.sections.find((s: { heading: string }) => s.heading === "지원").body).toBe(
       support,
     );
+    // 확정본은 한글 파일로 받는다. 교사가 고친 지원 글이 파일에 들어갔는지 연다.
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "한글 파일로 내려받기", exact: true }).click();
+    await verifyHwpx(await download, info.outputPath(`weekly-log-${sourceKind}.hwpx`), [support]);
     await page.getByRole("button", { name: "← 문서 목록으로 돌아가기", exact: true }).click();
     await expect(page.getByRole("button", { name: "주간", exact: true })).toHaveAttribute(
       "aria-pressed",

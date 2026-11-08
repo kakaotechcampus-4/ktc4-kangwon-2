@@ -2,7 +2,7 @@
 
 .page {
   min-height: calc(100 * var(--app-vh));
-  background: var(--pg-cream);
+  /* 배경은 body 가 칠한다. 여기 칠하면 뒤 벽 낙서(PostyDoodles)가 가려진다. */
   color: var(--pg-ink);
 }
 .page ::selection {

@@ -675,15 +675,70 @@ test("계획안 첫 화면 「이어서 하기」는 확정 안 한 연간 · �
       { id: 9, class_id: 3, month: 5, status: "DRAFT", created_at: "2026-09-15T00:00:00Z" },
       { id: 10, class_id: 3, month: 6, status: "CONFIRMED", created_at: "2026-09-30T00:00:00Z" },
     ],
+    // 주간 초안도 「이어서 하기」에 — 임시저장하고 돌아오면 보인다.
+    [
+      {
+        id: 11,
+        class_id: 3,
+        week_id: "2026-04-W1",
+        status: "DRAFT",
+        created_at: "2026-09-25T00:00:00Z",
+      },
+      {
+        id: 12,
+        class_id: 3,
+        week_id: "2026-04-W2",
+        status: "CONFIRMED",
+        created_at: "2026-09-26T00:00:00Z",
+      },
+    ],
   );
   assert.deepEqual(
     cards.map(({ mode, title, href }) => [mode, title, href]),
     [
+      [
+        "월별 주제형",
+        "4월 1주 주간계획안",
+        "/plans/weekly?plan_id=11&class_id=3&week_id=2026-04-W1",
+      ],
       ["월별 주제형", "4월 월간계획안", "/plans/monthly?plan_id=8&class_id=3&month=4"],
       ["놀이 중심형", "5월 월간계획안", "/plans/monthly/play/9"],
       ["놀이 중심형", "2026 연간계획안", "/plans/annual/6"],
     ],
   );
+  // 카드마다 단계 쪽지 — 무엇이 다시 열리는지.
+  assert.deepEqual(
+    cards.map((c) => c.step),
+    ["주간", "월간", "월간", "연간"],
+  );
+  // 가장 최근 연간이 확정됐을 때만 「월간계획안 만들기」로 바뀐다 — 더 최근 초안이 있으면 아니다.
+  const { readyAnnual } = notebook.exports;
+  assert.equal(readyAnnual([annualPlan])?.id, 5);
+  assert.equal(
+    readyAnnual([
+      annualPlan,
+      { ...annualPlan, id: 6, status: "DRAFT", created_at: "2026-09-12T00:00:00Z" },
+    ]),
+    null,
+  );
+  assert.equal(readyAnnual([]), null);
+  // 같은 반 · 학년도에서 가장 최근에 확정한 월간이 [주간계획안 만들기] 가 여는 달이다.
+  const { readyMonthly } = notebook.exports;
+  const m = {
+    class_id: 3,
+    school_year: 2026,
+    status: "CONFIRMED",
+    created_at: "2026-09-12T00:00:00Z",
+  };
+  const monthlies = [
+    { ...m, id: 1, month: 10, confirmed_at: "2026-10-01T00:00:00Z" },
+    { ...m, id: 2, month: 11, confirmed_at: "2026-11-01T00:00:00Z" },
+    { ...m, id: 3, month: 12, status: "DRAFT", confirmed_at: null },
+    { ...m, id: 4, month: 12, class_id: 9, confirmed_at: "2026-11-05T00:00:00Z" },
+  ];
+  assert.equal(readyMonthly(annualPlan, monthlies)?.month, 11);
+  assert.equal(readyMonthly(null, monthlies), null);
+  assert.equal(readyMonthly(annualPlan, [monthlies[2]]), null);
 });
 
 // ── 보관함은 종류(연간 · 월간 · 주간 · 보육 · 관찰)로만 탐색한다 (S-J5 · FR-701) ──

@@ -143,7 +143,7 @@ const FAQ = [
 
 export default function LandingPage() {
   return (
-    <div className="min-h-[calc(100*var(--app-vh))] bg-cream text-ink">
+    <div className="min-h-[calc(100*var(--app-vh))] text-ink">
       <header className="border-b border-line">
         <div className="mx-auto flex min-h-[76px] max-w-[1120px] items-center justify-between gap-4 px-5 sm:px-8">
           <Wordmark href="/welcome" label="쌤플 소개로" />

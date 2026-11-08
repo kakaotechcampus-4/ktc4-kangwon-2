@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ... import timing
 import logging
 
 from ..context.models import MonthlyContextPacket
@@ -66,9 +67,11 @@ class MonthlyPlanner:
     def plan(
         self, packet: MonthlyContextPacket, snapshot: TemplateSnapshot
     ) -> MonthlyPlanningOutcome:
+        timing.phase("prompt")
         request = build_monthly_planning_request(packet, snapshot)
         initial_prompt_version, repaired_cells = request.prompt_version, frozenset()
         response = self._generate(request)
+        timing.phase("validate")
         content, memo_applied, memo_skipped = split_memo_applied(response.content, request.memo_addresses)
         content, safety_requests = split_safety_requests(
             content, request.safety_request_slots, tuple(w.value for w in request.expected_week_ids)
@@ -93,6 +96,7 @@ class MonthlyPlanner:
         ):
             # At most one LLM repair call: 2 provider calls in total, never 3.
             _log.info("Monthly LLM repair attempted: %s", finding_summary(validation.issues))
+            timing.phase("repair")
             request = build_monthly_repair_request(request, content, validation.issues)
             rejected = proposal
             try:

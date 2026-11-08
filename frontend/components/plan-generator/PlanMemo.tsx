@@ -33,7 +33,10 @@ export function PlanMemoField(props: {
   error?: string | null;
 }) {
   const { value, onChange } = props;
+  // 같은 쪽지는 한 번만 넣는다 — 이미 글에 있으면 버튼을 잠그고, 지우면 다시 넣을 수 있다.
+  const used = (chip: string) => value.includes(chip);
   const add = (chip: string) => {
+    if (used(chip)) return;
     const next = value.trim() ? `${value.trim()}, ${chip}` : chip;
     if (next.length <= MEMO_MAX) onChange(next);
   };
@@ -71,9 +74,10 @@ export function PlanMemoField(props: {
             key={c}
             type="button"
             onClick={() => add(c)}
-            className="min-h-[34px] rounded-full border border-[#ddd6ca] bg-white px-3 text-sm text-[#5c5243]"
+            disabled={used(c)}
+            className="min-h-[34px] rounded-full border border-[#ddd6ca] bg-white px-3 text-sm text-[#5c5243] disabled:cursor-default disabled:border-transparent disabled:bg-[#efeae1] disabled:text-ink-hint"
           >
-            + {c}
+            {used(c) ? "✓" : "+"} {c}
           </button>
         ))}
       </div>

@@ -72,7 +72,7 @@ export default function WeeklyIndoorPlayPanel({
   return (
     <section aria-label="실내 자유놀이" className="flex flex-col gap-5">
       <section {...listDrop} className={`-m-1.5 flex flex-col gap-2 rounded-md p-1.5 ${DROP}`}>
-        <h2 className="m-0 font-display text-[20px] font-bold leading-tight">
+        <h2 className="penMark m-0 font-display text-[24px] font-bold leading-tight text-ink">
           이번 주에 넣은 놀이
         </h2>
         <ol className="m-0 flex list-none flex-col gap-2 p-0">
@@ -109,11 +109,12 @@ export default function WeeklyIndoorPlayPanel({
                 <button
                   type="button"
                   aria-label={`${i + 1}번 놀이 빼기`}
-                  className={BUTTON.quiet}
+                  title="빼기"
+                  className={BUTTON.remove}
                   disabled={disabled}
                   onClick={() => onRemove(c.item_id)}
                 >
-                  빼기
+                  −
                 </button>
               </div>
             </li>
@@ -126,7 +127,7 @@ export default function WeeklyIndoorPlayPanel({
               title="직접 쓸 놀이 더하기"
               disabled={disabled}
               onClick={() => onAdd(null)}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-[22px] leading-none text-[#5e4b96] hover:bg-[#f6f1fb] disabled:opacity-40"
+              className="pgPlus h-9 w-9 rounded-[10px] text-[#5e4b96] hover:bg-[#f6f1fb] disabled:opacity-40"
             >
               +
             </button>
@@ -140,8 +141,7 @@ export default function WeeklyIndoorPlayPanel({
       )}
       {candidates.length > 0 && (
         <section {...restDrop} className={`-m-1.5 flex flex-col gap-1 rounded-md p-1.5 ${DROP}`}>
-          <h3 className="m-0 text-[15px] font-bold text-ink">놀이 후보 {candidates.length}개</h3>
-          <p className="m-0 mb-1 text-[13px] text-ink-soft">끌어서 위 빈칸에 놓아도 돼요.</p>
+          <h3 className="m-0 text-[15px] font-bold text-ink">놀이 후보</h3>
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {candidates.map((c) => {
               const text = c.cell.value.trim();
@@ -166,7 +166,7 @@ export default function WeeklyIndoorPlayPanel({
                     disabled={disabled || !ok}
                     onClick={() => onAdd(c.cell.item_id)}
                   >
-                    + 넣기
+                    +
                   </button>
                 </li>
               );

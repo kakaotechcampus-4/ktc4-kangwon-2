@@ -21,9 +21,15 @@ export const BUTTON = {
     "min-h-[44px] rounded-md bg-primary hover:bg-primary-hover px-5 text-sm font-bold text-white disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none",
   /** 패널 아래 가벼운 글자 버튼(「지우고 다시 만들기」). */
   plain: "min-h-[44px] text-sm text-[#5c5243] underline underline-offset-2 disabled:opacity-40",
+  /** 후보 줄의 동그란 [+] 넣기 · [−] 빼기 — 글자 없이 기호만, 이름은 aria-label 로. */
+  add: "pgPlus h-[34px] w-[34px] shrink-0 rounded-[10px] border-2 border-[#cdbfe3] bg-white text-[#5e4b96] shadow-[0_2px_0_#cdbfe3] transition-transform hover:bg-[#f6f1fb] active:translate-y-[2px] active:shadow-none disabled:opacity-40 disabled:shadow-none",
+  remove:
+    "pgMinus h-[34px] w-[34px] shrink-0 rounded-[10px] border-2 border-[#ecc8c2] bg-white text-[#b3261e] shadow-[0_2px_0_#ecc8c2] transition-transform hover:bg-[#fdf3f1] active:translate-y-[2px] active:shadow-none disabled:opacity-40 disabled:shadow-none",
+  /** 문서에서 놀이 · 칸을 빼는 색 있는 버튼. */
+  drop: "inline-flex min-h-[44px] items-center gap-1.5 rounded-md border-2 border-[#ecc8c2] bg-[#fdf3f1] px-4 text-sm font-bold text-[#b3261e] hover:bg-[#fbe4df] disabled:opacity-40",
 };
 export const tabClass = (active: boolean) =>
-  `min-h-[44px] border-b-2 px-1 text-[15px] font-bold ${active ? "border-[#7053a0] text-[#2b2826]" : "border-transparent text-ink-soft"}`;
+  `-mb-px min-h-[44px] rounded-t-md border border-b-0 px-4 text-[15px] font-bold ${active ? "border-line bg-note text-ink shadow-[inset_0_-3px_0_var(--pg-primary)]" : "border-transparent text-ink-soft hover:bg-cream"}`;
 /** 문서 위 쪽 · 구간 버튼. */
 export const pageClass = (active: boolean) =>
   `min-h-[34px] min-w-[52px] rounded-lg px-3 text-sm ${active ? "bg-[#efe8f7] font-bold text-[#5e4b96]" : "text-[#5c5243] hover:bg-[#f3efe8]"}`;
@@ -50,7 +56,9 @@ export const BACK_ICON = (
 
 type Format = AnnualPlanResponse["format"];
 export const chip = (format: Format) => (
-  <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${CHIP[format][1]}`}>
+  <span
+    className={`-rotate-2 border border-black/10 px-3 py-0.5 font-display text-[18px] font-bold shadow-pg-card ${CHIP[format][1]}`}
+  >
     {CHIP[format][0]}
   </span>
 );
@@ -96,7 +104,7 @@ export default function AnnualFrame({
             {lead}
             <div className="flex min-w-0 flex-col">
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="m-0 font-display text-[34px] font-bold leading-[1.15] text-ink">
+                <h1 className="penMark m-0 font-display text-[34px] font-bold leading-[1.15] text-ink">
                   {title}
                 </h1>
                 {chip(format)}
@@ -118,7 +126,9 @@ export default function AnnualFrame({
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         {/* 편집 패널에는 장식(테이프)을 두지 않는다 — 훑어 읽기를 방해하지 않게. 완료 화면에만. */}
         {aside && (
-          <aside className="relative flex w-full shrink-0 flex-col border border-line bg-paper rounded-md lg:w-[380px]">
+          <aside className="relative flex w-full shrink-0 flex-col bg-paper shadow-pg lg:w-[380px]">
+            {/* 노트 위 스프링 구멍 — 장식이라 글을 가리지 않는 띠 안에만. */}
+            <div aria-hidden="true" className="notebookHoles h-[22px] shrink-0" />
             {aside}
           </aside>
         )}
@@ -265,7 +275,7 @@ export const POPOVER = "absolute right-0 top-full z-20 mt-2 w-[380px]";
 /**
  * 문서 크게 보기 — 따로 뜨는 읽기 전용 창. 쪽이 여럿이면 쪽을 골라 본다. Esc 로도 닫힌다.
  * 닫혀 있으면 문서를 그리지 않는다. 연간 · 월간 · 주간이 같이 쓴다.
- * 문서 배율(− · + · 맞춤)은 「닫고 편집 계속하기」 옆에 둔다 — 화면마다 같은 자리(하민 2026-11-06).
+ * 문서 배율(− · + · 맞춤)은 「닫기」 옆에 둔다 — 화면마다 같은 자리(하민 2026-11-06).
  */
 export function BigView({
   pages,
@@ -342,7 +352,7 @@ export function BigView({
                   className={BUTTON.outline}
                   onClick={() => ref.current?.close()}
                 >
-                  닫고 편집 계속하기 ×
+                  닫기 ×
                 </button>
               </div>
             </header>
@@ -377,7 +387,7 @@ export function AnnualDone({
 }) {
   return (
     <PlanDone
-      title={`${plan.school_year} 연간계획안을 확정했어요`}
+      title={`${plan.school_year} 연간계획안`}
       docLabel="확정된 연간계획안"
       format={plan.format}
       pages={pages}
@@ -385,8 +395,7 @@ export function AnnualDone({
       download={(format) => downloadAnnualHwpx(plan.id, format)}
       next={{
         href: "/plans/monthly",
-        label: "월간계획안 만들기 →",
-        hint: "이 연간 계획안과 연계돼요!",
+        label: "월간계획안 만들기",
       }}
     />
   );
@@ -449,7 +458,7 @@ export function PlanDone({
   /** 파일 받기(확정본만) — PDF · HWPX · HWP. 서버 경로가 없으면 빼고, 내보내기 칸을 숨긴다. */
   download?: (format: ExportFormat) => Promise<void>;
   /** `onClick` 이 있으면 주소로 가지 않고 그것을 부른다(같은 주소 안에서 화면만 바꿀 때). */
-  next: { href: string; label: string; hint: string; onClick?: () => void };
+  next: { href: string; label: string; onClick?: () => void };
   /** 홈 아래 안내 줄(저장 · 오류 · 상위 계획안 바뀜). */
   notes?: ReactNode;
 }) {
@@ -464,15 +473,22 @@ export function PlanDone({
   };
   return (
     <main className="flex w-full flex-col gap-4 px-4 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)] lg:px-10">
+      {/* 제목은 문서 이름만, 바로 옆에 확정 도장. 방식 쪽지는 오른쪽 내보내기 칸 위에. */}
       <div className="flex flex-wrap items-center gap-3">
+        {/* 이름은 aria-label 한 덩어리로 준다 — sr-only 조각은 「연간계획안 을」처럼 띄어 읽혔다(e2e #437). */}
+        <h1
+          aria-label={`${title}을 확정했어요`}
+          className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink"
+        >
+          {title}
+        </h1>
         <span
           aria-hidden="true"
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-[#3b5441] text-base font-bold text-white"
+          className="ml-1 -rotate-[8deg] rounded-sm border-[3px] border-double border-[#3b5441] bg-[#e8f1ea]/60 px-3 font-display text-[28px] font-bold leading-[1.25] tracking-[4px] text-[#3b5441]"
         >
-          ✓
+          확정
         </span>
-        <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">{title}</h1>
-        {chip(format)}
+        <div className="lg:ml-auto lg:w-[280px]">{chip(format)}</div>
       </div>
       {/* lg 미만은 세로로 쌓는다 — 고정 폭 패널이 문서를 밀거나 짓누르지 않게. */}
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
@@ -503,7 +519,7 @@ export function PlanDone({
         <aside className="relative flex w-full shrink-0 flex-col gap-3 lg:w-[280px]">
           <Tape />
           {download && (
-            <div className="flex flex-col gap-2 border border-line bg-paper rounded-md p-5">
+            <div className="flex flex-col gap-2 bg-paper shadow-pg p-5">
               <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">내보내기</h2>
               <div className="grid grid-cols-3 gap-2">
                 {(Object.keys(EXPORTS) as ExportFormat[]).map((format) => (
@@ -527,7 +543,7 @@ export function PlanDone({
               )}
             </div>
           )}
-          <div className="flex flex-col gap-2 border border-line bg-paper rounded-md p-5">
+          <div className="flex flex-col gap-2 bg-paper shadow-pg p-5">
             <h2 className="m-0 mb-1 text-[15px] font-bold text-[#5c5243]">다음 단계</h2>
             <Link
               href={next.href}
@@ -542,28 +558,49 @@ export function PlanDone({
             >
               {next.label}
             </Link>
-            <span className="font-display text-[16px] font-bold text-ink-soft">{next.hint}</span>
           </div>
-          <Link
-            href="/"
-            className="flex min-h-[52px] items-center justify-center gap-2 rounded-md border border-[#ddd6ca] bg-white text-[15px] font-bold text-[#2b2826] hover:bg-[#f7f4ee]"
-          >
-            <svg
-              aria-hidden="true"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          <div className="grid grid-cols-2 gap-2">
+            <Link
+              href="/plans"
+              className="flex min-h-[52px] items-center justify-center gap-2 rounded-md border border-[#ddd6ca] bg-white text-[15px] font-bold text-[#2b2826] hover:bg-[#f7f4ee]"
             >
-              <path d="M3 11l9-7 9 7" />
-              <path d="M5 10v10h14V10" />
-            </svg>
-            홈으로 가기
-          </Link>
+              <svg
+                aria-hidden="true"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M7 3h7l4 4v14H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+                <path d="M9.5 11h6M9.5 15h6" />
+              </svg>
+              계획안
+            </Link>
+            <Link
+              href="/"
+              className="flex min-h-[52px] items-center justify-center gap-2 rounded-md border border-[#ddd6ca] bg-white text-[15px] font-bold text-[#2b2826] hover:bg-[#f7f4ee]"
+            >
+              <svg
+                aria-hidden="true"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 11l9-7 9 7" />
+                <path d="M5 10v10h14V10" />
+              </svg>
+              홈
+            </Link>
+          </div>
           <div className="flex flex-col gap-2 text-[13px] text-[#5c5243]">{notes}</div>
         </aside>
       </div>

@@ -245,11 +245,14 @@ function load() {
       ],
     },
     "@/components/plan-ui/PlayPickBoard": esModule((props) => jsx("pickboard", props)),
+    "@/components/plan-ui/DraftSave": esModule((props) => jsx("draft-save", props)),
     "./PlayMonthlyConfirm": {
       ...esModule((props) => jsx("ask", props)),
       BLANK_LEAD: "남은 빈칸이 있어요. 비운 채로도 확정할 수 있어요.",
       BlankRows: (p) => jsx("blank-rows", p),
       PanelOverview: (p) => jsx("overview", p),
+      CONFIRM_TITLE: "이대로 확정할까요?",
+      PickCellHint: (p) => jsx("pick-hint", p),
     },
     "./PlayMonthlySheet": {
       __esModule: true,
@@ -303,14 +306,13 @@ test("계획안을 읽어 문서 용지에 넘기고 초안 배지를 보인다 
 test("확정본이면 Ⓜ4 — 다음 달 월간으로 가고, 한글 내보내기는 있고 확정 · 이력 · 되돌리기 단추는 없다", async () => {
   const plan = fixture(true);
   const { tree } = await open(plan.id, async () => plan);
-  assert.match(text(tree), new RegExp(`${plan.month}월 월간계획안을 확정했어요`));
+  assert.equal(all(tree).find((n) => n.type === "done").props.title, `${plan.month}월 월간계획안`);
   const done = all(tree).find((n) => n.type === "done");
   await done.props.download("hwp");
   assert.deepEqual(calls.at(-1), ["export", plan.id, "hwp"]);
   assert.deepEqual(done.props.next, {
     href: "/plans/monthly",
-    label: `${(plan.month % 12) + 1}월 월간 만들기 →`,
-    hint: "놀이 중심형은 주간 없이 다음 달로 가요",
+    label: `${(plan.month % 12) + 1}월 월간 만들기`,
   });
   assert.equal(all(tree).find((n) => n.type === "sheet").props.onSelect, undefined);
   assert.deepEqual(
@@ -346,13 +348,16 @@ test("확정 응답을 받으면 확정 후 화면 — 칸 편집 패널 · 저�
   const bar = all(tree).find((n) => n.type === "confirmbar");
   bar.props.onConfirmed({ ...plan, status: "CONFIRMED", revision: plan.revision + 1 });
   const after = h.render(View, { id: plan.id });
-  assert.match(text(after), /월간계획안을 확정했어요/);
+  assert.equal(all(after).find((n) => n.type === "done").props.title, `${plan.month}월 월간계획안`);
   assert.equal(withText(after, "button", "칸 편집").length, 0);
   assert.equal(all(after).find((n) => n.type === "sheet").props.onSelect, undefined);
   assert.equal(all(after).filter((n) => n.type === "button").length, 0);
   // 확정 바의 마무리(unfreeze)가 뒤따라도 화면은 그대로 확정본이다.
   bar.props.unfreeze();
-  assert.match(text(h.render(View, { id: plan.id })), /월간계획안을 확정했어요/);
+  assert.equal(
+    all(h.render(View, { id: plan.id })).find((n) => n.type === "done").props.title,
+    `${plan.month}월 월간계획안`,
+  );
   saved.length = 0;
 });
 
@@ -404,7 +409,7 @@ test("AI 후보에서 고르는 계획안 — 고르기 칸은 「AI 후보」 �
   let [board] = node(tree, "pickboard");
   assert.equal(board.props.subject, "함께 하는 활동");
   assert.equal(board.props.candidates.length, 8);
-  assert.equal(board.props.nextLabel, "유아 예상 자유놀이 고르러 가기 →");
+  assert.equal(board.props.nextLabel, "유아 예상 자유놀이 고르러 가기");
   const one = board.props.candidates[0].key;
   board.props.onToggle(one);
   [board] = node(h.render(View, props), "pickboard");
@@ -423,7 +428,7 @@ test("AI 후보에서 고르는 계획안 — 고르기 칸은 「AI 후보」 �
   let view = h.render(View, props);
   assert.equal(node(view, "pickboard").length, 0);
   tabTo(view, "AI 후보");
-  assert.match(text(h.render(View, props)), /함께 하는 활동 · 자유놀이 · 안전교육/);
+  assert.match(text(h.render(View, props)), /칸을 누르면 후보가 보여요/);
   // 문서의 「AI 후보에서 고르기」 칸도 고르기 판을 그 목록으로 연다.
   pick(h.render(View, props), "pick:together");
   [board] = node(h.render(View, props), "pickboard");
@@ -436,7 +441,7 @@ test("AI 후보에서 고르는 계획안 — 고르기 칸은 「AI 후보」 �
   pick(h.render(View, props), first);
   view = h.render(View, props);
   assert.equal(node(view, "remove").length, 0);
-  assert.match(text(view), /「AI 후보」에서 \[빼기\]/);
+  assert.match(text(view), /「AI 후보」에서 − 를 누르면/);
   tabTo(view, "AI 후보");
   const [panel] = node(h.render(View, props), "activities");
   assert.equal(panel.props.section, "together");
@@ -1346,7 +1351,14 @@ function openV1Editor(findings = [], setup = (p) => p) {
     react: h.react,
     "./PlayMonthlyStructure.module.css": esModule(css),
     "./PlayMonthlyConfirm": esModule(Confirm),
-    "./PlayMonthlySafetyPanel": { CARD: "card", PUT: "put" },
+    "./PlayMonthlySafetyPanel": {
+      REMOVE: "remove",
+      SMALL: "small",
+      DROP: "drop",
+      GRIP: null,
+      DRILL_DRAG: "drill:",
+      dropTo: (onDrop) => ({ onDrop }),
+    },
   }).default;
   const { default: View } = compile("../components/workspace/MonthlyPlanEditor.tsx", {
     // 의존성 목록이 없는 effect 는 실제 React 처럼 매번 돈다.
@@ -1422,11 +1434,14 @@ function openV1Editor(findings = [], setup = (p) => p) {
       period: () => "",
       safetyCellId: (weekId) => "safety:" + weekId,
     },
+    "@/components/plan-ui/DraftSave": esModule((p) => jsx("draft-save", p)),
     "@/components/plan-generator/PlayMonthlyConfirm": {
       ...esModule((p) => jsx("ask", p)),
       BLANK_LEAD: "남은 빈칸이 있어요. 비운 채로도 확정할 수 있어요.",
       BlankRows: (p) => jsx("blank-rows", p),
       PanelOverview: (p) => jsx("overview", p),
+      CONFIRM_TITLE: "이대로 확정할까요?",
+      PickCellHint: (p) => jsx("pick-hint", p),
     },
     "@/components/plan-generator/AnnualFrame": frameModule,
     "@/components/app/compact-shell": shellModule,
@@ -1510,7 +1525,7 @@ test("v1 — 되돌리기 · 다시 하기는 칸 글을 다시 저장하고, �
   view.editor().onDraft(" ");
   press("확정하기");
   const [ask] = node(view.render(), "ask");
-  assert.equal(ask.props.title, "월간계획안을 확정할까요?");
+  assert.equal(ask.props.title, "이대로 확정할까요?");
   // 근거가 없어 비운 칸도 있어 막지 않는다 — 같은 상자에서 바로 확정한다. 빈칸 안내는 목록 위 한 줄.
   assert.equal(ask.props.yes, "확정하기");
   const [rows] = node(view.render(), "blank-rows");
@@ -1696,7 +1711,7 @@ test("v1 — 훈련 칸을 고르면 「AI 후보」에 훈련 후보가 보이�
   assert.equal(drillButtons(view.render()).length, 0, "훈련 칸을 고르기 전에는 패널이 없다");
   view.pick("drill_cell");
   const tree = view.render();
-  assert.equal(withText(tree, "h2", "넣을 문구 고르기").length, 1);
+  assert.equal(withText(tree, "h2", "소방대피/재난대비").length, 1);
   assert.equal(drillButtons(tree)[0].props["aria-label"], "소방대피/재난대비 칸에 넣기: 화재");
   assert.equal(node(tree, "cell").find((c) => c.props.id === "drill_cell").props.strong, true);
   view.props.plan = { ...view.props.plan, drill_candidates: [] };
@@ -1843,7 +1858,7 @@ test("v1 — 후보가 있는 계획은 패널 · 안내를 보이고(확정본�
   const done = node(confirmed, "done")[0];
   assert.equal(typeof done.props.download, "function");
   assert.equal(done.props.next.href, "/plans/weekly");
-  assert.equal(done.props.next.label, "주간계획안 만들기 →");
+  assert.equal(done.props.next.label, "주간계획안 만들기");
 });
 
 test("v1 — 후보 두기는 placeMonthlySafety(id, weekId, 후보 id, 현재 revision) 를 부르고 응답을 onPlan 으로 넘기며 409 면 onConflict", async () => {
@@ -1980,10 +1995,7 @@ test("v1 — 확정은 페이지 안 확인을 거친 뒤에만 보낸다 · 칸
   assert.equal(withText(view.render(), "button", "지우고 다시 만들기").length, 0);
   withText(view.render(), "button", "확정하기")[0].props.onClick();
   const [ask] = asks();
-  assert.match(
-    ask.props.message,
-    /^확인할 것 1개가 남았어요\.\n[^\n]+\n이 내용으로 주간계획안을 만들게 돼요\.$/,
-  );
+  assert.equal(ask.props.message, undefined);
   assert.equal(ask.props.no, "더 다듬기");
   ask.props.onYes();
   await view.tick();

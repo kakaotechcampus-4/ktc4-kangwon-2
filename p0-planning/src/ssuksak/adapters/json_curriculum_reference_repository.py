@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from pathlib import Path
 
+from .. import timing
 from ..planning.domain.curriculum_reference import CurriculumCatalog, CurriculumContent
 from ..planning.domain.theme_reference import ActivationStatus
 
@@ -45,7 +45,7 @@ def parse_curriculum_payload(payload: Mapping) -> CurriculumCatalog:
 class JsonCurriculumReferenceRepository:
     def __init__(self, paths: tuple[Path, ...] = (DRAFT_CURRICULUM_PATH,)) -> None:
         self._catalogs = tuple(
-            parse_curriculum_payload(json.loads(Path(path).read_text(encoding="utf-8")))
+            parse_curriculum_payload(timing.read_json(path))
             for path in paths
         )
 

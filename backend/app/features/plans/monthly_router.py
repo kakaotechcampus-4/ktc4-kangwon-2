@@ -28,6 +28,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from ssuksak import timing
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.in_memory_template_profile_repository import (
     InMemoryTemplateProfileRepository,
@@ -310,6 +311,7 @@ def _lock_parent(session: Session, parent_id: int, message: str) -> None:
 
 
 @router.post("", response_model=MonthlyPlanOut, status_code=status.HTTP_201_CREATED)
+@timing.timed("monthly_theme", logging.getLogger("app.server.timing").info)
 def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: CurrentUser):
     """한 달치를 만들어 DRAFT 로 저장한다. 실패하면 아무것도 남지 않는다."""
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
@@ -396,6 +398,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
         raise _generation_error(error) from error
 
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
+    timing.phase("save")
     _lock_parent(session, parent_id, "연간계획안을 먼저 만들어 확정해주세요.")
     if _existing(session, center_id, class_id, month) is not None:
         raise _ALREADY_EXISTS

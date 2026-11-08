@@ -9,6 +9,7 @@ Monthly planner types are reused read-only; weekly codes live here (ADR-033).
 
 from __future__ import annotations
 
+from ... import timing
 import hashlib
 import json
 import logging
@@ -858,6 +859,7 @@ class WeeklyPlanner:
 
     def _plan(self, request: WeeklyPlanningRequest) -> WeeklyPlanningOutcome:
         response = self._generate(request)
+        timing.phase("validate")
         content, memo_applied, memo_skipped = split_memo_applied(response.content, request.memo_addresses)
         values = with_reference_labels(parse_weekly_proposal(content, request), request)
         issues = validate_weekly(values, request)
@@ -866,6 +868,7 @@ class WeeklyPlanner:
         if issues and all(issue.code in REPAIRABLE for issue in issues):
             flagged = tuple(dict.fromkeys(issue.section_key for issue in issues))
             _log.info("Weekly LLM repair attempted: %s", ",".join(f"{i.code.value}@{i.section_key}" for i in issues))
+            timing.phase("repair")
             repair = replace(
                 request,
                 prompt_version=request.repair_prompt_version,

@@ -62,8 +62,13 @@ export function accountName() {
     return null;
   }
 }
-export function accessRedirect(): string | null {
-  return hasDemoSession() ? null : "/login";
+/**
+ * 로그인 안 한 사람을 어디로 보낼지. 주소만 치고 들어온 첫 방문(`/`)은 소개 화면으로,
+ * 다른 화면 주소(즐겨찾기 · 링크)로 온 사람은 쓰던 중이니 로그인으로 보낸다.
+ */
+export function accessRedirect(pathname = ""): string | null {
+  if (hasDemoSession()) return null;
+  return pathname === "/" ? "/welcome" : "/login";
 }
 /**
  * 계정을 만들고 로그인한다.

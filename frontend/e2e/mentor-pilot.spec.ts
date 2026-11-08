@@ -1,6 +1,5 @@
-import { readFile } from "node:fs/promises";
-import JSZip from "jszip";
-import { expect, test, type Download, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { verifyHwpx } from "./hwpx";
 import { completeOnboarding } from "./onboarding";
 
 /**
@@ -22,18 +21,6 @@ async function openObservation(
     .getByRole("complementary", { name: "문서 미리보기" })
     .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
     .click();
-}
-
-async function verifyHwpx(file: Download, path: string, expected: string[]) {
-  expect(file.suggestedFilename()).toMatch(/\.hwpx$/);
-  await file.saveAs(path);
-  const archive = await JSZip.loadAsync(await readFile(path));
-  const section = await archive.file("Contents/section0.xml")!.async("string");
-  const preview = await archive.file("Preview/PrvText.txt")!.async("string");
-  for (const text of expected) {
-    expect(section).toContain(text);
-    expect(preview).toContain(text);
-  }
 }
 
 /** The mentor follows these controls; API reads below verify persisted results. */
@@ -108,7 +95,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   expect(savedAnnual.months[0].safety_education_state).toBe("SOURCE_REQUIRED");
   await page.getByRole("button", { name: "확정하기", exact: true }).click();
   await page
-    .getByRole("group", { name: /확정하면 고칠 수 없어요/ })
+    .getByRole("group", { name: /이대로 확정할까요\?/ })
     .getByRole("button", { name: "확정하기", exact: true })
     .click();
   await expect(
@@ -126,7 +113,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await page.screenshot({ path: info.outputPath("annual-confirmed.png"), fullPage: true });
 
   // 확정 화면 → 월간 만들기. 넣을 칸은 만들기 화면에서 고른다(따로 양식 화면이 없다, 2026-11-03).
-  await page.getByRole("link", { name: "월간계획안 만들기 →", exact: true }).click();
+  await page.getByRole("link", { name: "월간계획안 만들기", exact: true }).click();
   await expect(page.getByRole("group", { name: "어떤 칸을 넣을까요?" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /실내 대체활동/ })).not.toBeChecked();
   await page.getByRole("button", { name: /월간계획안 만들기/ }).click();
@@ -169,7 +156,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await page.getByRole("button", { name: "확정하기", exact: true }).click();
   // 안전교육을 아직 놓지 않은 주는 빈칸으로 센다(c4cb083c) — 확정 창이 「빈칸이 남아 있어요」로 시작한다.
   await page
-    .getByRole("group", { name: /확정하면 고칠 수 없어요/ })
+    .getByRole("group", { name: /이대로 확정할까요\?/ })
     .getByRole("button", { name: "확정하기", exact: true })
     .click();
   await expect(
@@ -177,9 +164,10 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   ).toBeVisible();
   // 확정 후 화면: 확정본 · 한글 내보내기 · 주간 만들기 · 홈.
   await expect(page.getByRole("heading", { name: /월 월간계획안을 확정했어요$/ })).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "주간계획안 만들기 →", exact: true }),
-  ).toHaveAttribute("href", "/plans/weekly");
+  await expect(page.getByRole("link", { name: "주간계획안 만들기", exact: true })).toHaveAttribute(
+    "href",
+    "/plans/weekly",
+  );
   await page.reload();
   await expect(cell(0)).toHaveText("친구와 함께 만드는 새로운 우리 반 놀이");
   await expect(cell(0)).not.toHaveAttribute("role", "button");
@@ -203,8 +191,9 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await page.setViewportSize({ width: 1440, height: 1000 });
 
   // 확정 화면 → 주간 만들기 → 칸 고치기 → 확정 → 한글 다운로드. 주간도 API 로 건너뛰지 않는다.
-  // 주 이름 표기 · 확정 창 문구는 자주 바뀌어서 끝말 「주간계획안 만들기」 · 「확정하면」 으로만 찾는다.
-  await page.getByRole("link", { name: "주간계획안 만들기 →", exact: true }).click();
+  // 주 이름 표기는 자주 바뀌어서 끝말 「주간계획안 만들기」로만 찾는다. 확정 창은 연간 · 월간 · 주간이 같은
+  // 제목 「이대로 확정할까요?」(PlayMonthlyConfirm CONFIRM_TITLE, 11-07)으로 찾는다.
+  await page.getByRole("link", { name: "주간계획안 만들기", exact: true }).click();
   await page.getByRole("button", { name: /주간계획안 만들기$/ }).click();
   await expect(page).toHaveURL(/\/plans\/weekly\?plan_id=\d+/);
   const weeklyText = "낙엽을 모아 우리 반 길을 꾸민다.";
@@ -223,7 +212,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await expect(weekOutdoor).toHaveText(weeklyText);
   await page.getByRole("button", { name: "확정하기", exact: true }).click();
   await page
-    .getByRole("group", { name: /확정하면/ })
+    .getByRole("group", { name: /이대로 확정할까요\?/ })
     .getByRole("button", { name: "확정하기", exact: true })
     .click();
   await expect(page.getByRole("heading", { name: /주간계획안을 확정했어요$/ })).toBeVisible();

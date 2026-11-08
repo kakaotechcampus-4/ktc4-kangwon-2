@@ -128,7 +128,11 @@ function bar(over = {}) {
   };
   const mod = compile("../components/plan-generator/PlayMonthlyConfirmBar.tsx", {
     react: h.react,
-    "./PlayMonthlyConfirm": esModule((p) => jsx("ask", p)),
+    "./PlayMonthlyConfirm": {
+      ...esModule((p) => jsx("ask", p)),
+      CONFIRM_TITLE: "이대로 확정할까요?",
+      PickCellHint: (p) => jsx("pick-hint", p),
+    },
     "@/lib/api/client": { ApiError: StubApiError },
     "@/lib/api/playMonthly": {
       confirmPlayMonthly: async (id, rev) => {

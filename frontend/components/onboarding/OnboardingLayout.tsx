@@ -56,7 +56,7 @@ export default function OnboardingLayout({
     <div
       // 데스크톱은 **흰 카드만** 화면 세로 가운데에 둔다. 머리 줄은 카드 바로 위에 띄워 두고 가운데 계산에서 뺀다.
       // 위아래 여백을 머리 줄 높이보다 크게 같게 두어, 창이 낮아도 머리 줄이 화면 밖으로 밀려나지 않는다.
-      className={`${fontClassName} flex min-h-[calc(100*var(--app-vh))] flex-col items-center bg-[var(--pg-board)] font-body text-ink sm:justify-center sm:bg-cream sm:px-6 sm:py-[88px]`}
+      className={`${fontClassName} flex min-h-[calc(100*var(--app-vh))] flex-col items-center bg-[var(--pg-board)] font-body text-ink sm:justify-center sm:bg-transparent sm:px-6 sm:py-[88px]`}
     >
       <div className="relative flex w-full max-w-[1100px] flex-1 flex-col sm:flex-none">
         <header className="absolute inset-x-0 bottom-full hidden h-[72px] items-center justify-between sm:flex">
@@ -299,6 +299,16 @@ export default function OnboardingLayout({
               className={`sticky bottom-0 flex flex-none flex-col-reverse items-stretch gap-2 bg-paper px-6 pb-5 pt-3 sm:flex-row sm:items-center sm:justify-end sm:px-10 ${stage ? "md:static md:col-start-2 md:row-start-2 md:flex-col-reverse md:items-stretch md:justify-start md:border-l md:border-shell md:bg-ivory md:px-7 md:pb-8" : ""}`}
             >
               {footer}
+            </div>
+          )}
+          {/* 주 버튼이 없는 화면(어린이집 찾기)도 768px 부터는 오른쪽 칸 아래 버튼 자리를 비워 둔다.
+              없으면 포스티 칸이 칠판 끝까지 늘어나 포스티가 다른 화면보다 아래에 선다. 휴대폰에는 그리지 않는다. */}
+          {!footer && stage && (
+            <div
+              aria-hidden="true"
+              className="hidden pt-3 md:col-start-2 md:row-start-2 md:block md:border-l md:border-shell md:bg-ivory md:px-7 md:pb-8"
+            >
+              <div className="h-14" />
             </div>
           )}
         </div>
