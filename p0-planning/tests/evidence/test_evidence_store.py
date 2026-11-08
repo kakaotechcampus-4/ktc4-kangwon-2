@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -59,6 +60,21 @@ def test_privacy_derivative_keeps_none_of_the_removed_records(payload):
     removed = set(payload["build"]["removed_record_ids"])
     assert len(removed) == 42
     assert not removed & {r["record_id"] for r in payload["records"]}
+
+
+def test_shipped_data_carries_only_pseudonymous_institution_fields(payload):
+    """ADR-074: 다시 빌드해도 실명 · 유형 · 실명 경로가 data 에 돌아오지 않는다."""
+    path = re.compile(r"references/samples/[^/]+/([0-9a-f]{12})\.pdf")
+    for record in payload["records"]:
+        assert re.fullmatch(r"inst_\d{3}", record.get("institution_id", "inst_000")), record["record_id"]
+        assert path.fullmatch(record["source_path"])[1] == record["source_sha256"][:12], record["record_id"]
+    for source in payload["source_hash_manifest"]:
+        assert path.fullmatch(source["path"])[1] == source["sha256"][:12], source["path"]
+    for data_file in DEFAULT_EVIDENCE_STORE_PATH.parents[1].rglob("*.json"):
+        if data_file.parent.name == "rules":
+            continue  # 법정 Rule 의 institution_types 는 법 적용 시설 종류(어린이집 · 유치원 …)다
+        text = data_file.read_text(encoding="utf-8")
+        assert '"institution_type' not in text, data_file.name
 
 
 def test_record_uses_pr0_evidence_source_and_preserves_reuse_policy(store):
