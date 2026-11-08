@@ -85,12 +85,28 @@ test -f .env || { echo ".env 가 없다. 서버에서 한 번 만들어야 한�
 
 echo "배포 $DEPLOY_REF $(git rev-parse --short HEAD) — $(git log -1 --format=%s)"
 
+# nginx 설정을 build · 마이그레이션 · 컨테이너 교체 전에 검사한다. 깨졌으면 여기서 멈춘다.
+# 파일은 위 checkout 으로 이미 바뀌었다 — 떠 있는 nginx 는 옛 설정으로 계속 돌지만 다시 시작되면 못 뜬다.
+# 새 컨테이너로 검사해서 방금 꺼낸 커밋의 compose 연결을 그대로 쓴다 — 롤백(옛 SHA)도 같은 길이다.
+# nginx -t 는 upstream 이름이 안 풀리면 실패한다. 앱이 죽어 있을 때(롤백이 그렇다)도 검사가 되게
+# compose 의 서비스 이름을 전부 자기 자신으로 둔다. 여기서 보는 건 문법 · 파일 · 인증서다.
+services=$(sudo docker compose config --services | tr '\n' ' ')
+sudo docker compose run --rm -T --no-deps nginx \
+  sh -c "echo '127.0.0.1 $services' >> /etc/hosts && nginx -t"
+
 sudo docker compose build backend frontend
 
 # 마이그레이션을 앱보다 먼저 돌린다. 반대로 하면 새 코드가 없는 컬럼을 읽는다.
 sudo docker compose run --rm backend alembic upgrade head
 
 sudo docker compose up -d
+
+# nginx 는 nginx/ 폴더를 통째로 본다(docker-compose.yml). 컨테이너를 다시 만들지 않으면
+# 새 설정을 안 읽으므로 reload 로 읽힌다. 접속은 안 끊기고, 진행 중인 요청은 끝까지 간다.
+# reload 가 안 되면 다시 시작한다 — up -d 가 방금 다시 만들어 아직 준비 전이거나, 재시작을 반복하는
+# 중일 때다(up -d 는 재시작 반복 중인 컨테이너를 건드리지 않는다). 그때 nginx 는 어차피 응답을 못 하고 있다.
+sudo docker compose exec -T nginx nginx -s reload || sudo docker compose restart nginx
+
 sudo docker image prune -f
 
 echo "배포 끝"

@@ -47,7 +47,7 @@ OIDC 로 AWS 인증                  키 없음
   ↓
 scripts/deploy.sh 를 통째로 보냄   aws ssm send-command
   ↓
-서버가 그 스크립트를 실행           git checkout <SHA> → build → migrate → up -d
+서버가 그 스크립트를 실행           git checkout <SHA> → nginx -t → build → migrate → up -d → nginx reload
   ↓
 끝날 때까지 기다림                  최대 20분.  안 기다리면 실패해도 초록불이 뜬다
   ↓
@@ -118,6 +118,7 @@ Actions → Deploy → Run workflow → ref 에 브랜치 이름 (예: develop) 
 
 `push` 로 들어온 배포는 push 된 그 커밋을 올린다. 고를 수 있는 건 손으로 돌릴 때뿐이다.
 **브랜치 이름을 넣어도 배포가 시작될 때 그 브랜치의 끝 커밋 SHA 하나로 고정해서 올린다.**
+**서버로 가는 `deploy.sh` 는 Run workflow 의 「Use workflow from」 브랜치 것이다(기본 develop). `ref` 는 올릴 커밋일 뿐이다.**
 
 **전에는 브랜치 이름을 서버에 그대로 넘겼다.** 서버는 도는 순간의 브랜치 끝을 올려서, 앞 배포가
 서버에 닿기 전에 머지가 또 들어오면 앞 run 이 뒤 커밋을 자기 이름으로 올렸다(2026-11-04 에 4번).
@@ -143,6 +144,8 @@ Actions → Deploy → Run workflow → ref 에 브랜치 이름 (예: develop) 
 ```
 Actions → Deploy → Run workflow → ref 에 직전 커밋 SHA → Run
 ```
+
+**서버로 가는 `deploy.sh` 는 Run workflow 의 「Use workflow from」 브랜치 것이다(기본 develop). `ref` 는 올릴 커밋일 뿐이다.**
 
 직전에 무엇이 돌았는지는 두 군데서 본다.
 
@@ -196,9 +199,11 @@ sudo docker compose run --rm backend alembic history
 git reset --hard    서버에서 직접 고친 파일이 있어도 배포하는 ref 가 정답이다
 파일 확인            fetch 가 실패해도 reset 은 성공한다.  옛 origin/main 이 남아 있어서
                     2026-09-22 에 13일 전 커밋으로 되감겼고, 그 커밋엔 docker-compose.yml 이 없었다
+nginx -t            build · 교체 전에 nginx 설정을 검사한다.  깨졌으면 여기서 멈춘다
 build               이미지를 먼저 만든다
 alembic upgrade     마이그레이션이 앱보다 먼저.  반대면 새 코드가 없는 컬럼을 읽는다
 up -d               그다음에 교체
+nginx reload        nginx 는 다시 만들지 않으면 새 설정을 안 읽는다.  reload 는 접속을 안 끊는다
 image prune         t3.medium 이 50GB 고정이라 옛 이미지가 쌓이면 디스크가 찬다
 ```
 
@@ -418,9 +423,6 @@ FAIL   위와 같은데 실패. 하나라도 있으면 종료 코드 1
 **마이그레이션만 성공하고 앱이 실패한 경우의 복구** — DB 는 새 구조인데 앱은 옛 버전이
 된다. 코드는 되돌려도 DB 는 안 돌아간다. `alembic downgrade` 를 자동으로 걸지 않은 이유는
 잘못 돌면 데이터가 날아가서다. 사람이 판단한다.
-
-**`nginx.conf` 만 바뀐 배포** — 이미지가 같아서 컨테이너가 교체되지 않을 수 있다.
-`docker compose restart nginx` 를 친다.
 
 ---
 

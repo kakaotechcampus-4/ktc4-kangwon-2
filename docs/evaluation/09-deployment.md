@@ -29,6 +29,8 @@
 - `docker compose exec backend alembic ...` 을 금지했다 — 새 마이그레이션을 못 보고도 성공한 것처럼 끝난다
 - `Base.metadata.create_all()` 금지 — 이미 있는 테이블의 컬럼 추가가 반영되지 않는다
 - 백업 스크립트와 그 테스트 — `scripts/` · `test_backup_script.py`
+- nginx 설정을 바꾼 배포는 `nginx -t` 로 먼저 검사하고 reload 로 반영한다. 전에는 파일 하나씩 연결해 둔 탓에 손으로 다시 만들 때까지
+  옛 설정이 돌았다(놀이 연간 120초 504) — `scripts/deploy.sh` · `docker-compose.yml`
 
 ## 배포 사고 하나를 끝까지 추적했다
 
