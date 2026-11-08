@@ -11,6 +11,7 @@ import {
   assertDocumentUnchanged,
   type DocumentKind,
   type SavedDocument,
+  type Section,
 } from "@/lib/workspace/model";
 import { useWorkspace } from "@/lib/workspace/store";
 import { invalidFields } from "@/lib/api/client";
@@ -31,6 +32,7 @@ import {
   documentServerId,
   isRecordKind,
   RECORD_KINDS,
+  verifyDocument,
   type DocumentSummary,
   type RecordKind,
 } from "@/lib/api/documents";
@@ -598,6 +600,8 @@ export default function DocumentsPage() {
           setMessage("문서를 삭제했어요.");
           await reloadList();
         },
+        verify: (sections: Section[]) =>
+          verifyDocument(serverCurrent.id, serverCurrent.kind, sections),
       }
     : undefined;
 

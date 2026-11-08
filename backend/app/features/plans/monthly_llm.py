@@ -176,6 +176,11 @@ class MockPlayMonthlyProvider:
             data["memo_skipped"] = []
             if request.safety_request_slots is not None:
                 data["safety_requests"] = []
+        if request.trend_addresses is not None:
+            # 트렌드(ADR-072): 첫 후보 하나에 첫 자료를 반영했다고 답한다.
+            data["trend_applied"] = [
+                {"address": request.trend_addresses[0], "trend_id": request.trends[0].trend_id}
+            ]
         return RawLlmResponse(json.dumps(data, ensure_ascii=False), "mock")
 
 

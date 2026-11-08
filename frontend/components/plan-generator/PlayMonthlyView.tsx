@@ -650,6 +650,7 @@ function PlayMonthlyBody({
             name: row.name.value.trim() || "(빈 후보)",
             summary: row.description.value,
             fields: [{ label: "설명", lines: [row.description.value] }],
+            trendApplied: row.trend_applied,
           }))}
           picked={picked}
           focus={focus}

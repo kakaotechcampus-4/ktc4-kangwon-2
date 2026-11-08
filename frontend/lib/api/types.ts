@@ -204,6 +204,8 @@ export interface WeeklyActivityCandidate {
   activity_type: string;
   name: string;
   description: string;
+  /** 트렌드봇 자료를 반영한 후보(ADR-072) — 빨간 ✦ 하나만 단다. */
+  trend_applied: boolean;
   cell: WeeklyCell;
 }
 
@@ -358,6 +360,8 @@ export interface PlayMonthlyActivity {
   /** 생성한 행은 1~3개, 행 추가 직후의 빈 행은 0개다. 공식 문구는 응답에 없다. */
   content_ids: string[];
   parent_item_id: string | null;
+  /** 트렌드봇 자료를 반영한 후보(ADR-072) — 고르기 판의 빨간 ✦ 하나만 단다. */
+  trend_applied: boolean;
 }
 export type PlayMonthlyPooledActivity = PlayMonthlyActivity & { section: "together" | "free_play" };
 /** 놀이 중심 월간 단건 응답 (api-spec §9-7). 변경 API 는 모두 이 전체를 돌려준다. */

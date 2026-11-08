@@ -17,6 +17,7 @@ import {
   refreshDocument,
   unconfirmDocument,
   updateDocument,
+  verifyDocument,
   type ReconfirmInput,
   type SourceResolution,
 } from "@/lib/api/documents";
@@ -75,6 +76,8 @@ export function useServerDocument(
           then(selection.saveAndConfirm(sections, reviewNote, classNote)),
         unconfirm: () => then(selection.unconfirm()),
         refresh: (resolutions?: SourceResolution[]) => then(selection.refresh(resolutions)),
+        // 판정만 한다 — 저장 · 확정과 겹쳐도 문서를 바꾸지 않아 selection 의 순서 잠금을 타지 않는다.
+        verify: (sections: Section[]) => verifyDocument(localId, doc.kind, sections),
         remove: async () => {
           await then(selection.remove());
           onRemoved?.();

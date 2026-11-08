@@ -141,8 +141,8 @@ export function startLanding() {
     {
       key: "eval",
       no: "5 · 평가 점검",
-      title: "평가 때 낼 서류,<br>지금 몇 장인지.",
-      text: "지표별로 모인 서류와 부족한 서류를 알려 줘요. 개수를 센 것이지 내용을 확인한 건 아니라는 점도 함께요.",
+      title: "평가 받을 서류,<br>지금 몇 장인지.",
+      text: "지표별로 모인 서류와 부족한 서류를 확인해요. 개수만 세고 내용은 확인하지 않아요.",
     },
   ];
   const kNo = document.getElementById("kNo"),

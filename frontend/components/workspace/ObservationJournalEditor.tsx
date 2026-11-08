@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { SavedDocument } from "@/lib/workspace/model";
-import { downloadDocumentHwpx, isStaleWrite } from "@/lib/api/documents";
+import { downloadDocumentHwpx, isStaleWrite, verifyLines } from "@/lib/api/documents";
 import type { ExportFormat } from "@/lib/api/export";
 import { EXPORTS, FileLogo } from "@/components/plan-generator/AnnualFrame";
 import { Icon } from "@/components/app/icons";
@@ -99,6 +99,31 @@ export default function ObservationJournalEditor({
   }
 
   const save = () => run(() => server.save(doc.sections, "교사 검토 전"), "초안을 저장했어요.");
+
+  /** 3단 AI 검토 — 쪽지(기록)와 어긋나거나 써선 안 되는 표현을 문장마다 짚는다. 저장하지 않는다. */
+  async function review() {
+    if (working) return;
+    const blocking = serverIssues(doc);
+    if (blocking.length) {
+      setIssues(blocking);
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    setIssues([]);
+    try {
+      const result = await server.verify(doc.sections);
+      setIssues(verifyLines(result));
+      if (!result.judged)
+        setMessage("AI 검토가 꺼져 있어 판정하지 않았어요. 쪽지와 직접 대조해 주세요.");
+      else if (!result.issues.length)
+        setMessage("AI 검토에서 고칠 곳을 찾지 못했어요. 확정 전에 쪽지와 한 번 더 대조해 주세요.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "AI 검토를 하지 못했어요.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function confirm() {
     const blocking = serverIssues(doc);
@@ -263,6 +288,9 @@ export default function ObservationJournalEditor({
               />
               쪽지와 대조했어요 — 사실과 맞고, 해석 · 지원이 알맞아요
             </label>
+            <button type="button" className={ws.ojSave} disabled={working} onClick={review}>
+              AI 검토
+            </button>
             <button type="button" className={ws.ojSave} disabled={working || !dirty} onClick={save}>
               {busy ? "저장하는 중…" : dirty ? "초안 저장" : "저장됨"}
             </button>

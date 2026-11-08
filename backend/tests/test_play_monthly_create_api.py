@@ -267,3 +267,45 @@ def test_요청_사항은_남고_반영한_활동에만_표시가_붙는다(worl
     assert [marked(a["name"]) for a in pool if a["section"] == "together"][:2] == [True, False]
     assert not any(marked(a["name"]) for a in pool if a["section"] == "free_play")
     assert client.get(f"{URL}/{body['id']}").json() == body
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_트렌드를_반영한_후보에만_trend_applied_가_붙는다(
+    world, parent, monkeypatch, tmp_path, enabled
+):
+    """ADR-072. 원 설정이 켜져 있을 때만 넘긴다. mock 은 첫 후보에 첫 자료를 반영했다고 답한다."""
+    from datetime import date
+
+    from app.features.centers.models import Center
+    from app.features.plans import play_monthly_router
+    from app.features.trends.item import RawItem, save
+    from app.features.trends.planning import TrendContextProvider
+
+    world["session"].get(Center, world["mine"]["center"]).trends_enabled = enabled
+    world["session"].flush()
+    item = RawItem("youtube", "a", "병뚜껑 경주 게임", "", "https://x/a", "2026-10-20", "꼬미쌤TV")
+    save([item], date(2026, 10, 26), tmp_path)  # 2026-W44.json
+    monkeypatch.setattr(
+        play_monthly_router,
+        "TrendContextProvider",
+        lambda *, enabled, today: TrendContextProvider(
+            enabled=enabled, today=date(2026, 11, 8), directory=tmp_path
+        ),
+    )
+
+    # alembic fileConfig 가 앞서 만든 로거를 끄므로 caplog 대신 로거 호출을 받는다.
+    lines: list[str] = []
+    monkeypatch.setattr(play_monthly_router._TIMING_LOG, "info", lambda m, *a: lines.append(m % a))
+    response = _post(world)
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    pool = body["activity_pool"]
+    assert [a["trend_applied"] for a in pool if a["section"] == "together"][:2] == [enabled, False]
+    assert not any(a["trend_applied"] for a in pool if a["section"] == "free_play")
+    first = pool[0]["name"]
+    assert any(e["source_type"] == "TREND" for e in first["evidence"]) is enabled
+    assert first["generation"]["rule_version"].endswith("+trend-v1") is enabled
+    status = "AVAILABLE" if enabled else "UNAVAILABLE"
+    assert f"plan_trend kind=monthly_play status={status}" in lines
+    assert client.get(f"{URL}/{body['id']}").json() == body

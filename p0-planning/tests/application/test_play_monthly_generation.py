@@ -258,6 +258,7 @@ def _run(
     classification=CLASSIFIED,
     quality=QUALITY_TABLE,
     provider=None,
+    optional_context=None,
     **command_changes,
 ):
     parents = InMemoryPlanRepository()
@@ -279,6 +280,7 @@ def _run(
         provider=provider,
         clock=FixedClock(datetime(2027, 2, 20, tzinfo=UTC)),
         id_generator=DeterministicIdGenerator(),
+        optional_context=optional_context,
     )
     command = GeneratePlayMonthlyPlanCommand(
         **{
@@ -1121,3 +1123,168 @@ def test_a_teacher_memo_reaches_the_prompt_marks_its_cells_and_keeps_skipped_req
     plain_case, plain_command, *_ = _run(answer)
     with pytest.raises(ProposalParseError):
         plain_case.execute(plain_command)
+
+
+
+# ── ADR-072: 트렌드봇 자료 ─────────────────────────────────────────────────────
+
+
+def _trends(n: int = 3):
+    from datetime import date
+
+    from ssuksak.planning.domain.trend import TrendItem, TrendKind
+
+    return tuple(
+        TrendItem(f"youtube:v{k}", TrendKind.GAME, f"합성 놀이 영상 {k}", "공을 굴려 보는 놀이", "합성 채널", "2027-W14",
+                  date(2027, 4, 1), name_words=("별토끼",))
+        for k in range(n)
+    )
+
+
+class _Context:
+    def __init__(self, status="AVAILABLE", value=None, raises=False) -> None:
+        self.status, self.value, self.raises = status, value, raises
+
+    def fetch(self, name):
+        from ssuksak.planning.application.ports import OptionalContextResult, OptionalContextStatus
+
+        if self.raises:
+            raise RuntimeError("trend files broken")
+        return OptionalContextResult(name, OptionalContextStatus(self.status), self.value)
+
+
+def _applied(*pairs):
+    def answer(data):
+        data["trend_applied"] = [{"address": a, "trend_id": t} for a, t in pairs]
+
+    return answer
+
+
+def _trend_marked(plan):
+    return {
+        (section, i)
+        for section in ("together", "free_play")
+        for i, a in enumerate(_pool(plan, section))
+        if any(e.source_type is EvidenceSourceType.TREND for e in a.cell.evidence)
+    }
+
+
+def test_a_trend_reaches_the_prompt_and_marks_only_the_candidate_it_changed():
+    from ssuksak.planning.planner.play_monthly import play_monthly_response_schema
+
+    trends = _trends()
+    use_case, command, plans, provider, _ = _run(
+        _applied(("together[1]", "youtube:v2")), optional_context=_Context(value=trends)
+    )
+    plan = use_case.execute(command)
+
+    (request,) = provider.requests
+    assert request.prompt_version == PLAY_MONTHLY_PROMPT_VERSION + "+trend-v1"
+    payload = json.loads(request.user_content)
+    assert [t["trend_id"] for t in payload["trends"]] == ["youtube:v0", "youtube:v1", "youtube:v2"]
+    assert payload["trend_addresses"][0] == "together[0]" and len(payload["trend_addresses"]) == 16
+    assert "trend_applied" in play_monthly_response_schema(request)["properties"]
+    assert _trend_marked(plan) == {("together", 1)}
+    row = _pool(plan, "together")[1]
+    for cell in (row.cell, row.description):
+        source = cell.evidence[-1]
+        assert (source.source_type, source.source_id, source.source_version) == (
+            EvidenceSourceType.TREND, "youtube:v2", "2027-W14"
+        )
+        assert cell.generation.method is GenerationMethod.RULE_LLM
+        assert cell.generation.rule_version.endswith("+trend-v1")
+
+
+@pytest.mark.parametrize(
+    "pairs", [(("together[1]", "youtube:nope"),), (("together[9]", "youtube:v0"),), (("theme", "youtube:v0"),)]
+)
+def test_a_trend_outside_the_passed_list_or_addresses_is_rejected(pairs):
+    use_case, command, plans, provider, _ = _run(_applied(*pairs), optional_context=_Context(value=_trends()))
+
+    with pytest.raises(InvalidDomainValueError):
+        use_case.execute(command)
+    assert len(provider.requests) == 1 and plans.save_count == 0
+
+
+def test_a_third_trend_in_one_list_is_rewritten_without_it_in_the_one_repair():
+    from ssuksak.planning.planner.play_monthly import TREND_REPAIR_INSTRUCTION, play_monthly_response_schema
+
+    three = _applied(("together[0]", "youtube:v0"), ("together[3]", "youtube:v1"), ("together[5]", "youtube:v2"),
+                     ("free_play[0]", "youtube:v0"))
+    rewrite = _set(("together", 5, "name"), "공을 굴려 보아요")
+    use_case, command, plans, provider, _ = _run(three, rewrite, optional_context=_Context(value=_trends()))
+    plan = use_case.execute(command)
+
+    first, repair = provider.requests
+    assert TREND_REPAIR_INSTRUCTION in repair.system_prompt
+    assert TREND_REPAIR_INSTRUCTION not in first.system_prompt
+    assert play_monthly_response_schema(repair) == RESPONSE_SCHEMA  # no trend fields in the repair
+    assert json.loads(repair.user_content)["issues"] == [
+        {"location": "together[5]", "code": "TREND_SHARE_EXCEEDED"},
+        {"location": "together[5].description", "code": "TREND_SHARE_EXCEEDED"},
+    ]
+    assert _trend_marked(plan) == {("together", 0), ("together", 3), ("free_play", 0)}
+    assert _pool(plan, "together")[5].cell.generation.rule_version == PLAY_MONTHLY_REPAIR_PROMPT_VERSION
+
+    # The repair left that candidate as it was: the existing repair failure.
+    use_case, command, plans, provider, _ = _run(three, None, optional_context=_Context(value=_trends()))
+    with pytest.raises(ProposalRejectedError) as error:
+        use_case.execute(command)
+    assert error.value.validation_codes == ("TREND_SHARE_EXCEEDED",)
+    assert plans.save_count == 0
+
+
+@pytest.mark.parametrize(
+    "context", [None, _Context("UNAVAILABLE"), _Context("ERROR"), _Context(raises=True), _Context(value=())]
+)
+def test_without_usable_trends_the_request_is_the_one_before_trends(context):
+    use_case, command, _, provider, _ = _run(optional_context=context)
+    use_case.execute(command)
+    plain_case, plain_command, _, plain, _ = _run()
+    plain_case.execute(plain_command)
+
+    (request,), (before,) = provider.requests, plain.requests
+    assert request == before and request.fingerprint == before.fingerprint
+    assert request.trend_addresses is None and "trends" not in json.loads(request.user_content)
+
+
+def test_a_trend_name_in_a_candidate_goes_to_the_one_repair_unless_the_memo_asked_for_it():
+    from ssuksak.planning.planner.play_monthly import TREND_NAME_REPAIR_INSTRUCTION
+
+    named = _set(("together", 2, "name"), "별 토끼와 공 굴리기")  # 띄어쓰기가 달라도 걸린다
+
+    def opening(data):
+        named(data)
+        data["trend_applied"] = []
+
+    use_case, command, plans, provider, _ = _run(opening, None, optional_context=_Context(value=_trends()))
+    plan = use_case.execute(command)
+
+    _, repair = provider.requests
+    assert TREND_NAME_REPAIR_INSTRUCTION in repair.system_prompt
+    assert json.loads(repair.user_content)["issues"] == [
+        {"location": "together[2]", "code": "TREND_NAME_IN_TEXT"},
+        {"location": "together[2].description", "code": "TREND_NAME_IN_TEXT"},
+    ]
+    assert _pool(plan, "together")[2].cell.value == "함께 놀이 3"
+
+    # The repair kept the name: the existing repair failure.
+    use_case, command, plans, provider, _ = _run(opening, named, optional_context=_Context(value=_trends()))
+    with pytest.raises(ProposalRejectedError) as error:
+        use_case.execute(command)
+    assert error.value.validation_codes == ("TREND_NAME_IN_TEXT",)
+    assert plans.save_count == 0
+
+    # The teacher wrote that word in the memo: no repair.
+    def memo_answer(data):
+        opening(data)
+        data.update(memo_applied=[], memo_skipped=[], safety_requests=[])
+
+    use_case, command, plans, provider, _ = _run(
+        memo_answer, teacher_memo="별토끼 놀이를 넣어 주세요", optional_context=_Context(value=_trends())
+    )
+    assert use_case.execute(command) and len(provider.requests) == 1
+
+    # Without trends nothing is checked.
+    use_case, command, plans, provider, _ = _run(named)
+    assert use_case.execute(command) and len(provider.requests) == 1

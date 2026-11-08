@@ -27,6 +27,8 @@ export type PickCandidate = {
   fields: { label: string; lines: string[] }[];
   /** 요청 사항을 반영한 후보 — 작은 표시만 단다. */
   memoApplied?: boolean;
+  /** 트렌드봇 자료를 반영한 후보(ADR-072) — 같은 자리에 빨간 ✦ 만 단다. */
+  trendApplied?: boolean;
 };
 
 /** 요청 사항을 반영한 후보의 작은 표시(Human Decision 2026-11-05). 글자 배지 대신 조용한 ✦. */
@@ -39,6 +41,22 @@ export function MemoMark() {
     >
       <span aria-hidden="true">✦</span>
       <span className="sr-only">요청을 반영한 놀이</span>
+    </span>
+  );
+}
+
+/**
+ * 트렌드봇 자료를 반영한 후보의 작은 표시(ADR-072, Human Decision 2026-11-08).
+ * 요청 사항 ✦ 와 같은 모양 · 자리 · 크기, 빨간색만 다르다. 화면 · 글에 다른 표시는 두지 않는다.
+ */
+export function TrendMark() {
+  return (
+    <span
+      title="트렌드를 반영한 놀이"
+      className="relative shrink-0 text-[13px] leading-none text-[#b3261e]"
+    >
+      <span aria-hidden="true">✦</span>
+      <span className="sr-only">트렌드를 반영한 놀이</span>
     </span>
   );
 }
@@ -99,6 +117,7 @@ function Row({
           {c.summary && <span className="truncate text-[14px] text-ink-soft">{c.summary}</span>}
         </span>
         {c.memoApplied && <MemoMark />}
+        {c.trendApplied && <TrendMark />}
         {/* 고른 줄은 오른쪽 빈 자리에 체크 — 색만으로 고름을 알리지 않는다. */}
         {picked && <CheckStamp />}
         {picked && <span className="sr-only">(고름)</span>}
@@ -299,7 +318,7 @@ export default function PlayPickBoard({
                 >
                   <span
                     aria-hidden="true"
-                    className="pointer-events-none absolute -top-2 left-1/2 h-4 w-11 -translate-x-1/2 -rotate-3 border-x border-white/60 bg-tape"
+                    className="pointer-events-none absolute -top-2 left-1/2 h-4 w-11 -translate-x-1/2 -rotate-3 border-x border-white/60 bg-tape shadow-[var(--pg-shadow-tape)]"
                   />
                   <span className="font-display text-[22px] font-bold leading-none text-ink">
                     {n + 1}

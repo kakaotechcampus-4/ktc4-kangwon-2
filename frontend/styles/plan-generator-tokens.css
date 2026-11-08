@@ -21,6 +21,8 @@
   --pg-cream: #f3eee4; /* 페이지 배경 */
   --pg-paper: #ffffff; /* 카드 · 입력창 표면 */
   --pg-line: #ddd6ca; /* 테두리 · 구분선 */
+  --pg-line-strong: #c4b9a6; /* 크림 배경 위 칸 테두리 — 기록 · 보육일지 · 계획안 · 평가 · 보관함 */
+  --pg-paper-soft: #fffcf5; /* 흰색과 아이보리 사이 종이 — 홈 「오늘 적은 기록」 */
 
   /* 사이드바 바닥 — 본문보다 한 톤 어둡게 해서 작업실 안쪽 느낌을 준다. */
   --pg-shell: #ede8e0;
@@ -155,6 +157,10 @@
   --pg-shadow: 0 18px 40px -22px rgba(52, 49, 47, 0.28), 0 2px 8px -2px rgba(52, 49, 47, 0.08);
   --pg-shadow-hard: 3px 4px 0 #ded2e5;
   --pg-shadow-card: 2px 3px 0 #dcd4c7;
+  /* 크림 배경에서 칸을 살짝 띄우는 옅은 그림자. filter: drop-shadow() 에도 그대로 쓴다. */
+  --pg-shadow-lift: 0 2px 6px rgba(52, 49, 47, 0.1);
+  /* 종이테이프 아래 그림자 */
+  --pg-shadow-tape: 0 1px 3px rgba(106, 96, 80, 0.22);
 
   /* 놀이 프로젝트 문서 용지 — 한글 양식처럼 선과 글자를 진하게 한다. */
   --pg-doc-line: #555555;
