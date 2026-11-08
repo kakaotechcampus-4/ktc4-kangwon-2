@@ -1135,7 +1135,8 @@ def _trends(n: int = 3):
     from ssuksak.planning.domain.trend import TrendItem, TrendKind
 
     return tuple(
-        TrendItem(f"youtube:v{k}", TrendKind.GAME, f"합성 놀이 영상 {k}", "공을 굴려 보는 놀이", "합성 채널", "2027-W14", date(2027, 4, 1))
+        TrendItem(f"youtube:v{k}", TrendKind.GAME, f"합성 놀이 영상 {k}", "공을 굴려 보는 놀이", "합성 채널", "2027-W14",
+                  date(2027, 4, 1), name_words=("별토끼",))
         for k in range(n)
     )
 
@@ -1245,3 +1246,45 @@ def test_without_usable_trends_the_request_is_the_one_before_trends(context):
     (request,), (before,) = provider.requests, plain.requests
     assert request == before and request.fingerprint == before.fingerprint
     assert request.trend_addresses is None and "trends" not in json.loads(request.user_content)
+
+
+def test_a_trend_name_in_a_candidate_goes_to_the_one_repair_unless_the_memo_asked_for_it():
+    from ssuksak.planning.planner.play_monthly import TREND_NAME_REPAIR_INSTRUCTION
+
+    named = _set(("together", 2, "name"), "별 토끼와 공 굴리기")  # 띄어쓰기가 달라도 걸린다
+
+    def opening(data):
+        named(data)
+        data["trend_applied"] = []
+
+    use_case, command, plans, provider, _ = _run(opening, None, optional_context=_Context(value=_trends()))
+    plan = use_case.execute(command)
+
+    _, repair = provider.requests
+    assert TREND_NAME_REPAIR_INSTRUCTION in repair.system_prompt
+    assert json.loads(repair.user_content)["issues"] == [
+        {"location": "together[2]", "code": "TREND_NAME_IN_TEXT"},
+        {"location": "together[2].description", "code": "TREND_NAME_IN_TEXT"},
+    ]
+    assert _pool(plan, "together")[2].cell.value == "함께 놀이 3"
+
+    # The repair kept the name: the existing repair failure.
+    use_case, command, plans, provider, _ = _run(opening, named, optional_context=_Context(value=_trends()))
+    with pytest.raises(ProposalRejectedError) as error:
+        use_case.execute(command)
+    assert error.value.validation_codes == ("TREND_NAME_IN_TEXT",)
+    assert plans.save_count == 0
+
+    # The teacher wrote that word in the memo: no repair.
+    def memo_answer(data):
+        opening(data)
+        data.update(memo_applied=[], memo_skipped=[], safety_requests=[])
+
+    use_case, command, plans, provider, _ = _run(
+        memo_answer, teacher_memo="별토끼 놀이를 넣어 주세요", optional_context=_Context(value=_trends())
+    )
+    assert use_case.execute(command) and len(provider.requests) == 1
+
+    # Without trends nothing is checked.
+    use_case, command, plans, provider, _ = _run(named)
+    assert use_case.execute(command) and len(provider.requests) == 1

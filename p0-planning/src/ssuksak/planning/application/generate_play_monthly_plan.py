@@ -79,6 +79,7 @@ from ..planner.play_monthly import (
     parse_play_monthly_proposal,
     repair_scope_issues,
     section_of,
+    trend_name_issues,
     validate_play_monthly,
 )
 from ..planner.teacher_memo import (
@@ -337,6 +338,8 @@ class GeneratePlayMonthlyPlan:
             for address in excess
             for location in (address, f"{address}.description")
         )
+        # ADR-072 결정 11: a passed trend's channel or character name in a candidate goes to the same repair.
+        issues += trend_name_issues(proposal, request, command.teacher_memo)
         changed: frozenset[str] = frozenset()
         if issues:
             timing.phase("repair")
@@ -351,6 +354,7 @@ class GeneratePlayMonthlyPlan:
                 for address in excess
                 if not {address, f"{address}.description"} & changed
             )
+            remaining += trend_name_issues(repaired, request, command.teacher_memo)
             if remaining:
                 raise _rejected(remaining)
             proposal = repaired

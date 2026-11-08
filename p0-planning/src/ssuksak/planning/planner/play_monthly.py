@@ -36,7 +36,15 @@ from .teacher_memo import (
     safety_request_properties,
 )
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
-from .trend import TREND_PROMPT, TREND_PROMPT_TAG, TREND_SHARE_EXCEEDED, trend_payload, trend_properties
+from .trend import (
+    TREND_NAME_IN_TEXT,
+    TREND_PROMPT,
+    TREND_PROMPT_TAG,
+    TREND_SHARE_EXCEEDED,
+    trend_name_hits,
+    trend_payload,
+    trend_properties,
+)
 from .v1_guidance import NATURAL_PLAY_GUIDANCE, SAFETY_TEXT_GUIDANCE
 from .weekly import unsupported_facts
 from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG, venue_memo
@@ -90,6 +98,9 @@ TREND_SLOT_GUIDANCE = """- trends는 together · free_play 후보에만 쓴다. 
 TREND_REPAIR_INSTRUCTION = (
     f" issues 의 code 가 {TREND_SHARE_EXCEEDED} 인 후보는 트렌드 자료를 반영한 후보가 목록마다 정한 개수를 넘었다 — "
     "이 후보는 트렌드 자료 없이 원래 기준대로 다시 쓴다."
+)
+TREND_NAME_REPAIR_INSTRUCTION = (
+    f" issues 의 code 가 {TREND_NAME_IN_TEXT} 인 후보는 채널 · 프로그램 · 캐릭터 이름을 빼고 놀이 내용만 다시 쓴다."
 )
 
 _ACTIVITY_SCHEMA = _object_schema(
@@ -349,6 +360,8 @@ def build_repair_request(
     system_prompt = SYSTEM_PROMPT + VENUE_GUIDANCE + REPAIR_INSTRUCTION
     if any(i.code == TREND_SHARE_EXCEEDED for i in issues):
         system_prompt += TREND_REPAIR_INSTRUCTION
+    if any(i.code == TREND_NAME_IN_TEXT for i in issues):
+        system_prompt += TREND_NAME_REPAIR_INSTRUCTION
     return PlayMonthlyRequest(
         **{
             **{name: getattr(request, name) for name in PlayMonthlyRequest.__dataclass_fields__},
@@ -574,6 +587,24 @@ def changed_locations(before: PlayMonthlyProposal, after: PlayMonthlyProposal) -
         else:
             changed.update(f"{section}:{key}" for key in old if old[key] != new[key])
     return frozenset(changed)
+
+
+def trend_name_issues(
+    proposal: PlayMonthlyProposal, request: PlayMonthlyRequest, memo: str
+) -> tuple[PlayMonthlyIssue, ...]:
+    """ADR-072 결정 11: a candidate naming a passed trend's channel or character (both its cells)."""
+    if not request.trends:
+        return ()
+    texts = {
+        f"{section}[{i}]": f"{row.name}\n{row.description}"
+        for section in ACTIVITY_SECTIONS
+        for i, row in enumerate(getattr(proposal, section))
+    }
+    return tuple(
+        PlayMonthlyIssue(location, TREND_NAME_IN_TEXT)
+        for address in trend_name_hits(texts, request.trends, memo)
+        for location in (address, f"{address}.description")
+    )
 
 
 def section_of(location: str) -> str:
