@@ -310,7 +310,9 @@
 /* ── 평가 서류 도장판 ─────────────────────────────────────────────
    시안 ⑥ · 포스티 도장(평가 점검 디자인 시안, 2026-11-08). 서류마다 칸 하나, 챙긴 칸에 포스티 도장.
    종이는 공책 띠 색(paper-warm)에 테이프 두 장 — 기록 · 계획안 화면의 첫 판과 같은 결이다. */
+/* 칸 수는 창 폭이 아니라 도장판 폭으로 정한다(@container) — 사이드바를 접고 펴면 같은 창에서도 폭이 192px 달라진다. */
 .stampCard {
+  container-type: inline-size;
   position: relative;
   padding: 30px 32px 28px;
   border: 1px solid var(--pg-paper-warm-line);
@@ -383,7 +385,10 @@
 .stampCard[data-done] .stampLead {
   color: var(--pg-sage-ink);
 }
+/* 동그라미 크기(--ring)와 그 안 도장 · 포스티 배율(--stamp-scale)은 함께 줄어든다. 맨 아래 @container 참고. */
 .slots {
+  --ring: 118px;
+  --stamp-scale: 1;
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 18px;
@@ -403,8 +408,8 @@
   position: relative;
   display: grid;
   place-items: center;
-  width: 118px;
-  height: 118px;
+  width: var(--ring);
+  height: var(--ring);
   border-radius: 50%;
 }
 /* 찍힌 칸과 빈 칸이 둘 다 흰 동그라미에 포스티 윤곽이라 구분이 안 됐다(11-08).
@@ -417,10 +422,11 @@
   border: 2.5px dashed var(--pg-ink-hint);
   background: transparent;
 }
+/* 118 칸에서 92px · 위아래 13px 이던 비율 그대로 — 줄 높이가 다른 칸과 맞는다. */
 .ring[data-state="opt"] {
-  width: 92px;
-  height: 92px;
-  margin: 13px 0;
+  width: calc(var(--ring) * 0.78);
+  height: calc(var(--ring) * 0.78);
+  margin: calc(var(--ring) * 0.11) 0;
   border: 2px dashed var(--pg-line);
 }
 /* 쌤플이 만들지 않는 서류만 칸 전체가 단추다. 칸보다 조금 크게 잡아 누르기 쉽게 한다. */
@@ -470,6 +476,8 @@
   width: 104px;
   height: 104px;
   transform: rotate(var(--tilt, 0deg));
+  /* 칸이 줄면 도장을 통째로 줄인다. 글자 · 포스티 · 이중 원 비율이 그대로 남는다. */
+  scale: var(--stamp-scale);
 }
 .stampMark::before {
   content: "";
@@ -543,6 +551,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  scale: var(--stamp-scale);
   --pg-ink: var(--pg-ink-hint);
   --pg-shell: var(--pg-paper);
   --pg-shell-line: var(--pg-ink-hint);
@@ -622,8 +631,10 @@
   align-self: stretch;
   min-width: 0;
 }
-/* 좁은 화면에서는 표만 옆으로 밀어 본다. 페이지가 옆으로 늘지 않는다. */
+/* 좁은 화면에서는 표만 옆으로 밀어 본다. 페이지가 옆으로 늘지 않는다.
+   relative 가 없으면 머리글의 sr-only(absolute)가 이 상자 밖에 자리 잡아 스마트폰에서 페이지를 27px 밀었다. */
 .tableBox {
+  position: relative;
   flex: 1;
   overflow-x: auto;
   border: 1px solid var(--pg-line);
@@ -708,7 +719,8 @@
 /* 사이드바를 편 1280 아래에서는 표 칸이 560px 보다 좁아져 마지막 칸이 가려졌다. 그 전에 한 줄로 쌓는다. */
 @media (max-width: 1260px) {
   .layout {
-    grid-template-columns: 1fr;
+    /* 그냥 1fr 이면 표의 min-width(560px)만큼 칸이 버텨 스마트폰(390)에서 페이지가 옆으로 밀렸다. */
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 /* 페이지와 같이 스크롤한다. `ws.side` 처럼 따로 스크롤하면 노트북 높이에서 접힌 칸이 안쪽 밑으로 숨었다. */
@@ -789,19 +801,42 @@
   padding: 2px 4px 10px;
 }
 
-/* 사이드바를 편 1220 아래에서는 6칸이면 동그라미(118px)끼리 겹쳐, 옆 칸을 누르는 일이 생겼다. */
-@media (max-width: 1220px) {
+/* 도장 6칸은 한 줄로 둔다(11-08). 1220 아래에서 3칸씩 두 줄로 나누던 것을 바꿨다 — 사이드바를 접은 창에서도
+   두 줄이 됐고, 1280 · 1366 노트북은 한 줄에 넉넉했다.
+   창 폭 미디어 쿼리는 화면 배율(--app-zoom, 1024 이상에서 0.8~1)을 모른다 — 1100~1220 창은 배율로 넓게 그려
+   여섯 칸이 넉넉한데도 두 줄이 됐다. 그래서 도장판 안쪽 폭으로 정하고, 모자라면 줄을 나누기 전에 동그라미를 줄인다:
+     798px 이상   118px · 간격 18 — 1024 이상 데스크톱 전부(사이드바 접힘 · 펼침), 그 아래 창 폭 944 이상
+     674px 이상   104px · 간격 10 — 창 폭 820~943
+     614px 이상    94px            — 태블릿 세로(768)
+     그 아래       94px 세 칸씩    — 스마트폰(390). 여섯 칸이면 글자가 읽히지 않는다
+   동그라미 사이를 10px 아래로 줄이지 않는다 — 누르는 자리(.press)가 동그라미보다 5px 씩 넓다. */
+@container (max-width: 797.98px) {
+  .slots {
+    --ring: 104px;
+    --stamp-scale: 0.88;
+    gap: 10px;
+  }
+}
+@container (max-width: 673.98px) {
+  .slots {
+    --ring: 94px;
+    --stamp-scale: 0.8;
+  }
+}
+@container (max-width: 613.98px) {
   .slots {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    row-gap: 24px;
+    row-gap: 22px;
+  }
+}
+@container (max-width: 301.98px) {
+  .slots {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 640px) {
   .stampCard {
     padding: 24px 16px 20px;
-  }
-  .slots {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .fold > summary,
   .fold > p {

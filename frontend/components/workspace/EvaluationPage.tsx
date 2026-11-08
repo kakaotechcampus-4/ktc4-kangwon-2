@@ -29,8 +29,8 @@ function AboutEvaluation() {
         </span>
         평가제가 뭐예요?
       </summary>
-      {/* 좁은 화면에서는 머리 줄이 접혀 단추가 왼쪽에 선다 — 그때는 왼쪽에 맞춰 연다. */}
-      <div className="absolute left-0 top-full z-20 mt-2 sm:left-auto sm:right-0 w-[min(420px,calc(100vw-32px))] rounded-md border border-line bg-paper px-4 py-3 leading-relaxed text-ink shadow-pg-card">
+      {/* 스마트폰(390)에서도 단추는 제목 줄 오른쪽에 남는다. 왼쪽에 맞춰 열면 쪽지가 화면 밖으로 나갔다. */}
+      <div className="absolute right-0 top-full z-20 mt-2 w-[min(420px,calc(100vw-32px))] rounded-md border border-line bg-paper px-4 py-3 leading-relaxed text-ink shadow-pg-card">
         <p className="m-0">
           <b>어린이집 평가제</b>는 한국보육진흥원이 어린이집을 정기적으로 평가하는 제도예요. 원은
           먼저 자체평가 지표(영역 6개 · 지표 15개)로 스스로 점검해요.
