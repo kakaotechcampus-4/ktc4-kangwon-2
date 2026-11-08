@@ -485,8 +485,8 @@ test("멘토: 등록한 반 수정을 시도해도 새 반과 새 아동으로 �
   const before = await api(page, `/api/centers/${user.center_id}/classes`);
   await page.getByRole("link", { name: "설정", exact: true }).first().click();
   // 반 쪽지를 떼어 연다. 등록한 반은 고칠 칸 없이 글로만 보인다. 저장 길은 첫 설정 화면과 같다.
-  await page.getByRole("button", { name: "반 · 담당 반 수정", exact: true }).click();
-  const note = page.getByRole("dialog", { name: "반 · 담당 반" });
+  await page.getByRole("button", { name: "반 수 · 담당 반 수정", exact: true }).click();
+  const note = page.getByRole("dialog", { name: "반 수 · 담당 반" });
   await expect(note.getByText("햇살반", { exact: true })).toBeVisible();
   await expect(note.getByRole("textbox", { name: "반 이름" })).toHaveCount(0);
   await note.getByRole("button", { name: "저장", exact: true }).click();
