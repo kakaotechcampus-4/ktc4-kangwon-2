@@ -10,6 +10,7 @@
 
 import type { DragEvent } from "react";
 import type { WeeklyCell, WeeklyPlan } from "@/lib/api/types";
+import { TrendMark } from "@/components/plan-ui/PlayPickBoard";
 import { DROP, GRIP, SMALL, dropTo } from "@/components/plan-generator/PlayMonthlySafetyPanel";
 import { BUTTON } from "@/components/plan-generator/AnnualFrame";
 
@@ -159,6 +160,7 @@ export default function WeeklyIndoorPlayPanel({
                     </strong>
                     {text || "(빈 후보)"}
                   </div>
+                  {ok && c.trend_applied && <TrendMark />}
                   <button
                     type="button"
                     aria-label={`이번 주 놀이에 넣기: ${c.name || text || "빈 후보"}`}

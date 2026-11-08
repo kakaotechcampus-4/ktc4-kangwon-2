@@ -32,6 +32,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:?.env 에 SECRET_KEY 가 없다 — python -c \"import secrets; print(secrets.token_urlsafe(48))\"}
       ELICE_MLAPI_BASE_URL: ${ELICE_MLAPI_BASE_URL:-}
       ELICE_MLAPI_API_KEY: ${ELICE_MLAPI_API_KEY:-}
+      ELICE_JEV_BASE_URL: ${ELICE_JEV_BASE_URL:-}
       # 트렌드 수집 (ADR-016). 주 1회 작업에서만 쓴다 — 없으면 그 소스만 건너뛰므로
       # SECRET_KEY 와 달리 기동을 막지 않는다.
       YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
@@ -84,8 +85,10 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/app-routes.conf:/etc/nginx/app-routes.conf:ro
+      # nginx/ 폴더가 /etc/nginx 를 통째로 대신한다. 파일 하나씩 연결하면 git 이 파일을 새로 쓸 때
+      # 떠 있는 컨테이너가 옛 파일을 계속 본다(reload 로도 안 바뀐다). 폴더째면 새 파일이 보인다.
+      # 이미지의 mime.types · conf.d 는 가려진다 — 지금 설정은 쓰지 않는다. 필요하면 nginx/ 에 둔다.
+      - ./nginx:/etc/nginx:ro
       - certbot-etc:/etc/letsencrypt:ro
       - certbot-www:/var/www/certbot:ro
     # 인증서는 60일마다 바뀐다. 바뀐 것을 읽으려면 nginx 를 다시 읽혀야 한다.

@@ -2686,6 +2686,7 @@ memo       문자열.  선택.  요청 사항 0~300자(§4 「요청 사항」).
 
 - `activity_type`은 근거의 명시된 태그/행 이름에서 확인한 활동 종류다. 공백 표기를 통일하며 재료 메모 등 알려진 활동 종류가 아닌 태그는 그대로 유형으로 쓰지 않는다. 확인되지 않으면 `기타`다. 새 공식 분류가 아니다.
 - `name`/`description`은 후보 칸의 현재 값 `활동명: 설명`에서 읽는다. 후보 편집은 기존 칸 편집 경로다.
+- `trend_applied`(불리언, 필수)는 그 후보 칸 `evidence`에 `TREND`가 있는가다 — 원이 트렌드를 켰을 때 트렌드봇 자료를 반영한 후보(목록마다 많아야 2개, ADR-072). 화면은 빨간 ✦ 하나만 단다.
 - `activity_grids`는 운영 요일 순이다. leaf는 `cell_id`로 실제 `sections[].cells[]`를 가리킨다.
   나눈 node는 `cell_id: null`, `split_id`, `axis`, `ratio`, 두 `children`을 갖는다.
 - 후보형 `group_activity`의 `DAY` 칸은 하루 여러 개일 수 있다. 요일 순·트리 leaf 순으로 내려준다.
@@ -2959,6 +2960,7 @@ activity_pool         문서에 넣지 않은 AI 후보 — together · free_pla
 content_ids           그 놀이에 지금 걸린 누리과정 내용 ID.  **응답은 0~3개** — 생성한 행은 1~3개이고 행 추가 직후의 빈 행은 0개다.  연결 바꾸기 요청과 확정 조건은 1~3개.  공식 문구는 저장하지 않는다(Reference 에서 읽는다)
                       name.evidence 의 CURRICULUM 은 만들 때의 연결이고 바뀌지 않는다
 parent_item_id        이 행이 부모 연간의 놀이 하나를 이은 것이면 그 놀이명 칸의 item_id.  아니면 null.  name.evidence 에 PARENT_PLAN 이 있을 때만 값이 있다
+trend_applied         그 행이 트렌드봇 자료를 반영했는가(표시용, ADR-072).  name.evidence 에 TREND 가 있을 때 true.  꺼짐 · 자료 없음 · 옛 계획안은 false
 safety_candidates     candidates 의 주소는 cell.item_id 다 (경로의 {item_id} · 본문의 candidate_item_id)
 kind                  STATUTORY (법정 여섯 영역, category_id 만) | SUPPLEMENTAL (생활안전, topic_group 만)
 habits[].label        한글 문서가 「[분류]」로 찍는 일상생활 항목 이름(entry_id 의 label, 계획안이 읽은 판에서).  문장이 비었거나 항목에서 고르지 않았거나 판이 없어졌으면 ""(하민 결정 2026-11-06).  화면은 「[분류]」 다음 줄에 문장을 쓴다
@@ -3680,15 +3682,26 @@ ALREADY_REGISTERED       같은 아동 · 종류 · 겹치는 기간의 증빙�
 
 **앞 둘을 모델 없이 끝낸다.** 모델이 틀려도 사실은 안 틀어진다.
 
-**3단 — `POST /api/documents/{id}/verify`** — **아직 없다 (2026-10-20 확인).**
-라우터에 이 경로가 없어 지금 부르면 404 다. 아래는 만들 때 지킬 계약이고,
+**3단 — `POST /api/documents/{id}/verify`** — 판정 전용 모델 jev 로 만들었다 (ADR-071, 2026-11-08).
 서버 확정(`confirm` · `reconfirm`)은 **이 단계를 거치지 않는다** — 1·2단과 교사 체크 3개만 본다.
 
 ```json
-{ "issues": [] }
+요청 (선택)  { "sections": [ { "heading": "해석", "body": "...", "source_ids": [12] }, ... ] }
+             안 보내면 저장된 글을 본다. 보낸 글은 저장하지 않는다.
+응답 200     { "issues": [ { "heading": "해석", "sentence": "...", "code": "CONTRADICTS_SOURCE",
+                             "source_id": 12, "source_text": "...", "reason": "...", "fix": "..." } ],
+               "judge": "jev" }
 ```
 
-`issues` 가 비면 통과다. 아니면 각 항목이 **이유와 수정 지시**를 담는다.
+- `issues` 가 비고 `judge` 가 `jev` 면 통과다. 각 항목이 **이유와 수정 지시**를 담는다.
+- `judge: "mock"` 은 판정하지 않았다는 뜻이다(`LLM_MODE=mock`). 화면은 통과로 보이면 안 된다.
+- **판정 못 하면 빈 목록이 아니라 오류다.** 1·2단에 걸리면 422 `VALIDATION_FAILED`(jev 를 부르지 않는다),
+  가명 처리 실패 422 `VALUE_INVALID`, 주소 없음 503 `DEPENDENCY_UNAVAILABLE`, 한도 503 `LLM_BUDGET_EXCEEDED`,
+  답이 빠지거나 깨지거나 호출 실패 500 `GENERATION_FAILED`. 증빙으로 올린 문서(`IMPORT`) · 영유아 평가 ·
+  문장 36개 초과는 422.
+- `code` 일곱 가지: `CONTRADICTS_SOURCE`(기록과 어긋남 · `source_id` 있음) · `UNSUPPORTED_FACT`(해석 칸의
+  기록에 없는 사실) · `DIAGNOSIS` · `INVENTED_TEACHER_ACT` · `UNSUPPORTED_CHANGE` · `PRIVATE_INFO` ·
+  `SUPPORT_NOT_CONCRETE`.
 
 **무엇을 잡나**
 
@@ -3749,7 +3762,7 @@ GET    /api/documents?kind=&class_id=&child_id=&status=&stale=   → { "items": 
        FE 가 서버 순서를 그대로 쓰므로 계약에 둔다. 목록에는 sections · sources 를 담지 않는다.
 GET    /api/documents/{id}                                       단건
 GET    /api/documents/{id}/related                               겹치는 확정 문서
-POST   /api/documents/{id}/verify                                3단 LLM Judge.  **미구현 — 지금은 404**
+POST   /api/documents/{id}/verify                                3단 AI 판정(jev).  저장하지 않음 (ADR-071)
 PUT    /api/documents/{id}                                       title · sections · review_note · class_note
 POST   /api/documents/{id}/confirm                               DRAFT → CONFIRMED.  checks 3개 필요
 POST   /api/documents/{id}/unconfirm                             CONFIRMED → DRAFT.  근거로 쓴 문서 stale

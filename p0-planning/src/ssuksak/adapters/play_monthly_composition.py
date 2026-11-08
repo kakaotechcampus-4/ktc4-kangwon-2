@@ -37,7 +37,8 @@ SAFETY_QUALITY_VERSION = "safety-reference-quality-v0.2.0"
 
 
 def play_monthly_generation(
-    *, parent_repository, plan_repository, provider: PlayMonthlyProvider, clock, id_generator
+    *, parent_repository, plan_repository, provider: PlayMonthlyProvider, clock, id_generator,
+    optional_context=None,
 ) -> GeneratePlayMonthlyPlan:
     return GeneratePlayMonthlyPlan(
         parent_repository=parent_repository,
@@ -52,6 +53,7 @@ def play_monthly_generation(
         provider=provider,
         clock=clock,
         id_generator=id_generator,
+        optional_context=optional_context,
     )
 
 

@@ -74,11 +74,12 @@ from ssuksak.planning.domain.play_project_plan import (  # 공개 창구에 없�
     PLAY_PROJECT_FORMAT,
     PlayProjectYearlyPlan,
 )
-from ssuksak.planning.domain.provenance import SplitAxis
+from ssuksak.planning.domain.provenance import EvidenceSourceType, SplitAxis
 from ssuksak.planning.domain.week_period import WeekId
 from ssuksak.planning.planner.contracts import ProposalParseError, ProposalRejectedError
 
 from app.db import get_session
+from app.features.centers.models import Center
 from app.features.plans import monthly_llm, play_project
 from app.features.plans import play_monthly_schemas as s
 from app.features.plans.memo_privacy import memo_name_table, raise_if_mask_failed, with_masked_memo
@@ -108,12 +109,15 @@ from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.router import _exception_chain
 from app.features.plans.runtime import SystemClock, UuidGenerator
 from app.features.plans.schemas import EvidenceOut, GenerationOut, memo_notices_out
+from app.features.trends.planning import TrendContextProvider
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import foreign_class_refs, require_own_class
 from app.shared.hwpx import Format, download
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
+from app.shared.school_year import KST
 
 _log = logging.getLogger(__name__)
+_TIMING_LOG = logging.getLogger("app.server.timing")
 
 router = APIRouter(prefix="/plans/monthly/play", tags=["plans"])
 
@@ -184,7 +188,7 @@ def _generation_error(error: Exception):
 
 
 @router.post("", response_model=s.PlayMonthlyPlanOut, status_code=status.HTTP_201_CREATED)
-@timing.timed("monthly_play", logging.getLogger("app.server.timing").info)
+@timing.timed("monthly_play", _TIMING_LOG.info)
 def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, user: CurrentUser):
     """한 달치를 만들어 DRAFT 로 저장한다. 실패하면 아무것도 남지 않는다(기존 월간과 같다)."""
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
@@ -217,6 +221,11 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
         provider = monthly_llm.play_monthly_provider()
     except LlmUnavailable as error:
         raise _UNAVAILABLE from error
+    center = session.get(Center, center_id)
+    trends = TrendContextProvider(  # ADR-072: 원이 껐으면(기본값) 넘기지 않는다
+        enabled=center is not None and center.trends_enabled,
+        today=SystemClock().now().astimezone(KST).date(),
+    )
     # 읽기를 여기서 끝낸다. LLM 을 기다리는 동안 transaction · 연결을 잡지 않는다.
     session.commit()
 
@@ -230,6 +239,7 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
         provider=with_masked_memo(provider, body.memo, names),
         clock=SystemClock(),
         id_generator=UuidGenerator(),
+        optional_context=trends,
     )
     try:
         plan = use_case.execute(
@@ -249,6 +259,10 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
         if mapped is None:
             raise
         raise mapped from error
+    finally:
+        # 트렌드를 썼는지 · 대체 경로였는지 한 단어로(ADR-072 결정 8). 제목 · 프롬프트는 안 남긴다.
+        for result in use_case.last_optional_context:
+            _TIMING_LOG.info("plan_trend kind=monthly_play status=%s", result.status.value)
 
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
     timing.phase("save")
@@ -966,6 +980,10 @@ def _activity(activity: PlayActivity) -> s.ActivityOut:
         description=_cell(activity.description),
         content_ids=list(activity.content_ids),
         parent_item_id=None if parent is None else parent.parent_item_id.value,
+        # ADR-072: 표시용. 그 후보 칸 Evidence 에 TREND 가 있는가.
+        trend_applied=any(
+            e.source_type is EvidenceSourceType.TREND for e in activity.cell.evidence
+        ),
     )
 
 
