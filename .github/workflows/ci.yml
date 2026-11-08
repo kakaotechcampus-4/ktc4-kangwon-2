@@ -368,11 +368,16 @@ jobs:
   # 화면이 실제 API 를 타는지 본다 — 가입부터 관찰 기록까지(frontend/e2e). ADR-028.
   # 다른 job 은 백엔드와 화면을 따로 본다. 둘이 어긋나도(칸 이름·주소) 각자 통과한다.
   e2e:
-    name: e2e (playwright)
+    # (시험) 글꼴 캐시 있음 · 없음 비교 — 머지하지 않는다.
+    name: e2e (playwright) 글꼴캐시-${{ matrix.fonts }}
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        fonts: [hit, miss]
     services:
       db:
         image: postgres:15
@@ -467,7 +472,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/e2e-fonts
-          key: ${{ steps.fonts.outputs.key }}
+          # (시험) miss 는 매번 없는 key 를 써서 apt 로 받게 한다.
+          key: ${{ matrix.fonts == 'hit' && steps.fonts.outputs.key || format('e2e-fonts-miss-{0}-{1}', github.run_id, github.run_attempt) }}
       - name: e2e 글꼴
         working-directory: frontend
         run: |
@@ -492,7 +498,120 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-report
+          name: e2e-report-${{ matrix.fonts }}
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+            /tmp/e2e-backend.log
+            /tmp/e2e-next.log
+          retention-days: 7
+
+  # (시험) 우분투 + Playwright 를 미리 깐 이미지를 만들어 GHCR 에 올린다. 이미 있으면 건너뛴다.
+  e2e-image:
+    name: (시험) e2e 이미지 만들기
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: 이미지가 없으면 만들어 올린다
+        env:
+          IMAGE: ghcr.io/kakaotechcampus-4/ktc4-kangwon-2-e2e-runner:exp
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then echo "이미 있다"; exit 0; fi
+          docker build -t "$IMAGE" .github/e2e-runner
+          docker image inspect "$IMAGE" --format '크기(압축 전) {{.Size}}'
+          docker push "$IMAGE"
+
+  # (시험) 그 이미지 안에서 e2e 를 돌린다. 브라우저 · 글꼴 설치 스텝이 없다.
+  e2e-docker:
+    name: (시험) e2e 도커 이미지
+    needs: [changes, e2e-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/kakaotechcampus-4/ktc4-kangwon-2-e2e-runner:exp
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      db:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ssuksak
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+          POSTGRES_DB: ssuksak
+        options: >-
+          --health-cmd "pg_isready -U ssuksak -d ssuksak"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # 컨테이너 안에서는 DB 가 localhost 가 아니라 서비스 이름(db)이다.
+      DATABASE_URL: postgresql+psycopg://ssuksak:ci-only-not-a-secret@db:5432/ssuksak
+      SECRET_KEY: ci-only-not-a-secret
+      LLM_MODE: mock
+      FASTAPI_BASE_URL: http://127.0.0.1:8000
+      E2E_BASE_URL: http://127.0.0.1:3000
+      E2E_DATABASE_URL: postgresql://ssuksak:ci-only-not-a-secret@db:5432/ssuksak
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: e2e-docker-npm-${{ hashFiles('frontend/package-lock.json') }}
+      - name: Install planning core
+        working-directory: p0-planning
+        run: pip install -e .
+      - name: Install backend
+        working-directory: backend
+        run: pip install -e .
+      - name: alembic upgrade head
+        working-directory: backend
+        run: alembic upgrade head
+      - name: E2E_DATABASE_URL 로 DB 를 읽을 수 있나
+        run: python -c "import os,psycopg; print('documents rows:', psycopg.connect(os.environ['E2E_DATABASE_URL']).execute('select count(*) from documents').fetchone()[0])"
+      - name: Start backend
+        working-directory: backend
+        run: |
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/e2e-backend.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8000/health/ready && exit 0
+            sleep 1
+          done
+          cat /tmp/e2e-backend.log
+          exit 1
+      - name: Install frontend
+        working-directory: frontend
+        run: npm ci
+      - name: next build
+        working-directory: frontend
+        run: npm run build
+      - name: Start frontend
+        working-directory: frontend
+        run: |
+          nohup npm run start -- --hostname 127.0.0.1 --port 3000 > /tmp/e2e-next.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -fsS -o /dev/null "$E2E_BASE_URL/login" && exit 0
+            sleep 1
+          done
+          cat /tmp/e2e-next.log
+          exit 1
+      - name: playwright
+        working-directory: frontend
+        run: npm run e2e
+      - name: 실패 기록 올리기
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-docker
           path: |
             frontend/playwright-report/
             frontend/test-results/
