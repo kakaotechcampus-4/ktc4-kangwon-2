@@ -1,19 +1,35 @@
+"use client";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Icon } from "@/components/app/icons";
 import { Posty } from "@/components/app/Posty";
 import { LegalFooter } from "@/components/legal/LegalPage";
 import { Wordmark } from "@/components/app/Wordmark";
+import { useHydrated } from "@/lib/hooks/use-client-state";
+import s from "./AuthFrame.module.css";
 
 /**
- * 로그인·가입 화면의 틀. 왼쪽은 소개, 오른쪽이 입력 칸이다.
+ * 로그인·가입 화면의 틀. 나무 틀 칠판 하나에, 왼쪽은 분필 인사 · 오른쪽은 공책 종이 한 장.
  *
- * 여기만 초록을 쓴다. 디자인 파일이 로그인·가입 화면을 초록으로 그렸다 —
- * 작업실(보라)에 들어가기 전이라는 신호로 읽힌다.
+ * 칠판 왼쪽(`greeting` · `todo`)은 화면에 들어올 때 한 덩어리로 떠오른다. 종이 위 입력은
+ * 작업실과 같은 보라 단추 · 흰 칸이다 — 로그인 뒤 화면과 결이 이어지게.
  */
-export default function AuthFrame({ children }: { children: ReactNode }) {
+export default function AuthFrame({
+  greeting,
+  todo,
+  aside,
+  children,
+}: {
+  /** 칠판에 분필로 쓴 인사. 화면의 h1 이다. */
+  greeting: ReactNode;
+  /** 칠판 아래쪽 할 일 목록 (회원가입만) */
+  todo?: ReactNode;
+  /** 종이 가장자리에 붙는 쪽지 — 로그인 ↔ 회원가입 */
+  aside?: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <div className="min-h-[calc(100*var(--app-vh))] px-5 py-6 text-ink sm:px-8">
+    <div className="min-h-[calc(100*var(--app-vh))] px-4 py-6 text-ink sm:px-8">
       <header className="mx-auto flex max-w-[1180px] items-center justify-between gap-3">
         <Wordmark href="/welcome" label="쌤플 소개로" />
         <Link
@@ -25,56 +41,73 @@ export default function AuthFrame({ children }: { children: ReactNode }) {
         </Link>
       </header>
 
-      <main className="mx-auto grid max-w-[1180px] items-center gap-10 py-10 sm:py-16 lg:grid-cols-[1fr_450px] lg:gap-20">
-        <section className="hidden lg:block">
-          <span className="flex items-center gap-2 text-xs font-medium text-success">
-            <Icon name="nature" className="h-4 w-4" />
-            선생님의 계획과 기록을 위한 작업실
-          </span>
-          <h1 className="mt-5 font-display text-[43px] font-bold leading-[1.2] sm:text-[54px]">
-            선생님의 하루에,
-            <br />
-            여유 한 뼘을.
-          </h1>
-          <p className="mt-5 text-sm leading-[1.9] text-ink-soft">
-            아이들과 마주하는 순간에 더 집중할 수 있도록.
-            <br />
-            계획부터 기록까지, 쌤플이 함께할게요.
-          </p>
+      <main className="mx-auto max-w-[1180px] pb-6 pt-6 sm:pt-10">
+        <div className={s.frame}>
+          <div
+            className={`${s.board} grid gap-6 px-3 pb-24 pt-6 sm:px-8 lg:grid-cols-[1fr_420px] lg:items-center lg:gap-12 lg:px-14 lg:pb-16 lg:pt-12`}
+          >
+            <section className={`${s.fadeIn} px-2 sm:px-0`}>
+              <Today />
+              <h1
+                className="mt-3 font-display text-[30px] font-bold leading-[1.25] lg:mt-4 lg:text-[48px]"
+                style={{ wordBreak: "keep-all", wordSpacing: "-0.15em" }}
+              >
+                {greeting}
+              </h1>
+              <p className="mt-3 hidden max-w-[380px] text-sm leading-[1.8] text-board-ink-soft lg:block">
+                아이들과 마주하는 순간에 더 집중할 수 있도록. 계획부터 기록까지, 쌤플이 함께할게요.
+              </p>
+              {todo && <div className="hidden lg:block">{todo}</div>}
+            </section>
 
-          {/* 첫 인사 — 노란 쪽지 + 인사 + 테이프(캐릭터 시트). 쪽지 카드 안에 넣으면
-              같은 노란색이라 묻힌다. 크림 바탕 위, 카드 바로 앞에 세운다. */}
+            <div className="relative">
+              <div className="relative">
+                <div aria-hidden="true" className={s.under} />
+                <div aria-hidden="true" className={s.under} />
+                <section className={`${s.sheet} py-7 pl-11 pr-5 sm:py-10 sm:pl-[60px] sm:pr-9`}>
+                  <span aria-hidden="true" className={s.tape} />
+                  <span aria-hidden="true" className={s.tape} />
+                  <div className="text-ink">{children}</div>
+                </section>
+              </div>
+              {aside}
+            </div>
+          </div>
           <Posty
             pose="wave"
+            wave
             tape
-            size={86}
+            size={78}
             label="포스티가 인사해요"
-            className="mt-8 -mb-1 ml-1 block"
+            className={`${s.posty} absolute bottom-1 right-6 z-[3] h-auto w-[58px] lg:left-16 lg:right-auto lg:w-[78px]`}
           />
-
-          <div className="relative mt-1 -rotate-1 border border-note-line bg-note p-6 shadow-pg-hard">
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute -top-3 right-10 h-6 w-20 rotate-3 border border-white/60 bg-tape"
-            />
-            <h2 className="flex items-center gap-2 font-display text-[27px] font-bold text-sun-ink">
-              <Icon name="plan" className="h-6 w-6" />
-              작은 기록이 모여 큰 성장이 돼요
-            </h2>
-            <p className="mt-3 text-xs leading-[1.9] text-sun-ink">
-              우리 반에 맞는 계획안, 놓치고 싶지 않은 관찰 기록.
-              <br />
-              차곡차곡 정리되는 문서를 한곳에서 만나보세요.
-            </p>
+          <div aria-hidden="true" className={s.tray}>
+            <b className="left-5 lg:left-44" />
+            <i className="left-20 lg:left-60" />
+            <i className="left-[110px] lg:left-[272px]" />
           </div>
-        </section>
-
-        <section className="relative border border-line bg-paper p-6 shadow-pg-hard sm:p-8">
-          {children}
-        </section>
+        </div>
       </main>
 
       <LegalFooter width="max-w-[1180px]" />
     </div>
+  );
+}
+
+/**
+ * 칠판 맨 위 날짜. 보는 사람의 시계로 쓴다 — 서버 렌더에서 그리면 서버 시간대 날짜가 나와
+ * hydration 이 어긋나므로 브라우저에 닿은 뒤에 쓴다.
+ */
+function Today() {
+  const hydrated = useHydrated();
+  if (!hydrated) return <p className="h-7" aria-hidden="true" />;
+  const d = new Date();
+  return (
+    <p className="flex h-7 items-center gap-2.5 font-display text-[19px] font-bold text-board-ink-soft lg:text-[24px]">
+      {d.getMonth() + 1}월 {d.getDate()}일
+      <span className="rounded-[50%] border-2 border-alert px-2.5">
+        {"일월화수목금토"[d.getDay()]}요일
+      </span>
+    </p>
   );
 }
