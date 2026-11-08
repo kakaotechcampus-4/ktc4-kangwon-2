@@ -69,6 +69,30 @@ me       GET /api/auth/me                                               → 200 
 승인이 필요하면 `403 CLASS_ACCESS_REQUIRED`, 승인받아 보기만 되는 교사가 쓰려 하면
 `403 CLASS_READ_ONLY` 다. 둘 다 `fields: ["class_id"]`.
 
+### 0-1. 카카오 로그인 — `GET /api/auth/kakao/authorize` · `POST /api/auth/kakao`
+
+[ADR-069](adr/069-kakao-login.md). 키가 없어도 이메일 로그인은 그대로 돈다.
+
+```
+1  화면   state 를 만든다(16~128자, A-Z a-z 0-9 _ -). sessionStorage 에 둔다
+2  화면 → GET /api/auth/kakao/authorize?state=...            → 200 { "url": "https://kauth.kakao.com/..." }
+3  화면   그 url 로 이동 → 카카오 동의 → KAKAO_REDIRECT_URI(/login/kakao?code=...&state=...) 로 돌아온다
+4  화면   돌아온 state 가 1 과 다르면 멈춘다. 같으면
+   화면 → POST /api/auth/kakao  { "code": "..." }             → 200  §0 로그인과 같은 응답
+```
+
+**처음이면 계정을 만들고, 같은 이메일 계정이 있으면 거기에 잇는다.** 응답은 늘 200 이다 —
+`center_id` 가 null 이면 온보딩으로 간다(§0 과 같다).
+
+| code | HTTP | 언제 |
+|---|---|---|
+| `DEPENDENCY_UNAVAILABLE` | 503 | 서버에 키 · Redirect URI 가 없다 · 카카오에 닿지 못했다 |
+| `VALIDATION_FAILED` | 422 | `fields: ["code"]` 카카오가 코드를 거절(만료 · 이미 씀). 처음부터 다시 |
+| `VALIDATION_FAILED` | 422 | `fields: ["email"]` 카카오 계정 이메일이 없거나 검증 안 됨 |
+| `ALREADY_EXISTS` | 409 | 그 이메일 계정이 이미 다른 카카오 계정에 연결돼 있다 |
+
+**인가 코드는 한 번만 쓴다.** 같은 코드로 두 번 보내면 두 번째는 422 다 — 화면은 한 번만 보낸다.
+
 ### 401 을 받으면 화면이 하는 일
 
 **토큰이 12시간짜리고 갱신이 없다.** 교사가 아침에 로그인해서 저녁에 쓰면 **쓰는 도중에

@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     # 그 열쇠는 저장소에 적혀 있으므로 누구나 토큰을 만들 수 있다.
     secret_key: str
 
+    # 카카오 로그인 (ADR-069). 키 · 주소가 없으면 카카오 경로만 503 이다.
+    # 이메일 로그인은 그대로 돈다.
+    # redirect_uri 는 콘솔에 등록한 값과 **글자 하나까지 같아야** 한다 — 다르면 KOE006.
+    kakao_rest_api_key: str | None = None
+    kakao_client_secret: str | None = None
+    kakao_redirect_uri: str | None = None
+
     # 트렌드 수집 (ADR-016). 없으면 그 소스만 건너뛰고 나머지는 모은다.
     # 주 1회 작업에서만 쓴다 — 교사 요청 경로에서는 부르지 않는다.
     youtube_api_key: str | None = None
