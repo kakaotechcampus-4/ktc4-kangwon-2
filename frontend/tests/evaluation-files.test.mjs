@@ -111,7 +111,8 @@ test("도장 근거는 쌤플 확정 · 폴더 · 교사 체크를 따로 세고
 test("도장 근거 줄은 쌤플 · 폴더 · 직접확인을 따로 적고 상태를 나눈다", async () => {
   const { sourceLines } = await import("../lib/workspace/evaluation-files.ts");
   const brief = (lines) => lines.map((l) => `${l.source}:${l.state}:${l.text}`);
-  const partial = { status: "partial", matched: ["a", "b"], missing: ["2026-10-15", "2026-10-22"] };
+  // 서버에 남는 모양(ADR-074) — 이름 · 날짜 없이 숫자만
+  const partial = { status: "partial", files: 2, gaps: 2 };
   // 쌤플 서류 — 확정 0건 · 폴더는 일부 빠짐(빈 평일 수로 적는다)
   assert.deepEqual(
     brief(
@@ -125,7 +126,7 @@ test("도장 근거 줄은 쌤플 · 폴더 · 직접확인을 따로 적고 상
       sourceLines(
         doc("plan"),
         { done: false, some: true, text: "확정 1건" },
-        { ...partial, missing: ["2026-11"] },
+        { ...partial, gaps: 1 },
         false,
       ),
     ),
@@ -142,10 +143,30 @@ test("도장 근거 줄은 쌤플 · 폴더 · 직접확인을 따로 적고 상
       sourceLines(
         doc("journal"),
         { done: true, some: true, text: "확정 3건" },
-        { status: "found", matched: ["a"], missing: [] },
+        { status: "found", files: 1, gaps: 0 },
         true,
       ),
     ),
     ["ssample:on:확정 3건", "folder:on:이름으로 찾음 · 1건"],
   );
+});
+
+test("폴더 결과 요약은 이름을 버리고 숫자만 남긴다 — 빈 날은 일부 빠짐일 때만", async () => {
+  const { summarize, windowOf } = await import("../lib/workspace/evaluation-files.ts");
+  const names = ["2026-10-01_보육일지.hwp", "2026-10-02_보육일지.hwp"];
+  const partial = checkDoc(doc("journal"), names, TODAY);
+  assert.equal(partial.status, "partial");
+  assert.deepEqual(summarize(partial), {
+    status: "partial",
+    files: 2,
+    gaps: partial.missing.length,
+  });
+  assert.ok(partial.missing.length > 0);
+  // 못 찾은 서류는 빈 평일이 기간 전부지만 0 으로 보낸다 — 서버가 「일부 빠짐일 때만 빈 날」을 본다
+  const missing = checkDoc(doc("journal"), [], TODAY);
+  assert.ok(missing.missing.length > 0);
+  assert.deepEqual(summarize(missing), { status: "missing", files: 0, gaps: 0 });
+  // 기간은 checkDoc 과 같다 — 보육일지는 최근, 면담은 1년
+  assert.deepEqual(windowOf(doc("journal"), TODAY), windowsFor(TODAY).recent);
+  assert.deepEqual(windowOf(doc("parent"), TODAY), windowsFor(TODAY).year);
 });
