@@ -185,7 +185,7 @@
   transform: rotate(-3deg);
   background: rgba(255, 250, 240, 0.72);
   border-inline: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 1px 2px rgba(106, 96, 80, 0.09);
+  box-shadow: var(--pg-shadow-tape);
 }
 .noteHead {
   display: flex;
@@ -294,6 +294,7 @@
   transform: rotate(-3deg);
   background: rgba(255, 250, 240, 0.72);
   border-inline: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: var(--pg-shadow-tape);
 }
 .peeledHead {
   margin: -40px -36px 2px;
@@ -682,6 +683,7 @@
   transform: rotate(-3deg);
   background: rgba(255, 250, 240, 0.72);
   border-inline: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: var(--pg-shadow-tape);
 }
 .strip .meMark {
   background: #fffcf5;
