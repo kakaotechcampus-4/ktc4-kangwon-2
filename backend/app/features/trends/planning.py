@@ -3,7 +3,8 @@
 실시간 수집이 아니다. 저장소에 머지된 주 파일을 읽는다(ADR-016). 원이 껐거나 · 파일이 없거나 ·
 깨졌으면 트렌드 없이 만든다 — 결과 객체로 알리고 예외를 내지 않는다(CLAUDE.md §7).
 
-넘기는 것: 지금도 승인 목록에 있는 유튜브 채널 자료 중 위험 표시(검열 2단)가 없는 것.
+넘기는 것: 지금도 승인 목록에 있는 유튜브 채널 자료. 다시 거르지 않는다 — 머지된 파일은 사람이
+수집 PR 에서 2단 위험 표시 · 3단 판정을 보고 지운 뒤 승인한 것이다(트렌드 화면과 같다, ADR-016).
 기사는 놀이 서술이 아니라 넘기지 않는다(ADR-016 「소재 발굴 · 확인용」).
 링크 · 조회수도 넘기지 않는다.
 """
@@ -25,7 +26,7 @@ from ssuksak.planning.domain.trend import (
     trend_kind,
 )
 
-from app.features.trends import approved, flags
+from app.features.trends import approved
 from app.features.trends.item import COLLECTED_DIR, RawItem, load
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ def trend_items(raw: list[RawItem], week: str) -> list[TrendItem]:
     items = []
     for row in raw:
         channel = channels.get(row.origin)
-        if row.source != "youtube" or channel is None or channel.kind == "제외" or flags.flags(row):
+        if row.source != "youtube" or channel is None or channel.kind == "제외":
             continue
         kind = trend_kind(row.title, TrendKind(channel.kind) if channel.kind else None)
         if kind is None:

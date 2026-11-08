@@ -22,7 +22,7 @@ def provider(tmp_path, items, enabled=True):
     return TrendContextProvider(enabled=enabled, today=TODAY, directory=tmp_path)
 
 
-def test_passes_only_approved_youtube_items_without_risk_marks(tmp_path):
+def test_passes_only_approved_youtube_items(tmp_path):
     result = provider(
         tmp_path,
         [
@@ -32,7 +32,7 @@ def test_passes_only_approved_youtube_items_without_risk_marks(tmp_path):
             raw("d", "[10분 타이머] 정리", origin="타이머 놀이터"),
             raw("e", "만들기 놀이", origin="승인 안 된 채널"),
             raw("f", "유아 놀이 유행", origin="ibabynews.com", source="naver_news"),
-            raw("g", "커터로 자르는 만들기 놀이"),  # risk-words 「커터」
+            raw("g", "커터로 자르는 만들기 놀이"),  # 2단 표시는 수집 PR 에서 본다
             raw("h", "환경교육 코알라 지키기"),
         ],
     ).fetch("trend")
@@ -40,6 +40,7 @@ def test_passes_only_approved_youtube_items_without_risk_marks(tmp_path):
     assert {(i.trend_id, i.kind) for i in result.value} == {
         ("youtube:a", TrendKind.GAME),
         ("youtube:c", TrendKind.SONG),
+        ("youtube:g", TrendKind.CRAFT),
     }
     game = next(i for i in result.value if i.trend_id == "youtube:a")
     assert (
