@@ -426,8 +426,8 @@ test("멘토: 평가 점검은 서버의 9개 지표·19개 요소를 보여주�
   const user = await enterPilot(page);
   await page.getByRole("link", { name: "평가 점검", exact: true }).click();
   // 현장에서 보는 19가지는 접혀 있다.
-  await page.getByText(/^현장에서 보는 것 직접 확인/).click();
-  const selfCheck = page.getByRole("group", { name: "현장에서 보는 것 직접 확인" });
+  await page.getByText(/^직접 확인 ·/).click();
+  const selfCheck = page.getByRole("group", { name: "직접 확인", exact: true });
   // 안 끝난 첫 평가항목만 펼쳐져 있다. 접힌 평가항목을 하나씩 펼쳐 19개를 센다.
   // 펼칠 때마다 「접힌 것」 목록이 줄어 매번 첫 번째를 다시 찾는다. 영역(section) 밖의 옛 사전점검 접기는 열지 않는다.
   const closed = selfCheck.locator("section details:not([open]) > summary");
@@ -441,7 +441,7 @@ test("멘토: 평가 점검은 서버의 9개 지표·19개 요소를 보여주�
   await check.check();
   await expect(page.getByText(/저장됨/)).toBeVisible();
   await page.reload();
-  await page.getByText(/^현장에서 보는 것 직접 확인/).click();
+  await page.getByText(/^직접 확인 ·/).click();
   await expect(check).toBeChecked();
   const saved = await api(page, `/api/centers/${user.center_id}/evaluation-checklist`);
   expect(

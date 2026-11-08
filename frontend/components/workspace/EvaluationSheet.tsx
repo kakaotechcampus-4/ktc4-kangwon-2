@@ -277,7 +277,8 @@ function StampSlot({
         )}
       </span>
       <p className={styles.slotName}>
-        {doc.title} <span className={styles.docIndicator}>{indicatorOf(doc)}</span>
+        {/* 평가항목 번호(4-1 등)는 도장판에서 뺐다(11-08). 아래 표에는 남아 있다. */}
+        {doc.title}
         {/* 도장 그림은 화면 읽기에서 뺐다. 근거를 글로 읽어 준다. */}
         <span className="sr-only">
           {" "}
@@ -380,9 +381,6 @@ export function StampBoard({
           />
         ))}
       </ol>
-      <p className={styles.stampFoot}>
-        내용이 기준을 채웠는지는 선생님께서 한 번 더 확인해 주세요.
-      </p>
     </section>
   );
 }
@@ -495,8 +493,8 @@ export default function EvaluationSheet({
   const [order] = useState(() => [...rows].sort((a, b) => rank(a) - rank(b)).map((r) => r.doc.id));
   const sorted = order.flatMap((id) => rows.filter((row) => row.doc.id === id));
   return (
+    // 머리글은 뺐다(11-08). 화면 읽기에는 이름을 남긴다. 높이는 오른쪽 칸에 맞춰 늘어난다(.detail).
     <section className={styles.detail} aria-label="서류마다 자세히" data-tour="eval-sheet">
-      <h2 className={styles.detailTitle}>서류마다 자세히</h2>
       <div className={styles.tableBox}>
         <table className={styles.docTable}>
           <thead>
@@ -555,13 +553,9 @@ export function FolderCard({ scan, onScan }: { scan: Scan | null; onScan: (scan:
   return (
     <section className={`${ws.card} ${styles.folder}`} data-tour="eval-folder">
       <h2 className={styles.folderTitle}>내 컴퓨터 폴더</h2>
+      {/* 설명은 한 문장만 둔다(11-08). 「업로드할까요?」 창 안내(멘토 11-05)도 뺐다. */}
       <p className={styles.folderLead}>
-        폴더를 고르면 파일 <strong>이름만</strong> 읽어요. 이름으로 찾은 서류는 도장에
-        「내컴퓨터」가 찍혀요. 파일을 열거나 서버로 보내지 않고, 새로 고치면 다시 골라야 해요.
-      </p>
-      {/* 브라우저 확인창은 「업로드」라고 묻는다 — 우리가 바꿀 수 없는 보안 창이라 미리 알린다(멘토 11-05). */}
-      <p className={styles.folderLead}>
-        「업로드할까요?」가 뜨면 <strong>업로드</strong>를 눌러 주세요. 이름을 읽는 허락일 뿐이에요.
+        폴더를 고르면 파일 <strong>이름만</strong> 읽어요.
       </p>
       <button
         type="button"

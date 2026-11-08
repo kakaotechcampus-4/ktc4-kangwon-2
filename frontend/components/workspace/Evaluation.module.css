@@ -454,11 +454,12 @@
   font-weight: 600;
   color: var(--pg-primary-ink);
 }
-.stampFoot {
-  margin-top: 22px;
+/* 페이지 맨 아래 한 줄 — 도장은 서류가 있다는 표시일 뿐이라는 당부. */
+.pageNote {
   padding-top: 14px;
-  border-top: 1px dashed var(--pg-paper-warm-line);
+  border-top: 1px dashed var(--pg-line);
   font-size: 13px;
+  text-align: center;
   color: var(--pg-ink-soft);
 }
 
@@ -680,19 +681,18 @@
 }
 
 /* ── 서류마다 자세히 — 도장판 아래 표 ── */
+/* 표 칸은 오른쪽 칸(폴더 · 접힌 칸 셋) 높이에 맞춰 늘어난다 — 표 상자가 남는 높이를 채운다.
+   `ws.grid` 의 align-items: start 를 이 칸만 덮는다. 한 줄로 쌓이면(1260px 아래) 늘릴 짝이 없다. */
 .detail {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
+  align-self: stretch;
   min-width: 0;
-}
-.detailTitle {
-  margin: 0;
-  font-family: var(--font-display), sans-serif;
-  font-size: 24px;
-  font-weight: 700;
 }
 /* 좁은 화면에서는 표만 옆으로 밀어 본다. 페이지가 옆으로 늘지 않는다. */
 .tableBox {
+  flex: 1;
   overflow-x: auto;
   border: 1px solid var(--pg-line);
   border-radius: 12px;

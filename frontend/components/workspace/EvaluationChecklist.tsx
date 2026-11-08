@@ -150,10 +150,10 @@ export default function EvaluationChecklist() {
               <EvaluationAuto items={autos} onImported={recount} />
             </div>
           </details>
-          <details className={styles.fold} aria-label="현장에서 보는 것 직접 확인">
+          <details className={styles.fold} aria-label="직접 확인">
             <summary>
               <FoldMark />
-              현장에서 보는 것 직접 확인 · {checked} / {total}
+              직접 확인 · {checked} / {total}
             </summary>
             <div className={styles.foldBody}>
               <EvaluationSelfCheck
@@ -166,6 +166,8 @@ export default function EvaluationChecklist() {
           </details>
         </div>
       </div>
+      {/* 도장판 안에 있던 문장을 페이지 맨 아래로 뺐다(11-08). 도장은 서류가 있다는 표시일 뿐이다(ADR-019). */}
+      <p className={styles.pageNote}>내용이 기준을 채웠는지는 선생님께서 한 번 더 확인해 주세요.</p>
     </div>
   );
 }
