@@ -244,7 +244,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     # 만들 때의 원 설정을 계획안에 복사한다 — 뒤에 설정을 바꿔도 이 계획안은 그대로다(§3-5).
     center = session.get(Center, center_id)
     saturday = center.weekly_saturday_enabled
-    # ADR-070: 원이 켠 경우에만 트렌드를 읽는다. 오늘 = 서버의 한국 날짜.
+    # ADR-072: 원이 켠 경우에만 트렌드를 읽는다. 오늘 = 서버의 한국 날짜.
     trends = TrendContextProvider(enabled=center.trends_enabled, today=today_kst(datetime.now(UTC)))
     try:
         provider = _weekly_provider()

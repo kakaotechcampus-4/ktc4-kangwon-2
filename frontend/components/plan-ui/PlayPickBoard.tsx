@@ -44,7 +44,7 @@ export function MemoMark() {
 }
 
 /**
- * 트렌드봇 자료를 반영한 후보의 작은 표시(ADR-070, Human Decision 2026-11-08).
+ * 트렌드봇 자료를 반영한 후보의 작은 표시(ADR-072, Human Decision 2026-11-08).
  * 요청 사항 ✦ 와 같은 모양 · 자리 · 크기, 빨간색만 다르다. 화면 · 글에 다른 표시는 두지 않는다.
  */
 export function TrendMark() {

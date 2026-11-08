@@ -148,7 +148,7 @@ def _create(world, week: str = WEEK):
 def test_trend_applied_follows_the_center_setting_and_the_candidate_evidence(
     world, enabled, monkeypatch
 ):
-    """ADR-070: 원이 켜면 트렌드를 넘기고, 반영한 후보만 trend_applied · TREND Evidence."""
+    """ADR-072: 원이 켜면 트렌드를 넘기고, 반영한 후보만 trend_applied · TREND Evidence."""
     from ssuksak.planning.application.ports import OptionalContextResult, OptionalContextStatus
     from ssuksak.planning.domain.trend import TrendItem, TrendKind
 

@@ -204,7 +204,7 @@ export interface WeeklyActivityCandidate {
   activity_type: string;
   name: string;
   description: string;
-  /** 트렌드봇 자료를 반영한 후보(ADR-070) — 빨간 ✦ 하나만 단다. */
+  /** 트렌드봇 자료를 반영한 후보(ADR-072) — 빨간 ✦ 하나만 단다. */
   trend_applied: boolean;
   cell: WeeklyCell;
 }

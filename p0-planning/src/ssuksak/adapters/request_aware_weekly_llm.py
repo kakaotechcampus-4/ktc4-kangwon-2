@@ -63,7 +63,7 @@ class RequestAwareWeeklyLlm:
             answer["memo_applied"] = list(request.memo_addresses[:1])  # exercises the evidence path
             answer["memo_skipped"] = []
         options = getattr(request, "trend_options", ())
-        if options and not request.repair_targets:  # ADR-070: one allowed trend on the first fitting candidate
+        if options and not request.repair_targets:  # ADR-072: one allowed trend on the first fitting candidate
             answer["trend_applied"] = [{"address": options[0][0], "trend_id": options[0][1][0]}]
             next(s for s in sections if s["section_key"] == options[0][0])["grounding_refs"] = []
         content = json.dumps(answer, ensure_ascii=False)

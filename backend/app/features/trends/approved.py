@@ -27,7 +27,7 @@ class ApprovedChannel:
     name: str
     channel_id: str
     uploads_playlist_id: str  # scripts/resolve_channels.py 가 채워준다
-    # 계획안 생성에 넘길 때 제목에 종류 낱말이 없으면 쓰는 종류(ADR-070). 빈 값 = 제목으로만 판단.
+    # 계획안 생성에 넘길 때 제목에 종류 낱말이 없으면 쓰는 종류(ADR-072). 빈 값 = 제목으로만 판단.
     # 「제외」 = 이 채널 자료는 생성에 넘기지 않는다(배경음악 · 타이머).
     kind: str = ""
 

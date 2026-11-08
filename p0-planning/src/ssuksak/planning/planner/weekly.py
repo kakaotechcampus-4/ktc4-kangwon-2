@@ -128,7 +128,7 @@ DAY_PROMPT = (
     "그 요일에 쓸 근거가 없으면 그 요일만 unresolved: true, value 는 빈 문자열이다."
 )
 DAY_CELL_PROMPT = " 이번에는 days 의 요일 하나만 쓰고, current_plan 에 있는 같은 Section 다른 요일 값과 같은 문장을 쓰지 않는다."
-# ADR-070 결정 10: 칸마다 쓸 수 있는 트렌드는 Rule 이 이 표로 정한다. 대·소집단 후보는 activity_type
+# ADR-072 결정 10: 칸마다 쓸 수 있는 트렌드는 Rule 이 이 표로 정한다. 대·소집단 후보는 activity_type
 # 낱말(「동요·음률」이면 둘 다)로, 실내놀이 후보는 영역으로 — 일반 놀이 자료는 모든 실내놀이 후보에, 역할 자료는
 # 역할놀이 영역에만(Human Decision 2026-11-08 하민). 표에 없는 유형의 칸에는 붙이지 않는다.
 TREND_KINDS_BY_ACTIVITY_TYPE = {
@@ -173,8 +173,8 @@ class WeeklyIssueCode(str, Enum):
     UNSUPPORTED_FACT = "UNSUPPORTED_FACT"
     DAY_MISMATCH = "DAY_MISMATCH"  # days must be exactly the requested days, in order
     DAY_VALUE_REPEATED = "DAY_VALUE_REPEATED"
-    TREND_SHARE_EXCEEDED = TREND_SHARE_EXCEEDED  # ADR-070: a third trend candidate in one list
-    TREND_GROUNDING_MIXED = "TREND_GROUNDING_MIXED"  # ADR-070: a trend candidate also cited an institution record
+    TREND_SHARE_EXCEEDED = TREND_SHARE_EXCEEDED  # ADR-072: a third trend candidate in one list
+    TREND_GROUNDING_MIXED = "TREND_GROUNDING_MIXED"  # ADR-072: a trend candidate also cited an institution record
 
 
 # Same idea as the monthly REPAIRABLE_CODES: wording or a ref choice inside a fixed slot.
@@ -244,7 +244,7 @@ class WeeklyPlanningRequest:
     # ADR-060: the cell addresses memo_applied may name; None = no teacher memo.
     memo_addresses: tuple[str, ...] | None = None
     teacher_venue_text: str = ""
-    # ADR-070: the passed trends and, per candidate address, the trend_ids the Rule allows there.
+    # ADR-072: the passed trends and, per candidate address, the trend_ids the Rule allows there.
     trends: tuple[TrendItem, ...] = ()
     trend_options: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
@@ -304,7 +304,7 @@ class WeeklyPlanningOutcome:
     request_id: str | None = None
     memo_applied: frozenset[str] = frozenset()  # weekly_memo_address of each memo-changed cell
     memo_skipped: tuple[MemoNotice, ...] = ()  # requests the LLM could not apply
-    trend_applied: Mapping[str, TrendItem] = field(default_factory=dict)  # candidate address → trend (ADR-070)
+    trend_applied: Mapping[str, TrendItem] = field(default_factory=dict)  # candidate address → trend (ADR-072)
 
     def value(self, section_key: str) -> ProposedSectionValue | None:
         found = next((v for v in self.values if v.section_key == section_key), None)
@@ -340,7 +340,7 @@ def _memo_addresses(targets: tuple[WeeklyTarget, ...]) -> tuple[str, ...]:
 def trend_options(
     targets: tuple[WeeklyTarget, ...], trends: tuple[TrendItem, ...]
 ) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    """Candidate address → trend_ids whose kind fits that candidate (ADR-070 결정 10). No fit, no entry."""
+    """Candidate address → trend_ids whose kind fits that candidate (ADR-072 결정 10). No fit, no entry."""
     options = []
     for target in targets:
         if target.activity_type is None:
@@ -447,7 +447,7 @@ def build_weekly_request(
         body["indoor_adaptation_policy"] = INDOOR_ALTERNATIVE_TAG.lstrip("+")
     if memo is not None:
         linked += TEACHER_MEMO_PROMPT_TAG
-    # ADR-070: without a fitting trend nothing below runs — request, prompt and fingerprint stay as before.
+    # ADR-072: without a fitting trend nothing below runs — request, prompt and fingerprint stay as before.
     options = trend_options(targets, trends)
     passed = tuple(item for item in trends if any(item.trend_id in ids for _, ids in options))
     if options:
@@ -537,7 +537,7 @@ def cell_request(
     also supply dates and names (Q2: a teacher's own input; decision B, 2026-10-21).
     """
     if request.trend_options:
-        raise InvalidDomainValueError("A cell is regenerated without trends (ADR-070)")
+        raise InvalidDomainValueError("A cell is regenerated without trends (ADR-072)")
     target = request.target(section_key)
     if target is None:
         raise InvalidDomainValueError(f"Section is not a target of the weekly request: {section_key}")
@@ -655,7 +655,7 @@ def weekly_response_schema(request: WeeklyPlanningRequest) -> dict:
     if request.memo_addresses is not None and not request.repair_targets:
         root.update(memo_properties(request.memo_addresses))  # ADR-060
     if request.trend_addresses is not None and not request.repair_targets:
-        root.update(trend_properties(request.trend_addresses, request.trends))  # ADR-070
+        root.update(trend_properties(request.trend_addresses, request.trends))  # ADR-072
     return _object_schema(root)
 
 
@@ -796,7 +796,7 @@ def validate_weekly(
     request: WeeklyPlanningRequest,
     trended: frozenset[str] = frozenset(),
 ) -> tuple[WeeklyIssue, ...]:
-    """``trended``: candidates written from a trend (ADR-070). Their source activity is the trend
+    """``trended``: candidates written from a trend (ADR-072). Their source activity is the trend
     title · summary, so the institution name terms do not apply and it cites no institution
     record (TREND_GROUNDING_MIXED); every other check does."""
     issues: list[WeeklyIssue] = []
@@ -966,7 +966,7 @@ class WeeklyPlanner:
         content, trend_applied = _split_trends(content, request)
         values = with_reference_labels(parse_weekly_proposal(content, request), request)
         issues = validate_weekly(values, request, frozenset(trend_applied))
-        # ADR-070: at most TREND_SHARE per list; the extra ones are rewritten from their own basis.
+        # ADR-072: at most TREND_SHARE per list; the extra ones are rewritten from their own basis.
         excess = trend_share_excess(
             trend_applied, request.trend_addresses or (), lambda address: address.partition(".")[0]
         )

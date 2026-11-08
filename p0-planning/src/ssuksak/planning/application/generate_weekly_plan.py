@@ -521,7 +521,7 @@ def llm_context(
     activity_candidates: bool = False,
     indoor_play_candidates: bool = False,
     teacher_memo: str = "",
-    trends: tuple[TrendItem, ...] = (),  # ADR-070: generation only; regeneration passes none
+    trends: tuple[TrendItem, ...] = (),  # ADR-072: generation only; regeneration passes none
 ) -> WeeklyLlmContext:
     theme_cell = _only_cell(parent, THEME_KEY)
     linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)

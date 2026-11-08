@@ -292,7 +292,7 @@ def test_real_title_omissions_repair_once_and_persistent_omissions_are_rejected(
         replace(request, targets=(request.targets[0], replace(request.targets[1], activity_basis="근거에 없는 활동")))
 
 
-# ── ADR-070: 트렌드봇 자료를 주간 활동 후보에 ─────────────────────────────────
+# ── ADR-072: 트렌드봇 자료를 주간 활동 후보에 ─────────────────────────────────
 
 def _trend_items():
     from datetime import date
