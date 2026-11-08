@@ -20,7 +20,6 @@
   border: 1px solid var(--pg-line);
   border-radius: 12px;
   background: var(--pg-paper);
-  box-shadow: var(--pg-shadow-card);
 }
 .kicker {
   display: flex;
@@ -507,8 +506,13 @@
 .fold > p {
   padding: 0 22px;
 }
+/* 줄이 칸 양끝에 붙어 꽉 차 보였다 — 제목 · 안내 글과 같은 좌우 여백을 준다. */
+.fold > .fileGroup {
+  padding: 0 22px 16px;
+}
+/* 「원장님이 챙기는 서류」 목록과 같은 좌우 여백 — 안쪽 카드가 칸 양끝에 붙어 꽉 차 보였다. */
 .foldBody {
-  padding: 2px 4px 10px;
+  padding: 2px 22px 16px;
 }
 
 @media (max-width: 900px) {

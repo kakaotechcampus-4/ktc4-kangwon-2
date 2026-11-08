@@ -414,7 +414,8 @@ function Compose({
        종이가 늘 「지금 적는 자리」가 된다. 테이프는 종이 바깥에 붙여야 종이에 얹힌 것으로
        보인다. */
     <section className="relative pt-3" data-tour="home-compose">
-      <Tape className="left-10 -rotate-2" />
+      {/* 위 여백(pt-3)만큼 내려 반은 종이에 걸치게 — 기본 위치면 종이 위에 떠 있었다 */}
+      <Tape className="!top-0 left-10 -rotate-2" />
       <div className="relative bg-paper px-5 pb-4 pt-5 shadow-pg lg:px-6">
         <h2 className="font-display text-[26px] font-bold text-ink">지금, 한 줄</h2>
 
@@ -772,9 +773,14 @@ function TodaySlip({
   if (loading) return null;
   const names = (routines ?? []).map((r) => r.name.trim()).filter(Boolean);
   return (
-    <section data-tour="home-today">
-      <div aria-hidden="true" className="slipEdge top" />
-      <div className="bg-ivory px-5 lg:px-6">
+    // 크림 배경에 묻히지 않게 종이를 한 단계 밝히고, 지그재그 가장자리까지 따라가는 그림자를 준다.
+    <section data-tour="home-today" style={{ filter: "drop-shadow(var(--pg-shadow-lift))" }}>
+      <div
+        aria-hidden="true"
+        className="slipEdge top"
+        style={{ background: "var(--pg-paper-soft)" }}
+      />
+      <div className="px-5 lg:px-6" style={{ background: "var(--pg-paper-soft)" }}>
         <div className="flex items-baseline justify-between gap-3 py-3">
           <h2 className={`${LABEL} min-w-0 text-ink-soft`}>
             오늘 적은 기록 <b className="text-primary">{records.length}</b>건
@@ -848,7 +854,11 @@ function TodaySlip({
           )}
         </div>
       </div>
-      <div aria-hidden="true" className="slipEdge bottom" />
+      <div
+        aria-hidden="true"
+        className="slipEdge bottom"
+        style={{ background: "var(--pg-paper-soft)" }}
+      />
     </section>
   );
 }
@@ -983,7 +993,7 @@ function UnseenChildren({
                   {/* 아이 쪽지는 작아서 본문 테이프(w-20)가 쪽지보다 넓다. 여기만 좁게 붙인다. */}
                   <span
                     aria-hidden="true"
-                    className="pointer-events-none absolute -top-2 left-1/2 h-4 w-11 -translate-x-1/2 -rotate-3 border-x border-white/60 bg-tape"
+                    className="pointer-events-none absolute -top-2 left-1/2 h-4 w-11 -translate-x-1/2 -rotate-3 border-x border-white/60 bg-tape shadow-[var(--pg-shadow-tape)]"
                   />
                   <span className="block font-display text-[22px] font-bold leading-none text-ink">
                     {child.name}
@@ -1086,8 +1096,12 @@ function LastWeekNote({ look }: { look: LastWeek }) {
 function TornNote({ tone, tape, children }: { tone: string; tape: string; children: ReactNode }) {
   return (
     <section className="relative min-w-0 pt-3">
-      <Tape className={tape} />
-      <div className={`tornPaper px-5 pb-8 pt-4 ${tone}`}>{children}</div>
+      {/* 위 여백(pt-3)만큼 내려 반은 종이에 걸치게 */}
+      <Tape className={`!top-0 ${tape}`} />
+      {/* 그림자는 감싼 상자에 준다 — 찢긴 밑을 오려 낸 종이(mask)에 직접 주면 그림자까지 잘린다. */}
+      <div style={{ filter: "drop-shadow(var(--pg-shadow-lift))" }}>
+        <div className={`tornPaper px-5 pb-8 pt-4 ${tone}`}>{children}</div>
+      </div>
     </section>
   );
 }
@@ -1104,7 +1118,7 @@ function Tape({ className = "left-1/2 -translate-x-1/2 -rotate-3" }: { className
   return (
     <span
       aria-hidden="true"
-      className={`pointer-events-none absolute -top-3 z-[1] h-6 w-20 border-x border-white/60 bg-tape shadow-[0_1px_2px_rgba(106,96,80,.09)] ${className}`}
+      className={`pointer-events-none absolute -top-3 z-[1] h-6 w-20 border-x border-white/60 bg-tape shadow-[var(--pg-shadow-tape)] ${className}`}
     />
   );
 }

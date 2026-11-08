@@ -318,7 +318,7 @@ export default function PlayPickBoard({
                 >
                   <span
                     aria-hidden="true"
-                    className="pointer-events-none absolute -top-2 left-1/2 h-4 w-11 -translate-x-1/2 -rotate-3 border-x border-white/60 bg-tape"
+                    className="pointer-events-none absolute -top-2 left-1/2 h-4 w-11 -translate-x-1/2 -rotate-3 border-x border-white/60 bg-tape shadow-[var(--pg-shadow-tape)]"
                   />
                   <span className="font-display text-[22px] font-bold leading-none text-ink">
                     {n + 1}

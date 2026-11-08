@@ -251,7 +251,6 @@ export function EvaluationToday({
         data-done={left ? undefined : true}
         data-tour="eval-today"
       >
-        <span aria-hidden="true" className={ws.tape} />
         <p className={styles.todayEyebrow}>오늘 평가를 받는다면</p>
         <div className={styles.todaySay}>
           <Posty

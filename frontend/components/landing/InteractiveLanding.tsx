@@ -203,7 +203,7 @@ export default function InteractiveLanding() {
                 data-for="obs"
                 style={
                   {
-                    left: "6%",
+                    left: "0",
                     top: "70%",
                     "--c": "var(--note)",
                     animationDelay: "-2s",
@@ -259,8 +259,8 @@ export default function InteractiveLanding() {
                 data-for="journal"
                 style={
                   {
-                    right: "8%",
-                    top: "80%",
+                    right: "10%",
+                    top: "86%",
                     "--c": "var(--plum)",
                     animationDelay: "-5s",
                   } as CSSProperties
@@ -315,7 +315,7 @@ export default function InteractiveLanding() {
                 data-for="eval"
                 style={
                   {
-                    right: "2%",
+                    right: "0",
                     top: "64%",
                     "--c": "var(--clay)",
                     animationDelay: "-.5s",

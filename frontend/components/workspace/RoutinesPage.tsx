@@ -28,7 +28,7 @@ import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { today, validDate } from "@/lib/workspace/model";
 import { routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
 import { Posty } from "@/components/app/Posty";
-import { WorkspacePage, Empty, JournalTabs, Message, Notice, Tape, ws } from "./WorkspaceUI";
+import { WorkspacePage, Empty, JournalTabs, Message, Notice, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
 import RoutineCalendar, { koreanDay, monthRange } from "./RoutineCalendar";
 import RoutineClock from "./RoutineClock";
@@ -838,7 +838,6 @@ export default function RoutinesPage() {
         <div className={ws.grid}>
           <div className={ws.side}>
             <aside className={`${ws.card} ${ws.calendarCard}`} data-tour="routines-calendar">
-              <Tape />
               <RoutineCalendar
                 date={dateOk ? date : todayDate}
                 month={month}
