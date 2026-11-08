@@ -5,73 +5,223 @@
  * 있는지 그림으로 구분할 수 없다. 시안(design-reference)의 모티프를 그대로 옮겼다.
  */
 
-/** 반을 아직 안 골랐을 때 — 구름 요정과 새싹. */
-export function StartArt({ className }: { className?: string }) {
+/** 폰트나 외부 에셋 없이 그리는 보관함 전용 쪽지. 다른 화면의 삽화는 그대로 둔다. */
+function NoteDrawing({ tone }: { tone: "yellow" | "sage" }) {
+  const yellow = tone === "yellow";
+  const line = yellow ? "#c5a34d" : "#75ad92";
   return (
-    <svg className={className} viewBox="0 0 260 190" role="img" aria-label="웃는 구름 요정과 새싹">
-      <ellipse cx="130" cy="176" rx="92" ry="10" fill="#f4f7f1" />
+    <g>
+      <ellipse cx="111" cy="190" rx="54" ry="7" fill="#ece3d4" />
+      <g fill="none" stroke="#292820" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M72 119Q48 112 43 91m109 26q21-10 24-27M94 150q-10 19-9 35m39-34q12 15 13 34" />
+        <path d="m78 186 10 1m45 0 11-1" strokeWidth="10" />
+      </g>
+      <circle cx="42" cy="87" r="7" fill="#292820" />
+      <circle cx="177" cy="86" r="7" fill="#292820" />
       <path
-        d="M62 117c-17-4-22-28-6-40 7-25 32-34 48-19 11-28 55-28 65 1 31-8 51 14 41 39-3 17-16 26-35 26H83c-7 0-15-3-21-7"
-        fill="#dfeefd"
-      />
-      <circle cx="118" cy="91" r="3.5" fill="#688b90" />
-      <circle cx="143" cy="91" r="3.5" fill="#688b90" />
-      <path
-        d="M124 106q9 10 17 0"
-        fill="none"
-        stroke="#e5a8a0"
+        d="m66 57 83-5a3 3 0 0 1 3 3l5 82-20 21-65 2a3 3 0 0 1-3-3l-6-97a3 3 0 0 1 3-3Z"
+        fill={yellow ? "#fff0aa" : "#e2f0df"}
+        stroke={line}
         strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m137 158-1-20 21-1"
+        fill={yellow ? "#f7d77f" : "#badac5"}
+        stroke={line}
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      <path d="m67 73 15-1-1-15" fill="none" stroke={line} strokeWidth="2" opacity=".7" />
+      {yellow ? (
+        <g fill="#292820">
+          <circle cx="92" cy="97" r="3.3" />
+          <circle cx="122" cy="95" r="3.3" />
+        </g>
+      ) : (
+        <path
+          d="M87 98q5-8 10 0m19-1q5-8 10 0"
+          fill="none"
+          stroke="#292820"
+          strokeWidth="3.3"
+          strokeLinecap="round"
+        />
+      )}
+      <path
+        d="M101 111q10 9 18-2"
+        fill="none"
+        stroke="#292820"
+        strokeWidth="3.5"
         strokeLinecap="round"
       />
-      <circle cx="105" cy="99" r="7" fill="#f6c9c7" opacity=".7" />
-      <circle cx="156" cy="99" r="7" fill="#f6c9c7" opacity=".7" />
       <path
-        d="M64 133q-18 13-8 25m0-18q-21-16-25-6 4 15 25 18m0-9q13-23 25-16-2 16-25 24"
-        fill="#a4d4b7"
+        d="m38 47-12-3m20-13-8-10m23 5-2-13"
+        stroke="#f5bc37"
+        strokeWidth="5"
+        strokeLinecap="round"
       />
       <path
-        d="M192 155V98m0 39q-20-9-19-22 21 1 19 22m0-17q20-19 31-10-5 18-31 28"
-        fill="#8dc8a7"
-      />
-      <circle cx="72" cy="52" r="7" fill="#f9d5a6" />
-      <path
-        d="m71 32v-10m18 18 8-7m-44 7-8-5"
-        stroke="#f5c777"
+        d="M172 35v13m-6-6h12m10 12v10m-5-5h10"
+        stroke="#aa86d0"
         strokeWidth="4"
         strokeLinecap="round"
       />
-      <path d="m204 56 5 7 8 1-6 7 1 8-8-4-8 4 1-8-6-7 8-1z" fill="#f3c880" />
+    </g>
+  );
+}
+
+export function ArchiveNoteArt({
+  tone = "yellow",
+  className,
+}: {
+  tone?: "yellow" | "sage";
+  className?: string;
+}) {
+  return (
+    <svg
+      className={className}
+      data-art={`archive-note-${tone}`}
+      viewBox="0 0 220 210"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <NoteDrawing tone={tone} />
     </svg>
   );
 }
 
-/** 반은 골랐는데 문서 종류를 아직 안 골랐을 때 — 문서함과 새싹. */
-export function OverviewArt({ className }: { className?: string }) {
+/** 반을 아직 안 골랐을 때 — 노란 쪽지가 왼쪽 반 목록을 가리킨다 (팀 포즈 "가리키기"). */
+export function StartArt({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 260 190" role="img" aria-label="문서함과 작은 새싹">
-      <ellipse cx="128" cy="176" rx="85" ry="9" fill="#f5f8f2" />
-      <path d="M40 150c1-49 39-89 88-91 54-5 91 33 94 91" fill="#eff8f0" />
-      <rect x="95" y="123" width="80" height="43" rx="14" fill="#c7e5d0" />
-      <rect x="112" y="108" width="46" height="22" rx="10" fill="#add9bf" />
-      <circle cx="135" cy="88" r="40" fill="#f8ddbd" />
-      <path d="M95 74q8-47 49-41 39 3 30 43-33-29-79-2" fill="#9ccba8" />
-      <circle cx="120" cy="88" r="3.5" fill="#4b7771" />
-      <circle cx="151" cy="88" r="3.5" fill="#4b7771" />
+    <svg
+      className={className}
+      data-art="archive-note-point"
+      viewBox="0 0 220 210"
+      fill="none"
+      role="img"
+      aria-label="왼쪽 반 목록을 가리키는 쪽지"
+    >
+      <ellipse cx="112" cy="190" rx="56" ry="7" fill="#ece3d4" />
       <path
-        d="M128 102q7 10 16 0"
-        stroke="#db9d94"
+        d="M72 100Q52 98 36 90M150 108q27-5 24 13-4 12-25 3M97 150l-5 31m33-31 6 31"
+        stroke="#292820"
+        strokeWidth="7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <g fill="#292820">
+        <circle cx="30" cy="87" r="7" />
+        <circle cx="150" cy="124" r="6" />
+        <ellipse cx="88" cy="184" rx="10" ry="3.5" />
+        <ellipse cx="135" cy="184" rx="10" ry="3.5" />
+      </g>
+      <path
+        d="M73 50h74a3 3 0 0 1 3 3v77l-20 20H73a3 3 0 0 1-3-3V53a3 3 0 0 1 3-3Z"
+        fill="#f6e7aa"
+        stroke="#d5c681"
         strokeWidth="3"
-        fill="none"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M130 150v-20h20"
+        fill="#e9d88e"
+        stroke="#d5c681"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      <rect
+        x="96"
+        y="42"
+        width="30"
+        height="12"
+        fill="#fffaf0"
+        stroke="#e8dfcc"
+        transform="rotate(-4 111 48)"
+      />
+      <circle cx="94" cy="92" r="4" fill="#292820" />
+      <circle cx="120" cy="92" r="4" fill="#292820" />
+      <g fill="#f5b0bb" opacity=".6">
+        <ellipse cx="85" cy="105" rx="5.5" ry="3.5" />
+        <ellipse cx="129" cy="105" rx="5.5" ry="3.5" />
+      </g>
+      <path d="M96 107q11 10 22 0" stroke="#292820" strokeWidth="3.3" strokeLinecap="round" />
+      <path
+        d="M15 72l-6-6m3 22H4m11 15-6 6"
+        stroke="#f5bc37"
+        strokeWidth="4"
         strokeLinecap="round"
       />
-      <circle cx="112" cy="98" r="7" fill="#f3b6a7" opacity=".75" />
-      <circle cx="160" cy="98" r="7" fill="#f3b6a7" opacity=".75" />
-      <path d="M124 42q-5-33 11-25 10 13-11 25M127 38q23-24 33-8-8 16-33 8" fill="#75b790" />
       <path
-        d="M73 161V106m0 34q-21-12-20-23 22 1 20 23m0-11q20-19 30-8-8 16-30 22"
-        fill="#93cda7"
+        d="M182 38v12m-6-6h12M198 58v9m-4.5-4.5h9"
+        stroke="#aa86d0"
+        strokeWidth="4"
+        strokeLinecap="round"
       />
-      <path d="m211 65 5 8 9 1-6 6 2 10-10-4-8 4 1-10-6-6 9-1z" fill="#f4c984" />
+    </svg>
+  );
+}
+
+/** 문서 종류를 고르기 전 — 한 손은 허리, 다른 손과 한 발을 들어 신난 민트 쪽지. */
+export function OverviewArt({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      data-art="archive-note-sage"
+      viewBox="0 0 220 210"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <ellipse cx="111" cy="190" rx="54" ry="7" fill="#ece3d4" />
+      <g stroke="#292820" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M66 113q-27-5-24 13 4 12 25 3m87-14q26-4 35-33M94 155q-12 19-11 31m42-31 28 23 10-10" />
+        <ellipse cx="82" cy="188" rx="8" ry="2" fill="#292820" transform="rotate(6 82 188)" />
+        <ellipse cx="160" cy="172" rx="7" ry="2" fill="#292820" transform="rotate(-43 160 172)" />
+      </g>
+      <circle cx="189" cy="79" r="7" fill="#292820" />
+      <path
+        d="m66 57 83-5a3 3 0 0 1 3 3l5 82-20 21-65 2a3 3 0 0 1-3-3l-6-97a3 3 0 0 1 3-3Z"
+        fill="#e2f0df"
+        stroke="#75ad92"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m137 158-1-20 21-1"
+        fill="#badac5"
+        stroke="#75ad92"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      <path d="m67 73 15-1-1-15" stroke="#75ad92" strokeWidth="2" opacity=".7" />
+      <circle cx="68" cy="129" r="6" fill="#292820" />
+      <path
+        d="m88 98 9 5-9 5m38-12-9 6 9 3"
+        stroke="#292820"
+        strokeWidth="3.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M101 115q10 2 20-1 0 16-10 17-10 0-10-16Z"
+        fill="#f5b0bb"
+        stroke="#292820"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m192 50 1-14m10 19 8-10m-5 20 10-4"
+        stroke="#f5bc37"
+        strokeWidth="5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M42 32v13m-6-6h12M23 51v13m-6-6h12"
+        stroke="#aa86d0"
+        strokeWidth="4"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -139,31 +289,6 @@ export function CareArt({ className }: { className?: string }) {
       <path d="M203 139q8-8 16 0" fill="none" stroke="#edc898" strokeWidth="3" />
       <circle cx="213" cy="81" r="11" fill="#ffdb9e" />
       <path d="m211 56 2-7m17 24 8-5" stroke="#f4c47e" strokeWidth="4" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-/**
- * 왼쪽 반 사이드바 아래 풀 · 잎사귀 장식.
- *
- * 색은 베이지 셸 위에 얹히므로 **연한 세이지** 한 벌만 쓴다 (`--pg-sage` 계열).
- * 진한 민트를 쓰면 전역 사이드바와 다른 디자인으로 보인다. 흐리기는 CSS 가 맡는다.
- */
-export function SidebarDecor({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 270 400" fill="none" aria-hidden="true">
-      <path
-        d="M12 400C10 320 80 229 74 140M53 402c14-100 95-156 96-238"
-        stroke="#b7cdbd"
-        strokeWidth="6"
-        opacity=".5"
-      />
-      <ellipse cx="52" cy="292" rx="30" ry="72" fill="#cee2d5" transform="rotate(22 52 292)" />
-      <ellipse cx="88" cy="239" rx="24" ry="60" fill="#d6e6db" transform="rotate(-28 88 239)" />
-      <ellipse cx="162" cy="299" rx="25" ry="70" fill="#cee2d5" transform="rotate(35 162 299)" />
-      <ellipse cx="161" cy="186" rx="22" ry="45" fill="#dcebe1" transform="rotate(42 161 186)" />
-      <ellipse cx="97" cy="366" rx="40" ry="81" fill="#dcebe1" transform="rotate(-37 97 366)" />
-      <ellipse cx="231" cy="372" rx="26" ry="56" fill="#d6e6db" transform="rotate(38 231 372)" />
     </svg>
   );
 }

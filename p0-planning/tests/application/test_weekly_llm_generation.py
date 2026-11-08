@@ -131,7 +131,7 @@ def test_safety_teacher_text_row_cites_exactly_that_parent_cell():
 
 @pytest.mark.parametrize("mode", [LLM, MonthlyGenerationMode.RULE_ONLY])
 def test_a_placed_parent_safety_cell_is_copied_as_the_weeks_line(mode):
-    # 2026-10-22: a placed monthly cell already reads 「[교통안전] - 내용」, so the week takes it.
+    # 2026-10-22: a placed monthly cell already reads 「[교통안전] 내용」, so the week takes it.
     harness = WeeklyHarness()
     yearly = harness.confirm_yearly(harness.generate_yearly(frozenset({3, 4})).plan)
     parent = harness.confirm_monthly(
@@ -141,7 +141,8 @@ def test_a_placed_parent_safety_cell_is_copied_as_the_weeks_line(mode):
     assert parent_cell.safety.kind is SafetyKind.STATUTORY  # September week 2: traffic safety
 
     safety = harness.generate_weekly(parent, mode=mode).plan.cell("safety_education")
-    assert safety.value == parent_cell.value and safety.value.startswith("[교통안전] - ")
+    assert safety.value == parent_cell.value and safety.value.startswith("[교통안전] ")
+    assert not safety.value.startswith("[교통안전] - ")
     assert safety.generation.method is GenerationMethod.RULE_ONLY
     assert [(s.parent_item_id, s.snapshot_value) for s in safety.parent_snapshots] == [
         (parent_cell.item_id, parent_cell.value)

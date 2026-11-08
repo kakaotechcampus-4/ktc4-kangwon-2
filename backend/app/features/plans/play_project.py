@@ -1,6 +1,7 @@
 """놀이 프로젝트형 연간계획안을 생성하고 응답 형식으로 옮긴다 (api-spec §4)."""
 
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from typing import Annotated
 
@@ -15,8 +16,9 @@ from ssuksak.planning.application.generate_play_project_plan import (
     GeneratePlayProjectPlanCommand,
 )
 from ssuksak.planning.domain.play_project_plan import ROW_FIELDS, PlayProjectYearlyPlan
+from ssuksak.planning.domain.teacher_memo import TEACHER_MEMO_EVIDENCE
 from ssuksak.planning.planner.contracts import RawLlmResponse
-from ssuksak.planning.planner.play_project import PlayProjectRequest
+from ssuksak.planning.planner.play_project import PlayProjectRequest, remaining_memo_notices
 
 from app.features.plans.memo_privacy import with_masked_memo
 from app.features.plans.models import Plan
@@ -75,7 +77,11 @@ class MockPlayProjectProvider:
                     ],
                     # 요청 사항이 있으면 mock 은 첫 후보에 반영했다고 답한다(ADR-060).
                     **(
-                        {"memo_applied": list(request.memo_addresses[:1]), "memo_skipped": []}
+                        {
+                            "memo_applied": list(request.memo_addresses[:1]),
+                            "memo_skipped": [],
+                            "memo_reflected": [],
+                        }
                         if request.memo_addresses is not None
                         else {}
                     ),
@@ -94,12 +100,17 @@ def provider():
     return MockPlayProjectProvider() if is_mock() else monthly_llm_provider()
 
 
+class GenerationStopped(Exception):
+    """교사가 「생성 멈추기」로 요청을 끊었다 — 다음 구간을 부르지 않고 저장하지 않는다."""
+
+
 def generate(
     school_year: int,
     classroom_ref: str,
     target_ages: frozenset[int],
     memo: str = "",
     names: NameTable | None = None,
+    stopped: Callable[[], bool] = lambda: False,
 ):
     plan_id = UuidGenerator().new_plan_id()
     use_case = GeneratePlayProjectPlan(
@@ -110,9 +121,14 @@ def generate(
         id_generator=FixedPlanIdGenerator(plan_id),
     )
     results = []
+    reflected = []
     avoid_play_names = ()
     for period in PLAY_PROJECT_LAYOUT_V0_2.periods:
-        result = use_case.execute(
+        # 구간마다 Sol 한 번(약 40~60초) — 끊긴 요청이면 남은 구간을 부르지 않는다
+        # (하민 결정 2026-11-06).
+        if stopped():
+            raise GenerationStopped(period.key)
+        result, quotes = use_case.generate_period(
             GeneratePlayProjectPlanCommand(
                 school_year=school_year,
                 classroom_ref=classroom_ref,
@@ -125,14 +141,17 @@ def generate(
             )
         )
         results.append(result)
+        reflected.append((result.memo_notices, quotes))
         avoid_play_names += tuple(
             candidate.play_name.value for candidate in result.periods[0].candidates
         )
+    if stopped():  # 마지막 구간 중에 끊겼어도 저장하지 않는다 — 다시 만들 때 409 가 나지 않는다.
+        raise GenerationStopped("save")
     return replace(
         results[0],
         periods=tuple(result.periods[0] for result in results),
-        # 기간마다 같은 요청을 못 했다고 답할 수 있다 — 한 번만 남긴다.
-        memo_notices=tuple(dict.fromkeys(n for result in results for n in result.memo_notices)),
+        # 같은 요청을 여러 구간이 못 했다고 답하면 한 번만, 다른 구간이 반영했으면 뺀다.
+        memo_notices=remaining_memo_notices(memo, tuple(reflected)),
     )
 
 
@@ -181,7 +200,11 @@ def to_out(row: Plan, plan: PlayProjectYearlyPlan) -> PlayProjectPlanOut:
                 months=list(p.period.months),
                 candidates=[
                     PlayCandidateOut(
-                        row_key=c.row_key, **{name: _cell(getattr(c, name)) for name in ROW_FIELDS}
+                        row_key=c.row_key,
+                        # 표시용(Human Decision 2026-11-05): 선택 · 배치에 쓰지 않는다.
+                        memo_applied=bool(plan.teacher_memo)
+                        and TEACHER_MEMO_EVIDENCE in c.play_name.evidence,
+                        **{name: _cell(getattr(c, name)) for name in ROW_FIELDS},
                     )
                     for c in p.candidates
                 ],

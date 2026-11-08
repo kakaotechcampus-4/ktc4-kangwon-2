@@ -128,10 +128,6 @@ const SAFE: { icon: IconName; title: string; text: string; example?: boolean }[]
 
 const FAQ = [
   {
-    q: "같은 원 선생님과 함께 쓸 수 있나요?",
-    a: "네. 같은 원의 선생님에게 초대 코드를 받아 참여할 수 있어요. 초대 코드는 설정 화면에서 만들 수 있어요.",
-  },
-  {
     q: "원에서 쓰던 계획안 양식을 쓸 수 있나요?",
     a: "지원하는 양식 파일을 올리면 칸 구조에 맞춰 계획안을 만들 수 있어요. 파일을 올린 뒤 칸이 제대로 인식됐는지 확인해 주세요.",
   },
@@ -147,7 +143,7 @@ const FAQ = [
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-cream text-ink">
+    <div className="min-h-[calc(100*var(--app-vh))] text-ink">
       <header className="border-b border-line">
         <div className="mx-auto flex min-h-[76px] max-w-[1120px] items-center justify-between gap-4 px-5 sm:px-8">
           <Wordmark href="/welcome" label="쌤플 소개로" />

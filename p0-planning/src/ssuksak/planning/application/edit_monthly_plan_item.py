@@ -51,6 +51,10 @@ class EditMonthlyPlanItem:
             )
         found = plan.find_cell(item_id)
         candidate = plan.safety_candidate(item_id) or plan.drill_candidate(item_id)
+        if found is None and candidate is None and plan.table_cell(item_id) is not None:
+            updated = self._edit_table_cell(plan, item_id, command.new_value, actor_id)
+            self._plans.save(updated.plan_id, updated)
+            return updated
         if found is None and candidate is None:
             raise MonthlyApplicationError(
                 "monthly_cell_not_found", f"Monthly Cell not found: {item_id}"
@@ -116,3 +120,34 @@ class EditMonthlyPlanItem:
         updated = with_fresh_monthly_verification(updated, catalog)
         self._plans.save(updated.plan_id, updated)
         return updated
+
+    def _edit_table_cell(self, plan: MonthlyPlan, item_id, new_value: str, actor_id) -> MonthlyPlan:
+        """A teacher table cell (Human Decision 2026-11-05): MANUAL from its first write.
+
+        Nothing generated lives here, so the verification report is not rerun."""
+        index, cell = plan.table_cell(item_id)
+        if cell.value == new_value:
+            raise MonthlyApplicationError(
+                "monthly_cell_value_unchanged", "Teacher edit must change the Cell value"
+            )
+        try:
+            value_change = ValueChange(cell.value, new_value)
+        except InvalidDomainValueError as error:
+            raise MonthlyApplicationError(
+                "invalid_monthly_cell_value", "A blank Cell cannot become another blank value"
+            ) from error
+        event = AuditEvent(
+            AuditEventType.TEACHER_EDITED,
+            self._clock.now(),
+            plan.plan_id,
+            item_id=item_id,
+            actor_id=actor_id,
+            value_change=value_change,
+        )
+        updated = replace(
+            cell,
+            value=new_value,
+            generation=cell.generation or GenerationMethodDetail(GenerationMethod.MANUAL),
+            audit=cell.audit.append(event),
+        )
+        return plan.with_table(index, plan.tables[index].replace_cell(updated))

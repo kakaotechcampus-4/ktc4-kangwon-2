@@ -77,9 +77,9 @@ export const isRejectedSave = (error: unknown) => error instanceof ApiError && e
 export const getAnnualPlanAudit = (id: number, signal?: AbortSignal) =>
   apiRequest<{ items: AnnualAuditEvent[] }>("/api/plans/annual/" + id + "/audit", { signal });
 /**
- * 확정 전 연간계획안을 지운다. 반 하나에 연간은 하나라, 다시 만들려면 먼저 지워야 한다.
+ * 연간계획안을 지운다(확정본도, ADR-064). 반 하나에 연간은 하나라, 다시 만들려면 먼저 지워야 한다.
  *
- * 확정본은 409 `GATE_BLOCKED`, 월간이 딸려 있으면 409 `IN_USE` 다. 둘 다 서버 문구를 띄운다.
+ * 월간이 딸려 있으면 409 `IN_USE` 다.
  */
 export const deleteAnnualPlan = (id: number) =>
   apiRequest<void>("/api/plans/annual/" + id, { method: "DELETE" });
@@ -89,8 +89,8 @@ export const deleteAnnualPlan = (id: number) =>
  * **파일럿 시작 전에 끈다.** 서버 `ALLOW_TEST_RESET` 과 화면 `NEXT_PUBLIC_ALLOW_TEST_RESET`
  * 둘 다 기본이 꺼짐이다. 서버가 꺼져 있으면 이 경로는 404 다.
  *
- * 확정본은 지울 수 없어서(풀려면 `unconfirmAnnualPlan`) 시험할 때 막힌다.
- * 그 막다른 길을 열어 두는 것이고, 교사가 쓰는 `deleteAnnualPlan` 은 그대로 둔다.
+ * 딸린 월간이 있으면 `deleteAnnualPlan` 이 막아서 시험할 때 하나씩 지워야 한다.
+ * 그 길을 줄여 두는 것이고, 교사가 쓰는 `deleteAnnualPlan` 은 그대로 둔다.
  */
 export const testResetAnnualPlan = (id: number) =>
   apiRequest<void>("/api/plans/annual/" + id + "/test-reset", { method: "DELETE" });

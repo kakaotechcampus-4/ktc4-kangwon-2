@@ -39,7 +39,7 @@ import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { playSeason } from "@/components/plan-generator/playProjectPagination";
-import GenerationRing from "@/components/plan-ui/GenerationRing";
+import GenerationRing, { ringFinished, STOPPED_NOTE } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { BACK_BUTTON, BACK_ICON } from "@/components/plan-generator/AnnualFrame";
 import { Tape, useClasses } from "./WorkspaceUI";
@@ -168,6 +168,8 @@ export function MonthlyNewView(props: {
   /** 만들 수 없는 까닭(버튼 아래 한 줄). null 이면 만들 수 있다. */
   blocked: ReactNode;
   problem: string;
+  /** [생성 멈추기]로 돌아왔다. */
+  stopped?: boolean;
   /** 요청 사항(ADR-060). 없으면 칸을 그리지 않는다(미리보기). */
   memo?: string;
   memoProblem?: string | null;
@@ -179,10 +181,10 @@ export function MonthlyNewView(props: {
   const { play, month, plans, inherit, focus, blocked, template, extras = [] } = props;
   const look = play ? LOOK.play : LOOK.theme;
   return (
-    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)]">
+    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)]">
       <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <Tape />
-        <section className="flex min-h-0 flex-col gap-5 overflow-y-auto border border-line bg-paper rounded-md p-7">
+        <section className="flex min-h-0 flex-col gap-5 overflow-y-auto bg-paper shadow-pg p-7">
           {/* 왼쪽 판 맨 위: 제목 앞 「←」 돌아가기(편집 화면과 같은 버튼) · 방식. */}
           <div className="flex shrink-0 flex-col">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -194,10 +196,12 @@ export function MonthlyNewView(props: {
               >
                 {BACK_ICON}
               </Link>
-              <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+              <h1 className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
                 월간계획안 만들기
               </h1>
-              <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
+              <span
+                className={`-rotate-2 border border-black/10 px-3 py-0.5 font-display text-[18px] font-bold shadow-pg-card ${look.chip}`}
+              >
                 {look.name}
               </span>
             </div>
@@ -266,7 +270,7 @@ export function MonthlyNewView(props: {
             )}
             {inherit?.kind === "play" && (
               <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0">
-                <legend className="mb-1.5 p-0 text-[13px] text-[#5c5243]">
+                <legend className="sr-only">
                   이번 달에 더 집중할 놀이를 골라요 (안 골라도 돼요)
                 </legend>
                 {inherit.plays.map((p) => {
@@ -299,13 +303,6 @@ export function MonthlyNewView(props: {
               <legend className="mb-2.5 p-0 font-display text-[24px] font-bold leading-tight text-ink">
                 어떤 칸을 넣을까요?
               </legend>
-              <p className="m-0 text-[13px] text-[#5c5243]">
-                꼭 들어가요 ·{" "}
-                {template.sections
-                  .filter((s) => s.selection === "REQUIRED")
-                  .map((s) => sectionName(s.section_key, s.label))
-                  .join(" · ")}
-              </p>
               <div className="grid gap-1.5 sm:grid-cols-2">
                 {template.sections
                   .filter((s) => s.selection === "OPTIONAL")
@@ -329,7 +326,7 @@ export function MonthlyNewView(props: {
                           className="h-[18px] w-[18px] accent-[#7053a0]"
                         />
                         {sectionName(s.section_key, s.label)}
-                        <span className="ml-auto text-[12px] font-normal text-[#8a8178]">
+                        <span className="ml-auto text-[12px] font-normal text-ink-soft">
                           {s.repeat_by === "WEEK" ? "주마다" : "한 달에 한 번"}
                         </span>
                       </label>
@@ -349,6 +346,7 @@ export function MonthlyNewView(props: {
             />
           )}
 
+          {props.stopped && STOPPED_NOTE}
           {props.problem && (
             <p
               role="alert"
@@ -358,12 +356,14 @@ export function MonthlyNewView(props: {
             </p>
           )}
 
-          <div className="mt-auto flex shrink-0 flex-col gap-2">
+          {/* 만들기 단추는 화면 아래에 붙여 둔다 — 낮은 화면(1440×900)에서도 스크롤 없이 보이게.
+              카드 아래 여백(p-7)까지 덮고 위를 흐리게 해, 뒤에 지나가는 글이 단추 아래로 비치지 않는다. */}
+          <div className="sticky -bottom-7 z-10 -mb-7 mt-auto flex shrink-0 flex-col gap-2 bg-paper pb-7 pt-3 before:pointer-events-none before:absolute before:inset-x-0 before:-top-6 before:h-6 before:bg-gradient-to-b before:from-transparent before:to-paper">
             <button
               type="button"
               onClick={props.onCreate}
               disabled={!!blocked}
-              className="min-h-[54px] rounded-md bg-primary-tint-line hover:bg-primary text-[17px] font-bold text-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-50 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+              className="min-h-[54px] rounded-md bg-primary hover:bg-primary-hover text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
             >
               {plans[month] ? `${month}월 월간계획안 열기` : `${month}월 월간계획안 만들기`}
             </button>
@@ -380,7 +380,7 @@ export function MonthlyNewView(props: {
             <img
               src={`/plan-formats/${look.image}.png`}
               alt={`${look.form} 예시`}
-              className="absolute inset-x-0 top-0 mx-auto max-h-full max-w-full rounded-md border border-[#e3ddd2] bg-white object-contain object-top shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]"
+              className="absolute inset-x-0 top-0 mx-auto max-h-full max-w-full rounded-md border border-[#e3ddd2] bg-white object-contain object-top shadow-[0_1px_2px_rgba(43,40,38,0.1),0_14px_32px_-14px_rgba(43,40,38,0.35)]"
             />
           </div>
         </section>
@@ -432,16 +432,25 @@ export default function MonthlyNew({
 }) {
   const router = useRouter();
   const [problem, setProblem] = useState("");
+  const [stopped, setStopped] = useState(false);
   const [memo, setMemo] = useState("");
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
   const classes = useClasses(setProblem);
   const [chosen] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
+  // 계획안 첫 화면 단추로 들어왔으면(`?from=plans`) 「←」는 첫 화면으로 돌아간다.
+  const [fromPlans] = useClientState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("from") === "plans",
+    false,
+  );
   const local = classes.find((c) => c.id === chosen) ?? classes[0];
   const [data, setData] = useState<Loaded | null>(null);
   const [month, setMonth] = useState<number | null>(null);
   const [focus, setFocus] = useState<string[]>([]);
   const [extras, setExtras] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
   const controller = useRef<AbortController | null>(null);
   useCompactShell(busy);
   useEffect(() => () => controller.current?.abort(), []);
@@ -517,7 +526,9 @@ export default function MonthlyNew({
     const ctl = new AbortController();
     controller.current = ctl;
     setBusy(true);
+    setDone(false);
     setProblem("");
+    setStopped(false);
     setMemoProblem(null);
     const note = memo.trim() ? { memo: memo.trim() } : {};
     try {
@@ -532,7 +543,10 @@ export default function MonthlyNew({
           },
           ctl.signal,
         );
-        if (!ctl.signal.aborted) router.push(`/plans/monthly/play/${plan.id}`);
+        if (ctl.signal.aborted) return;
+        setDone(true);
+        await ringFinished();
+        router.push(`/plans/monthly/play/${plan.id}`);
       } else if (template && centerId !== null) {
         let ref = sameColumns(current, template, extras) ? current!.profile_ref : null;
         if (!ref) {
@@ -554,7 +568,10 @@ export default function MonthlyNew({
           { class_id: classId, month, profile_ref: ref, ...note },
           ctl.signal,
         );
-        if (!ctl.signal.aborted) onOpen({ id: plan.id, classId, month });
+        if (ctl.signal.aborted) return;
+        setDone(true);
+        await ringFinished();
+        onOpen({ id: plan.id, classId, month });
       }
     } catch (e) {
       // 취소했거나 새 요청이 시작됐으면 이 요청은 화면을 바꾸지 않는다(새 요청의 busy 도 풀지 않는다).
@@ -577,15 +594,26 @@ export default function MonthlyNew({
       setBusy(false);
       const memoMessage = memoError(e);
       if (memoMessage) setMemoProblem(memoMessage);
-      else setProblem(e instanceof Error ? e.message : "월간계획안을 만들지 못했어요.");
+      // 서버가 보낸 안내(ApiError)만 그대로 — 연결 끊김 같은 브라우저 오류 원문(영어)은 보이지 않는다.
+      else
+        setProblem(
+          e instanceof ApiError
+            ? e.message
+            : "월간계획안을 만들지 못했어요. 잠시 뒤 다시 해 주세요.",
+        );
     }
   }
 
   if (busy)
     return (
-      <div className="flex min-h-[calc(100vh-60px)]">
+      <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
+          // 놀이 중심형은 활동 후보가 8개씩으로 늘어(ADR-065) 예전 기억을 버리려고 kind 를 바꿨다.
+          kind={play ? "monthly:PLAY_PROJECT:v0.3" : "monthly:MONTHLY_THEME"}
+          // Sol 실측: 주제형 28초(2026-10-31) · 38초, 놀이 중심형(후보 8개씩) 55.5 · 51.6 · 55.0초(2026-11-06).
+          expect={play ? 55 : 35}
           title={`${month}월 월간계획안을 만들고 있어요`}
+          done={done}
           steps={
             play
               ? LOOK.play.steps(month, inherit?.kind === "play" ? inherit.season : "")
@@ -594,6 +622,7 @@ export default function MonthlyNew({
           onCancel={() => {
             controller.current?.abort();
             setBusy(false);
+            setStopped(true);
           }}
         />
       </div>
@@ -603,7 +632,7 @@ export default function MonthlyNew({
     <MonthlyNewView
       play={play}
       back={
-        annual
+        annual && !fromPlans
           ? { href: `/plans/annual/${annual.id}`, label: `${annual.school_year} 연간계획안` }
           : { href: "/plans", label: "계획안" }
       }
@@ -616,6 +645,7 @@ export default function MonthlyNew({
       onExtras={setExtras}
       blocked={blocked}
       problem={problem}
+      stopped={stopped}
       memo={memo}
       memoProblem={memoProblem}
       onMemo={setMemo}

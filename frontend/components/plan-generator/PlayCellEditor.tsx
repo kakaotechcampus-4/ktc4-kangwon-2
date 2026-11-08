@@ -98,7 +98,7 @@ export default function PlayCellEditor({
       {/* 글자 수는 입력창 오른쪽 위 — 요청 사항 칸과 같은 자리(이름표를 숨겨도 오른쪽). */}
       <div className="flex items-baseline justify-between gap-2">
         <label htmlFor={id}>{label}</label>
-        <p id={`${id}-count`} className="m-0 ml-auto text-[13px] font-normal text-[#8a8178]">
+        <p id={`${id}-count`} className="m-0 ml-auto text-[13px] font-normal text-ink-soft">
           {length}/{maxLength}자{over ? ` · ${overText}` : ""}
         </p>
       </div>

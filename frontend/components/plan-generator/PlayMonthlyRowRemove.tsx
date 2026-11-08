@@ -27,10 +27,13 @@ export default function PlayMonthlyRowRemove({
         type="button"
         data-act="remove"
         aria-label={`${section} 행 빼기: ${activity.name.value}`}
-        className="min-h-[44px] rounded-md border border-[#ddd6ca] bg-white text-[15px] text-[#5c5243] disabled:opacity-40"
+        className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-md border-2 border-[#ecc8c2] bg-[#fdf3f1] text-[15px] font-bold text-[#b3261e] hover:bg-[#fbe4df] disabled:opacity-40"
         disabled={disabled}
         onClick={() => setAsking(true)}
       >
+        <span aria-hidden="true" className="text-[18px] leading-none">
+          −
+        </span>
         이 활동 빼기
       </button>
       {isLastInSection && (

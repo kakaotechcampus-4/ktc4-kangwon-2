@@ -44,19 +44,45 @@ export const putCenterSettings = (
     db.centerSettings[id] = next;
     return next;
   });
+/**
+ * 목업 어린이집 목록 (§1 「어린이집 찾기」). 어느 지역을 골라도 같은 일곱 곳이 나온다 —
+ * 결과 상자에 다 안 들어가 스크롤되는 모습까지 로컬에서 본다.
+ * 진짜 목록은 서버 사본(backend/resources/daycares)이다 — 여기 이름은 지어낸 것이다.
+ */
+export const mockDaycares = (sido: string, sigungu: string) =>
+  [
+    "햇살어린이집",
+    "달님어린이집",
+    "새싹어린이집",
+    "별빛어린이집",
+    "무지개어린이집",
+    "푸른숲어린이집",
+    "꿈나무어린이집",
+  ].map((name, i) => ({
+    key: [sido, sigungu, name, `${sido} ${sigungu} 목업로 ${i + 1}`].join("|"),
+    name,
+    kind: i === 0 ? "국공립" : "민간",
+    status: "정상",
+    address: `${sido} ${sigungu} 목업로 ${i + 1}`,
+  }));
+/** 원을 만든다. 목록에서 고른 원이면 이름 · 지역을 목록 값으로 둔다 (ADR-068). */
 export const addCenter = (data: CenterInput) =>
   commit((db) => {
-    const c = { ...data, id: db.next++, created_at: new Date().toISOString() };
+    const [sido, sigungu, name, address] = data.registry_key?.split("|") ?? [];
+    const c = {
+      ...data,
+      // 화면은 새 원이면 원장 이름을 늘 보낸다 — handlers 가 빈 값을 400 으로 막는다.
+      director_name: data.director_name ?? "",
+      ...(data.registry_key ? { name, region_sido: sido, region_sigungu: sigungu } : {}),
+      registry_key: data.registry_key ?? null,
+      kind: data.registry_key ? "민간" : null,
+      address: data.registry_key ? address : null,
+      teacher_count: 1,
+      id: db.next++,
+      created_at: new Date().toISOString(),
+    };
     db.centers.push(c);
     return c;
-  });
-/** 원명 · 원장 이름 · 지역을 고친다 (§1). 보낸 칸만 바뀐다. */
-export const patchCenter = (id: number, patch: Partial<CenterInput>) =>
-  commit((db) => {
-    const found = db.centers.find((c) => c.id === id);
-    if (!found) return null;
-    Object.assign(found, patch);
-    return found;
   });
 export const putConfig = (id: number, data: PlanConfig) =>
   commit((db) => {

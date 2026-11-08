@@ -41,7 +41,12 @@ class _FakeSession:
         if model is Class:
             # center_id 를 채운다. 라우터가 「내 원인가」를 보므로(shared/auth/ownership.py)
             # 비워 두면 전부 404 가 된다.
-            return Class(center_id=1) if self.class_exists else None
+            # 동의를 확인한 반이다 — 동의 전 반에는 아이를 넣지 못한다(§2-1).
+            return (
+                Class(center_id=1, consent_confirmed_at=datetime.now(UTC))
+                if self.class_exists
+                else None
+            )
         return next((c for c in self.children if c.id == pk), None)
 
     def scalars(self, statement):

@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   copyPlayMonthlyDrill,
   editPlayMonthlyCell,
+  orderPlayMonthlyActivities,
+  orderPlayMonthlyHabits,
+  pickPlayMonthlyActivity,
   placePlayMonthlySafety,
   removePlayMonthlyActivity,
   removePlayMonthlyCell,
@@ -13,6 +16,7 @@ import {
 } from "@/lib/api/playMonthly";
 import { isRejectedSave, isSaveConflict } from "@/lib/api/plans";
 import type { PlayMonthlyPlan, PlayMonthlyTimetableSize } from "@/lib/api/types";
+import { drillText } from "@/lib/monthly/section-labels";
 import { boundaries } from "@/lib/plan-generator/playMonthlyTimetable";
 import {
   EMPTY_HISTORY,
@@ -27,6 +31,9 @@ import {
   remapHistory,
   removal,
   safetyOf,
+  withHabits,
+  withOrder,
+  withPick,
   withSafety,
   withTimetableRatio,
   withTimetableSize,
@@ -36,6 +43,7 @@ import {
   type RemovedCell,
   type IdleResult,
   type Job,
+  type PlaySection,
   type SaveStatus,
   type Step,
 } from "@/lib/plan-generator/playMonthlyQueue";
@@ -46,6 +54,12 @@ export type PlayMonthlySave = {
   editCell(itemId: string, value: string): boolean;
   placeSafety(weekId: string, candidateItemId: string | null): void;
   removeActivity(itemId: string): void;
+  /** 한 목록 안의 행 순서(행 `activity_id` 전부, 새 순서). 되돌리기 목록에 쌓인다. */
+  orderActivities(section: PlaySection, itemIds: string[]): void;
+  /** AI 후보를 그 목록 끝에 넣는다. 빼기는 `removeActivity` — 둘 다 되돌리기 목록에 쌓인다. */
+  pickActivity(itemId: string): void;
+  /** 기본생활습관 칸 id 전부, 새 주 순서. 되돌리기 목록에 쌓인다. */
+  orderHabits(itemIds: string[]): void;
   copyDrill(itemId: string): boolean;
   /** 특별활동 시간표. 나누기는 새 id 를 서버가 정해 응답 뒤에 화면이 바뀐다 — 그동안 `structuring`. */
   splitCell(itemId: string, axis: "VERTICAL" | "HORIZONTAL"): boolean;
@@ -76,6 +90,14 @@ function call(id: number, job: Job, revision: number): Promise<PlayMonthlyPlan> 
       return removePlayMonthlyActivity(id, job.itemId, revision);
     case "copy":
       return copyPlayMonthlyDrill(id, job.itemId, revision);
+    case "order":
+      return orderPlayMonthlyActivities(id, job.section, job.itemIds, revision);
+    case "pick":
+      return pickPlayMonthlyActivity(id, job.itemId, revision);
+    case "repick":
+      return repick(id, job, revision);
+    case "habits":
+      return orderPlayMonthlyHabits(id, job.itemIds, revision);
     case "split":
       return splitPlayMonthlyCell(id, job.itemId, job.axis, revision);
     case "removeCell":
@@ -86,6 +108,16 @@ function call(id: number, job: Job, revision: number): Promise<PlayMonthlyPlan> 
       return resizePlayMonthlyTable(id, job.size, revision);
     case "restore":
       return restore(id, job.step, revision);
+  }
+}
+/** 뺀 AI 후보를 다시 넣고 원래 자리로 옮긴다. 넣은 뒤 멈추면 다시 보낼 수 없어(이미 넣었다) 새로 불러온다. */
+async function repick(id: number, job: Extract<Job, { kind: "repick" }>, revision: number) {
+  const plan = await pickPlayMonthlyActivity(id, job.itemId, revision);
+  if (plan[job.section].map((r) => r.activity_id).join() === job.itemIds.join()) return plan;
+  try {
+    return await orderPlayMonthlyActivities(id, job.section, job.itemIds, plan.revision);
+  } catch {
+    throw MIDWAY;
   }
 }
 /** 되살리기가 나누기 뒤에 멈췄다 — 다시 보내면 또 나뉘므로 충돌처럼 새로 불러온다. */
@@ -238,7 +270,7 @@ export function usePlayMonthlySave(
   function submit(job: Job, next: PlayMonthlyPlan | null, step: Step | null) {
     if (!queue.enqueue(job)) return false;
     if (next) apply(next);
-    // 행 삭제 · 훈련 복사는 되돌리기 목록에 없다 — 사이에 끼면 옛 걸음이 거짓이 되므로 목록을 비운다.
+    // 교사가 더한 행 삭제(옛 계획안)는 되돌리기 목록에 없다 — 사이에 끼면 옛 걸음이 거짓이 되므로 목록을 비운다.
     setHistory(step ? pushStep(past.current, step) : EMPTY_HISTORY);
     return true;
   }
@@ -272,6 +304,31 @@ export function usePlayMonthlySave(
         return [
           { kind: "safety", weekId: step.weekId, candidateItemId: step[target] },
           withSafety(v, step.weekId, step[target]),
+        ];
+      case "order":
+        return [
+          { kind: "order", section: step.section, itemIds: step[target] },
+          withOrder(v, step.section, step[target]),
+        ];
+      case "habits":
+        return [{ kind: "habits", itemIds: step[target] }, withHabits(v, step[target])];
+      case "activity": {
+        const ids = step[target];
+        if (ids.includes(step.itemId))
+          return [
+            { kind: "repick", itemId: step.itemId, section: step.section, itemIds: ids },
+            withOrder(withPick(v, step.itemId), step.section, ids),
+          ];
+        const row = v[step.section].find((r) => r.activity_id === step.itemId);
+        const cellIds = row ? [row.name.item_id, row.description.item_id] : [];
+        return [{ kind: "remove", itemId: step.itemId, cellIds }, withoutActivity(v, step.itemId)];
+      }
+      case "copy":
+        return [
+          undo
+            ? { kind: "cell", itemId: step.target, value: step.before }
+            : { kind: "copy", itemId: step.itemId },
+          overlayCells(v, { [step.target]: step[target] }),
         ];
       case "ratio":
         return [
@@ -327,29 +384,79 @@ export function usePlayMonthlySave(
       });
     },
     removeActivity: (itemId) => {
-      const row = [...view.current.together, ...view.current.free_play].find(
-        (r) => r.activity_id === itemId,
-      );
+      const v = view.current;
+      const section: PlaySection = v.together.some((r) => r.activity_id === itemId)
+        ? "together"
+        : "free_play";
+      const row = v[section].find((r) => r.activity_id === itemId);
       if (!row) return;
+      const before = v[section].map((r) => r.activity_id);
+      // AI 후보는 후보로 돌아가 되돌릴 수 있다. 교사가 더한 행(옛 계획안)은 보관함으로 가 되돌릴 수 없다.
+      const step: Step | null = (v.activity_candidates ?? []).includes(itemId)
+        ? {
+            kind: "activity",
+            itemId,
+            section,
+            before,
+            after: before.filter((id) => id !== itemId),
+          }
+        : null;
       submit(
         {
           kind: "remove",
           itemId,
           cellIds: [row.name.item_id, row.description.item_id],
         },
-        withoutActivity(view.current, itemId),
-        null,
+        withoutActivity(v, itemId),
+        step,
       );
+    },
+    orderActivities: (section, itemIds) => {
+      const before = view.current[section].map((row) => row.activity_id);
+      if (before.join() === itemIds.join()) return;
+      submit({ kind: "order", section, itemIds }, withOrder(view.current, section, itemIds), {
+        kind: "order",
+        section,
+        before,
+        after: itemIds,
+      });
+    },
+    pickActivity: (itemId) => {
+      const found = view.current.activity_pool?.find((r) => r.activity_id === itemId);
+      if (!found) return;
+      const before = view.current[found.section].map((r) => r.activity_id);
+      submit({ kind: "pick", itemId }, withPick(view.current, itemId), {
+        kind: "activity",
+        itemId,
+        section: found.section,
+        before,
+        after: [...before, itemId],
+      });
+    },
+    orderHabits: (itemIds) => {
+      const before = view.current.habits.map((h) => h.cell.item_id);
+      if (before.join() === itemIds.join()) return;
+      submit({ kind: "habits", itemIds }, withHabits(view.current, itemIds), {
+        kind: "habits",
+        before,
+        after: itemIds,
+      });
     },
     // 복사는 붙여 넣을 글을 알고 있으니 화면에 바로 입힌다(열린 입력창도 이 글로 다시 열린다).
     copyDrill: (itemId) => {
       const target = drillTarget(view.current);
-      const text = view.current.drill_candidates.find((d) => d.cell.item_id === itemId)?.cell.value;
-      const next =
-        target !== undefined && text !== undefined
-          ? overlayCells(view.current, { [target]: text })
-          : null;
-      return submit({ kind: "copy", itemId }, next, null);
+      const drill = view.current.drill_candidates.find((d) => d.cell.item_id === itemId);
+      const text = drill && drillText(drill);
+      if (target === undefined || text === undefined)
+        return submit({ kind: "copy", itemId }, null, null);
+      const before = cellValue(view.current, target) ?? "";
+      return submit({ kind: "copy", itemId }, overlayCells(view.current, { [target]: text }), {
+        kind: "copy",
+        itemId,
+        target,
+        before,
+        after: text,
+      });
     },
     splitCell: (itemId, axis) => later({ kind: "split", itemId, axis }),
     removeCell: (itemId) => {

@@ -33,7 +33,10 @@ export function PlanMemoField(props: {
   error?: string | null;
 }) {
   const { value, onChange } = props;
+  // 같은 쪽지는 한 번만 넣는다 — 이미 글에 있으면 버튼을 잠그고, 지우면 다시 넣을 수 있다.
+  const used = (chip: string) => value.includes(chip);
   const add = (chip: string) => {
+    if (used(chip)) return;
     const next = value.trim() ? `${value.trim()}, ${chip}` : chip;
     if (next.length <= MEMO_MAX) onChange(next);
   };
@@ -46,7 +49,7 @@ export function PlanMemoField(props: {
         >
           요청 사항
         </label>
-        <span className="text-[13px] text-[#8a8178]">
+        <span className="text-[13px] text-ink-soft">
           {value.length}/{MEMO_MAX}자
         </span>
       </div>
@@ -58,7 +61,7 @@ export function PlanMemoField(props: {
         placeholder={props.placeholder}
         aria-invalid={!!props.error}
         aria-describedby={props.error ? "plan-memo-error" : undefined}
-        className="min-h-[96px] resize-none rounded-md border border-[#ddd6ca] px-4 py-3 text-[15px] placeholder:text-[#8a8178]"
+        className="min-h-[96px] resize-none rounded-md border border-[#ddd6ca] px-4 py-3 text-[15px] placeholder:text-ink-hint"
       />
       {props.error && (
         <p id="plan-memo-error" role="alert" className="m-0 text-sm text-[#8a2f2f]">
@@ -71,9 +74,10 @@ export function PlanMemoField(props: {
             key={c}
             type="button"
             onClick={() => add(c)}
-            className="min-h-[34px] rounded-full border border-[#ddd6ca] bg-white px-3 text-sm text-[#5c5243]"
+            disabled={used(c)}
+            className="min-h-[34px] rounded-full border border-[#ddd6ca] bg-white px-3 text-sm text-[#5c5243] disabled:cursor-default disabled:border-transparent disabled:bg-[#efeae1] disabled:text-ink-hint"
           >
-            + {c}
+            {used(c) ? "✓" : "+"} {c}
           </button>
         ))}
       </div>
@@ -94,7 +98,8 @@ export function PlanMemoNote({ plan }: { plan: PlanMemo }) {
       <summary className="cursor-pointer font-bold text-[#5e4b96]">
         요청 사항 있음{notices.length > 0 && ` · 반영 못한 요청 ${notices.length}`}
       </summary>
-      <div className="absolute right-0 z-20 mt-2 flex w-[min(360px,80vw)] flex-col gap-2 rounded-md border border-[#e8e2d8] bg-white px-4 py-3 text-left text-sm font-normal text-[#2b2826] shadow-[0_8px_24px_-12px_rgba(43,40,38,0.35)]">
+      {/* 제목 아래 상태 줄(화면 왼쪽)에 놓인다 — 왼쪽 끝에 맞춰 오른쪽으로 펼친다. 오른쪽 끝에 맞추면 화면 왼쪽 밖으로 잘린다. */}
+      <div className="absolute left-0 z-20 mt-2 flex w-[min(360px,calc(80*var(--app-vw)))] flex-col gap-2 rounded-md border border-[#e8e2d8] bg-white px-4 py-3 text-left text-sm font-normal text-[#2b2826] shadow-[0_8px_24px_-12px_rgba(43,40,38,0.35)]">
         <p className="m-0 whitespace-pre-wrap">{memo}</p>
         {notices.length > 0 && (
           <div className="flex flex-col gap-1 border-t border-[#efe9df] pt-2">

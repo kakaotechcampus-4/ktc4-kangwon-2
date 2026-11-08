@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ... import timing
 from dataclasses import replace
 
 from ..domain.activity_reference import ActivityCatalog, OUTDOOR_PLAY_SLOT
@@ -21,7 +22,7 @@ from ..domain.monthly_template_profile import (
     INSTITUTION_INPUT_SECTION_KEYS,
     TEMPLATE_SPECIFIC_PROFILE_SECTION_KEYS,
 )
-from ..domain.monthly_template_snapshot import TemplateSnapshot
+from ..domain.monthly_template_snapshot import ACTIVITY_DETAIL_SECTION_KEYS, TemplateSnapshot
 from ..domain.plan import PlanStatus
 from ..domain.provenance import (
     AuditEvent,
@@ -36,7 +37,8 @@ from ..domain.yearly_plan import YearlyPlan
 from ..evidence.classification import CLASS_SCOPED_SECTION_KEYS, grounding_class_for
 from ..planner.teacher_memo import cell_address, with_memo_evidence
 from ..domain.safety_placement import SafetyKind, SafetyWeek
-from ..domain.teacher_memo import TEACHER_MEMO_EVIDENCE
+from ..domain.teacher_memo import TEACHER_MEMO_EVIDENCE, without_memo_evidence
+from ..venue_policy import authorized_venues, parent_teacher_venues
 from ..rules.safety_requests import SAFETY_REQUEST_RULE_ID, SAFETY_REQUEST_RULE_VERSION
 from ..planner.contracts import DRILL_CANDIDATE_PREFIX, SAFETY_CANDIDATE_PREFIX, MonthlyPlanningOutcome
 from ..planner.service import MonthlyPlanner
@@ -137,6 +139,7 @@ class GenerateMonthlyPlan:
     def execute(
         self, command: GenerateMonthlyPlanCommand
     ) -> GenerateMonthlyPlanResult:
+        timing.phase("select")
         parent = self._parents.get(command.parent_yearly_plan_id)
         if parent is None:
             raise MonthlyApplicationError(
@@ -172,7 +175,8 @@ class GenerateMonthlyPlan:
         # before any LLM call, Plan, Audit or save. Callers that already checked
         # (backend Profile creation) are early rejections, not a substitute.
         require_approved_template(self._templates, profile.base_template_ref)
-        template_snapshot = TemplateSnapshot.from_profile(profile)
+        # ADR-066: the hidden activity detail Sections join the Plan's own Snapshot.
+        template_snapshot = TemplateSnapshot.from_profile(profile).with_activity_details()
         input_sections = sorted(
             INSTITUTION_INPUT_SECTION_KEYS
             & {section.section_key for section in template_snapshot.sections}
@@ -230,6 +234,14 @@ class GenerateMonthlyPlan:
         resolved_sections = resolve_snapshot_sections(template_snapshot)
         week_periods = canonical_week_periods(command.target_month)
         theme = derive_monthly_theme(parent, command.target_month)
+        annual_item = next(p.theme for p in parent.periods if p.period == command.target_month)
+        written = dict(parent.teacher_subthemes).get(command.target_month.calendar_month, ())
+        if annual_item.generation.method in {GenerationMethod.MANUAL, GenerationMethod.IMPORTED}:
+            written = command.parent_subthemes
+        inherited_venues = parent_teacher_venues(
+            (annual_item,), values=command.parent_subthemes, memo=parent.teacher_memo,
+            inherited=authorized_venues("\n".join(value for value in written if value in command.parent_subthemes)),
+        )
         optional_context = optional_context_results(
             command.optional_context_names, self._optional_context
         )
@@ -301,8 +313,7 @@ class GenerateMonthlyPlan:
                 )
             if drill_mode:
                 packet = self._with_drill_topics(packet, command)
-            if command.teacher_memo:
-                packet = replace(packet, teacher_memo=command.teacher_memo)
+            packet = replace(packet, teacher_memo=command.teacher_memo, teacher_venues=inherited_venues)
             available = {item.grounding_class for item in packet.section_evidence}
             missing = sorted(
                 section.section_key
@@ -324,6 +335,7 @@ class GenerateMonthlyPlan:
                     "Monthly LLM planning failed before any Plan was saved",
                 ) from exc
 
+        timing.phase("assemble")
         plan_id = self._ids.new_plan_id()
         now = self._clock.now()
         selection_results: list[MonthlyActivitySelectionResult] = []
@@ -332,7 +344,22 @@ class GenerateMonthlyPlan:
         proposal = (
             planner_outcome.proposal if planner_outcome is not None else None
         )
+        detail_parents = {key: parent for parent, key in ACTIVITY_DETAIL_SECTION_KEYS.items()}
         for resolved in resolved_sections:
+            parent_key = detail_parents.get(resolved.section_key)
+            if parent_key is not None:
+                sections.append(
+                    _detail_section(
+                        resolved.template_section,
+                        next(s for s in sections if s.section_key == parent_key),
+                        proposal=proposal,
+                        planner_outcome=planner_outcome,
+                        new_item_id=self._ids.new_item_id,
+                        plan_id=plan_id,
+                        now=now,
+                    )
+                )
+                continue
             cells = self._build_section_cells(
                 resolved=resolved,
                 active_weeks=tuple(
@@ -472,6 +499,7 @@ class GenerateMonthlyPlan:
             ),
             generation_mode=command.generation_mode,
             parent_subthemes=command.parent_subthemes,
+            parent_teacher_venues=inherited_venues,
             safety_candidates=tuple(safety_candidates),
             safety_weeks=safety_weeks,
             drill_candidates=tuple(drill_candidates),
@@ -829,3 +857,48 @@ class GenerateMonthlyPlan:
                 "monthly_plan_incomplete",
                 "Every generated Cell requires generation and CREATED audit metadata",
             )
+
+
+def _detail_section(section, parent: MonthlySection, *, proposal, planner_outcome, new_item_id, plan_id, now):
+    """ADR-066: one hidden description Cell per parent week Cell, written by the same proposal.
+
+    The LLM's detail never changes its parent Cell. A blank or unresolved parent, the RULE_ONLY
+    path and an omitted or dropped detail all leave it "" (EMPTY_VALID), never a failure."""
+    cells = []
+    for parent_cell in parent.cells:
+        week = parent_cell.week_id
+        proposed = proposal.value_for(parent.section_key, week) if proposal is not None else None
+        detail = proposed.detail if proposed is not None and parent_cell.cell_state is CellState.FILLED else ""
+        item_id = new_item_id()
+        cells.append(
+            MonthlyCell(
+                item_id=item_id,
+                section_key=section.section_key,
+                week_id=week,
+                value=detail,
+                cell_state=CellState.FILLED if detail else CellState.EMPTY_VALID,
+                generation=(
+                    GenerationMethodDetail(
+                        GenerationMethod.RULE_LLM,
+                        LLM_INTEGRATION_RULE_ID,
+                        planner_outcome.prompt_version_for(week.value, section.section_key),
+                    )
+                    if detail
+                    else GenerationMethodDetail(GenerationMethod.RULE_ONLY, TEMPLATE_RULE_ID, TEMPLATE_RULE_VERSION)
+                ),
+                # The parent Cell's evidence grounds its description; no Evidence class of its own.
+                # The memo marker is a claim about the parent Cell only (memo_applied names it).
+                evidence=without_memo_evidence(parent_cell.evidence) if detail else (),
+                audit=AuditHistory(
+                    (AuditEvent(AuditEventType.CREATED, now, plan_id, item_id=item_id, system_actor=SYSTEM_ACTOR),)
+                ),
+            )
+        )
+    return MonthlySection(
+        section_key=section.section_key,
+        role=section.role,
+        repeat_by=section.repeat_by,
+        empty_value_policy=section.empty_value_policy or EmptyValuePolicy.RENDER_EMPTY_CELL,
+        activated=section.activated,
+        cells=tuple(cells),
+    )

@@ -56,7 +56,11 @@ const {
   "@/lib/onboarding/types": { MONTH_ORDER, ageSelectionLabel: stub, selectedAgesFor: stub },
   "@/lib/hooks/use-client-state": { useClientState: stub },
   "@/components/plan-generator/playProjectPagination": { playSeason: (p) => ({ name: p.label }) },
-  "@/components/plan-ui/GenerationRing": { __esModule: true, default: stub },
+  "@/components/plan-ui/GenerationRing": {
+    __esModule: true,
+    default: stub,
+    ringFinished: async () => {},
+  },
   "@/components/plan-generator/PlanMemo": { PlanMemoField: stub, memoError: stub },
   "@/components/app/compact-shell": { useCompactShell: stub },
   "@/components/plan-generator/AnnualFrame": { BACK_BUTTON: "back", BACK_ICON: null },

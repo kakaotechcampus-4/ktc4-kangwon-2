@@ -10,24 +10,29 @@
  * 격자는 반 정원(만 5세 20명)이 한 화면에 들어간다. 좌우로 미는 형태는 쓰지 않았다 —
  * 열한 번째 아이까지 열 번을 눌러야 하고, 아이 데이터에 사진이 없어 크게 띄울 것도 없다.
  *
- * 표식(도형·색)과 횟수 계산은 `lib/workspace/child-mark.ts` 에 있다.
+ * 표식(쪽지 색)과 횟수 계산은 `lib/workspace/child-mark.ts` 에 있다.
  */
 
 import type { ChildEntry } from "@/lib/onboarding/types";
-import { isStale, markFor, tallyFor, tallyLabel, type ChildMark } from "@/lib/workspace/child-mark";
+import {
+  isStale,
+  markFor,
+  markLetter,
+  tallyFor,
+  tallyLabel,
+  type ChildMark,
+} from "@/lib/workspace/child-mark";
 
-/** 꽉 찬 도형 여섯. 테두리 도형보다 자리를 덜 먹고 멀리서도 모양이 잡힌다. */
-const SHAPES = [
-  "M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z",
-  "M7.6 3h8.8A4.6 4.6 0 0 1 21 7.6v8.8A4.6 4.6 0 0 1 16.4 21H7.6A4.6 4.6 0 0 1 3 16.4V7.6A4.6 4.6 0 0 1 7.6 3z",
-  "M12 2.8 21.4 20.6H2.6z",
-  "M12 21s-7.8-4.5-7.8-9.8A4.4 4.4 0 0 1 12 8.2a4.4 4.4 0 0 1 7.8 3c0 5.3-7.8 9.8-7.8 9.8z",
-  "M12 2.6 14.8 9.3 22 9.8 16.5 14.5 18.2 21.6 12 17.8 5.8 21.6 7.5 14.5 2 9.8 9.2 9.3z",
-  "M7 19a4.7 4.7 0 0 1 .75-9.35A5.9 5.9 0 0 1 18.4 9.3 4.4 4.4 0 0 1 17.7 19z",
+/** 포스티 쪽지 색 일곱. 면 · 테두리 · 글자. 글자는 제 면 위에서 4.5:1 을 넘는다. */
+const TONES = [
+  ["--pg-note", "--pg-note-line", "--pg-sun-ink"],
+  ["--pg-sage", "--pg-sage-line", "--pg-sage-ink"],
+  ["--pg-plum", "--pg-plum-line", "--pg-primary-deep"],
+  ["--pg-clay", "--pg-clay-line", "--pg-alert-ink"],
+  ["--pg-primary-tint", "--pg-primary-tint-line", "--pg-primary-ink"],
+  ["--pg-alert-soft", "--pg-alert-soft-line", "--pg-alert-ink"],
+  ["--pg-sun-tint", "--pg-sun", "--pg-sun-ink"],
 ];
-
-/** 셋만 쓴다. 전부 흰 카드·크림 바탕에서 3:1 을 넘는 진한 색이다. */
-const TONES = ["var(--pg-primary)", "var(--pg-peach-ink)", "var(--pg-sage-ink)"];
 
 const TILE =
   "flex min-h-[60px] flex-col justify-center gap-0.5 rounded-[10px] text-left transition-colors";
@@ -121,7 +126,7 @@ export default function ChildPicker({
               className={on ? TILE_ON : stale ? TILE_STALE : TILE_IDLE}
             >
               <span className="flex min-w-0 items-center gap-1.5">
-                <ChildShape mark={markFor(child.id)} />
+                <ChildNote name={child.name} mark={markFor(child.id)} />
                 <span
                   className={`${NAME} ${on ? "font-bold text-primary-ink" : "font-medium text-ink"}`}
                 >
@@ -149,11 +154,44 @@ export default function ChildPicker({
   );
 }
 
-/** 아이마다 고정된 도형. 이름이 있으니 읽어 줄 것은 없다. */
-export function ChildShape({ mark, size = 15 }: { mark: ChildMark; size?: number }) {
+/**
+ * 아이마다 고정된 쪽지 — 이름 첫 글자를 손글씨로 적고, 오른쪽 아래 귀를 접었다.
+ * 이름이 옆에 있으니 읽어 줄 것은 없다.
+ */
+export function ChildNote({
+  name,
+  mark,
+  size = 24,
+}: {
+  name: string;
+  mark: ChildMark;
+  size?: number;
+}) {
+  const [paper, line, ink] = TONES[mark.tone % TONES.length];
+  const fold = Math.round(size * 0.3);
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" className="shrink-0">
-      <path d={SHAPES[mark.shape]} style={{ fill: TONES[mark.tone] }} />
-    </svg>
+    <span
+      aria-hidden="true"
+      className="relative inline-flex shrink-0 -rotate-[4deg] items-center justify-center border font-display font-bold leading-none"
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.round(size * 0.68),
+        background: `var(${paper})`,
+        borderColor: `var(${line})`,
+        color: `var(${ink})`,
+        borderRadius: `3px 3px ${Math.round(size * 0.12)}px 3px`,
+      }}
+    >
+      {markLetter(name)}
+      <span
+        className="absolute -right-px -bottom-px rounded-tl-[3px]"
+        style={{
+          width: fold,
+          height: fold,
+          background: `linear-gradient(135deg, var(${line}) 50%, transparent 50%)`,
+        }}
+      />
+    </span>
   );
 }

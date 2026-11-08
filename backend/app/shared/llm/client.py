@@ -17,15 +17,21 @@ import socket
 import threading
 import time
 from collections.abc import Mapping
+from contextlib import contextmanager
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urlparse
+
+from ssuksak import timing
 
 from app.config import settings
 from app.shared.llm.errors import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 # #100 이 만든 로거를 그대로 쓴다. 한 줄로 남기고 아동 정보는 찍지 않는다.
 logger = logging.getLogger("app.server")
+# 시간 줄(`llm_call` · `plan_timing`)은 자식 로거로 — `app.server` handler 로 같이 나가고,
+# `llm_usage` 한 줄만 세는 테스트 · 스크립트와 섞이지 않는다.
+timing_logger = logging.getLogger("app.server.timing")
 
 # 층마다 다른 모델을 쓰면 같은 문서 안에서 문체가 갈린다. p0-planning 과 같은 값이다.
 #
@@ -106,7 +112,7 @@ def _log_usage(result: object, model: object) -> None:
     usage = result.get("usage") if isinstance(result, Mapping) else None
     if not isinstance(usage, Mapping):
         # 모델이 usage 를 안 줄 수도 있다. 그것 때문에 생성을 실패시키지 않는다.
-        return
+        return "-", "-"
     values = []
     invalid = False
     for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
@@ -126,6 +132,49 @@ def _log_usage(result: object, model: object) -> None:
         model,
         *values,
     )
+    return values[0], values[1]
+
+
+def _outcome(error: BaseException) -> str:
+    if isinstance(error, LlmBudgetExceeded):
+        return "budget"
+    if "제한 시간" in str(error) or isinstance(error.__cause__, (TimeoutError, socket.timeout)):
+        return "timeout"
+    return "failed"
+
+
+@contextmanager
+def _llm_call(model: object):
+    """호출 한 번의 시간을 `llm_call` 한 줄로 남긴다. **실패한 호출도 남긴다.**
+
+    숫자와 이름만 적는다 — 내용은 없다. `run` 은 생성 요청 하나(`ssuksak.timing`)를 가리키고,
+    `phase` 는 이 호출이 불린 구간이다(수리 호출이면 `repair`). 생성 요청 밖이면 `-` 다.
+    """
+    call = {"first_byte_ms": "-", "tokens": ("-", "-")}
+    started = time.perf_counter()
+    outcome = "ok"
+    with timing.span("llm") as phase:
+        run = timing.current()
+        if run is not None:
+            run.llm_calls += 1
+        try:
+            yield call
+        except BaseException as error:
+            outcome = _outcome(error)
+            raise
+        finally:
+            timing_logger.info(
+                "llm_call run=%s kind=%s phase=%s model=%s outcome=%s ms=%.0f first_byte_ms=%s "
+                "prompt=%s completion=%s",
+                run.id if run else "-",
+                run.kind if run else "-",
+                phase or "-",
+                model,
+                outcome,
+                (time.perf_counter() - started) * 1000,
+                call["first_byte_ms"],
+                *call["tokens"],
+            )
 
 
 def post_json(
@@ -149,17 +198,18 @@ def post_json(
         raise LlmUnavailable("로컬에서 real 모드 금지. 배포된 서버 엔드포인트를 호출한다")
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib_request.Request(url, data=body, headers=dict(headers), method="POST")
-    try:
-        with urllib_request.urlopen(request, timeout=timeout) as response:
-            result = json.loads(response.read().decode("utf-8"))
-    except urllib_error.HTTPError as exc:
-        # 401 은 키가 지워졌다는 뜻이고 429 는 한도다. 둘 다 재시도로 안 풀린다.
-        if exc.code in (401, 403, 429):
-            raise LlmBudgetExceeded(f"엘리스가 {exc.code} 를 냈다") from exc
-        raise LlmFailed(f"엘리스가 {exc.code} 를 냈다") from exc
-    except (urllib_error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise LlmFailed("엘리스 호출이 실패했다") from exc
-    _log_usage(result, payload.get("model"))
+    with _llm_call(payload.get("model")) as call:
+        try:
+            with urllib_request.urlopen(request, timeout=timeout) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        except urllib_error.HTTPError as exc:
+            # 401 은 키가 지워졌다는 뜻이고 429 는 한도다. 둘 다 재시도로 안 풀린다.
+            if exc.code in (401, 403, 429):
+                raise LlmBudgetExceeded(f"엘리스가 {exc.code} 를 냈다") from exc
+            raise LlmFailed(f"엘리스가 {exc.code} 를 냈다") from exc
+        except (urllib_error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise LlmFailed("엘리스 호출이 실패했다") from exc
+        call["tokens"] = _log_usage(result, payload.get("model"))
     return result
 
 
@@ -175,6 +225,19 @@ def post_stream(
     """SSE 를 읽어 조립하고 성공한 호출의 토큰 사용량을 남긴다."""
     if not settings.is_server:
         raise LlmUnavailable("로컬에서 real 모드 금지. 배포된 서버 엔드포인트를 호출한다")
+    with _llm_call(payload.get("model")) as call:
+        return _post_stream(
+            url,
+            headers=headers,
+            payload=payload,
+            timeout=timeout,
+            fold=fold,
+            deadline=deadline,
+            call=call,
+        )
+
+
+def _post_stream(url, *, headers, payload, timeout, fold, deadline, call):
 
     started = time.monotonic()
     parsed = urlparse(url)
@@ -217,6 +280,9 @@ def post_stream(
                 raise LlmFailed("엘리스 스트림 제한 시간이 지났다")
             if not line:
                 break
+            if not lines:
+                # 첫 줄이 올 때까지 — 모델이 쓰기 시작하기 전 기다린 시간이다.
+                call["first_byte_ms"] = f"{(time.monotonic() - started) * 1000:.0f}"
             lines.append(line.decode("utf-8").rstrip("\r\n"))
     except (
         http.client.HTTPException,
@@ -235,7 +301,7 @@ def post_stream(
             connection.close()
 
     result = fold(lines)
-    _log_usage(result, payload.get("model"))
+    call["tokens"] = _log_usage(result, payload.get("model"))
     if not isinstance(result.get("usage"), Mapping):
         logger.warning("llm stream finished without usage model=%s", payload.get("model"))
     return result

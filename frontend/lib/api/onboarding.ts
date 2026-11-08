@@ -3,13 +3,16 @@ import { API_STORAGE_CONTEXT } from "./storage-context";
 import { accountStorageKey, readAccountStorageKey } from "../auth/demo-session";
 import { isAlreadyExists, isApiNotFound } from "./client";
 import { getMe } from "./auth";
-import { createCenter, getCenter, joinCenter, updateCenter } from "./centers";
-import { createClass, getClasses, isMyClass } from "./classes";
+import { createCenter, getCenter } from "./centers";
+import { createClass, getClasses, isMyClass, updateClass } from "./classes";
+import { listAnnualPlans } from "./plans";
+import type { Center, ClassUpdate } from "./types";
 import { createChild, getChildren, deleteChild } from "./children";
+import { finishedSettings } from "../onboarding/flow";
 import { normalizeProvince } from "../onboarding/regions";
 import { loadClassSettings, saveClassSettings } from "../onboarding/settings";
 import { EMPTY_CLASS_SETTINGS } from "../onboarding/types";
-import type { ClassSettings, ClassroomEntry, ChildEntry } from "../onboarding/types";
+import type { ClassSettings, ClassroomEntry, ChildEntry, SelectedAge } from "../onboarding/types";
 /** 서버에서 받아온 연결이라는 표시. 화면이 그 내용을 들고 있지 않아 서명을 만들 수 없다. */
 const ADOPTED = "adopted";
 
@@ -91,76 +94,58 @@ export function childLocalId(id: number): string | null {
   return entries(storedLinks()?.children).find(([, v]) => serverId(v) === id)?.[0] ?? null;
 }
 
-async function syncCenterOnce(settings: ClassSettings) {
+/** 연결에 남기는 원 서명 — 서버가 저장한 값 그대로. 브라우저 입력이 아니라 서버 값을 적어 둔다. */
+const centerSignature = (c: Center) =>
+  JSON.stringify({
+    name: c.name,
+    director_name: c.director_name,
+    region_sido: c.region_sido,
+    region_sigungu: c.region_sigungu,
+  });
+
+/**
+ * 원을 만들거나, 정부 목록에서 고른 원이 이미 있으면 그 원으로 들어간다 (ADR-068).
+ * 돌려주는 원은 **서버 값**이다 — 들어간 원이면 이름 · 원장이 먼저 가입한 교사가 적은 것이다.
+ *
+ * 원 정보는 고치지 않는다(수정 API 가 없다). 이미 연결된 원이면 그 원을 그대로 쓴다.
+ */
+export async function chooseCenter(settings: ClassSettings): Promise<Center> {
+  const links = readLinks();
+  if (links.center) return getCenter(links.center.id);
   // 지역은 붙이지 않고 두 칸 그대로 보낸다 — 서버가 region_sido · region_sigungu 로 받는다(§1).
   const data = {
-      name: settings.orgName,
-      director_name: settings.directorName,
-      region_sido: settings.regionProvince.trim(),
-      region_sigungu: settings.regionDistrict.trim(),
-    },
-    signature = JSON.stringify(data),
-    links = readLinks();
-  if (links.center?.signature === signature) return links.center.id;
-  // **이미 만든 원은 고친다.** 예전에는 수정 API 가 없어 원을 새로 만들었는데, 서버가
-  // 「이미 등록한 원이 있습니다」 409 로 거절하거나 원이 쌓였고, links.classes 를 비워서
-  // 방금 들인 반까지 날아갔다. 초대받았거나 기기를 바꾼 교사(ADOPTED)도 같은 길로 간다 —
-  // 그 교사의 원 정보 수정이 서버에 반영되지 않던 것이 이것으로 풀린다.
-  if (links.center) {
-    const updated = await updateCenter(links.center.id, data);
-    links.center = { id: updated.id, signature };
-    saveLinks(links);
-    return updated.id;
-  }
+    name: settings.orgName,
+    // 같은 원으로 들어가는 길은 원장 이름을 묻지 않는다 — 비어 있으면 칸째 뺀다.
+    ...(settings.directorName.trim() ? { director_name: settings.directorName } : {}),
+    region_sido: settings.regionProvince.trim(),
+    region_sigungu: settings.regionDistrict.trim(),
+    ...(settings.registryKey ? { registry_key: settings.registryKey } : {}),
+  };
   try {
     const center = await createCenter(data);
-    links.center = { id: center.id, signature };
+    links.center = { id: center.id, signature: centerSignature(center) };
     links.classes = {};
     links.children = {};
     saveLinks(links);
-    return center.id;
+    return center;
   } catch (error) {
     // **서버에는 원이 있는데 브라우저에는 연결이 없다.** 기기를 바꿨거나 저장소를 지운
-    // 교사다 — 그 교사는 원을 만든 적이 있으니 서버가 409 로 거절하고, 예전에는 거기서
-    // 온보딩이 막혔다. 내 원을 찾아 지금 입력대로 고치고 연결을 다시 맺는다.
+    // 교사다 — 서버가 409 로 거절한다. 내 원을 찾아 연결만 다시 맺는다(고치지 않는다).
     if (!isAlreadyExists(error)) throw error;
     const { center_id } = await getMe();
     if (center_id === null) throw error;
-    const updated = await updateCenter(center_id, data);
+    const center = await getCenter(center_id);
     // 반 · 아동 연결은 지우지 않는다 — 서버에 남아 있던 것을 adoptServerClasses 가 들인다.
-    links.center = { id: updated.id, signature };
+    links.center = { id: center.id, signature: centerSignature(center) };
     saveLinks(links);
-    return updated.id;
+    return center;
   }
 }
-/**
- * 초대 코드로 기존 원에 들어간다 (§1-1). 원 정보는 서버 값으로 채우고, syncCenter 가 같은
- * 서명을 보도록 연결해 둔다 — 서명이 다르면 다음 단계에서 원을 새로 만들려다 409 가 난다.
- */
-export async function joinCenterByCode(
-  settings: ClassSettings,
-  code: string,
-): Promise<ClassSettings> {
-  const center = await joinCenter(code);
-  // 화면이 지역을 정식 이름으로 바꿔 쓴다(「강원」 → 「강원특별자치도」). 서명도 같은 값으로 만든다.
-  const data = {
-    name: center.name,
-    director_name: center.director_name,
-    region_sido: normalizeProvince(center.region_sido).trim(),
-    region_sigungu: center.region_sigungu.trim(),
-  };
-  saveLinks({
-    center: { id: center.id, signature: JSON.stringify(data) },
-    classes: {},
-    children: {},
-  });
-  return {
-    ...settings,
-    orgName: center.name,
-    directorName: center.director_name,
-    regionProvince: data.region_sido,
-    regionDistrict: data.region_sigungu,
-  };
+
+async function syncCenterOnce(settings: ClassSettings) {
+  const links = readLinks();
+  if (links.center) return links.center.id;
+  return (await chooseCenter(settings)).id;
 }
 async function syncClassOnce(settings: ClassSettings, c: ClassroomEntry) {
   const center = await syncCenter(settings),
@@ -195,6 +180,59 @@ function classSignature(c: ClassroomEntry) {
   return JSON.stringify(classPayload(c));
 }
 
+/**
+ * 등록한 반을 고친다 (§2 반 수정). `syncClass` 는 만들기만 하므로 수정은 이 길로 간다.
+ *
+ * **성공하면 저장된 서명을 새 값으로 다시 쓴다.** 안 쓰면 계획안 화면이 부르는
+ * `syncClass` 가 서명 불일치를 「수정 미지원」으로 보고 던진다.
+ * 서버 오류(이름 중복 · 동의 끄기 막힘 · 422)는 그대로 던진다 — 화면이 코드로 갈라 본다.
+ */
+export async function saveClassEdit(
+  entry: ClassroomEntry,
+  patch: {
+    className?: string;
+    selectedAges?: SelectedAge[];
+    teacherName?: string;
+    guardianConsent?: boolean;
+  },
+): Promise<ClassroomEntry> {
+  const id = classServerId(entry.id);
+  if (!id) throw new Error("아직 서버에 등록되지 않은 반이에요. 반 정보를 먼저 저장해주세요.");
+  const body: ClassUpdate = {};
+  if (patch.className !== undefined) body.name = patch.className;
+  if (patch.teacherName !== undefined) body.teacher_name = patch.teacherName;
+  if (patch.guardianConsent !== undefined) body.consent_confirmed = patch.guardianConsent;
+  // 연령은 늘 두 값을 같이 보낸다. child_count 는 고치는 칸이 없다.
+  if (patch.selectedAges !== undefined) Object.assign(body, ageRangePayload(patch));
+  const updated = await updateClass(id, body);
+  const ages =
+    patch.selectedAges ??
+    (([3, 4, 5] as const).filter(
+      (a) => a >= updated.age_min && a <= updated.age_max,
+    ) as SelectedAge[]);
+  const next: ClassroomEntry = {
+    ...entry,
+    className: updated.name,
+    teacherName: updated.teacher_name,
+    selectedAges: [...ages],
+    // 사이드바는 ageGroup 을 읽는다. 연령이 하나일 때만 값이 있다.
+    ageGroup: ages.length === 1 ? (String(ages[0]) as ClassroomEntry["ageGroup"]) : "",
+    guardianConsent: updated.consent_confirmed_at !== null,
+    currentChildCount: updated.child_count ?? "",
+  };
+  // 서버가 이미 바뀐 뒤라 저장은 성공한 다음에만 한다.
+  const links = readLinks();
+  links.classes[entry.id] = { id, signature: classSignature(next) };
+  saveLinks(links);
+  return next;
+}
+/** 이 반에 연간계획안이 있나. 연령을 바꾸면 이미 만든 계획안은 그대로라는 안내를 띄울지 정한다. */
+export async function hasAnnualPlan(entry: ClassroomEntry): Promise<boolean> {
+  const id = classServerId(entry.id);
+  if (!id) return false;
+  return (await listAnnualPlans(id)).items.length > 0;
+}
+
 export async function syncClasses(settings: ClassSettings) {
   for (const c of settings.classes) await syncClass(settings, c);
 }
@@ -204,7 +242,6 @@ export async function syncClasses(settings: ClassSettings) {
  * **왜 필요한가.** 지금 반 목록은 브라우저 저장소에서 나온다(`loadClassSettings`).
  * 그래서 아래 두 경우에 반이 하나도 안 보인다. 서버에는 멀쩡히 있는데도.
  *
- *   초대받은 교사   §1-1 로 같은 원에 들어왔지만 그 사람 저장소는 비어 있다
  *   기기를 바꾼 교사  새 노트북 · 캐시 삭제 · 다른 브라우저
  *
  * `loadServerClasses` 는 **이미 로컬에 있는 반**의 내용만 서버 값으로 덮어쓴다.
@@ -249,7 +286,7 @@ export async function adoptServerClasses(
   //
   // 그래서 **한 번 쓴 적 있는 계정**(links.classes 에 뭔가 있고 retired 를 적은 적 없는)
   // 에서는, 지금 연결 안 된 서버 반을 전부 버려진 것으로 적고 이번에는 아무것도 들이지
-  // 않는다. 온보딩을 안 한 계정(초대받은 교사 · 기기 바꾼 교사)은 links.classes 가
+  // 않는다. 온보딩을 안 한 계정(기기 바꾼 교사)은 links.classes 가
   // 비어 있으므로 이 길을 타지 않는다.
   if (links.retired === undefined) {
     const used = Object.keys(links.classes).length > 0;
@@ -357,6 +394,7 @@ export async function restoreFromServer(centerId: number): Promise<boolean> {
     classes: kept.length ? kept : EMPTY_CLASS_SETTINGS.classes,
     orgName: center.name,
     directorName: center.director_name,
+    registryKey: center.registry_key ?? "",
     regionProvince: data.region_sido,
     regionDistrict: data.region_sigungu,
   };
@@ -366,11 +404,10 @@ export async function restoreFromServer(centerId: number): Promise<boolean> {
     restored = rows.length > 0;
     // 뺀 것만 있고 들인 반이 없으면 첫 설정을 끝낸 것이 아니다 — completedAt 을 넣지 않는다.
     const classes = [...kept.filter((c) => !dropped.includes(c.id)), ...rows];
-    saveClassSettings({
-      ...base,
-      classes: classes.length ? classes : EMPTY_CLASS_SETTINGS.classes,
-      ...(restored && { completedAt: new Date().toISOString() }),
-    });
+    const next = { ...base, classes: classes.length ? classes : EMPTY_CLASS_SETTINGS.classes };
+    // 되살리기는 첫 설정을 끝낸 것으로 친다. 그러니 마지막 확인과 같은 규칙으로 담당 반도 정한다 —
+    // 반이 둘 이상인데 비워 두면 기록 화면마다 「반을 골라주세요」에 막힌다(13주차 멘토 리뷰).
+    saveClassSettings(restored ? finishedSettings(next) : next);
   });
   return restored;
 }

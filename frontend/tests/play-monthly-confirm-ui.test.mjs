@@ -128,7 +128,11 @@ function bar(over = {}) {
   };
   const mod = compile("../components/plan-generator/PlayMonthlyConfirmBar.tsx", {
     react: h.react,
-    "./PlayMonthlyConfirm": esModule((p) => jsx("ask", p)),
+    "./PlayMonthlyConfirm": {
+      ...esModule((p) => jsx("ask", p)),
+      CONFIRM_TITLE: "이대로 확정할까요?",
+      PickCellHint: (p) => jsx("pick-hint", p),
+    },
     "@/lib/api/client": { ApiError: StubApiError },
     "@/lib/api/playMonthly": {
       confirmPlayMonthly: async (id, rev) => {
@@ -265,13 +269,21 @@ test("confirm bar: after unmount nothing is confirmed or reported", async () => 
 });
 
 test("confirm bar: with `ask` the first click only opens the question; 「확정하기」 there confirms, 「더 다듬기」 closes", async () => {
-  const b = bar({ ask: "확정하면 확정을 풀기 전까지 고칠 수 없어요." });
+  const b = bar({
+    ask: "확정하면 확정을 풀기 전까지 고칠 수 없어요.",
+    blanks: (close) => jsx("jump", { onClick: close }),
+  });
   const opened = await b.click();
   assert.deepEqual(b.log, []);
   const ask = all(opened).find((n) => n.type === "ask");
   assert.equal(ask.props.message, "확정하면 확정을 풀기 전까지 고칠 수 없어요.");
   assert.equal(ask.props.no, "더 다듬기");
   ask.props.onNo();
+  assert.equal(all(b.render()).filter((n) => n.type === "ask").length, 0);
+  // 빈칸 줄로 가면 창이 닫힌다(주제형 월간 · 주간과 같다).
+  all(await b.click())
+    .find((n) => n.type === "jump")
+    .props.onClick();
   assert.equal(all(b.render()).filter((n) => n.type === "ask").length, 0);
   await b.click();
   all(b.render())

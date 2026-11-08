@@ -14,7 +14,25 @@ import { dropCells, liftCells, settle } from "./rowDrag";
 
 const SELECTED = "outline outline-2 -outline-offset-2 outline-[#7053a0] bg-[#f6f1fb]";
 
-const CELL = "border border-black px-1.5 py-1.5 align-top whitespace-pre-line";
+// 세로 가운데 — 양식(play_project_annual.hwpx) 칸이 모두 가운데 맞춤이다.
+const CELL = "border border-black px-1.5 py-1.5 align-middle whitespace-pre-line";
+
+/** 배움 칸 「영역 - 범주 - 내용」 줄 → 한글 내려받기처럼 「[영역] 범주 - 내용」, `[영역]` 만 굵게(export.py `_learning`). */
+const learningLines = (value: string) =>
+  value.split("\n").map((line, i) => {
+    const [domain, category, ...rest] = line.split(" - ");
+    return (
+      <span key={i} className="block">
+        {rest.length ? (
+          <>
+            <b>[{domain}]</b> {category} - {rest.join(" - ")}
+          </>
+        ) : (
+          line
+        )}
+      </span>
+    );
+  });
 
 type Props = {
   plan: PlayProjectAnnualPlan;
@@ -54,7 +72,7 @@ export default function PlayProjectSheet({
           <article
             key={page[0].period_key}
             aria-label={page.map((period) => period.label).join(" · ")}
-            className="mx-auto w-full min-w-[720px] max-w-[860px] bg-white px-9 py-8 shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]"
+            className="mx-auto w-full min-w-[720px] max-w-[860px] bg-white px-9 py-8 shadow-[0_1px_2px_rgba(43,40,38,0.1),0_14px_32px_-14px_rgba(43,40,38,0.35)]"
           >
             <h3 className={`m-0 mb-4 ${HATCH} py-2.5 text-center text-[28px] font-bold`}>
               {plan.school_year} 연간놀이계획안{className && ` - ${className}`}
@@ -134,7 +152,8 @@ export default function PlayProjectSheet({
                         {row.candidate ? (
                           fields.map((field) => {
                             const candidate = row.candidate!;
-                            const value = candidate[field.key].value;
+                            const raw = candidate[field.key].value;
+                            const value = field.key === "learning" ? learningLines(raw) : raw;
                             const selected =
                               selectedCell?.periodKey === period.period_key &&
                               selectedCell.rowKey === candidate.row_key &&
@@ -201,7 +220,7 @@ export default function PlayProjectSheet({
                             );
                           })
                         ) : (
-                          <td colSpan={4} className={`${CELL} text-center text-[#8a8178]`}>
+                          <td colSpan={4} className={`${CELL} text-center text-ink-soft`}>
                             아직 고른 놀이가 없어요
                           </td>
                         )}
@@ -210,7 +229,7 @@ export default function PlayProjectSheet({
                   })}
               </tbody>
             </table>
-            <p className="mt-4 bg-[#E1F2FE] px-2 py-1 text-center text-[10px] leading-relaxed">
+            <p className="mt-4 bg-[#E1F2FE] px-2 py-1 text-center text-[12px] leading-relaxed">
               {
                 "*예상 놀이 방향은 [2019 개정 누리과정]의 목적에 따라 ‘유아 놀이 중심’ 활동이 진행 될 수 있도록 융통성 있게 구성되었습니다. "
               }

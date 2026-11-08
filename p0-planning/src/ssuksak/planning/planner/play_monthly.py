@@ -25,6 +25,8 @@ from ..domain.safety_placement import SafetyKind
 from .contracts import ProposalParseError, RawLlmResponse
 from .parser import _STRING, _object_schema
 from .teacher_memo import (
+    CANDIDATE_MEMO_PROMPT,
+    CANDIDATE_MEMO_PROMPT_TAG,
     SAFETY_REQUESTS_PROMPT,
     SAFETY_REQUESTS_PROMPT_TAG,
     TEACHER_MEMO_PROMPT,
@@ -35,9 +37,10 @@ from .teacher_memo import (
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 from .v1_guidance import NATURAL_PLAY_GUIDANCE, SAFETY_TEXT_GUIDANCE
 from .weekly import unsupported_facts
+from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG, venue_memo
 
-PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v5"
-PLAY_MONTHLY_REPAIR_PROMPT_VERSION = "play-monthly-repair-v5"
+PLAY_MONTHLY_PROMPT_VERSION = "play-monthly-planner-v5" + VENUE_POLICY_TAG
+PLAY_MONTHLY_REPAIR_PROMPT_VERSION = "play-monthly-repair-v5" + VENUE_POLICY_TAG
 CONTENT_MIN, CONTENT_MAX = 1, 3  # content ids per activity (first contract proposal)
 ACTIVITY_SECTIONS = ("together", "free_play")
 
@@ -236,6 +239,7 @@ def build_play_monthly_request(
     drill_topics: tuple[tuple[str, str, str], ...],  # (topic_id, label, situation)
     reference_versions: tuple[str, ...],
     teacher_memo: str = "",
+    teacher_venues: tuple[str, ...] = (),
 ) -> PlayMonthlyRequest:
     def entries(values: tuple[DailyLifeEntry, ...]) -> list[dict]:
         return [{"entry_id": e.entry_id, "label": e.label, "text": e.text} for e in values]
@@ -264,12 +268,14 @@ def build_play_monthly_request(
         ],
     }
     drill_topic_ids = tuple(t for t, _, _ in drill_topics)
+    if teacher_venues:
+        payload["teacher_venues"] = list(teacher_venues)
     memo = play_monthly_memo_addresses(counts, safety_slots, drill_topic_ids) if teacher_memo else None
-    prompt_version, system_prompt = PLAY_MONTHLY_PROMPT_VERSION, SYSTEM_PROMPT
+    prompt_version, system_prompt = PLAY_MONTHLY_PROMPT_VERSION, SYSTEM_PROMPT + VENUE_GUIDANCE
     if memo is not None:
         payload["teacher_memo"] = {"text": teacher_memo, "addresses": list(memo)}
-        prompt_version += TEACHER_MEMO_PROMPT_TAG
-        system_prompt += TEACHER_MEMO_PROMPT
+        prompt_version += TEACHER_MEMO_PROMPT_TAG + CANDIDATE_MEMO_PROMPT_TAG
+        system_prompt += TEACHER_MEMO_PROMPT + CANDIDATE_MEMO_PROMPT
     # 2층: 법정 안전교육 횟수 · 주 요청은 뽑기만 하고 Rule 이 둔다.
     safety_request_slots = (
         tuple(s.slot for s in safety_slots if s.category_id is not None) if memo is not None else ()
@@ -312,7 +318,7 @@ def build_repair_request(
         ensure_ascii=False,
         sort_keys=True,
     )
-    system_prompt = SYSTEM_PROMPT + REPAIR_INSTRUCTION
+    system_prompt = SYSTEM_PROMPT + VENUE_GUIDANCE + REPAIR_INSTRUCTION
     return PlayMonthlyRequest(
         **{
             **{name: getattr(request, name) for name in PlayMonthlyRequest.__dataclass_fields__},
@@ -396,7 +402,8 @@ def validate_play_monthly(
     def text(location: str, value: str, **limits: int) -> None:
         # Safety words are expected content in a plan that has its own safety section.
         # The repair is validated against the first request too, so its ids stay blocked.
-        for code in visible_text_violations(value, evidence_refs=request.source_refs, **limits):
+        for code in visible_text_violations(value, evidence_refs=request.source_refs,
+                                           teacher_venue_text=venue_memo(request.fact_source), **limits):
             if code != "SAFETY_CONTENT_LEAKAGE":
                 add(location, code)
         if unsupported_facts(value, request.fact_source):

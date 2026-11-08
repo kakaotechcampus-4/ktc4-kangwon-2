@@ -105,27 +105,56 @@ def test_foreign_candidate_and_narrow_splits_do_not_save():
     assert harness.weekly_plans.get(plan.plan_id) is plan
 
 
-def test_bad_candidate_format_repairs_once_and_records_the_repair_version():
+@pytest.mark.parametrize("indoor", [False, True])
+def test_bad_candidate_format_repairs_once_and_records_the_repair_version(indoor):
+    section = "indoor_play" if indoor else "group_activity"
+
     class BrokenOnce(RequestAwareWeeklyLlm):
         def generate_weekly(self, request):
             response = super().generate_weekly(request)
             if len(self.requests) != 1:
                 return response
             answer = json.loads(response.content)
-            candidate = next(s for s in answer["sections"] if s["section_key"].startswith("group_activity.candidate."))
+            candidate = next(s for s in answer["sections"] if s["section_key"].startswith(section + ".candidate."))
             candidate["value"] = "An activity without its description"
             return replace(response, content=json.dumps(answer))
 
     harness, provider = WeeklyHarness(), BrokenOnce()
     parent = harness.monthly_parent(mode=MonthlyGenerationMode.LLM_PLANNER)
-    plan = _day_generation(harness, provider).execute(replace(_day_command(parent), activity_candidates=True)).plan
+    plan = _day_generation(harness, provider).execute(replace(
+        _day_command(parent), activity_candidates=True, indoor_play_candidates=indoor,
+    )).plan
     assert len(provider.requests) == 2
-    assert plan.activity_candidates[0].cell.generation.rule_version == provider.requests[0].repair_prompt_version
-    from ssuksak.planning.planner.weekly import LINKED_OUTDOOR_INSTRUCTION, LINKED_WRITING_GUIDANCE
+    repaired = next(c for c in plan.activity_candidates if c.cell.section_key == section)
+    assert repaired.cell.generation.rule_version == provider.requests[0].repair_prompt_version
+    from ssuksak.planning.planner.play_monthly import SYSTEM_PROMPT as PLAY_MONTHLY_PROMPT
+    from ssuksak.planning.planner.v1_guidance import NATURAL_PLAY_GUIDANCE
+    from ssuksak.planning.planner.weekly import CANDIDATE_DESCRIPTION_TONE, LINKED_OUTDOOR_INSTRUCTION, LINKED_WRITING_GUIDANCE
+
+    assert NATURAL_PLAY_GUIDANCE in PLAY_MONTHLY_PROMPT
     for request in provider.requests:
-        assert "+monthly-linked-v7" in request.prompt_version
+        body = json.loads(request.user_content)
+        body = body.get("original_request", body)
+        texts = dict(request.evidence_texts)
+        for target in body["targets"]:
+            if target.get("activity_type"):
+                assert any(target["activity_basis"] in texts[ref] for ref in target["allowed_grounding_refs"])
+                assert target["required_name_terms"] == list(request.target(target["section_key"]).required_name_terms)
+        assert "+monthly-linked-v8" in request.prompt_version
+        assert "설명의 대상과 실제 행동을 남겨 문서용 활동명을 쓴다" in request.system_prompt
+        assert "유형과 활동명만 읽어도 할 일이 떠올라야 한다" in request.system_prompt
+        assert "서로 섞어 새 활동을 만들지 않는다" in request.system_prompt
+        assert "+activity-candidates-v5" in request.prompt_version
+        assert "+activity-candidates-v5" in request.repair_prompt_version
+        assert request.system_prompt.count(NATURAL_PLAY_GUIDANCE) == 1
+        assert request.system_prompt.count(CANDIDATE_DESCRIPTION_TONE) == 1
+        assert "소리는 듣는 대상이며" not in request.system_prompt
         assert LINKED_OUTDOOR_INSTRUCTION in request.system_prompt
-        assert LINKED_WRITING_GUIDANCE in request.system_prompt
+        assert LINKED_WRITING_GUIDANCE.replace(
+            "허용 근거로 이어갈 수 없으면 빈칸으로 두고 관계없는 놀이로 채우지 않는다. ", ""
+        ) in request.system_prompt
+        assert "작품명과 익숙한 놀이명은 유지" in request.system_prompt
+        assert "근거에 없는 재료·놀이 방법·절차·결과물을 보태지 않는다" in request.system_prompt
 
 
 def test_candidate_generation_and_repair_use_streaming_with_an_output_cap():
@@ -153,7 +182,7 @@ def test_indoor_candidates_choose_reorder_remove_and_keep_history():
     assert "합니다체 1~2문장" in provider.requests[0].system_prompt
     first = actions.add_indoor(plan.plan_id, candidates[0].cell.item_id, actor)
     row = first.cell("indoor_play")
-    assert row.value == f"[{candidates[0].activity_type}] - {candidates[0].name}"
+    assert row.value == f"[{candidates[0].activity_type}] {candidates[0].name}"
     assert row.evidence == candidates[0].cell.evidence
     assert row.audit.events[-1].copied_from == candidates[0].cell.item_id
     assert actions.add_indoor(plan.plan_id, candidates[0].cell.item_id, actor) is first
@@ -207,3 +236,57 @@ def test_candidate_name_duplicates_are_checked_within_each_pool():
     same_pool = tuple(with_name(v) if v == indoor[1] else v for v in cross_pool)
     assert any(i.code is WeeklyIssueCode.ACTIVITY_CANDIDATE_INVALID
                and i.section_key == indoor[1].section_key for i in validate_weekly(same_pool, request))
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+@pytest.mark.parametrize("ref,text,kind,bad,good", [
+    ("ev_e5e84e83db52_p01_r00428_c01_i01", "<이야기 나누기> 편지 발표, 함께 지켜요", "이야기나누기",
+     "함께 지킬 약속: 함께 생활하며 지킬 약속에는 무엇이 있을지 생각을 나누고 서로의 이야기를 듣습니다.",
+     "우리 반 편지 발표하기: 편지에 담은 내용을 친구들에게 발표합니다."),
+    ("ev_f1afbbe9ddcc_p02_r00589_c02_i01", "[명화] 피터브뢰겔의 ‘아이들 놀이’", "미술",
+     "피터 브뢰겔의 ‘아이들 놀이’: 그림 속 아이들의 놀이 모습과 움직임을 감상하며 눈에 들어오는 장면을 이야기합니다.",
+     "피터 브뢰겔의 ‘아이들 놀이’ 감상: 그림 속 아이들의 놀이 장면을 함께 감상합니다."),
+])
+def test_real_title_omissions_repair_once_and_persistent_omissions_are_rejected(ref, text, kind, bad, good, persistent):
+    from ssuksak.planning.domain.week_period import WeekId
+    from ssuksak.planning.planner.contracts import ProposalRejectedError
+    from ssuksak.planning.planner.weekly import WeeklyPlanner, WeeklyTarget, build_weekly_request
+    from ssuksak.planning.retrieval.weekly import candidate_activity_basis
+
+    basis, terms = candidate_activity_basis(_record(ref, text=text))
+    key = "group_activity.candidate.1"
+    request = build_weekly_request(week_id=WeekId("2026-03-W1"), week={}, ages=(3, 4),
+        targets=(WeeklyTarget("theme"), WeeklyTarget(key, (ref,), activity_type=kind,
+            activity_basis=basis, required_name_terms=terms)),
+        teacher_input_keys=frozenset(), parent_context=(("theme", "우리 원과 친구"),),
+        evidence=((ref, text, "GROUP_ACTIVITY"),), reference_candidates=(), packet_fingerprint="")
+    from ssuksak.planning.planner.v1_guidance import NATURAL_PLAY_GUIDANCE
+    from ssuksak.planning.planner.weekly import CANDIDATE_DESCRIPTION_TONE
+
+    assert NATURAL_PLAY_GUIDANCE in request.system_prompt
+    assert CANDIDATE_DESCRIPTION_TONE in request.system_prompt
+
+    class Drift(RequestAwareWeeklyLlm):
+        def generate_weekly(self, current):
+            response = super().generate_weekly(current)
+            answer = json.loads(response.content)
+            next(v for v in answer["sections"] if v["section_key"] == key)["value"] = (
+                bad if persistent or len(self.requests) == 1 else good
+            )
+            return replace(response, content=json.dumps(answer, ensure_ascii=False))
+
+    provider = Drift()
+    if persistent:
+        with pytest.raises(ProposalRejectedError) as error:
+            WeeklyPlanner(provider).plan(request)
+        assert error.value.validation_codes == ("ACTIVITY_CANDIDATE_INVALID",)
+    else:
+        outcome = WeeklyPlanner(provider).plan(request)
+        assert outcome.repaired == frozenset({key})
+        assert next(v for v in outcome.values if v.section_key == key).value == good
+    assert len(provider.requests) == 2
+    repaired = json.loads(provider.requests[1].user_content)["original_request"]
+    target = next(t for t in repaired["targets"] if t["section_key"] == key)
+    assert target["activity_basis"] == basis and target["required_name_terms"] == list(terms)
+    with pytest.raises(ValueError, match="allowed evidence"):
+        replace(request, targets=(request.targets[0], replace(request.targets[1], activity_basis="근거에 없는 활동")))

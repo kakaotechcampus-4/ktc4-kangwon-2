@@ -5,8 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from .errors import InvalidDomainValueError
-from .monthly_template import TemplateRef, TemplateSection
+from .monthly_template import EmptyValuePolicy, RepeatBy, SectionRole, TemplateRef, TemplateSection
 from .monthly_template_profile import TemplateProfile, TemplateProfileRef
+
+
+# Human Decision 2026-11-06 (ADR-066): each weekly activity Section of a v1 monthly Plan
+# carries a hidden one-cell-per-week description. Derived by the Core at generation, never a
+# Template row; a Snapshot without them (an older Plan) stays as stored.
+ACTIVITY_DETAIL_SECTION_KEYS = {
+    "outdoor_play": "outdoor_play_detail",
+    "indoor_alternative": "indoor_alternative_detail",
+}
+_DETAIL_LABELS = {"outdoor_play": "바깥놀이 설명", "indoor_alternative": "실내 대체활동 설명"}
 
 
 def _non_blank(value: object, path: str) -> None:
@@ -106,3 +116,30 @@ class TemplateSnapshot:
             ),
             None,
         )
+
+    def with_activity_details(self) -> TemplateSnapshot:
+        """This Snapshot plus a hidden WEEK detail Section for each weekly activity Section it has.
+
+        Appended after the last Section (orders stay unique and sorted); never printed."""
+        keys = {section.section_key for section in self.sections}
+        order = max(section.order for section in self.sections)
+        extra = []
+        for parent_key, key in ACTIVITY_DETAIL_SECTION_KEYS.items():
+            parent = self.section(parent_key)
+            if parent is None or parent.repeat_by is not RepeatBy.WEEK or key in keys:
+                continue
+            order += 1
+            extra.append(
+                TemplateSection(
+                    section_key=key,
+                    role=SectionRole.CONTENT,
+                    activated=True,
+                    repeat_by=RepeatBy.WEEK,
+                    empty_value_policy=EmptyValuePolicy.RENDER_EMPTY_CELL,
+                    display_label=_DETAIL_LABELS[parent_key],
+                    order=order,
+                    category=parent.category,
+                    visible=False,
+                )
+            )
+        return replace(self, sections=self.sections + tuple(extra)) if extra else self

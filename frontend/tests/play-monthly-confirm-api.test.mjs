@@ -174,7 +174,7 @@ test("confirm: an already confirmed plan answers 200 as stored, with any or no b
   assert.equal((await audit(id)).filter((e) => e.type === "CONFIRMED").length, 1);
 });
 
-test("after confirming, edits are 409 ALREADY_CONFIRMED and delete is 409 GATE_BLOCKED", async () => {
+test("after confirming, edits are 409 ALREADY_CONFIRMED and delete still works (ADR-064)", async () => {
   const { id, rev, plan } = await seeded();
   const done = await pm.confirmPlayMonthly(id, rev);
   await rejects(
@@ -184,13 +184,7 @@ test("after confirming, edits are 409 ALREADY_CONFIRMED and delete is 409 GATE_B
     "확정된 계획안은 수정할 수 없습니다.",
     [],
   );
-  await rejects(
-    pm.deletePlayMonthly(id),
-    409,
-    "GATE_BLOCKED",
-    "확정된 계획안은 지울 수 없습니다.",
-    [],
-  );
+  await pm.deletePlayMonthly(id);
 });
 
 test("two confirms at once: both 200, one revision step, one CONFIRMED event", async () => {

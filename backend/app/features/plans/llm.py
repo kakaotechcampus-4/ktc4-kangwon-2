@@ -12,13 +12,15 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
+from ssuksak import timing
 from ssuksak.adapters.v1_curriculum import v1_curriculum_catalog
 from ssuksak.planning.application.yearly_ports import ThemeTextRequest, ThemeTextResult
 from ssuksak.planning.planner.v1_guidance import V1_GUIDANCE, curriculum_context
+from ssuksak.planning.venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG, unrequested_venues
 
 from app.shared.llm import LlmFailed, complete_json, is_mock, require_config
 
-ANNUAL_THEME_PROMPT_VERSION = "annual-theme-text-v3"
+ANNUAL_THEME_PROMPT_VERSION = "annual-theme-text-v3" + VENUE_POLICY_TAG
 
 SYSTEM_PROMPT = """너는 어린이집 교사의 연간보육계획안 작성을 돕는다.
 
@@ -55,12 +57,16 @@ class EliceThemeTextGenerator:
     def generate(self, requests: tuple[ThemeTextRequest, ...]) -> tuple[ThemeTextResult, ...]:
         if not requests:
             return ()
+        timing.phase("prompt")
         asked = {request.theme_id: request for request in requests}
         user_content = _user_content(requests)
         content = complete_json(
-            SYSTEM_PROMPT + V1_GUIDANCE, user_content, transport=self._transport
+            SYSTEM_PROMPT + V1_GUIDANCE + VENUE_GUIDANCE, user_content, transport=self._transport
         )
+        timing.phase("validate")
         results = tuple(_parse(content, asked))
+        if any(unrequested_venues(result.value) for result in results):
+            raise LlmFailed("교사가 지정하지 않은 지역·시설명이 연간 주제에 들어 있습니다")
         context = json.loads(user_content)["curriculum_context"]
         reject_curriculum_ids((result.value for result in results), context)
         return results

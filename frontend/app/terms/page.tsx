@@ -7,7 +7,16 @@ export const metadata = {
 
 export default function Page() {
   return (
-    <LegalPage title="이용약관" updated="2026년 10월 27일">
+    <LegalPage
+      kind="terms"
+      title="이용약관"
+      updated="2026년 10월 27일"
+      summary={[
+        "쌤플이 만드는 건 초안이에요. 제출 전에 꼭 읽고 고쳐 주세요.",
+        "선생님이 쓴 기록과 문서의 권리는 선생님과 어린이집에 있어요.",
+        "요금은 받지 않고, 교육 과정이 끝나면 운영을 멈출 수 있어요.",
+      ]}
+    >
       <p>
         쌤플(Ssample)은 강원대학교 카카오테크캠퍼스 4기 2팀의 교육 프로젝트입니다. 어린이집 교사가
         보육 문서 초안을 쓰는 것을 돕습니다. 이 글은 쌤플을 쓸 때의 약속입니다.
@@ -37,7 +46,6 @@ export default function Page() {
             비밀번호를 정해 주세요
           </li>
           <li>계정은 교사 본인이 씁니다. 비밀번호를 남에게 알려 주지 마세요</li>
-          <li>같은 원의 다른 교사는 초대 코드로 들어옵니다. 코드는 한 번 쓰면 끝입니다</li>
         </ul>
       </LegalSection>
 

@@ -23,7 +23,7 @@ import { schoolYearOf } from "@/lib/workspace/document-archive";
 import { today } from "@/lib/workspace/model";
 import { Tape } from "@/components/workspace/WorkspaceUI";
 import { SlideTour } from "@/components/app/Tour";
-import GenerationRing from "@/components/plan-ui/GenerationRing";
+import GenerationRing, { ringFinished, STOPPED_NOTE } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { memoError, PlanMemoField } from "./PlanMemo";
 import { BACK_BUTTON, BACK_ICON } from "./AnnualFrame";
@@ -65,12 +65,12 @@ export default function PlanGeneratorPage({ format }: { format: Format | null })
 function NoFormat() {
   return (
     <div className="flex w-full flex-col gap-3 px-10 pb-12 pt-[26px] text-[#2b2826]">
-      <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+      <h1 className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
         연간계획안 만들기
       </h1>
       <p className="m-0 text-base text-[#5c5243]">어떤 방식으로 만들지 먼저 골라 주세요.</p>
       <Link href="/plans" className="text-base font-bold text-[#5e4b96]">
-        방식 고르러 가기 →
+        방식 고르러 가기
       </Link>
     </div>
   );
@@ -86,7 +86,9 @@ function AnnualGenerator({ format }: { format: Format }) {
       : NO_ROOM;
   }, NO_ROOM);
   const [generating, setGenerating] = useState(false);
+  const [done, setDone] = useState(false);
   const [error, setError] = useState("");
+  const [stopped, setStopped] = useState(false);
   const [memo, setMemo] = useState("");
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
   // 그 반에 연간이 이미 있을 때(409) 어느 반인지. 교사가 「새로 만들기」를 고를 때만 지운다 —
@@ -104,7 +106,9 @@ function AnnualGenerator({ format }: { format: Format }) {
     const controller = new AbortController();
     controllerRef.current = controller;
     setGenerating(true);
+    setDone(false);
     setError("");
+    setStopped(false);
     setMemoProblem(null);
     setOccupied(null);
     let classId: number | null = null;
@@ -129,6 +133,8 @@ function AnnualGenerator({ format }: { format: Format }) {
       } catch (e) {
         console.warn("계획안 표시 정보 캐시 저장 실패", e);
       }
+      setDone(true);
+      await ringFinished();
       router.replace("/plans/annual/" + plan.id);
     } catch (e) {
       if (controller.signal.aborted) return;
@@ -141,10 +147,11 @@ function AnnualGenerator({ format }: { format: Format }) {
     }
   }
 
-  /** [그만 만들기]. 화면만 멈춘다 — 이미 보낸 요청은 서버가 끝까지 처리할 수 있다. */
+  /** [생성 멈추기]. 요청을 끊는다 — 놀이 중심형은 서버도 남은 구간을 부르지 않고 저장하지 않는다. */
   function stop() {
     controllerRef.current?.abort();
     setGenerating(false);
+    setStopped(true);
   }
 
   /** 그 반의 연간계획안을 지우고 다시 만든다. 교사가 「새로 만들기」를 눌렀을 때만 온다. */
@@ -166,13 +173,21 @@ function AnnualGenerator({ format }: { format: Format }) {
 
   if (generating)
     return (
-      <div className="flex min-h-[calc(100vh-60px)]">
-        <GenerationRing steps={[...look.steps]} onCancel={stop} />
+      <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
+        <GenerationRing
+          kind={`annual:${format}`}
+          // Sol 실측(2026-11-05): 놀이 중심형은 4구간을 차례로 불러 약 176초. 주제형은 아직 안 쟀다.
+          expect={format === "PLAY_PROJECT" ? 180 : 20}
+          steps={[...look.steps]}
+          done={done}
+          onCancel={stop}
+        />
       </div>
     );
 
   return (
-    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)]">
+    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)]">
+      {stopped && STOPPED_NOTE}
       {error && (
         <p
           role="alert"
@@ -198,7 +213,9 @@ function AnnualGenerator({ format }: { format: Format }) {
       {/* 월간 · 주간 만들기와 같은 틀 — 왼쪽 고르기 1 : 오른쪽 양식 1.15, 화면 높이에 맞춤. */}
       <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <Tape />
-        <section className="flex min-h-0 flex-col gap-6 overflow-y-auto border border-line bg-paper rounded-md p-7">
+        <section className="relative flex min-h-0 flex-col gap-6 overflow-y-auto bg-paper shadow-pg p-7">
+          {/* 왼쪽 위 접힌 귀퉁이 — 올리면 조금 더 들리고, 누르면 「만드는 순서」 슬라이드가 열린다. */}
+          <SlideTour format={format} />
           {/* 왼쪽 판 맨 위: 제목 앞 「←」 돌아가기(편집 화면과 같은 버튼) · 방식. */}
           <div className="flex shrink-0 flex-col">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -210,14 +227,13 @@ function AnnualGenerator({ format }: { format: Format }) {
               >
                 {BACK_ICON}
               </Link>
-              <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+              <h1 className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
                 {year} 연간계획안 만들기
               </h1>
-              <span className={`rounded-full px-3 py-1 text-[13px] font-bold ${look.chip}`}>
+              <span
+                className={`-rotate-2 border border-black/10 px-3 py-0.5 font-display text-[18px] font-bold shadow-pg-card ${look.chip}`}
+              >
                 {look.name}
-              </span>
-              <span className="ml-auto">
-                <SlideTour format={format} />
               </span>
             </div>
           </div>
@@ -274,7 +290,7 @@ function AnnualGenerator({ format }: { format: Format }) {
             type="button"
             onClick={() => void generate()}
             disabled={!room.className}
-            className="mt-auto min-h-[56px] rounded-md bg-primary-tint-line hover:bg-primary text-[17px] font-bold text-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-50 transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+            className="mt-auto min-h-[56px] rounded-md bg-primary hover:bg-primary-hover text-[17px] font-bold text-white disabled:cursor-not-allowed disabled:bg-[#ddd6ca] disabled:text-ink-soft transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
           >
             연간계획안 만들기
           </button>
@@ -290,7 +306,7 @@ function AnnualGenerator({ format }: { format: Format }) {
             <img
               src={`/plan-formats/${look.image}.png`}
               alt={look.alt}
-              className="absolute inset-x-0 top-0 mx-auto max-h-full max-w-full rounded-md border border-[#e3ddd2] bg-white object-contain object-top shadow-[0_8px_24px_-12px_rgba(43,40,38,0.25)]"
+              className="absolute inset-x-0 top-0 mx-auto max-h-full max-w-full rounded-md border border-[#e3ddd2] bg-white object-contain object-top shadow-[0_1px_2px_rgba(43,40,38,0.1),0_14px_32px_-14px_rgba(43,40,38,0.35)]"
             />
           </div>
         </section>

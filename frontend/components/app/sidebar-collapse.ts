@@ -52,6 +52,19 @@ export function setSidebarCollapsed(next: boolean) {
   listeners.forEach((listener) => listener());
 }
 
+/** 교사가 눌러 둔 값을 지워 다시 화면이 정하게 한다 — 계획안 화면을 드나들 때 쓴다. */
+export function clearSidebarCollapsed() {
+  if (loaded && pref === null) return;
+  pref = null;
+  loaded = true;
+  try {
+    window.localStorage.removeItem(KEY);
+  } catch {
+    // 저장소를 못 써도 이번 방문에서는 화면이 정한다.
+  }
+  listeners.forEach((listener) => listener());
+}
+
 export function useSidebarCollapsed(): boolean | null {
   return useSyncExternalStore(subscribe, getSnapshot, () => null);
 }

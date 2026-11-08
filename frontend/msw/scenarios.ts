@@ -8,6 +8,7 @@ export const statusFor: Record<ErrorCode, number> = {
   NOT_FOUND: 404,
   GATE_BLOCKED: 409,
   ALREADY_EXISTS: 409,
+  IN_USE: 409,
   ALREADY_CONFIRMED: 409,
   STALE_WRITE: 409,
   UNSUPPORTED_FILE_TYPE: 400,

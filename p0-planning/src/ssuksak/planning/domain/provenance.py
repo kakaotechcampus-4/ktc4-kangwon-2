@@ -209,11 +209,15 @@ class TimetableChange:
     new_cell_id: ItemId | None = None
     before: tuple[int, ...] = ()
     after: tuple[int, ...] = ()
+    # Which table, when a plan has several (monthly v1 teacher tables). ``None`` = the only one.
+    table_key: str | None = None
 
     def __post_init__(self) -> None:
         op = self.operation
         if not isinstance(op, TimetableOperation):
             raise InvalidDomainValueError("TimetableChange.operation is invalid")
+        if self.table_key is not None and (not isinstance(self.table_key, str) or not self.table_key.strip()):
+            raise InvalidDomainValueError("TimetableChange.table_key must be non-blank when set")
         ids = {
             "split_id": op in (TimetableOperation.SPLIT, TimetableOperation.REMOVE, TimetableOperation.RESIZE_SPLIT),
             "cell_id": op in (TimetableOperation.SPLIT, TimetableOperation.REMOVE),

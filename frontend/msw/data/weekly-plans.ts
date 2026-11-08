@@ -1,4 +1,5 @@
 import { read, commit } from "./store";
+import { safetyView } from "./monthly-plans";
 import type {
   ApiClass,
   MonthlyPlan,
@@ -47,7 +48,7 @@ export const TEACHER_INPUT: readonly string[] = [
   "event_schedule",
   "special_program",
 ];
-/** 안전교육은 근거(SAFETY_RULE)가 없어 비워 둔다 — 월간 목업과 같은 이유다. */
+/** 안전교육은 만들지 않는다 — 월간에서 그 주에 놓은 후보를 복사하고, 없으면 빈칸이다. */
 const UNRESOLVED: readonly string[] = ["safety_education"];
 /** 다시 만들 수 있는 칸. 교사 입력 칸과 빈 칸은 뺀다 (§9-3 과 같은 모양). */
 export const REGENERATABLE = SECTIONS.filter(
@@ -70,11 +71,13 @@ export const findWeekly = (id: number) => read().weeklyPlans.find((p) => p.id ==
 export const findWeeklyFor = (classId: number, weekId: string) =>
   read().weeklyPlans.find((p) => p.class_id === classId && p.week_id === weekId);
 
-/** 그 달 주간계획안들. `targetMonth` 는 `YYYY-MM` — `week_id` 앞자리가 그 달이다 (§3-1). */
-export const listWeekly = (classIds: number[], targetMonth: string): WeeklyPlanSummary[] =>
+/** 그 달 주간계획안들. `targetMonth` 는 `YYYY-MM` — `week_id` 앞자리가 그 달이다 (§3-1). 없으면 모든 달. */
+export const listWeekly = (classIds: number[], targetMonth?: string): WeeklyPlanSummary[] =>
   read()
     .weeklyPlans.filter(
-      (p) => classIds.includes(p.class_id) && p.week_id.startsWith(targetMonth + "-W"),
+      (p) =>
+        classIds.includes(p.class_id) &&
+        (targetMonth === undefined || p.week_id.startsWith(targetMonth + "-W")),
     )
     .sort((a, b) => a.week_id.localeCompare(b.week_id) || a.id - b.id)
     .map((p) => ({
@@ -121,7 +124,26 @@ export const addWeekly = (
         ? [{ parent_item_id: parent.item_id, snapshot_value: parent.value }]
         : [];
     };
+    // 서버 Core(S-1)처럼 월간에서 이 주에 놓은 안전교육 후보를 「[분류] 문장」 그대로 복사한다.
+    const placed = safetyView(monthly).safety_weeks.find((w) => w.week_id === weekId);
+    const source = placed?.display_value
+      ? monthly.safety_candidates.find((c) => c.cell.item_id === placed.candidate_item_id)?.cell
+      : undefined;
     const cell = (key: string): WeeklyCell => {
+      if (key === "safety_education" && source)
+        return {
+          item_id: "item_" + id + "_" + key,
+          value: placed!.display_value,
+          state: "FILLED",
+          evidence: [parentEvidence],
+          generation: {
+            method: "RULE_ONLY",
+            rule_id: "weekly.safety.parent_placement",
+            rule_version: RULE.rule_version,
+          },
+          parent_snapshots: [{ parent_item_id: source.item_id, snapshot_value: source.value }],
+          teacher_input: false,
+        };
       const teacher = TEACHER_INPUT.includes(key);
       const value = teacher ? "" : cellValue(key, theme, week.label);
       return {
@@ -397,7 +419,7 @@ export const changeWeeklyIndoor = (
       if (!candidate && empty) return plan;
       const cell = empty ?? blank();
       if (candidate) {
-        cell.value = `[${candidate.activity_type}] - ${candidate.name}`;
+        cell.value = `[${candidate.activity_type}] ${candidate.name}`;
         cell.state = "FILLED";
         cell.evidence = candidate.cell.evidence;
         cell.generation = {

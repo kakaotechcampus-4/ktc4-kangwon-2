@@ -137,6 +137,10 @@ test("client exports monthly and profile functions", () => {
     "listMonthlyPlans",
     "placeMonthlySafety",
     "regenerateMonthlyCell",
+    "removeMonthlyTableCell",
+    "resizeMonthlyTable",
+    "resizeMonthlyTableSplit",
+    "splitMonthlyTableCell",
     "unconfirmMonthlyPlan",
   ]);
   assert.deepEqual(Object.keys(profiles).sort(), [
@@ -230,7 +234,16 @@ test("create returns the full DTO: dynamic weeks, empty safety cells, no audit f
   }
   assert.equal(plan.sections.find((s) => s.role === "AXIS").repeat_by, null);
   const safety = plan.sections.find((s) => s.section_key === "safety_education").cells;
-  assert.ok(safety.every((c) => c.value === "" && c.state === "EMPTY_UNRESOLVED"));
+  // 서버처럼 후보 모드 — 주 칸은 비어도 되는 칸이고, 안전교육 후보 8 · 주마다 빈 배치 · 빈 주 안내.
+  assert.ok(safety.every((c) => c.value === "" && c.state === "EMPTY_VALID"));
+  assert.equal(plan.safety_candidates.length, 8);
+  assert.deepEqual(
+    plan.safety_weeks.map((w) => w.week_id),
+    plan.weeks.map((w) => w.week_id),
+  );
+  assert.ok(plan.notices.every((n) => n.code === "SAFETY_UNPLACED"));
+  // 훈련 칸이 없는 양식이면 훈련 후보도 없다.
+  assert.deepEqual(plan.drill_candidates, []);
   assert.equal(plan.constraints[0].verification, "NOT_VERIFIED_SOURCE_REQUIRED");
   for (const c of cells(plan)) {
     assert.deepEqual(Object.keys(c).sort(), [
@@ -255,6 +268,23 @@ test("create returns the full DTO: dynamic weeks, empty safety cells, no audit f
   );
   assert.equal(items[0].sections, undefined);
   assert.deepEqual((await listMonthlyPlans()).items, items);
+});
+
+test("safety placement shows the labelled sentence, same input is a no-op", async () => {
+  const { klass, ref } = await confirmedClass();
+  const plan = await createMonthlyPlan({ class_id: klass.id, month: 9, profile_ref: ref });
+  const [w1] = plan.weeks;
+  const first = plan.safety_candidates[0].cell;
+  const placed = await monthly.placeMonthlySafety(plan.id, w1.week_id, first.item_id, 1);
+  assert.equal(placed.revision, 2);
+  assert.equal(placed.safety_weeks[0].display_value, "[성폭력 예방] " + first.value);
+  assert.equal(placed.notices.length, plan.notices.length - 1);
+  assert.equal(
+    (await monthly.placeMonthlySafety(plan.id, w1.week_id, first.item_id, 2)).revision,
+    2,
+  );
+  const cleared = await monthly.placeMonthlySafety(plan.id, w1.week_id, null, 2);
+  assert.equal(cleared.safety_weeks[0].display_value, "");
 });
 
 test("create gates: no annual, unconfirmed annual, duplicate month, unknown profile", async () => {
@@ -319,12 +349,14 @@ test("edit: matching revision +1 and only the target cell changes", async () => 
     "expected_revision",
   ]);
   assert.deepEqual(await getMonthlyPlan(plan.id), edited);
-  // 안전교육 칸도 고칠 수 있고, 비우면 다시 「근거 필요」다.
+  // 후보 모드의 주별 안전교육 칸은 배치가 정한다 — 서버처럼 422 ["item_id"]. 후보 문장은 고칠 수 있다.
   const safety = cellOf(edited, "safety_education");
-  const filled = await editMonthlyCell(plan.id, safety.item_id, "교통안전", 2);
-  assert.equal(cellOf(filled, "safety_education").state, "FILLED");
-  const cleared = await editMonthlyCell(plan.id, safety.item_id, "", 3);
-  assert.equal(cellOf(cleared, "safety_education").state, "EMPTY_UNRESOLVED");
+  await rejects(editMonthlyCell(plan.id, safety.item_id, "교통안전", 2), 422, "VALIDATION_FAILED", [
+    "item_id",
+  ]);
+  const candidate = edited.safety_candidates[0].cell;
+  const rewritten = await editMonthlyCell(plan.id, candidate.item_id, "교통안전 약속", 2);
+  assert.equal(rewritten.safety_candidates[0].cell.value, "교통안전 약속");
 });
 
 test("revision body is strict: string and boolean are rejected", async () => {
@@ -501,4 +533,74 @@ test("annual API still behaves the same next to the monthly mocks", async () => 
     [],
   );
   assert.equal(read().plans.length, 1);
+});
+
+test("검사 결과는 한글 한 줄씩 — 직접 쓴 바깥놀이 안내는 빼고 영어는 띄우지 않는다", async () => {
+  const { findingLines } = await import("../lib/monthly/findings.ts");
+  const { safetyLines } = await import("../lib/monthly/section-labels.ts");
+  const fact = { code: "WEEKLY_FACT_SCOPE_NOT_VERIFIED", message: "Dates, weekdays ..." };
+  const lines = findingLines([
+    fact,
+    fact,
+    { code: "ACTIVITY_FREE_TEXT_AGE_NOT_VERIFIED", message: "Free-text outdoor play ..." },
+    { code: "SOMETHING_NEW", message: "English" },
+  ]);
+  assert.equal(lines.length, 1); // 주간 사실 범위 안내도 띄우지 않는다(PM 2026-11-06)
+  assert.ok(lines.every((t) => !/[a-z]/.test(t)));
+  assert.equal(safetyLines("[교통안전] 길을 건너요."), "[교통안전]\n길을 건너요.");
+  assert.equal(safetyLines("[교통안전] - 길을 건너요."), "[교통안전]\n길을 건너요."); // 11-06 전 값
+  assert.equal(safetyLines("[생활안전] - a - b"), "[생활안전]\na - b");
+  assert.equal(safetyLines("그냥 문장"), "그냥 문장");
+});
+
+test("교사 표(행사 일정 · 특성화 · 특별활동) — 쓰면 MANUAL, 나누고 크기 바꾸고 빼고, 확정본은 409", async () => {
+  const { klass, ref } = await confirmedClass();
+  const plan = await createMonthlyPlan({ class_id: klass.id, month: 9, profile_ref: ref });
+  assert.deepEqual(
+    plan.teacher_tables.map((t) => [t.table_key, t.columns.length, t.titles.length]),
+    [
+      ["event_schedule", 1, 0],
+      ["specialized_timetable", 5, 5],
+      ["special_activity_timetable", 5, 0],
+    ],
+  );
+  const event = plan.teacher_tables[0].columns[0].cell;
+  const written = await editMonthlyCell(plan.id, event.item_id, "9/12 운동회", 1);
+  const after = written.teacher_tables[0].columns[0].cell;
+  assert.equal(after.value, "9/12 운동회");
+  assert.equal(after.generation.method, "MANUAL");
+  assert.deepEqual(written.sections, plan.sections);
+
+  const day = written.teacher_tables[2].columns[0].cell.item_id;
+  await rejects(monthly.removeMonthlyTableCell(plan.id, day, 2), 422, "VALIDATION_FAILED", [
+    "item_id",
+  ]);
+  const split = await monthly.splitMonthlyTableCell(plan.id, day, "VERTICAL", 2);
+  const column = split.teacher_tables[2].columns[0];
+  assert.deepEqual(
+    [column.axis, column.ratio, column.children[0].cell.item_id],
+    ["VERTICAL", 50, day],
+  );
+  const ratio = await monthly.resizeMonthlyTableSplit(plan.id, column.split_id, 30, 3);
+  assert.equal(ratio.teacher_tables[2].columns[0].ratio, 30);
+  const same = await monthly.resizeMonthlyTableSplit(plan.id, column.split_id, 30, 4);
+  assert.equal(same.revision, 4);
+  const size = { column_widths: [100], height_mm: 30 };
+  const tall = await monthly.resizeMonthlyTable(plan.id, "event_schedule", size, 4);
+  assert.equal(tall.teacher_tables[0].height_mm, 30);
+  const added = column.children[1].cell.item_id;
+  const removed = await monthly.removeMonthlyTableCell(plan.id, added, 5);
+  assert.equal(removed.teacher_tables[2].columns[0].cell.item_id, day);
+
+  const done = await confirmMonthlyPlan(plan.id, 6);
+  await rejects(
+    monthly.splitMonthlyTableCell(plan.id, day, "HORIZONTAL", done.revision),
+    409,
+    "ALREADY_CONFIRMED",
+  );
+  await rejects(
+    editMonthlyCell(plan.id, event.item_id, "바꿈", done.revision),
+    409,
+    "ALREADY_CONFIRMED",
+  );
 });
