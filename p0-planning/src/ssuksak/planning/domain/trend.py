@@ -75,6 +75,8 @@ class TrendItem:
     source_name: str  # 승인 채널 이름
     week: str  # 수집 주  예) 2026-W44
     published_on: date
+    # 계획안 글에 나오면 안 되는 채널 · 캐릭터 낱말(승인 소스 파일, ADR-072). LLM 에 넘기지 않는다.
+    name_words: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         for name in ("trend_id", "title", "source_name", "week"):
@@ -87,6 +89,10 @@ class TrendItem:
             raise InvalidDomainValueError("TrendItem.summary is too long")
         if not isinstance(self.published_on, date):
             raise InvalidDomainValueError("TrendItem.published_on must be a date")
+        if not isinstance(self.name_words, tuple) or any(
+            not isinstance(word, str) or not word.strip() for word in self.name_words
+        ):
+            raise InvalidDomainValueError("TrendItem.name_words must be non-blank strings")
 
     def payload(self) -> dict[str, str]:
         return {"trend_id": self.trend_id, "kind": self.kind.value, "title": self.title, "summary": self.summary}

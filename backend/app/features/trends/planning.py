@@ -58,6 +58,7 @@ def trend_items(raw: list[RawItem], week: str) -> list[TrendItem]:
                 source_name=channel.name,
                 week=week,
                 published_on=date.fromisoformat(row.published_at),
+                name_words=channel.name_words,
             )
         )
     return items
