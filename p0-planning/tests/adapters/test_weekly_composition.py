@@ -84,6 +84,52 @@ def _day_command(parent):
                                      WEEKLY_DAY_TEMPLATE, SAFETY_RULE, LLM, activity_catalog=ACTIVITY_CATALOG)
 
 
+@pytest.mark.parametrize("repeat_blank", [False, True])
+def test_linked_indoor_blank_is_repaired_once_and_never_saved_blank(repeat_blank):
+    from ssuksak.planning.planner.contracts import RawLlmResponse
+    from ssuksak.planning.planner.indoor_alternative import INDOOR_ADAPTATION_GUIDANCE, INDOOR_ALTERNATIVE_TAG
+
+    class BlankIndoor(RequestAwareWeeklyLlm):
+        def generate_weekly(self, request):
+            response = super().generate_weekly(request)
+            if repeat_blank or not request.repair_targets:
+                answer = json.loads(response.content)
+                indoor = next(s for s in answer["sections"] if s["section_key"] == "indoor_alternative")
+                indoor.update(value="", unresolved=True, grounding_refs=[])
+                return RawLlmResponse(json.dumps(answer), response.model)
+            return response
+
+    harness, provider = WeeklyHarness(), BlankIndoor()
+    parent = harness.monthly_parent(mode=LLM)
+    if repeat_blank:
+        with pytest.raises(WeeklyApplicationError) as error:
+            _day_generation(harness, provider).execute(_day_command(parent))
+        assert "INDOOR_ALTERNATIVE_REQUIRED" in error.value.__cause__.validation_codes
+        assert len(harness.weekly_plans) == 0
+    else:
+        plan = _day_generation(harness, provider).execute(_day_command(parent)).plan
+        cell = plan.cell("indoor_alternative")
+        assert ":" in cell.value and cell.value.strip()
+        assert INDOOR_ALTERNATIVE_TAG in cell.generation.rule_version
+        assert any(p.snapshot_value for p in cell.parent_snapshots)
+        assert any(e.source_type is EvidenceSourceType.INSTITUTION_SAMPLE for e in cell.evidence)
+    assert len(provider.requests) == 2
+    assert provider.requests[-1].repair_targets == ("indoor_alternative",)
+    assert INDOOR_ADAPTATION_GUIDANCE in provider.requests[0].system_prompt
+
+
+def test_missing_linked_indoor_evidence_stops_before_provider_and_save(monkeypatch):
+    import ssuksak.planning.application.generate_weekly_plan as module
+
+    monkeypatch.setattr(module, "_classified_evidence", lambda *args, **kwargs: {})
+    harness, provider = WeeklyHarness(), RequestAwareWeeklyLlm()
+    parent = harness.monthly_parent(mode=LLM)
+    with pytest.raises(WeeklyApplicationError) as error:
+        _day_generation(harness, provider).execute(_day_command(parent))
+    assert error.value.code == "weekly_reference_context_unavailable"
+    assert not provider.requests and len(harness.weekly_plans) == 0
+
+
 def test_day_composition_links_approved_context_and_parent_play_through_regeneration():
     harness = WeeklyHarness()
     parent = harness.monthly_parent(confirm=False, mode=LLM)
@@ -108,7 +154,9 @@ def test_day_composition_links_approved_context_and_parent_play_through_regenera
         with_reference_labels,
     )
     assert LINKED_OUTDOOR_INSTRUCTION in request.system_prompt
-    assert LINKED_WRITING_GUIDANCE in request.system_prompt
+    assert LINKED_WRITING_GUIDANCE.replace(
+        "허용 근거로 이어갈 수 없으면 빈칸으로 두고 관계없는 놀이로 채우지 않는다. ", ""
+    ) in request.system_prompt
     assert "parent의 같은 주 indoor_alternative" in request.system_prompt
     assert "'활동명: 설명'" in request.system_prompt
     assert "+activity-candidates-" not in request.prompt_version
@@ -147,9 +195,11 @@ def test_day_composition_links_approved_context_and_parent_play_through_regenera
         provider=provider, clock=harness.clock,
     ).execute(RegenerateWeeklyPlanCellCommand(before.plan_id, outdoor.item_id, ActorId("test_reviewer")))
     assert after.cell("outdoor_play").item_id == outdoor.item_id
-    assert after.cell("outdoor_play").generation.rule_version == "weekly-cell-planner-v2+monthly-linked-v7+day-cells-v1"
+    assert after.cell("outdoor_play").generation.rule_version == "weekly-cell-planner-v2+monthly-linked-v8+indoor-alternative-v3+teacher-venues-v2+day-cells-v1"
     assert LINKED_OUTDOOR_INSTRUCTION in provider.requests[-1].system_prompt
-    assert LINKED_WRITING_GUIDANCE in provider.requests[-1].system_prompt
+    assert LINKED_WRITING_GUIDANCE.replace(
+        "허용 근거로 이어갈 수 없으면 빈칸으로 두고 관계없는 놀이로 채우지 않는다. ", ""
+    ) in provider.requests[-1].system_prompt
     assert any(e.source_type is EvidenceSourceType.INSTITUTION_SAMPLE for e in after.cell("outdoor_play").evidence)
     assert all(a == b for a, b in zip(before.cells, after.cells) if a.item_id != outdoor.item_id)
     assert json.loads(provider.requests[-1].user_content)["daily_life_context"] == body["daily_life_context"]

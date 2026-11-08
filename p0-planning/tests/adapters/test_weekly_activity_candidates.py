@@ -140,7 +140,7 @@ def test_bad_candidate_format_repairs_once_and_records_the_repair_version(indoor
             if target.get("activity_type"):
                 assert any(target["activity_basis"] in texts[ref] for ref in target["allowed_grounding_refs"])
                 assert target["required_name_terms"] == list(request.target(target["section_key"]).required_name_terms)
-        assert "+monthly-linked-v7" in request.prompt_version
+        assert "+monthly-linked-v8" in request.prompt_version
         assert "설명의 대상과 실제 행동을 남겨 문서용 활동명을 쓴다" in request.system_prompt
         assert "유형과 활동명만 읽어도 할 일이 떠올라야 한다" in request.system_prompt
         assert "서로 섞어 새 활동을 만들지 않는다" in request.system_prompt
@@ -150,7 +150,9 @@ def test_bad_candidate_format_repairs_once_and_records_the_repair_version(indoor
         assert request.system_prompt.count(CANDIDATE_DESCRIPTION_TONE) == 1
         assert "소리는 듣는 대상이며" not in request.system_prompt
         assert LINKED_OUTDOOR_INSTRUCTION in request.system_prompt
-        assert LINKED_WRITING_GUIDANCE in request.system_prompt
+        assert LINKED_WRITING_GUIDANCE.replace(
+            "허용 근거로 이어갈 수 없으면 빈칸으로 두고 관계없는 놀이로 채우지 않는다. ", ""
+        ) in request.system_prompt
         assert "작품명과 익숙한 놀이명은 유지" in request.system_prompt
         assert "근거에 없는 재료·놀이 방법·절차·결과물을 보태지 않는다" in request.system_prompt
 
@@ -180,7 +182,7 @@ def test_indoor_candidates_choose_reorder_remove_and_keep_history():
     assert "합니다체 1~2문장" in provider.requests[0].system_prompt
     first = actions.add_indoor(plan.plan_id, candidates[0].cell.item_id, actor)
     row = first.cell("indoor_play")
-    assert row.value == f"[{candidates[0].activity_type}] - {candidates[0].name}"
+    assert row.value == f"[{candidates[0].activity_type}] {candidates[0].name}"
     assert row.evidence == candidates[0].cell.evidence
     assert row.audit.events[-1].copied_from == candidates[0].cell.item_id
     assert actions.add_indoor(plan.plan_id, candidates[0].cell.item_id, actor) is first

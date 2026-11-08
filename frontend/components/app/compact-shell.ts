@@ -1,12 +1,16 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
 
 /**
- * 사이드바를 72px 아이콘 줄로 접을지. 표·문서를 넓게 써야 하는 편집 단계(생성 중 · 놀이 고르기 ·
- * 다듬기) 화면이 `useCompactShell()` 로 켠다.
+ * 사이드바를 75px 아이콘 줄로 접을지.
  *
- * **경로가 아니라 화면이 정한다.** 같은 `/plans/annual/{id}` 가 확정 전에는 접고 확정 뒤에는
- * 펼친다. 화면이 사라지면(unmount) 저절로 펼쳐진다.
+ * - **계획안 안쪽 화면(`/plans/…`)은 주소로 접는다.** 만들기 · 이어 쓰기 · 확정본 보기 모두다.
+ *   주소는 처음 그릴 때부터 알기 때문에, 새로고침해도 펼쳤다가 접히며 깜빡이지 않는다.
+ *   계획안 첫 화면(`/plans`)은 펼친다.
+ * - 그 밖의 편집 화면은 자기 사정으로 `useCompactShell()` 을 켠다. 화면이 사라지면(unmount) 저절로 펼쳐진다.
  */
+export const isPlanInner = (pathname: string) => pathname.startsWith("/plans/");
+
 let active = 0;
 const listeners = new Set<() => void>();
 
@@ -31,9 +35,11 @@ export function useCompactShell(on = true) {
 }
 
 export function useIsCompact() {
-  return useSyncExternalStore(
+  const plan = isPlanInner(usePathname());
+  const screen = useSyncExternalStore(
     subscribe,
     () => active > 0,
     () => false,
   );
+  return plan || screen;
 }

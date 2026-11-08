@@ -44,6 +44,9 @@
 - 등록한 반의 이름 · 연령 · 담임 · 동의를 서버에서 고칠 수 있고 아이가 있는 반은 동의를 끌 수 없다 — `PATCH /api/classes/{class_id}` · `backend/tests/test_class_edit.py`
 - 온보딩을 한 화면에 질문 하나로 다시 만들고, 마지막 확인에서 등록한 원 · 반을 바로 고친다 — `frontend/components/onboarding/ReviewFlow.tsx` · `frontend/e2e/mentor-pilot.spec.ts` 「반을 마지막 확인에서 고치면」
 
+- 13주차 멘토 리뷰(PR #380) 화면 지적을 PR 하나씩으로 반영했다 — 메뉴를 교사가 쓰는 말 「보육일지」로 합침(#412) · 튜토리얼 이전 버튼 · 짧은 문장 · 빠졌던 세 화면(#413) · 홈 칠판 메모 앞뒤 넘기기(#411) · 보관함 카드에서 바로 열기(#417) · 놀이 중심 연간 쪽 탭에 계절 이름 · 놀이 다시 고르기(#420) · 평가 점검 확인창 미리 알림 · 결과 안내 · 「평가제가 뭐예요?」(#421)
+- 설정 내 계정을 한 장 목록으로 — 이름 · 메일 · 비밀번호 · 튜토리얼 · 로그아웃(#419)
+
 ## 고친 실제 사고
 
 | 증상 | 원인 | 고친 곳 |
@@ -51,9 +54,16 @@
 | 한 번 말했는데 네댓 번 적힘 | Web Speech API `results` 가 누적인데 매번 전체를 더했다 | 커밋 `d12f872` · `frontend/tests/dictation.test.mjs` |
 | 기기 바꾼 교사가 온보딩 1단계에서 막힘 | 409 처리 | 커밋 `f607c54` |
 | 다른 브라우저로 로그인하면 첫 설정을 마친 교사도 첫 설정으로 가고 반이 빈 칸 | 첫 설정을 마쳤는지를 브라우저 기록으로만 봤다 | 이슈 #291 · `frontend/lib/api/onboarding.ts` `restoreFromServer` |
+| 반이 둘인 계정이 다른 브라우저로 로그인하면 일과 기록 · 주간 기록이 「반을 골라주세요」에서 멈춤(멘토 화면) | 서버에서 반을 되살릴 때 담당 반을 비워 뒀다 | PR #409 · `frontend/lib/api/onboarding.ts` `restoreFromServer` |
+| 튜토리얼 강조 틀이 칸에서 비껴 가고 줄 끌기 복사본이 작게 뜸 | 브라우저마다 rect 에 CSS zoom 이 들어가는지 달라 두 번 나눴다 | PR #418 · `frontend/lib/appZoom.ts` |
+| 같은 원으로 들어가는 선생님이 「입력값을 확인해주세요」(422) | 합류 단계는 원장 이름을 안 묻는데 서버가 필수로 받았다 | PR #415 · #416 · `backend/tests/test_same_center.py` |
 | 서버 시각이 9시간 틀림 | `created_at` 이 UTC 인데 문자열을 잘랐다 | [CLAUDE.md](../../CLAUDE.md) §날짜·시각 |
 | 목업이 PATCH 를 받아줘 통과, 진짜 서버는 PUT | 코드를 보고 짐작하고 값을 안 봤다 | [CLAUDE.md](../../CLAUDE.md) §서버 값은 타입 말고 실제 응답을 본다 |
 | 휴대폰(390px) 보관함에서 반 목록 아래 빈 칸 · 종류 카드 아이콘이 점으로 보임 | 넓은 화면의 최소 높이 360px 와 아이콘 안 여백 13px 을 그대로 물려받았다 | `frontend/components/workspace/DocumentArchive.module.css` |
+| 소개 화면 「선생님의 하루」 창에 여섯 장면이 한꺼번에 쌓이고 안쪽 여백이 없음 · 위 메뉴를 누르면 뚝 끊겨 이동 | CSS 를 `.lp` 안에 가두며 선택자의 `body` · `html` 이 빠졌다(`.win-.view` · `.lp html`) | `frontend/components/landing/landing.css` |
+| 1024~1439 폭 소개 화면(/welcome)에서 스크롤 장면 아래가 빈 크림 띠로 남음 | 앱 전체 배율(1440 기준 zoom)이 소개 화면에도 걸려, 창 높이로 맞춘 고정 장면이 창보다 짧아졌다 | `frontend/app/globals.css` `html:has(.lp)` |
+| 주소만 치고 들어온 첫 방문이 로그인 화면으로 감 | 로그인 안 한 사람은 어느 주소든 `/login` 으로 보냈다 — 첫 방문(`/`)만 소개 화면으로 | `frontend/lib/auth/local-account.ts` `accessRedirect` · `frontend/tests/auth-access.test.mjs` |
+| 휴대폰(390px) 홈 「오늘 적은 기록으로 · 보육일지」 글이 한 단어씩 세로로 쪼개짐(멘토 화면) | 왼쪽 띠가 `flex-1`(기본 폭 0)이라 줄을 안 바꾸고 오른쪽 안내 · 버튼에 밀려 줄었다 | `frontend/components/dashboard/HomePage.tsx` `min-w-[12rem]` |
 | 휴대폰에서 두 자리 날짜(「11.18」)가 보육일지 주간 칸을 넘침 | 칸 최소 폭 52px 이 글자 46px 에 여백을 못 담았다 | `frontend/components/workspace/DocumentArchive.module.css` · `frontend/e2e/document-archive-layout.spec.ts` |
 | 설정의 아동 명단 쪽지가 아이가 있어도 0명으로 보임 | 브라우저 저장소에서 셌는데, 아동 명단은 거기 남기지 않는다(ADR-013) | `frontend/components/auth/SettingsPage.tsx` — 서버에서 받아 수만 남긴다 |
 

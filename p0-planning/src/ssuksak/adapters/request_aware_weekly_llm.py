@@ -11,6 +11,7 @@ import json
 
 from ssuksak.planning.planner.contracts import MONTHLY_MODEL, RawLlmResponse
 from ssuksak.planning.planner.weekly import WeeklyPlanningRequest
+from ssuksak.planning.planner.indoor_alternative import INDOOR_ALTERNATIVE_TAG
 
 
 class RequestAwareWeeklyLlm:
@@ -45,6 +46,8 @@ class RequestAwareWeeklyLlm:
                     grounding = []
             elif key == "safety_education":
                 value, grounding = f"{again}이번 주에도 {parent['safety_education']}", []
+            elif key == "indoor_alternative" and body.get("indoor_adaptation_policy") == INDOOR_ALTERNATIVE_TAG.lstrip("+"):
+                value += ": 허용된 실내 활동 방법으로 이번 주 경험을 이어 갑니다."
             if target.get("days"):  # ADR-051: one distinct value per requested day
                 sections.append({"section_key": key, "reference_id": None, "days": [
                     {"day": day, "value": f"{value} {day}", "unresolved": False, "grounding_refs": grounding}

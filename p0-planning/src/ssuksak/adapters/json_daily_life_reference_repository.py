@@ -6,11 +6,11 @@ the domain catalog. Reading an unapproved file is allowed; the generation Gate r
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Mapping
 from pathlib import Path
 
+from .. import timing
 from ..planning.domain.daily_life_reference import DailyLifeCatalog, DailyLifeEntry, DailyLifeKind
 from ..planning.domain.theme_reference import ActivationStatus
 
@@ -68,7 +68,7 @@ def parse_daily_life_payload(payload: Mapping) -> DailyLifeCatalog:
 
 class JsonDailyLifeReferenceRepository:
     def __init__(self, paths: tuple[Path, ...] = (DAILY_LIFE_PATH,)) -> None:
-        catalogs = tuple(parse_daily_life_payload(json.loads(Path(path).read_text(encoding="utf-8"))) for path in paths)
+        catalogs = tuple(parse_daily_life_payload(timing.read_json(path)) for path in paths)
         keys = [(c.catalog_id, c.catalog_version) for c in catalogs]
         if len(keys) != len(set(keys)):  # never let file order pick the winner
             raise DailyLifeReferenceError("two files carry the same catalog id and version")

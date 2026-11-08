@@ -4,7 +4,7 @@ import { ApiError } from "@/lib/api/client";
 import { confirmPlayMonthly } from "@/lib/api/playMonthly";
 import { isSaveConflict } from "@/lib/api/plans";
 import type { PlayMonthlyPlan } from "@/lib/api/types";
-import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
+import PlayMonthlyConfirm, { CONFIRM_TITLE } from "./PlayMonthlyConfirm";
 
 const SECTION = { together: "함께 하는 활동", free_play: "자유놀이" } as const;
 
@@ -144,6 +144,7 @@ export default function PlayMonthlyConfirmBar({
         <div className="absolute right-0 top-full z-20 mt-2 flex w-[380px] flex-col gap-2">
           {asking && ask && (
             <PlayMonthlyConfirm
+              title={CONFIRM_TITLE}
               message={ask}
               yes={confirming ? "확정하는 중…" : "확정하기"}
               no="더 다듬기"

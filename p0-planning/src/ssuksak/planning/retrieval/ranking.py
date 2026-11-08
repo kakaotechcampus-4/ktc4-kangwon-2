@@ -99,21 +99,45 @@ def balance_by_age(
     return result + rest
 
 
+def prefer_explicit_indoor_methods(ranked: Sequence[RetrievedEvidence]) -> list[RetrievedEvidence]:
+    """Prefer explicit methods at equal lexical relevance; this is not a semantic verdict."""
+    method = re.compile(
+        r"몸으로|신체로|(?:블록|스카프|천|신문지|종이|공|집게|컵|카드).{0,20}"
+        r"(?:구성|표현|그리|만들|쌓|던|굴|뒤집|옮|나르|쓸|건너)"
+    )
+    return sorted(ranked, key=lambda item: (
+        AGE_TIER_ORDER.index(item.trace.age_match),
+        not item.trace.theme_page_match,
+        -item.trace.keyword_overlap,
+        0 if method.search(item.record.text) else 1,
+        item.record_id,
+    ))
+
+
 def apply_source_diversity(
-    ranked: Sequence[RetrievedEvidence], *, top_k: int, institution_cap: int = DEFAULT_INSTITUTION_CAP
+    ranked: Sequence[RetrievedEvidence],
+    *,
+    top_k: int,
+    institution_cap: int = DEFAULT_INSTITUTION_CAP,
+    fill: bool = False,
 ) -> tuple[RetrievedEvidence, ...]:
+    """fill=True makes the cap an order preference: capped items fill leftover slots in ranked order."""
     if top_k < 1:
         return ()
     used: collections.Counter[str] = collections.Counter()
     selected = []
+    capped = []
     for item in ranked:
         group = item.trace.diversity_group
         if used[group] >= institution_cap:
+            capped.append(item)
             continue
         used[group] += 1
         selected.append(item)
         if len(selected) == top_k:
             break
+    if fill:
+        selected.extend(capped[: top_k - len(selected)])
     return tuple(selected)
 
 

@@ -48,6 +48,12 @@ def test_real_store_contract_and_counts(store, payload):
     assert store.content_sha256 == EXPECTED_CONTENT_SHA
 
 
+def test_new_repositories_share_one_loaded_store(store):
+    # Each request builds a new repository; reloading the 14 MB store per request
+    # doubled the test suite's time. A second load must be the same object.
+    assert JsonInstitutionEvidenceRepository().get_store() is store
+
+
 def test_privacy_derivative_keeps_none_of_the_removed_records(payload):
     # The v0.1.0 original was deleted; the derivation was checked against it when v0.2.0 was approved.
     removed = set(payload["build"]["removed_record_ids"])

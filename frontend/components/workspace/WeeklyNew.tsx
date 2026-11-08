@@ -21,7 +21,7 @@ import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER, planClassLine } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
-import GenerationRing, { ringFinished } from "@/components/plan-ui/GenerationRing";
+import GenerationRing, { ringFinished, STOPPED_NOTE } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { BACK_BUTTON, BACK_ICON } from "@/components/plan-generator/AnnualFrame";
 import { Tape, useClasses } from "./WorkspaceUI";
@@ -72,10 +72,18 @@ type MonthData = { month: number; monthly: MonthlyPlan | null; plans: WeeklyPlan
 
 export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }) {
   const [problem, setProblem] = useState("");
+  const [stopped, setStopped] = useState(false);
   const [memo, setMemo] = useState("");
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
   const classes = useClasses(setProblem);
   const [chosen] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
+  // 계획안 첫 화면 단추로 들어왔으면(`?from=plans`) 「←」는 첫 화면으로 돌아간다.
+  const [fromPlans] = useClientState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("from") === "plans",
+    false,
+  );
   const local = classes.find((c) => c.id === chosen) ?? classes[0];
   const [data, setData] = useState<Loaded | null>(null);
   const [month, setMonth] = useState<number | null>(null);
@@ -196,6 +204,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     setBusy(true);
     setDone(false);
     setProblem("");
+    setStopped(false);
     setMemoProblem(null);
     try {
       const plan = await createWeeklyPlan(
@@ -233,11 +242,12 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     }
   }
 
-  const label = week ? `${month}월 ${week.label}` : `${month}월`;
+  // 주 이름은 「11월 4주」처럼 달까지 붙어 온다.
+  const label = week ? week.label : `${month}월`;
 
   if (busy)
     return (
-      <div className="flex min-h-[calc(100vh-60px)]">
+      <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
           kind="weekly"
           // Sol 실측: 33초(2026-11-05).
@@ -248,35 +258,38 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
           onCancel={() => {
             controller.current?.abort();
             setBusy(false);
+            setStopped(true);
           }}
         />
       </div>
     );
 
   return (
-    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(100vh-60px)]">
+    <div className="flex w-full flex-col gap-4 px-10 pb-6 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)]">
       <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <Tape />
-        <section className="flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto border border-line bg-paper rounded-md p-7">
+        <section className="flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto bg-paper shadow-pg p-7">
           {/* 왼쪽 판 맨 위: 제목 앞 「←」 돌아가기(편집 화면과 같은 버튼) · 방식. */}
           <div className="flex shrink-0 flex-col">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <Link
                 href={
-                  draft
-                    ? `/plans/monthly?plan_id=${draft.id}&class_id=${classId}&month=${month}`
-                    : "/plans/monthly"
+                  fromPlans
+                    ? "/plans"
+                    : draft
+                      ? `/plans/monthly?plan_id=${draft.id}&class_id=${classId}&month=${month}`
+                      : "/plans/monthly"
                 }
-                aria-label={`돌아가기: ${month}월 월간계획안`}
-                title={`${month}월 월간계획안`}
+                aria-label={`돌아가기: ${fromPlans ? "계획안" : `${month}월 월간계획안`}`}
+                title={fromPlans ? "계획안" : `${month}월 월간계획안`}
                 className={BACK_BUTTON}
               >
                 {BACK_ICON}
               </Link>
-              <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+              <h1 className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
                 주간계획안 만들기
               </h1>
-              <span className="rounded-full bg-[#e8f1ea] px-3 py-1 text-[13px] font-bold text-[#3b5441]">
+              <span className="-rotate-2 border border-black/10 bg-[#e8f1ea] px-3 py-0.5 font-display text-[18px] font-bold text-[#3b5441] shadow-pg-card">
                 월별 주제형
               </span>
             </div>
@@ -390,6 +403,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
             />
           )}
 
+          {stopped && STOPPED_NOTE}
           {problem && (
             <p
               role="alert"
@@ -399,8 +413,9 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
             </p>
           )}
 
-          {/* 만들기 단추는 화면 아래에 붙여 둔다 — 낮은 화면(1440×900)에서도 스크롤 없이 보이게. */}
-          <div className="sticky bottom-0 z-10 mt-auto flex shrink-0 flex-col gap-2 bg-paper pb-1 pt-2">
+          {/* 만들기 단추는 화면 아래에 붙여 둔다 — 낮은 화면(1440×900)에서도 스크롤 없이 보이게.
+              카드 아래 여백(p-7)까지 덮고 위를 흐리게 해, 뒤에 지나가는 글이 단추 아래로 비치지 않는다. */}
+          <div className="sticky -bottom-7 z-10 -mb-7 mt-auto flex shrink-0 flex-col gap-2 bg-paper pb-7 pt-3 before:pointer-events-none before:absolute before:inset-x-0 before:-top-6 before:h-6 before:bg-gradient-to-b before:from-transparent before:to-paper">
             <button
               type="button"
               onClick={() => void create()}

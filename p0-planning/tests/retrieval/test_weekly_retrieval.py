@@ -66,6 +66,7 @@ def _search(records, **overrides):
         (
             (SourceSection.INDOOR_PLAY, "쌓기", INDOOR),
             (SourceSection.INDOOR_PLAY, "이야기 나누기", WeeklySemanticClass.GROUP_ACTIVITY),
+            (SourceSection.INDOOR_PLAY, "실내대체", WeeklySemanticClass.INDOOR_ALTERNATIVE),
         ),
     )
     arguments = dict(weekly_class=INDOOR, calendar_month=9, ages=frozenset({3}), query_text="가을 열매")
@@ -87,6 +88,29 @@ def test_only_that_class_that_month_valid_and_age_verified_records_are_used():
     assert _search(records, weekly_class=WeeklySemanticClass.GROUP_ACTIVITY) == ["ev_3"]
 
 
+def test_new_generation_excludes_venue_bound_source_without_rewriting_it():
+    records = (_record("ev_1", text="<현장학습> 배산유아숲터 숲체험"),
+               _record("ev_2", text="부산시민공원 가을소풍"),
+               _record("ev_3", text="자연물로 겨울나무 꾸미기"))
+    assert _search(records, exclude_venue_bound=True) == ["ev_3"]
+    assert records[0].text == "<현장학습> 배산유아숲터 숲체험"
+
+
+def test_indoor_methods_are_explicit_without_bypassing_month_age_or_class():
+    records = (
+        _record("ev_1", label="실내대체", text="겨울나무를 표현해요"),
+        _record("ev_2", label="실내대체", text="겨울나무를 몸으로 표현해요"),
+        _record("ev_3", label="실내대체", text="겨울나무를 몸으로 표현해요", age_scope=()),
+        _record("ev_4", label="실내대체", text="겨울나무를 몸으로 표현해요", month=12),
+        _record("ev_5", label="쌓기", text="겨울나무를 몸으로 표현해요"),
+    )
+    assert _search(records, weekly_class=WeeklySemanticClass.INDOOR_ALTERNATIVE,
+                   query_text="겨울나무", explicit_indoor_methods=True) == ["ev_2", "ev_1"]
+    assert _search(records, weekly_class=WeeklySemanticClass.INDOOR_ALTERNATIVE,
+                   query_text="겨울나무") == ["ev_1", "ev_2"]  # legacy requests keep their ranking
+    assert _search(records, query_text="겨울나무") == ["ev_5"]
+
+
 @pytest.mark.parametrize("text,label,expected", [
     ("[이야기 나누기] 가을 이야기", "대소집단", "이야기나누기"),
     ("[이야기나누기] 가을 이야기", "대소집단", "이야기나누기"),
@@ -104,6 +128,20 @@ def test_at_most_two_per_institution_and_top_k():
     found = _search(records, top_k=5)
     assert len(found) == 5
     assert sum(record_id in {"ev_1", "ev_2", "ev_3"} for record_id in found) == 2
+
+
+def test_candidate_pools_fill_leftover_slots_with_capped_sources_after_distinct_ones():
+    # Human Decision 2026-11-05(하민): for candidates the source cap orders, it does not cut.
+    records = tuple(_record(f"ev_{i}", text=f"가을 열매 쌓기 {i}") for i in range(1, 7)) + (
+        _record("ev_7", text="가을 열매 쌓기 7", institution="B"),
+        _record("ev_8", text="가을 열매 쌓기 8", institution="C"),
+    )
+    assert len(_search(records, top_k=5)) == 4
+    found = _search(records, top_k=5, by_activity_type=True)
+    assert len(found) == 5
+    assert {"ev_7", "ev_8"} <= set(found[:4]) and sum(r not in {"ev_7", "ev_8"} for r in found[:4]) == 2
+    assert found[4] not in {"ev_7", "ev_8"}
+    assert len(_search(records, top_k=20, by_activity_type=True)) == 8
 
 
 def test_parent_citation_survives_top_k_without_bypassing_eligibility_or_source_cap():

@@ -24,6 +24,7 @@ from ssuksak.adapters.weekly_composition import WEEKLY_TEMPLATE_PATH
 from ssuksak.planning import MonthlyApplicationError, WeeklyPlan
 from ssuksak.planning.domain.monthly_template import SemanticVariant, TemplateRef
 from ssuksak.planning.planner.weekly import WEEKLY_CONTEXT_CELL_PROMPT_VERSION
+from ssuksak.planning.venue_policy import VENUE_POLICY_TAG
 
 from app.config import settings
 from app.features.auth.models import User
@@ -482,45 +483,34 @@ def test_목록_남의_원_반은_404(world):
     assert response.status_code == 404
 
 
-def test_DRAFT_는_지우고_다시_만들_수_있다_확정본은_못_지운다(world, db_session):
+def test_DRAFT_도_확정본도_지우고_다시_만들_수_있다(world, db_session):
+    """확정본도 지운다(ADR-064, Human Decision 2026-11-05 하민)."""
     created = _create(world).json()
     assert client.delete(f"/api/plans/weekly/{created['id']}").status_code == 204
-    again = _create(world)
-    assert again.status_code == 201
+    again = _create(world).json()
+    confirmed = _confirm(again)
+    assert confirmed.status_code == 200, confirmed.text
 
-    db_session.execute(
-        update(Plan)
-        .where(Plan.id == again.json()["id"])
-        .values(status="CONFIRMED", class_name="햇살반", teacher_name="김선생")
+    assert client.delete(f"/api/plans/weekly/{again['id']}").status_code == 204
+    assert client.get(f"/api/plans/weekly/{again['id']}").status_code == 404
+    assert _create(world).status_code == 201
+
+
+def test_주간이_딸린_월간은_확정본이어도_지우지_못하고_주간을_지우면_지운다(world):
+    """주간은 월간을 부모로 든다. 부모만 지우면 주간 조회가 깨진다(ADR-064)."""
+    monthly_id = world["monthly"]["id"]
+    weekly = _create(world).json()
+
+    response = client.delete(f"/api/plans/monthly/{monthly_id}")
+    assert _error(response) == (409, "IN_USE", [])
+    assert response.json()["error"]["message"] == (
+        "이 월간계획안으로 만든 주간계획안이 있습니다. 먼저 지워주세요."
     )
-    assert _error(client.delete(f"/api/plans/weekly/{again.json()['id']}")) == (
-        409,
-        "GATE_BLOCKED",
-        [],
-    )
+    assert client.get(f"/api/plans/monthly/{monthly_id}").status_code == 200
 
-
-def test_삭제가_읽은_뒤_다른_요청이_확정하면_확정본을_지우지_않는다(world, db_session, monkeypatch):
-    """읽기와 지우기 사이에 확정이 끼면 409 · 행이 남는다(Codex W5b-01 실제 경합 재현)."""
-    created = _create(world).json()
-    real = weekly_router._own_row
-
-    def read_then_confirmed_elsewhere(session, user, plan_id):
-        row = real(session, user, plan_id)
-        session.expunge(row)  # 삭제는 DRAFT 로 읽은 값을 그대로 들고 간다
-        # 다른 요청의 확정은 이미 commit 됐다 — 이 요청이 409 로 되돌려도 남아야 한다.
-        session.execute(
-            update(Plan)
-            .where(Plan.id == plan_id)
-            .values(status="CONFIRMED", class_name="햇살반", teacher_name="김선생")
-        )
-        session.commit()
-        return row
-
-    monkeypatch.setattr(weekly_router, "_own_row", read_then_confirmed_elsewhere)
-    assert _error(client.delete(f"/api/plans/weekly/{created['id']}")) == (409, "GATE_BLOCKED", [])
-    # 확정본 행이 그대로 남는다(상태 칸만 바꿔 흉내 냈으므로 칸을 본다).
-    assert db_session.scalar(select(Plan.status).where(Plan.id == created["id"])) == "CONFIRMED"
+    assert client.delete(f"/api/plans/weekly/{weekly['id']}").status_code == 204
+    assert client.delete(f"/api/plans/monthly/{monthly_id}").status_code == 204
+    assert client.get(f"/api/plans/monthly/{monthly_id}").status_code == 404
 
 
 @pytest.mark.parametrize("code", ["opaque_actor_required", "repository_contract_violation"])
@@ -676,7 +666,7 @@ def test_칸을_다시_만들면_그_칸만_바뀐다(world):
     assert audit[-1]["type"] == "REGENERATED"
     assert (
         audit[-1]["generation_change"]["after"]["rule_version"]
-        == WEEKLY_CONTEXT_CELL_PROMPT_VERSION
+        == WEEKLY_CONTEXT_CELL_PROMPT_VERSION + VENUE_POLICY_TAG
     )
 
 
@@ -914,7 +904,8 @@ def test_확정된_주간을_표_양식_hwpx_로_내려준다(world):
     assert _cell(edited, "theme")["value"] in printed
     assert any((t or "").endswith("(만 3·4세)") for t in printed)  # 혼합반 연령 (Codex W5c-01)
     assert any(edited["week_period"]["label"] in (t or "") for t in printed)
-    assert any(str(edited["display_end_date"]) in (t or "") for t in printed)
+    # 한글 문서의 날짜는 「2026.11.02」 모양이다(하민 결정 2026-11-06).
+    assert any(str(edited["display_end_date"]).replace("-", ".") in (t or "") for t in printed)
 
 
 def test_내보내기_연령은_단일과_혼합을_만_N세로_쓴다():
@@ -1206,14 +1197,14 @@ def test_요일_양식_주간은_고정_양식의_요일_칸에_채운다(world,
     assert text((0, 0)).startswith(f"{plan['week_period']['label']} 주간놀이계획안")
     paragraphs = cells[(7, 1)].findall("hp:subList/hp:p", NS)
     assert ["".join(p.itertext()) for p in paragraphs] == [
-        "[역할놀이] - 가을 가게",
-        "[쌓기놀이] - 열매 길",
+        "[역할놀이] 가을 가게",
+        "[쌓기놀이] 열매 길",
         "분류 없는 교사 메모",
     ]
     assert core.cell("indoor_play").value.startswith("[역할놀이] 가을 가게")
     with zipfile.ZipFile(BytesIO(response.content)) as archive:
         header = etree.fromstring(archive.read("Contents/header.xml"))
-        assert "[역할놀이] - 가을 가게" in archive.read("Preview/PrvText.txt").decode()
+        assert "[역할놀이] 가을 가게" in archive.read("Preview/PrvText.txt").decode()
     namespaces = {
         **NS,
         "hh": "http://www.hancom.co.kr/hwpml/2011/head",
@@ -1226,11 +1217,22 @@ def test_요일_양식_주간은_고정_양식의_요일_칸에_채운다(world,
     assert header.find(f".//hh:charPr[@id='{font_id}']", namespaces).get("height") == "900"
 
 
+def test_주간_안전교육은_옛_값의_줄표를_떼고_한_줄이다():
+    from app.features.plans.export import _weekly_text
+
+    old, new = "[교통안전] - 길을 건너요 - 천천히", "[교통안전] 길을 건너요 - 천천히"
+    assert _weekly_text("safety_education", old) == new
+    assert _weekly_text("safety_education", new) == new
+    assert _weekly_text("safety_education", "") == ""
+
+
 def test_indoor_display_keeps_blank_and_untagged_teacher_text():
     from app.features.plans.export import _indoor_play_text
 
-    for value in ("", "교사가 직접 쓴 놀이", "[역할놀이] - 가게 놀이", "[역할놀이]\n가게 놀이"):
+    for value in ("", "교사가 직접 쓴 놀이", "[역할놀이] 가게 놀이", "[역할놀이]\n가게 놀이"):
         assert _indoor_play_text(value) == value
+    # 2026-11-06 전 값의 「 - 」는 뗀다.
+    assert _indoor_play_text("[역할놀이] - 가게 놀이") == "[역할놀이] 가게 놀이"
 
 
 @pytest.mark.parametrize("saturday", [False, True])
@@ -1274,7 +1276,7 @@ def test_indoor_candidates_select_edit_order_export_and_archive(
     )
     plan = add(plan, candidates[0]["cell"]["item_id"]).json()
     first = rows(plan)[0]
-    assert first["value"] == f"[{candidates[0]['activity_type']}] - {candidates[0]['name']}"
+    assert first["value"] == f"[{candidates[0]['activity_type']}] {candidates[0]['name']}"
     plan = add(plan, candidates[1]["cell"]["item_id"]).json()
     assert len(rows(plan)) == 2
     for candidate in candidates[2:7]:
@@ -1282,7 +1284,7 @@ def test_indoor_candidates_select_edit_order_export_and_archive(
     plan = client.put(
         f"/api/plans/weekly/{plan['id']}/cells/{first['item_id']}",
         json={
-            "value": "[역할놀이] - 교사가 다듬은 가게 놀이",
+            "value": "[역할놀이] 교사가 다듬은 가게 놀이",
             "expected_revision": plan["revision"],
         },
     ).json()

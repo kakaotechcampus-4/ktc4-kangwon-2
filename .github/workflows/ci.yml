@@ -362,9 +362,40 @@ jobs:
           done
           cat /tmp/e2e-next.log
           exit 1
+      # 브라우저만 받는다(Playwright 서버, 버전 고정). `--with-deps` 의 apt 는 쓰지 않는다 — 러너에
+      # 브라우저 부품이 이미 다 있고 없는 건 글꼴 9개뿐인데, 그 apt 가 가끔 5~13분 걸렸다(2026-11).
       - name: Install chromium
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
+      # 글꼴은 `--with-deps` 가 깔던 9개를 그대로 깐다. 구글 폰트를 막는 e2e(routines · home-record)가
+      # 한글을 이 시스템 글꼴로 그려서, 다른 글꼴로 바꾸면 화면 폭이 달라져 결과가 바뀐다(#433).
+      # .deb 를 캐시해 apt 미러는 캐시가 빌 때만 탄다. GitHub 은 7일 동안 안 쓴 캐시를 지운다.
+      # key 에 OS 판을 넣는다 — ubuntu-latest 가 다음 판으로 옮겨 가면 옛 .deb 를 쓰지 않고 새로 받는다.
+      - name: e2e 글꼴 캐시 key
+        id: fonts
+        run: echo "key=e2e-fonts-$(. /etc/os-release && echo "$ID-$VERSION_ID")-v1" >> "$GITHUB_OUTPUT"
+      - name: e2e 글꼴 캐시
+        uses: actions/cache@v4
+        with:
+          path: ~/e2e-fonts
+          key: ${{ steps.fonts.outputs.key }}
+      - name: e2e 글꼴
+        working-directory: frontend
+        run: |
+          if ! ls ~/e2e-fonts/*.deb > /dev/null 2>&1; then
+            mkdir -p ~/e2e-fonts
+            sudo apt-get update
+            (cd ~/e2e-fonts && apt-get download fonts-freefont-ttf fonts-ipafont-gothic fonts-tlwg-loma-otf \
+              fonts-unifont fonts-wqy-zenhei xfonts-cyrillic xfonts-encodings xfonts-scalable xfonts-utils)
+          fi
+          sudo dpkg -i ~/e2e-fonts/*.deb > /dev/null
+          # Playwright 가 새로 요구하는 부품이 생기면 여기서 멈춘다 — 위 목록과 key 의 v 를 같이 바꾼다.
+          # 「Missing」에는 이미 깔렸는데 새 판이 있는 것(업그레이드)도 섞여 나와서, 정말 없는 것만 센다.
+          # 시뮬레이션 자체가 실패해도(그 줄이 없는데 종료 코드가 0 이 아니면) 멈춘다.
+          out=$(npx playwright install-deps --dry-run chromium 2>&1) && exit 0
+          grep -q 'Missing system dependencies' <<< "$out" || { echo "$out"; exit 1; }
+          missing=$(sed -n 's/^  //p' <<< "$out" | while read -r p; do dpkg -s "$p" > /dev/null 2>&1 || echo "$p"; done)
+          [ -z "$missing" ] || { echo "Playwright 가 요구하는데 없는 패키지:"; echo "$missing"; exit 1; }
       - name: playwright
         working-directory: frontend
         run: npm run e2e

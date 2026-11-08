@@ -13,9 +13,10 @@
 아이 이름을 적을 수 있다 (docs/api-spec.md).
 """
 
+from .allocation import table_for_text
 from .names import name_variants
 from .pool import PseudonymPool, SubstitutionError, has_final, load_pool
-from .substitute import NameTable, mask, unmask
+from .substitute import NameTable, mask, unmask, unmask_from
 
 __all__ = [
     "NameTable",
@@ -25,5 +26,7 @@ __all__ = [
     "load_pool",
     "mask",
     "name_variants",
+    "table_for_text",
     "unmask",
+    "unmask_from",
 ]

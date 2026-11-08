@@ -6,6 +6,7 @@ p0-planning 의 테스트가 본다. 이 파일은 「계약대로 내려주나 
 """
 
 import json
+import logging
 from dataclasses import dataclass
 
 import pytest
@@ -125,6 +126,27 @@ def test_칸을_고치면_그_달만_돌아오고_근거는_그대로다(db_sess
     # Audit 에 남고 화면의 「교사 수정됨」 배지가 이걸 본다.
     events = client.get(f"/api/plans/annual/{created['id']}/audit").json()["items"]
     assert any(e["type"] == "TEACHER_EDITED" and e["month"] == 3 for e in events)
+
+
+def test_subtheme_teacher_provenance_is_saved_and_survives_reload(db_session, mine):
+    from ssuksak.planning.domain.yearly_plan import YearlyPlan
+
+    from app.features.plans.codec import from_jsonable
+
+    created = _create(mine)
+    before = created["months"][0]
+    url = f"/api/plans/annual/{created['id']}/months/3"
+    response = client.put(url, json={"theme": before["theme"], "sub_themes": before["sub_themes"]})
+    assert response.status_code == 200, response.text
+    db_session.expire_all()
+    row = db_session.get(Plan, created["id"])
+    assert dict(from_jsonable(YearlyPlan, row.body).teacher_subthemes)[3] == ()
+    response = client.put(url, json={"theme": before["theme"], "sub_themes": ["한강공원 산책"]})
+    assert response.status_code == 200, response.text
+    db_session.expire_all()
+    row = db_session.get(Plan, created["id"])
+    assert dict(from_jsonable(YearlyPlan, row.body).teacher_subthemes)[3] == ("한강공원 산책",)
+    assert client.get(f"/api/plans/annual/{created['id']}").status_code == 200
 
 
 def test_소주제를_빼고_보내면_422_이고_아무것도_저장되지_않는다(db_session, mine):
@@ -293,6 +315,33 @@ def test_생성이_실패하면_부분_결과가_남지_않는다(db_session, mi
     assert client.get("/api/plans/annual").json()["items"] == []
 
 
+def test_생성_요청마다_시간_요약이_한_줄_남는다(db_session, mine, monkeypatch):
+    """실패(409)도 남는다. 숫자와 구간 이름만이다(CLAUDE.md §21)."""
+    timing_log = logging.getLogger("app.server.timing")
+    # conftest 가 같은 프로세스에서 alembic 을 돌려 기존 로거를 꺼 둔다(fileConfig).
+    # 운영은 마이그레이션이 따로 돈다.
+    monkeypatch.setattr(timing_log, "disabled", False)
+    lines = []
+    handler = logging.Handler()
+    handler.emit = lambda record: lines.append(record.getMessage())
+    timing_log.addHandler(handler)
+    try:
+        _create(mine)
+        client.post(
+            "/api/plans/annual",
+            json={"format": "MONTHLY_THEME", "class_id": mine.id, "form_id": None},
+        )
+    finally:
+        timing_log.removeHandler(handler)
+
+    lines = [line for line in lines if line.startswith("plan_timing")]
+    assert len(lines) == 2
+    assert "kind=annual_theme outcome=ok" in lines[0]
+    assert all(f" {name}_ms=" in lines[0] for name in ("db_read", "select", "assemble", "save"))
+    assert "outcome=http_409" in lines[1]
+    assert "햇살반" not in "".join(lines)
+
+
 def test_같은_반에_연간을_두_번_만들지_못한다(db_session, mine):
     """멘토 리뷰(PR #82) — 새로고침하고 다시 누르면 두 개가 생기던 것."""
     _create(mine)
@@ -384,13 +433,14 @@ def test_확정_전_연간계획안을_지우면_다시_만들_수_있다(db_ses
     assert _create(mine)["id"] != plan_id
 
 
-def test_확정된_연간계획안은_지우지_못한다(db_session, mine):
-    """제출 문서다. 버튼 한 번으로 사라지면 안 된다."""
+def test_확정된_연간계획안도_지우면_다시_만들_수_있다(db_session, mine):
+    """확정본도 지운다(ADR-064, Human Decision 2026-11-05 하민). 고치려면 지우고 다시 만든다."""
     plan_id = _create(mine)["id"]
     assert client.post(f"/api/plans/annual/{plan_id}/confirm").status_code == 200
 
-    assert _error(client.delete(f"/api/plans/annual/{plan_id}")) == (409, "GATE_BLOCKED")
-    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 200
+    assert client.delete(f"/api/plans/annual/{plan_id}").status_code == 204
+    assert client.get(f"/api/plans/annual/{plan_id}").status_code == 404
+    assert _create(mine)["id"] != plan_id
 
 
 def test_남의_원_연간계획안은_지울_수_없고_404(db_session, mine, teacher):
@@ -435,8 +485,8 @@ def test_켜면_확정본도_딸린_월간까지_한_번에_지운다(db_session
     )
     db_session.commit()
 
-    # 진짜 지우기는 막는다. 확정이라 걸리고, 확정이 아니었어도 딸린 월간에서 걸린다.
-    assert _error(client.delete(f"/api/plans/annual/{plan_id}")) == (409, "GATE_BLOCKED")
+    # 진짜 지우기는 딸린 월간에서 막는다(확정본은 ADR-064 부터 지운다).
+    assert _error(client.delete(f"/api/plans/annual/{plan_id}")) == (409, "IN_USE")
     assert client.delete(f"/api/plans/annual/{plan_id}/test-reset").status_code == 204
 
     assert client.get(f"/api/plans/annual/{plan_id}").status_code == 404

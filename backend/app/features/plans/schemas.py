@@ -114,6 +114,7 @@ class PlayCellOut(BaseModel):
 
 class PlayCandidateOut(BaseModel):
     row_key: str
+    memo_applied: bool  # 이 후보가 요청 사항을 반영했는가 — 카드 표시용
     play_name: PlayCellOut
     materials: PlayCellOut
     support_direction: PlayCellOut

@@ -253,7 +253,15 @@ def test_단건_조회는_구간_넷과_후보_열을_계약_모양으로_준다
     for period in body["periods"]:
         assert [c["row_key"] for c in period["candidates"]] == [f"cand{n}" for n in range(1, 11)]
     first = body["periods"][0]["candidates"][0]
-    assert set(first) == {"row_key", "play_name", "materials", "support_direction", "learning"}
+    assert set(first) == {
+        "row_key",
+        "memo_applied",
+        "play_name",
+        "materials",
+        "support_direction",
+        "learning",
+    }
+    assert first["memo_applied"] is False
     assert first["play_name"] == {
         "item_id": plan.periods[0].candidates[0].play_name.item_id.value,
         "value": "m03_m05 놀이 1",
@@ -356,6 +364,27 @@ def test_생성은_승인된_누리과정으로_네_구간을_저장하고_읽�
     assert client.get(f"/api/plans/annual/{body['id']}").json() == body
 
 
+def test_요청을_반영한_후보에만_memo_applied_가_켜진다(world, monkeypatch):
+    """mock 은 구간마다 첫 후보에 반영했다고 답한다. 표시용이라 선택 · 배치는 그대로다."""
+    _approved(monkeypatch)
+
+    response = client.post(
+        "/api/plans/annual",
+        json={
+            "class_id": world["play"].id,
+            "format": "PLAY_PROJECT",
+            "memo": "물놀이를 넣어 주세요",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["memo_notices"] == []
+    for period in body["periods"]:
+        assert [c["memo_applied"] for c in period["candidates"]] == [True] + [False] * 9
+    assert client.get(f"/api/plans/annual/{body['id']}").json() == body
+
+
 def test_요청마다_고정한_계획안_id는_서로_다르다(world, monkeypatch):
     _approved(monkeypatch)
     plans = [
@@ -395,6 +424,28 @@ def test_세번째_구간이_거절되면_아무것도_저장하지_않는다(wo
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "GENERATION_FAILED"
     assert provider.calls == ["m03_m05", "m06_m08", "m09_m11"]
+    assert world["session"].scalar(select(Plan.id).where(Plan.kind == "annual")) is None
+
+
+@pytest.mark.parametrize("after", [1, 4])
+def test_생성_멈추기로_끊기면_남은_구간을_부르지_않고_저장하지_않는다(world, monkeypatch, after):
+    """하민 결정 2026-11-06: 구간 사이 · 마지막 구간 뒤에 끊긴 요청을 보고 멈춘다."""
+    provider = _ThirdPeriodInvalidProvider()
+    provider.generate_play_project = lambda request: (
+        provider.calls.append(request.period_key)
+        or play_project.MockPlayProjectProvider().generate_play_project(request)
+    )
+    _approved(monkeypatch, provider)
+    monkeypatch.setattr(
+        plans_router, "_disconnected", lambda request: lambda: len(provider.calls) >= after
+    )
+
+    response = client.post(
+        "/api/plans/annual", json={"class_id": world["play"].id, "format": "PLAY_PROJECT"}
+    )
+
+    assert response.status_code == 499
+    assert len(provider.calls) == after
     assert world["session"].scalar(select(Plan.id).where(Plan.kind == "annual")) is None
 
 

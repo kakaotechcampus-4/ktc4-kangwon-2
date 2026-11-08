@@ -1,7 +1,7 @@
 /**
- * 서버에만 있는 반을 목록에 들이는지 본다 (§1-1 초대 · 기기 변경).
+ * 서버에만 있는 반을 목록에 들이는지 본다 (기기 변경).
  *
- * **왜 이 테스트가 있나.** 반 목록이 브라우저 저장소에서만 나오면, 초대받은 교사와
+ * **왜 이 테스트가 있나.** 반 목록이 브라우저 저장소에서만 나오면,
  * 기기를 바꾼 교사에게 반이 하나도 안 보인다. 서버에는 멀쩡히 있는데도.
  *
  * 그리고 들일 때 **서명을 같이 계산해 넣어야 한다.** 안 넣으면 교사가 나중에 반 정보를
@@ -176,7 +176,7 @@ test("★ 들인 반의 서명이 syncClass 가 계산하는 것과 같다", asy
  *
  * `syncCenter` 는 `links.center` 가 없으면 원을 새로 만들고 `links.classes` 를 통째로
  * 비운다 — 서버에 원 수정 API 가 없어서 그렇게 돼 있다("P0 has no center update endpoint").
- * 초대받은 교사는 원 정보를 화면에 들고 있지 않으니 서명이 영영 안 맞는다. 그대로 두면
+ * 다른 기기로 처음 온 교사는 원 정보를 화면에 들고 있지 않으니 서명이 영영 안 맞는다. 그대로 두면
  * 계획안 화면에 들어가는 것만으로 원이 하나 더 생기고 방금 들인 반이 날아간다.
  *
  * 그래서 들일 때 서버의 원 id 로 연결을 만들고 「받아온 것」이라고 표시해 둔다.
@@ -273,7 +273,7 @@ test("★ 쓰던 계정의 옛 서버 반은 들이지 않고 버린 것으로 �
   assert.deepEqual(links.retired, [8], "연결 안 된 서버 반을 버린 것으로 적는다");
 });
 
-test("★ 쓴 적 없는 계정은 그대로 들인다 — 초대받은 교사가 막히면 안 된다", async () => {
+test("★ 쓴 적 없는 계정은 그대로 들인다 — 다른 기기로 처음 온 교사가 막히면 안 된다", async () => {
   const values = browser();
   api();
   await onboarding.adoptServerClasses([]);
@@ -413,4 +413,40 @@ test("★ 한 번 쓴 계정에 새로 생긴 NONE 반도 들이지 않는다", 
   const known = [{ id: "class-abc", className: "햇살반", children: [] }];
 
   assert.deepEqual(await onboarding.adoptServerClasses(known), []);
+});
+
+/**
+ * 새 브라우저에서 로그인하면 서버에서 반을 되살린다. 되살리기는 첫 설정을 끝낸 것으로 치므로
+ * 마지막 확인과 같은 규칙으로 담당 반을 정한다 — 반이 둘인데 비워 두면 기록 화면마다
+ * 「반을 골라주세요」에 막힌다(13주차 멘토 리뷰).
+ */
+const settings = await import("../lib/onboarding/settings.ts");
+const CENTER = {
+  id: 3,
+  name: "테스트원",
+  director_name: "원장",
+  region_sido: "강원특별자치도",
+  region_sigungu: "춘천시",
+};
+
+test("★ 반 둘을 되살리면 보이는 첫 반이 담당 반이 된다", async () => {
+  browser();
+  api({ classes: [CLASS, { ...CLASS, id: 8, name: "달빛반" }] });
+  server.use(http.get("*/api/centers/:id", () => HttpResponse.json(CENTER)));
+
+  assert.equal(await onboarding.restoreFromServer(3), true);
+  const saved = settings.loadClassSettings();
+  assert.equal(saved.classes.length, 2);
+  assert.equal(settings.chosenClassFor(saved)?.className, "햇살반");
+});
+
+test("반 하나를 되살리면 담당 반 칸은 비워 두고 그 반을 본다", async () => {
+  browser();
+  api();
+  server.use(http.get("*/api/centers/:id", () => HttpResponse.json(CENTER)));
+
+  assert.equal(await onboarding.restoreFromServer(3), true);
+  const saved = settings.loadClassSettings();
+  assert.equal(saved.primaryClassId, "");
+  assert.equal(settings.chosenClassFor(saved)?.className, "햇살반");
 });

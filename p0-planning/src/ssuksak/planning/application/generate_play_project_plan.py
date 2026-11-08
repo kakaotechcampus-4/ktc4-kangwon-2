@@ -6,6 +6,7 @@ approved yet), no repair, no select / edit / regenerate / confirm. A rejected pr
 
 from __future__ import annotations
 
+from ... import timing
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -33,6 +34,7 @@ from ..planner.play_project import (
     PlayProjectProvider,
     build_play_project_request,
     parse_play_project_proposal,
+    split_memo_reflected,
     validate_play_project,
 )
 from ..planner.teacher_memo import normalize_teacher_memo, split_memo_applied, with_memo_evidence
@@ -103,6 +105,13 @@ class GeneratePlayProjectPlan:
         self._ids = id_generator
 
     def execute(self, command: GeneratePlayProjectPlanCommand) -> PlayProjectYearlyPlan:
+        return self.generate_period(command)[0]
+
+    def generate_period(
+        self, command: GeneratePlayProjectPlanCommand
+    ) -> tuple[PlayProjectYearlyPlan, tuple[str, ...]]:
+        """execute 와 같고, 이 구간이 반영한 메모 원문 조각(remaining_memo_notices 용)을 함께 준다."""
+        timing.phase("select")
         ages = validate_age_set(command.target_ages)
         period = command.layout.period(command.period_key)
         if period is None:
@@ -115,6 +124,7 @@ class GeneratePlayProjectPlan:
         if not catalog.is_active:
             raise PlayProjectGenerationError("CURRICULUM_REFERENCE_NOT_ACTIVE")
 
+        timing.phase("prompt")
         request = build_play_project_request(
             period=period,
             ages=ages,
@@ -123,14 +133,16 @@ class GeneratePlayProjectPlan:
             avoid_play_names=command.avoid_play_names,
             teacher_memo=command.teacher_memo,
         )
-        content, memo_applied, memo_skipped = split_memo_applied(
-            self._provider.generate_play_project(request).content, request.memo_addresses
-        )
+        response = self._provider.generate_play_project(request)
+        timing.phase("validate")
+        content, memo_applied, memo_skipped = split_memo_applied(response.content, request.memo_addresses)
+        content, memo_reflected = split_memo_reflected(content, request)
         proposal = parse_play_project_proposal(content)
         codes = validate_play_project(proposal, request)
         if codes:
             raise ProposalRejectedError(codes)
 
+        timing.phase("assemble")
         plan_id = self._ids.new_plan_id()
         now = self._clock.now()
         generation = GenerationMethodDetail(
@@ -199,4 +211,4 @@ class GeneratePlayProjectPlan:
             memo_notices=memo_skipped,
         )
         self._plans.save(plan.plan_id, plan)
-        return plan
+        return plan, memo_reflected

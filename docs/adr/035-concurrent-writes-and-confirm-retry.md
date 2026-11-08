@@ -38,7 +38,7 @@
 - 연간 PUT · 확정은 계획안 행을 `SELECT … FOR UPDATE` 로 읽는다(짧은 transaction 안).
 - **연간 HTTP 계약은 바뀌지 않는다.** 연간에 `expected_revision` 을 새로 두지 않는다.
 - 이것이 막는 것: 확정과 PUT 이 겹쳐 확정이 DRAFT 로 되돌아가는 경로, 다른 달을 동시에 고친 PUT 둘 중 하나가 사라지는 경로.
-- 막지 않는 것: 두 교사가 서로 다른 시점에 읽고 쓰는 덮어쓰기. **다중 교사(#139 초대 코드) 이후 연간 `expected_revision` 을 다시 본다**
+- 막지 않는 것: 두 교사가 서로 다른 시점에 읽고 쓰는 덮어쓰기. **다중 교사(ADR-068 원 고르기) 이후 연간 `expected_revision` 을 다시 본다**
   (미확정사항 U-16).
 - 구현은 연간 Backend Y2a(브랜치 `feature/yearly-be-y2a-write-lock`)다. **연간 라우터 담당 확인(PROV-Y-D 「담당자 조율」)이 남았다.**
 

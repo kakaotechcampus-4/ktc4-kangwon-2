@@ -221,7 +221,7 @@
 }
 .dialog {
   width: min(560px, calc(100% - 32px));
-  max-height: calc(100dvh - 32px);
+  max-height: calc(calc(100 * var(--app-dvh)) - 32px);
   padding: 0;
   border: 1px solid var(--pg-line);
   border-radius: 12px;
@@ -520,7 +520,7 @@
     top: 72px;
     display: flex;
     flex-direction: column;
-    height: calc(100dvh - 84px);
+    height: calc(calc(100 * var(--app-dvh)) - 84px);
   }
   .sheetViewport {
     flex: 1;

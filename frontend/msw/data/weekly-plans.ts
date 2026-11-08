@@ -71,11 +71,13 @@ export const findWeekly = (id: number) => read().weeklyPlans.find((p) => p.id ==
 export const findWeeklyFor = (classId: number, weekId: string) =>
   read().weeklyPlans.find((p) => p.class_id === classId && p.week_id === weekId);
 
-/** 그 달 주간계획안들. `targetMonth` 는 `YYYY-MM` — `week_id` 앞자리가 그 달이다 (§3-1). */
-export const listWeekly = (classIds: number[], targetMonth: string): WeeklyPlanSummary[] =>
+/** 그 달 주간계획안들. `targetMonth` 는 `YYYY-MM` — `week_id` 앞자리가 그 달이다 (§3-1). 없으면 모든 달. */
+export const listWeekly = (classIds: number[], targetMonth?: string): WeeklyPlanSummary[] =>
   read()
     .weeklyPlans.filter(
-      (p) => classIds.includes(p.class_id) && p.week_id.startsWith(targetMonth + "-W"),
+      (p) =>
+        classIds.includes(p.class_id) &&
+        (targetMonth === undefined || p.week_id.startsWith(targetMonth + "-W")),
     )
     .sort((a, b) => a.week_id.localeCompare(b.week_id) || a.id - b.id)
     .map((p) => ({
@@ -122,7 +124,7 @@ export const addWeekly = (
         ? [{ parent_item_id: parent.item_id, snapshot_value: parent.value }]
         : [];
     };
-    // 서버 Core(S-1)처럼 월간에서 이 주에 놓은 안전교육 후보를 「[분류] - 문장」 그대로 복사한다.
+    // 서버 Core(S-1)처럼 월간에서 이 주에 놓은 안전교육 후보를 「[분류] 문장」 그대로 복사한다.
     const placed = safetyView(monthly).safety_weeks.find((w) => w.week_id === weekId);
     const source = placed?.display_value
       ? monthly.safety_candidates.find((c) => c.cell.item_id === placed.candidate_item_id)?.cell
@@ -417,7 +419,7 @@ export const changeWeeklyIndoor = (
       if (!candidate && empty) return plan;
       const cell = empty ?? blank();
       if (candidate) {
-        cell.value = `[${candidate.activity_type}] - ${candidate.name}`;
+        cell.value = `[${candidate.activity_type}] ${candidate.name}`;
         cell.state = "FILLED";
         cell.evidence = candidate.cell.evidence;
         cell.generation = {

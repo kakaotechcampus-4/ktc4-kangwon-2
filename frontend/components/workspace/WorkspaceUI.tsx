@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { loadClassSettings, saveClassSettings } from "@/lib/onboarding/settings";
 import { adoptServerClasses, hydrateClassChildren } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -34,6 +36,31 @@ export function WorkspacePage({
     </main>
   );
 }
+/**
+ * 보육일지 메뉴 안의 두 화면 — 일일(일과를 적고 그날 일지)과 주간(한 주 일지).
+ * 주간 기록이 메뉴 하나를 따로 차지했는데 일과 목록을 다시 보여 줄 뿐이라 합쳤다(13주차 멘토 리뷰).
+ */
+export function JournalTabs({
+  at,
+  daily,
+  weekly,
+}: {
+  at: "daily" | "weekly";
+  daily: string;
+  weekly: string;
+}) {
+  return (
+    <nav aria-label="보육일지 종류" className={styles.journalTabs} data-tour="journal-tabs">
+      <Link href={daily} aria-current={at === "daily" ? "page" : undefined}>
+        일일 보육일지
+      </Link>
+      <Link href={weekly} aria-current={at === "weekly" ? "page" : undefined}>
+        주간 보육일지
+      </Link>
+    </nav>
+  );
+}
+
 /** 종이를 붙여 둔 테이프 한 조각. 기록 · 계획안 화면의 첫 판에 붙인다. 부모는 relative 여야 한다. */
 export function Tape() {
   return <span aria-hidden="true" className={styles.tape} />;
@@ -103,14 +130,14 @@ export function Notice({ children, onDone }: { children: string; onDone: () => v
  * 이 교사가 쓸 반 목록. 작업실 화면들이 전부 이걸 쓴다.
  *
  * **브라우저 저장소에 있는 반 + 서버에만 있는 반**을 합친다. 저장소만 보면
- * 초대받은 교사(§1-1)와 기기를 바꾼 교사에게 반이 하나도 안 보인다 — 서버에는
- * 멀쩡히 있는데도. 실제로 초대 기능을 붙이면서 드러났다.
+ * 기기를 바꾼 교사에게 반이 하나도 안 보인다 — 서버에는 멀쩡히 있는데도.
  */
 export function useClasses(onError?: (message: string) => void) {
   const [classes, setClasses] = useClientState<ClassroomEntry[]>(
     () => loadClassSettings()?.classes || NO_CLASSES,
     NO_CLASSES,
   );
+  const pathname = usePathname();
   useEffect(() => {
     let live = true;
     const settings = loadClassSettings();
@@ -146,7 +173,9 @@ export function useClasses(onError?: (message: string) => void) {
     return () => {
       live = false;
     };
-  }, [setClasses, onError]);
+    // 화면을 옮길 때마다 다시 맞춘다. 사이드바는 화면을 옮겨도 다시 붙지 않아서(DemoSessionGate),
+    // 주소를 안 보면 그사이 서버에 생긴 반이 새로고침 전까지 반 고르개에 안 뜬다.
+  }, [setClasses, onError, pathname]);
   return classes;
 }
 export function useAIStatus() {

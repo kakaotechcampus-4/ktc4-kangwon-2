@@ -16,6 +16,7 @@ import {
 } from "@/lib/api/annualImport";
 import { classAnnualContext, saveAnnualContext } from "@/lib/plan-generator/context";
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
+import { BACK_BUTTON, BACK_ICON } from "./AnnualFrame";
 
 /** 지금 고른 반의 서버 id. 생성 화면과 같은 길로 얻는다. */
 async function serverClass() {
@@ -126,7 +127,7 @@ export default function AnnualImport({
                 다른 파일 올리기
               </button>
               <button type="button" onClick={typeManually} className={SECONDARY}>
-                파일 없이 직접 입력
+                직접 작성하기
               </button>
             </div>
           </div>
@@ -139,12 +140,15 @@ export default function AnnualImport({
     );
 
   return (
-    <ImportShell title="연간계획안 확인하기" onCancel={onCancel}>
-      <p className="m-0 text-sm text-[#5c5243]">
-        {meta
-          ? `${file?.name ?? "올린 파일"}에서 찾은 내용이에요. 틀린 곳은 바로 고쳐 주세요.`
-          : "달마다 생활주제와 소주제를 적어 주세요. 소주제는 한 줄에 하나씩 써요."}
-      </p>
+    <ImportShell
+      title={meta ? "연간계획안 확인하기" : "연간계획안 직접 작성하기"}
+      onCancel={onCancel}
+    >
+      {meta && (
+        <p className="m-0 text-sm text-[#5c5243]">
+          {`${file?.name ?? "올린 파일"}에서 찾은 내용이에요. 틀린 곳은 바로 고쳐 주세요.`}
+        </p>
+      )}
       {notices.length > 0 && (
         <ul className="m-0 list-none rounded-md bg-[#f8efdc] px-4 py-3 text-sm text-[#705936]">
           {notices.map((notice) => (
@@ -163,7 +167,7 @@ export default function AnnualImport({
                 생활주제
               </th>
               <th scope="col" className="px-4 py-3 font-bold">
-                소주제 (한 줄에 하나)
+                소주제
               </th>
             </tr>
           </thead>
@@ -185,7 +189,6 @@ export default function AnnualImport({
         </p>
       )}
       <div className="flex items-center justify-end gap-3">
-        <span className="text-sm text-[#5c5243]">저장하면 작성 중인 연간계획안이 돼요.</span>
         <button
           type="button"
           onClick={() => void save()}
@@ -212,18 +215,23 @@ function ImportShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-[calc(100vh-60px)] w-full flex-col gap-4 px-7 pb-6 pt-6 text-[#2b2826]">
+    <div className="flex h-[calc(calc(100*var(--app-vh))-60px)] w-full flex-col gap-4 px-7 pb-6 pt-6 text-[#2b2826]">
       <div className="flex flex-col gap-1">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex min-h-[32px] items-center self-start text-sm text-[#5c5243]"
-        >
-          ← 취소하고 돌아가기
-        </button>
-        <div className="flex items-center gap-3">
-          <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">{title}</h1>
-          <span className="rounded-full bg-[#e8f1ea] px-3 py-1 text-[13px] font-bold text-[#3b5441]">
+        {/* 만들기 · 편집 화면과 같은 「←」. 저장 전이라 누르면 쓴 것을 버리고 첫 화면으로 간다. */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="취소하고 돌아가기"
+            title="취소하고 돌아가기"
+            className={BACK_BUTTON}
+          >
+            {BACK_ICON}
+          </button>
+          <h1 className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+            {title}
+          </h1>
+          <span className="-rotate-2 border border-black/10 bg-[#e8f1ea] px-3 py-0.5 font-display text-[18px] font-bold text-[#3b5441] shadow-pg-card">
             월별 주제형
           </span>
         </div>
@@ -243,6 +251,8 @@ function MonthRow({
   onEdit: (change: Partial<ImportRow>) => void;
 }) {
   const flagged = blank || (row.missing && !row.theme.trim());
+  // 쓴 줄 + 다음에 쓸 한 줄. 처음에는 두 줄.
+  const lines = Math.max(2, row.subThemes.split("\n").length + 1);
   return (
     <tr className={`border-t border-[#f1ece4] align-top ${flagged ? "bg-[#fdf4f1]" : ""}`}>
       <th scope="row" className="px-4 py-3 text-base font-bold">
@@ -261,13 +271,29 @@ function MonthRow({
         />
       </td>
       <td className="px-4 py-3">
-        <textarea
-          aria-label={`${row.month}월 소주제`}
-          value={row.subThemes}
-          rows={Math.max(2, row.subThemes.split("\n").length)}
-          onChange={(e) => onEdit({ subThemes: e.target.value })}
-          className="w-full resize-none rounded-md border border-[#ddd6ca] px-3 py-2 text-base leading-relaxed"
-        />
+        {/* 줄 친 칸 — 줄마다 왼쪽에 「1주 · 2주…」가 붙어 한 줄에 소주제 하나라는 것이 글 없이 보인다. */}
+        <div className="flex overflow-hidden rounded-md border border-[#ddd6ca] bg-white focus-within:border-[#7053a0] focus-within:ring-2 focus-within:ring-[#e6dcf0]">
+          <ol
+            aria-hidden="true"
+            className="m-0 w-12 shrink-0 list-none border-r border-[#ece6dc] bg-[#fbf9f5] px-0 py-1"
+          >
+            {Array.from({ length: lines }, (_, i) => (
+              <li
+                key={i}
+                className="h-[34px] pr-2 text-right text-[13px] font-bold leading-[34px] text-[#7a6aa0]"
+              >
+                {i + 1}주
+              </li>
+            ))}
+          </ol>
+          <textarea
+            aria-label={`${row.month}월 소주제, 한 줄에 하나`}
+            value={row.subThemes}
+            rows={lines}
+            onChange={(e) => onEdit({ subThemes: e.target.value })}
+            className="ruledPaper block w-full resize-none border-0 bg-transparent px-3 py-1 text-base leading-[34px] outline-none [background-position:0_4px]"
+          />
+        </div>
       </td>
     </tr>
   );

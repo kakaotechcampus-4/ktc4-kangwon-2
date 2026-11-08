@@ -226,3 +226,57 @@ test("pure plan helpers: overlayCells, cellValue, safety, row removal", () => {
   assert.equal(q.safetyOf(q.withSafety(plan, "w1", "s"), "w1"), "s");
   assert.equal(q.withoutActivity(plan, "n").together.length, 0);
 });
+
+test("AI 후보 고르기 · 빼기 · 습관 주 옮기기 (ADR-065)", () => {
+  const row = (id) => ({
+    activity_id: id,
+    name: { item_id: id, value: id },
+    description: { item_id: id + ".d", value: "" },
+  });
+  const plan = {
+    together: [row("a")],
+    free_play: [],
+    activity_candidates: ["a", "b", "c", "f"],
+    activity_pool: [
+      { ...row("b"), section: "together" },
+      { ...row("c"), section: "together" },
+      { ...row("f"), section: "free_play" },
+    ],
+    habits: [
+      { week_id: "w1", entry_id: "h1", cell: { item_id: "x", value: "손 씻기" } },
+      { week_id: "w2", entry_id: "h2", cell: { item_id: "y", value: "정리하기" } },
+    ],
+  };
+  const picked = q.withPick(plan, "c");
+  assert.deepEqual(
+    picked.together.map((r) => r.activity_id),
+    ["a", "c"],
+  );
+  assert.equal(picked.together[1].section, undefined);
+  assert.deepEqual(
+    picked.activity_pool.map((r) => r.activity_id),
+    ["b", "f"],
+  );
+  assert.equal(q.withPick(plan, "없음"), plan);
+  // 뺀 AI 후보는 생성 순서 자리로 돌아간다. 교사가 더한 행(후보 아님)은 후보로 가지 않는다.
+  const back = q.withoutActivity(picked, "a");
+  assert.deepEqual(
+    back.activity_pool.map((r) => [r.activity_id, r.section]),
+    [
+      ["a", "together"],
+      ["b", "together"],
+      ["f", "free_play"],
+    ],
+  );
+  const teacher = { ...plan, together: [row("t")] };
+  assert.equal(q.withoutActivity(teacher, "t").activity_pool, plan.activity_pool);
+  // 습관은 칸이 통째로 옮기고 주는 제자리.
+  const swapped = q.withHabits(plan, ["y", "x"]);
+  assert.deepEqual(
+    swapped.habits.map((h) => [h.week_id, h.entry_id, h.cell.value]),
+    [
+      ["w1", "h2", "정리하기"],
+      ["w2", "h1", "손 씻기"],
+    ],
+  );
+});

@@ -11,6 +11,7 @@ from ..domain.week_period import WeekId
 from ..domain.year_month import YearMonth
 from ..domain.monthly_template import RepeatBy
 from .teacher_memo import memo_properties, safety_request_properties
+from ..domain.monthly_template_snapshot import ACTIVITY_DETAIL_SECTION_KEYS
 from .contracts import (
     OUTDOOR_SECTION_KEY,
     CANDIDATE_PREFIXES,
@@ -90,8 +91,7 @@ def _section_branches(
     is one branch that fixes its reference_id and its canonical value together, so an id
     can only be returned with its own label. Theme has its one locked pair; outdoor_play
     may instead be free text with a null reference_id. A non-safety free-text branch
-    mirrors the validator: it is never unresolved and cites at least one ref, except that
-    indoor_alternative may also return a week blank (unresolved, no refs).
+    mirrors the validator: it is never unresolved and cites at least one ref.
     """
     properties = dict(_SECTION_SCHEMA["properties"])
     properties["section_key"] = {"type": "string", "enum": [section_key]}
@@ -124,14 +124,6 @@ def _section_branches(
         if refs:
             free["grounding_refs"] = dict(properties["grounding_refs"], minItems=1)
     branches = [*pairs, _object_schema(dict(properties, **free))]
-    if section_key == "indoor_alternative":
-        branches.append(_object_schema(dict(
-            properties,
-            value={"type": "string", "enum": [""]},
-            unresolved={"type": "boolean", "enum": [True]},
-            reference_id={"type": "null"},
-            grounding_refs=_refs_schema(()),
-        )))
     return branches
 
 
@@ -169,7 +161,7 @@ def repair_patch_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
     """A repair returns patches for its repair_targets only: one branch per target cell.
 
     Each branch fixes the cell address and allows exactly the fields that target may
-    change, so no other cell, reference_id or unresolved can be expressed at all.
+    change. Only an indoor-required finding may set unresolved to false.
     """
     allowed = dict(request.allowed_grounding_refs_by_section)
     branches = []
@@ -180,6 +172,8 @@ def repair_patch_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
         }
         if "value" in fields:
             properties["value"] = _STRING
+        if "unresolved" in fields:
+            properties["unresolved"] = {"type": "boolean", "enum": [False]}
         if "grounding_refs" in fields:
             properties["grounding_refs"] = _refs_schema(allowed.get(section_key, ()))
         branches.append(_object_schema(properties))
@@ -206,12 +200,12 @@ def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
         request.reference_section_keys,
         pairs,
     )
-    week = _section_schema(
+    week = _with_detail(_section_schema(
         {s.section_key for s in targets if s.repeat_by is RepeatBy.WEEK},
         request,
         request.reference_section_keys,
         pairs,
-    )
+    ), request.detail_section_keys)
     return _with_memo(_object_schema(
         {
             "target_month": _STRING,
@@ -224,6 +218,24 @@ def monthly_response_schema(request: MonthlyPlanningRequest) -> dict[str, Any]:
             },
         }
     ), request.memo_addresses, request.safety_request_slots, tuple(w.value for w in request.expected_week_ids))
+
+
+def _with_detail(schema: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
+    """ADR-066: the week branches of ``keys`` also return a ``detail`` string ("" when unresolved)."""
+    if not keys:
+        return schema
+    branches = [
+        _object_schema(dict(
+            branch["properties"],
+            detail={"type": "string", "enum": [""]}
+            if branch["properties"]["unresolved"].get("enum") == [True]
+            else _STRING,
+        ))
+        if branch["properties"]["section_key"]["enum"][0] in keys
+        else branch
+        for branch in schema.get("anyOf", [schema])
+    ]
+    return branches[0] if len(branches) == 1 else {"anyOf": branches}
 
 
 def _with_memo(
@@ -262,9 +274,9 @@ def cell_response_schema(request: MonthlyCellPlanningRequest) -> dict[str, Any]:
             "target_week_id": {"type": "null"}
             if week is None
             else {"type": "string", "enum": [week.value]},
-            "section": _section_schema(
+            "section": _with_detail(_section_schema(
                 {request.target_section_key}, request, request.reference_section_keys, pairs
-            ),
+            ), (request.target_section_key,) if request.detail_requested else ()),
         }
     ), request.memo_addresses)
 
@@ -340,13 +352,34 @@ def _canonical_refs(value: object, *, path: str) -> tuple[str, ...]:
     return canonical
 
 
-def _section_value(value: object, *, path: str) -> ProposedSectionValue:
-    item = _object(value, path=path, keys=_keys(_SECTION_SCHEMA))
+def _detail(item: dict[str, Any], *, path: str) -> str:
+    """ADR-066: the optional hidden description of a weekly activity cell.
+
+    Supplementary only: absent, mistyped, or on an unresolved / other cell it is "" and never
+    fails the proposal. Its text policy is validation.sanitize_activity_details."""
+    raw = item.get("detail", "")
+    if (
+        not isinstance(raw, str)
+        or item.get("unresolved") is not False
+        or item.get("section_key") not in ACTIVITY_DETAIL_SECTION_KEYS
+    ):
+        if raw:
+            _log.info("activity_detail_dropped path=%s reason=SHAPE", path)
+        return ""
+    return raw.strip()
+
+
+def _section_value(value: object, *, path: str, detail: bool = False) -> ProposedSectionValue:
+    keys = _keys(_SECTION_SCHEMA)
+    if detail and isinstance(value, dict) and "detail" in value:
+        keys = keys | {"detail"}
+    item = _object(value, path=path, keys=keys)
     raw_value = item["value"]
     if not isinstance(raw_value, str):
         raise ProposalParseError(f"{path}.value must be a string")
     try:
         return ProposedSectionValue(
+            detail=_detail(item, path=path) if detail else "",
             section_key=_string(item["section_key"], path=f"{path}.section_key"),
             value=raw_value,
             unresolved=_boolean(item["unresolved"], path=f"{path}.unresolved"),
@@ -405,6 +438,7 @@ def parse_monthly_proposal(content: str) -> MonthlyPlanProposal:
             _section_value(
                 section,
                 path=f"proposal.weeks[{index}].sections[{section_index}]",
+                detail=True,
             )
             for section_index, section in enumerate(raw_sections)
         )
@@ -465,5 +499,5 @@ def parse_monthly_cell_proposal(content: str) -> MonthlyCellProposal:
             if root["target_week_id"] is None
             else _week_id(root["target_week_id"], path="target_week_id")
         ),
-        section=_section_value(root["section"], path="section"),
+        section=_section_value(root["section"], path="section", detail=True),
     )

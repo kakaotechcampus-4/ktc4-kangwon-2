@@ -293,54 +293,6 @@ export function CareArt({ className }: { className?: string }) {
   );
 }
 
-/** 두 번째 반 선택 사이드바 전용. 목록 아래의 독립 공간에 배치한다. */
-export function SidebarDecor({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      data-art="class-garden"
-      viewBox="0 0 240 235"
-      fill="none"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path d="M0 199q32-29 74-11 38-33 78-4 52-29 88 11v40H0Z" fill="#e4edc5" />
-      <path d="M0 215q58-30 125-4 61-24 115-9v33H0Z" fill="#cfdfab" />
-      <path d="M0 224q99-15 240-5v16H0Z" fill="#edf2d6" />
-      <g transform="translate(29 19) scale(.82)">
-        <NoteDrawing tone="yellow" />
-      </g>
-      <path
-        d="M29 205v-20m0 15c-14-12-22-6-9 2m9-5c10-12 18-7 8 2M205 215v-17m0 12c-12-9-17-4-6 2"
-        stroke="#86b86c"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-      <g fill="#f6b8c9" stroke="#ed92b0" strokeWidth="1.3">
-        <ellipse cx="29" cy="177" rx="5" ry="7" />
-        <ellipse cx="36" cy="183" rx="7" ry="5" />
-        <ellipse cx="32" cy="190" rx="5" ry="7" />
-        <ellipse cx="22" cy="188" rx="7" ry="5" />
-        <ellipse cx="22" cy="180" rx="6" ry="5" />
-      </g>
-      <circle cx="28" cy="184" r="4" fill="#ffe393" />
-      <g fill="#f4d58f">
-        <circle cx="205" cy="196" r="5" />
-        <circle cx="211" cy="201" r="5" />
-        <circle cx="207" cy="207" r="5" />
-        <circle cx="199" cy="203" r="5" />
-      </g>
-      <circle cx="205" cy="202" r="3" fill="#fff8df" />
-      <path
-        d="m51 218-3-8m8 7 2-8m112 9-3-7m7 7 3-8"
-        stroke="#a5c77f"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 const YEAR_PALETTE = [
   ["#89c8a3", "#f3b7aa"],
   ["#9dc0e8", "#efd3a0"],

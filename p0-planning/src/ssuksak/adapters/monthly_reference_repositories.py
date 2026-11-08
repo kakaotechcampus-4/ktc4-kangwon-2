@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
+from .. import timing
 from ..planning.domain.monthly_template import MonthlyTemplate
 from ..planning.domain.safety_placement import SafetyPlacementPolicy
 from ..planning.domain.safety_rule import SafetyLegalRule
@@ -33,7 +33,7 @@ class JsonMonthlyTemplateRepository:
     def _load(self, path: Path) -> MonthlyTemplate:
         if path not in self._cache:
             self._cache[path] = parse_monthly_template_payload(
-                json.loads(path.read_text(encoding="utf-8"))
+                timing.read_json(path)
             )
         return self._cache[path]
 
@@ -54,7 +54,7 @@ class JsonSafetyLegalRuleRepository:
     def _load(self) -> SafetyLegalRule:
         if self._cached is None:
             self._cached = parse_safety_rule_payload(
-                json.loads(self._path.read_text(encoding="utf-8"))
+                timing.read_json(self._path)
             )
         return self._cached
 
@@ -73,6 +73,6 @@ class JsonSafetyPlacementPolicyRepository:
     def get_policy(self, policy_version: str) -> SafetyPlacementPolicy | None:
         if self._cached is None:
             self._cached = tuple(
-                parse_safety_placement_payload(json.loads(path.read_text(encoding="utf-8"))) for path in self._paths
+                parse_safety_placement_payload(timing.read_json(path)) for path in self._paths
             )
         return next((policy for policy in self._cached if policy.policy_version == policy_version), None)

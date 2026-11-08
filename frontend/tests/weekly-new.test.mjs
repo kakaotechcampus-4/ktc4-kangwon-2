@@ -32,8 +32,10 @@ const Paper = ({ title, children }) => React.createElement("article", { title },
 const sheet = load("../components/workspace/WeeklySheet.tsx", {
   react: React,
   "@/lib/weekly/section-labels": weeklyLabels,
+  "@/components/plan-generator/PlayMonthlySafetyPanel": { DROP: "" },
   "@/components/plan-generator/PlayMonthlySheet": {
-    Cell: ({ id, value }) => React.createElement("span", { "data-cell": id }, value),
+    Cell: ({ id, value, strong }) =>
+      React.createElement("span", { "data-cell": id, "data-strong": strong || undefined }, value),
     HEAD: "",
     LINE: "",
     hu: (n) => n,
@@ -173,8 +175,10 @@ test("다듬기 칸 출처: 교사 수정은 이력으로, 후보를 다시 넣�
         "@/lib/api/client",
         "@/lib/api/plans",
         "@/lib/api/weekly",
+        "@/lib/monthly/findings",
         "@/components/plan-generator/PlayCellEditor",
         "@/components/plan-generator/PlayMonthlyConfirm",
+        "@/components/plan-ui/DraftSave",
         "@/components/plan-generator/UnconfirmButton",
         "@/components/plan-generator/PlayMonthlySafetyPanel",
         "@/components/plan-generator/AnnualFrame",
@@ -182,6 +186,7 @@ test("다듬기 칸 출처: 교사 수정은 이력으로, 후보를 다시 넣�
         "@/components/plan-generator/PlanMemo",
         "@/components/app/compact-shell",
         "./WeeklySheet",
+        "./WeeklyGroupActivityPanel",
         "./WeeklyIndoorPlayPanel",
         "./Workspace.module.css",
         "./useCellHistory",
@@ -245,4 +250,63 @@ test("주간 용지: 칸 둘레의 빈 곳을 눌러도 그 칸을 고른다 —
     n.props.onClick({ target: {}, currentTarget: self }); // 안쪽 글 클릭은 넘긴다
   }
   assert.deepEqual(picked.sort(), ["mon", "theme", "tue", "tue2"]);
+});
+
+test("주간 용지: 활동 후보를 대·소집단활동 칸에 놓으면 그 칸(나눈 칸은 그 조각)에 넣고, 안전교육은 [주제]를 굵게 한 줄에", () => {
+  const cell = (item_id, day = null, value = "x") => ({
+    item_id,
+    value,
+    day,
+    teacher_input: false,
+  });
+  const sections = sheet.BLANK_SECTIONS.map((s) =>
+    s.section_key === "group_activity"
+      ? {
+          ...s,
+          cells: [cell("mon", "MON", "[게임] 짝 찾기"), cell("tue", "TUE"), cell("tue2", "TUE")],
+        }
+      : s.section_key === "safety_education"
+        ? { ...s, cells: [cell("safe", null, "[교통안전] - 신호등을 봐요")] }
+        : s,
+  );
+  const put = [];
+  const props = {
+    title: "",
+    sub: "",
+    start: "",
+    end: "",
+    days: ["MON", "TUE"],
+    sections,
+    at: { selected: null },
+    onPut: (cellId, id) => put.push([cellId, id]),
+  };
+  const all = (n) =>
+    Array.isArray(n)
+      ? n.flatMap(all)
+      : n && typeof n === "object"
+        ? [n, ...all(n.props?.children)]
+        : [];
+  const tds = all(sheet.default(props)).filter((n) => n.props?.onDrop);
+  assert.equal(tds.length, 2); // 대·소집단활동 요일 칸만 받는다
+  const drop = (td, data, hit) =>
+    td.props.onDrop({
+      preventDefault() {},
+      currentTarget: { dataset: {} },
+      target: { closest: () => hit },
+      dataTransfer: { getData: () => data },
+    });
+  drop(tds[0], "weekly-activity:c1", null); // 칸 하나뿐인 날 — 빈 곳에 놓아도 그 칸
+  drop(tds[1], "weekly-activity:c2", { dataset: { cell: "tue2" } }); // 나눈 날 — 놓은 조각
+  drop(tds[1], "weekly-activity:c3", null); // 나눈 날 빈 곳 — 넣지 않는다
+  drop(tds[0], "safety-candidate:s1", null); // 다른 끌기는 받지 않는다
+  assert.deepEqual(put, [
+    ["mon", "c1"],
+    ["tue2", "c2"],
+  ]);
+  const html = renderToStaticMarkup(React.createElement(sheet.default, props));
+  // 안전교육은 「[주제] 문장」 한 줄, 넣은 활동은 가운데에 「[종류]」 밑에 이름(PM 2026-11-06).
+  assert.match(html, /data-cell="safe" data-strong="true">\[교통안전\] 신호등을 봐요/);
+  assert.match(html, /text-center"><div><span data-cell="mon">\[게임\]\n짝 찾기/);
+  const still = all(sheet.default({ ...props, onPut: undefined })).filter((n) => n.props?.onDrop);
+  assert.equal(still.length, 0); // 확정 · 저장 중에는 받지 않는다
 });

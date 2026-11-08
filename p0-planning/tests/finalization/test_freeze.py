@@ -57,14 +57,14 @@ FROZEN_ARTIFACTS = {
     ),
     # Human-approved 2026-10-29 (reviewer_ai_lead_01). ADR-027 §5: approval metadata only.
     "curriculum/nuri_curriculum_content_v0_1_0_draft.json": (
-        "60620932ee2dea9c326b27597d4c7fa18b501914fdd6c4fe55cf4513c6271a04"
+        "98ed907e70fae5030721df826eec3972544e21304195703279535854714f12b2"
     ),
     # Human-approved 2026-10-29 (reviewer_ai_lead_01). ADR-027 §5: approval metadata only.
     "daily-life/daily_life_reference_v0_1_0_draft.json": (
         "2fec7d85833ac940cc46cc0bf4bf4ae2ec26cd60d89a418dedcde8649c00771c"
     ),
     "drills/emergency_drill_topics_v0_1_0_draft.json": (
-        "147ca0537f96141279781f202edb012300dafbfdca88f07ecf5a48dfcff9d6b7"
+        "aa0e297825f984fbdd3169732ca84766beee6d7409a1ef978f04fa7a5e636521"
     ),
     # Human-approved 2026-10-20 (reviewer_pm_001). ADR-027 §5: approval metadata only.
     "templates/monthly_template_a_v0_2_1.json": (
@@ -172,9 +172,9 @@ PENDING_REVIEW_CONTENT = {
     "daily-life/daily_life_reference_v0_1_0_draft.json": (
         "2ae1d32fd616409458705b6ebbfe8294cd50b733540716270309d55706fbe936"
     ),
-    # Added at approval; equals the content of the pending file on develop.
+    # Added at approval; content pin (approval metadata excluded).
     "drills/emergency_drill_topics_v0_1_0_draft.json": (
-        "2e99b512c80f9dd73d98f006ec39e9ff83b333f63a6c43e0c83afdb4460225a8"
+        "2d014b7682c7107de198da33d86a9b1cd6d91377820d2587d8e6ae8c95454768"
     ),
 }
 

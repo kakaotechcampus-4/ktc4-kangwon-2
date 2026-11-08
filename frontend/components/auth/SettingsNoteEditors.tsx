@@ -9,7 +9,7 @@ import {
   type ClassroomEntry,
   type SelectedAge,
 } from "@/lib/onboarding/types";
-import { PROVINCE_OPTIONS, districtsFor } from "@/lib/onboarding/regions";
+
 import { addServerChild, classServerId, removeServerChild } from "@/lib/api/onboarding";
 import { SettingsIcon } from "./SettingsIcons";
 import styles from "./Settings.module.css";
@@ -83,78 +83,6 @@ function SaveActions({
         저장
       </button>
     </>
-  );
-}
-
-export function OrgEditor({ onDone }: { onDone: () => void }) {
-  const flow = useSettingsFlow(1, onDone);
-  if (!flow.ready) return <Loading />;
-  const { settings, patch, save, busy } = flow;
-  const districts = districtsFor(settings.regionProvince);
-  const canSave =
-    settings.orgName.trim() !== "" &&
-    settings.directorName.trim() !== "" &&
-    districts.includes(settings.regionDistrict);
-
-  return (
-    <NoteSheet
-      actions={<SaveActions onCancel={onDone} onSave={save} canSave={canSave} busy={busy} />}
-    >
-      <label className={styles.field}>
-        어린이집 이름
-        <input
-          value={settings.orgName}
-          placeholder="기관명을 입력해주세요"
-          onChange={(e) => patch({ orgName: e.target.value })}
-        />
-      </label>
-      <label className={styles.field}>
-        원장 이름
-        <input
-          value={settings.directorName}
-          placeholder="원장 이름을 입력해주세요"
-          onChange={(e) => patch({ directorName: e.target.value })}
-        />
-      </label>
-      <div className={styles.field}>
-        지역
-        <div className={styles.row2}>
-          <select
-            aria-label="시·도"
-            value={settings.regionProvince}
-            onChange={(e) =>
-              patch({
-                regionProvince: e.target.value,
-                regionDistrict: e.target.value === "세종특별자치시" ? "세종특별자치시" : "",
-              })
-            }
-          >
-            <option value="">시·도 선택</option>
-            {PROVINCE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="시·군·구"
-            value={districts.includes(settings.regionDistrict) ? settings.regionDistrict : ""}
-            disabled={districts.length === 0}
-            onChange={(e) => patch({ regionDistrict: e.target.value })}
-          >
-            <option value="">
-              {districts.length === 0 ? "시·도를 먼저 선택해주세요" : "시·군·구 선택"}
-            </option>
-            {districts.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <SaveState flow={flow} />
-    </NoteSheet>
   );
 }
 

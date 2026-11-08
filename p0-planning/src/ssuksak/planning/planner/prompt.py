@@ -8,15 +8,19 @@ import json
 from ..context.models import MonthlyContextPacket
 from ..context.serialization import packet_fingerprint
 from ..domain.monthly_template import RepeatBy, TemplateSection
-from ..domain.monthly_template_snapshot import TemplateSnapshot
+from ..domain.monthly_template_snapshot import ACTIVITY_DETAIL_SECTION_KEYS, TemplateSnapshot
 from ..domain.week_period import WeekId
 from ..evidence.classification import grounding_class_for
+from ..domain.errors import InvalidDomainValueError
+from .indoor_alternative import INDOOR_ADAPTATION_GUIDANCE
+from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG
 from .contracts import (
     MONTHLY_CONTEXT_PROMPT_VERSION,
     MONTHLY_CONTEXT_REPAIR_PROMPT_VERSION,
     MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION,
     MONTHLY_DRILL_CANDIDATES_PROMPT_TAG,
     MONTHLY_CONTEXT_SAFETY_REPAIR_PROMPT_VERSION,
+    MONTHLY_ACTIVITY_DETAIL_PROMPT_TAG,
     MONTHLY_INDOOR_PROMPT_TAG,
     MONTHLY_PROMPT_VERSION,
     MONTHLY_REPAIR_PROMPT_VERSION,
@@ -111,9 +115,19 @@ same week's outdoor_play experience on a day the class stays inside; write the
 two cells of a week together as a pair. Do not write general indoor free play.
 Do not state that particular materials or spaces are available, and do not
 invent weather or claim that the activity was carried out.
-When no supplied grounding continues that week's outdoor_play, return that week's
-indoor_alternative with value "", unresolved true and no grounding_refs; do not
-borrow an unrelated activity or add a subject the cited text does not have.
+Write a short activity name, not a lesson script. Return unresolved=false and
+cite the supplied indoor evidence for the method used, including adaptations.
+""" + INDOOR_ADAPTATION_GUIDANCE
+
+# ADR-066: appended only to v1 requests whose outdoor_play / indoor_alternative have a detail
+# Section (MONTHLY_ACTIVITY_DETAIL_PROMPT_TAG). The detail is never printed in the document.
+ACTIVITY_DETAIL_PROMPT = """
+- detail: outdoor_play · indoor_alternative의 주 칸마다 detail 문자열을 함께 쓴다. 문서에는 나오지 않고 교사가 칸 편집에서 보는 활동 설명이다.
+  그 칸 value의 활동에서 유아가 무엇을 어떻게 하며 노는지를 1~2문장의 자연스러운 한국어로 구체적으로 쓴다. 쓰는 재료는 문장 안에 자연스럽게 담고 준비물 목록으로 늘어놓지 않는다.
+  유아가 주어가 되게 쓴다. 교사 발문·단계별 진행 순서·시간·인원·장소 사정은 쓰지 않는다.
+  value의 활동명·대상·경험을 바꾸거나 다른 활동을 덧붙이지 않는다. value는 detail 때문에 고치지 않는다.
+  supplied evidence · reference_activities · curriculum_context에 없는 사실(행사·날짜·사람·기관)을 더하지 않고, 근거 문장을 그대로 옮기지 않는다.
+  안전교육 내용이나 법적·공식 표현은 쓰지 않는다. unresolved인 칸의 detail은 ""이고, 확실히 쓸 내용이 없으면 ""로 둔다.
 """
 
 # Appended only when the Context Packet carries safety_candidates (MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG).
@@ -246,7 +260,7 @@ def generation_targets(
             # Only age-verifiable evidence; the schema enum enforces it.
             allowed = tuple(ref for ref in allowed if evidence[ref].age_match in AGE_VERIFIABLE_TIERS)
         if section.section_key == "indoor_alternative" and not allowed:
-            continue  # D-5: no evidence leaves its cells empty for the teacher
+            raise InvalidDomainValueError("Indoor alternatives need eligible indoor method evidence")
         if section.section_key == "safety_education":
             allowed = tuple(ref for ref in allowed if is_safety_grounding(evidence[ref]))
             allowed += tuple(sorted(official_safety_refs(packet)))
@@ -385,6 +399,8 @@ def _base_payload(packet: MonthlyContextPacket) -> dict[str, object]:
         payload["curriculum_context"] = curriculum_context(packet.curriculum)
     if packet.parent_subthemes:
         payload["parent_subthemes"] = list(packet.parent_subthemes)
+    if packet.teacher_venues:
+        payload["teacher_venues"] = list(packet.teacher_venues)
     return payload
 
 
@@ -462,8 +478,22 @@ def build_monthly_planning_request(
     version = MONTHLY_SAFETY_PROMPT_VERSION if safety else MONTHLY_PROMPT_VERSION
     if contextual:
         version = MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION if safety else MONTHLY_CONTEXT_PROMPT_VERSION
+        version += VENUE_POLICY_TAG
     if indoor:
         version += MONTHLY_INDOOR_PROMPT_TAG
+    # ADR-066: v1 requests only; others keep their prompt bytes and leave details blank.
+    detail_keys = tuple(
+        section.section_key
+        for section, _ in generation_targets(packet, snapshot)
+        if section.section_key in ACTIVITY_DETAIL_SECTION_KEYS
+        and snapshot.section(ACTIVITY_DETAIL_SECTION_KEYS[section.section_key]) is not None
+    ) if contextual else ()
+    if detail_keys:
+        version += MONTHLY_ACTIVITY_DETAIL_PROMPT_TAG
+        week = body["response_contract"]["weeks"][0]
+        week["sections"] = [
+            dict(week["sections"][0], detail="string; only in " + " and ".join(detail_keys) + ' cells, "" when unresolved')
+        ]
     if packet.safety_candidates:
         version += MONTHLY_SAFETY_CANDIDATES_PROMPT_TAG
     if packet.drill_topics:
@@ -492,10 +522,12 @@ def build_monthly_planning_request(
             + MONTHLY_V1_STYLE
             if contextual else (SAFETY_SYSTEM_PROMPT if safety else SYSTEM_PROMPT)
         ) + (INDOOR_ALTERNATIVE_PROMPT if indoor else "")
+        + (ACTIVITY_DETAIL_PROMPT if detail_keys else "")
         + (SAFETY_CANDIDATES_PROMPT if packet.safety_candidates else "")
         + (DRILL_CANDIDATES_PROMPT if packet.drill_topics else "")
         + (TEACHER_MEMO_PROMPT if memo is not None else "")
-        + (SAFETY_REQUESTS_PROMPT if safety_slots is not None else ""),
+        + (SAFETY_REQUESTS_PROMPT if safety_slots is not None else "")
+        + (VENUE_GUIDANCE if contextual else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         target_month=packet.target_month,
         expected_theme_id=packet.parent_theme_id,
@@ -510,6 +542,7 @@ def build_monthly_planning_request(
         allowed_grounding_refs_by_section=allowed_grounding_refs_by_section(packet, snapshot),
         memo_addresses=memo,
         safety_request_slots=safety_slots,
+        detail_section_keys=detail_keys,
     )
 
 
@@ -553,6 +586,8 @@ def build_monthly_repair_request(
             ]
         },
     }
+    if any("unresolved" in fields for _, _, fields in targets):
+        body["response_contract"]["patches"][0]["unresolved"] = False
     base = request.prompt_version.split("+", 1)[0]  # tags keep their order after the repair version
     contextual = base in (MONTHLY_CONTEXT_PROMPT_VERSION, MONTHLY_CONTEXT_SAFETY_PROMPT_VERSION)
     return replace(
@@ -563,7 +598,10 @@ def build_monthly_repair_request(
             MONTHLY_SAFETY_PROMPT_VERSION: MONTHLY_SAFETY_REPAIR_PROMPT_VERSION,
         }.get(base, MONTHLY_REPAIR_PROMPT_VERSION)
         + request.prompt_version[len(base):],
-        system_prompt=(_v1_goals(REPAIR_HEADER) if contextual else REPAIR_HEADER) + request.system_prompt,
+        system_prompt=(_v1_goals(REPAIR_HEADER) if contextual else REPAIR_HEADER) + request.system_prompt
+        + ("\nINDOOR_ALTERNATIVE_REQUIRED: fill only the named indoor cell, setting unresolved=false, "
+           "a concrete value and its allowed method grounding_refs.\n"
+           if any("unresolved" in fields for _, _, fields in targets) else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2),
         repair_targets=targets,
         memo_addresses=None,  # patches only; memo_applied came with the initial proposal

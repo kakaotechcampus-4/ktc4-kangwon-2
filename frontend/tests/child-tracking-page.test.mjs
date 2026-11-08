@@ -5,6 +5,9 @@ import { readFileSync } from "node:fs";
 
 const require = createRequire(import.meta.url);
 const axis = await import("../lib/workspace/observation-axis.ts");
+const childMark = await import("../lib/workspace/child-mark.ts");
+const domainLook = await import("../lib/workspace/domain-look.ts");
+const TODAY = "2026-11-05";
 const jsx = (type, props, key) => ({ type, props, key });
 const runtime = { jsx, jsxs: jsx, Fragment: "fragment" };
 const nodes = (node) => {
@@ -144,7 +147,7 @@ function harness(
     },
     "@/lib/workspace/observation-axis": axis,
   });
-  const Page = compile("../components/workspace/ChildTrackingPage.tsx", {
+  const mod = compile("../components/workspace/ChildTrackingPage.tsx", {
     "react/jsx-runtime": runtime,
     react: hooks,
     "next/link": { __esModule: true, default: "a" },
@@ -188,15 +191,19 @@ function harness(
     },
     "@/lib/hooks/use-observation-domains": { useObservationDomains },
     "@/lib/workspace/observation-axis": axis,
+    "@/lib/workspace/child-mark": childMark,
+    "@/lib/workspace/domain-look": domainLook,
+    "@/lib/workspace/model": { today: () => TODAY },
+    "@/components/app/ChildPicker": { ChildNote: "child-note" },
     "@/components/app/icons": { Icon: "icon" },
     "./DocumentArchiveArt": new Proxy({}, { get: () => "decoration" }),
-    "./ChildTrackingArt": new Proxy({}, { get: () => "tracking-art" }),
     "./WorkspaceUI": { Message: "message" },
     "./ChildTracking.module.css": {
       __esModule: true,
       default: new Proxy({}, { get: (_, name) => name }),
     },
-  }).default;
+  });
+  const Page = mod.default;
   function enter(key, draw) {
     if (!frames.has(key)) frames.set(key, { key, slots: [], effects: [], cursor: 0 });
     const outer = frame;
@@ -249,6 +256,7 @@ function harness(
   render();
   const byClass = (name) => nodes(tree).filter((node) => node?.props?.className === name);
   return {
+    module: mod,
     calls,
     render,
     flush,
@@ -289,127 +297,51 @@ function harness(
   };
 }
 
-test("5영역·2영역은 서버의 실제 수만 표시하며 전환해도 전체 타임라인은 유지한다", async (t) => {
+test("원이 누리과정 5영역이면 다섯 칸에 서버의 실제 수만 표시한다", async (t) => {
   const page = harness(t);
   await page.mount();
   assert.equal(page.cards().length, 5);
   assert.equal(page.count("신체운동·건강"), "3");
   assert.equal(page.count("의사소통"), "2");
-  const timeline = text(page.byClass("timeline"));
-  const calls = [...page.calls];
-  page.button("놀이·일상생활").props.onClick();
-  await page.flush();
+  assert.equal(page.count("사회관계"), "0");
+  assert.ok(page.empty("사회관계"));
+  // 영역 축은 원 설정을 따른다 — 화면에서 바꾸는 단추가 없다.
+  assert.equal(page.button("놀이·일상생활"), undefined);
+  assert.match(text(page.byClass("timeline")), /가아동/);
+});
+
+test("원이 놀이·일상생활이면 두 칸으로 시작한다", async (t) => {
+  const page = harness(t, { configuredAxis: "DAILY_PLAY_2" });
+  await page.mount();
   assert.equal(page.cards().length, 2);
   assert.equal(page.count("놀이활동"), "4");
   assert.equal(page.count("일상생활"), "1");
-  assert.equal(text(page.byClass("timeline")), timeline);
-  assert.deepEqual(page.calls, calls); // 모드 전환은 요청·기관 설정 저장을 만들지 않는다.
-  page.button("누리과정 5영역").props.onClick();
-  page.render();
-  assert.equal(page.cards().length, 5);
-});
-
-test("기관이 놀이·일상생활을 쓰면 그 모드로 시작한다", async (t) => {
-  const page = harness(t, { configuredAxis: "DAILY_PLAY_2" });
-  await page.mount();
-  assert.equal(page.button("놀이·일상생활").props["aria-pressed"], true);
-  assert.equal(page.cards().length, 2);
-});
-
-test("전체 0건이면 다른 기준의 영역 키가 없어도 두 카드를 0건으로 표시한다", async (t) => {
-  const child = tracking(101, "가아동", nuriZeros);
-  const page = harness(t, { children: [child] });
-  await page.mount();
-  assert.equal(page.count("신체운동·건강"), "0");
-  page.button("놀이·일상생활").props.onClick();
-  page.render();
-  assert.equal(page.cards().length, 2);
-  assert.equal(page.count("놀이활동"), "0");
-  assert.equal(page.count("일상생활"), "0");
-  for (const domain of axis.DAILY_PLAY_DOMAINS) assert.ok(page.empty(domain), domain);
-  assert.equal(page.byClass("domainNotice").length, 0);
-  assert.match(page.text(), /아직 적은 기록이 없어요/);
-  page.button("누리과정 5영역").props.onClick();
-  page.render();
-  assert.equal(page.cards().length, 5);
-  assert.equal(page.count("신체운동·건강"), "0");
-});
-
-test("과거 기준의 일부 영역만 있으면 없는 집계를 대시로 표시한다", async (t) => {
-  const child = tracking(101, "가아동", { "신체운동·건강": 3, 놀이활동: 0, 일상생활: 0 });
-  const page = harness(t, { configuredAxis: "DAILY_PLAY_2", children: [child] });
-  await page.mount();
-  assert.equal(page.count("놀이활동"), "0");
-  page.button("누리과정 5영역").props.onClick();
-  page.render();
-  assert.equal(page.cards().length, 5);
-  assert.equal(page.count("신체운동·건강"), "3");
-  assert.equal(page.count("의사소통"), "—");
-  assert.ok(page.empty("의사소통"));
-});
-
-test("아이를 바꿔도 모드는 그대로고 늦게 온 이전 아이 응답은 무시한다", async (t) => {
-  const old = deferred();
-  const page = harness(t, { observations: { 101: old.promise } });
-  await page.mount();
-  page.button("놀이·일상생활").props.onClick();
-  page.render();
-  page.pickChild(102);
-  assert.equal(page.byClass("timeline").length, 0);
-  assert.equal(page.count("놀이활동"), "2");
-  await page.flush();
-  assert.match(text(page.byClass("timeline")), /나아동/);
-  old.resolve(recordsFor(first));
-  await page.flush();
-  assert.doesNotMatch(text(page.byClass("timeline")), /가아동/);
-  assert.equal(page.button("놀이·일상생활").props["aria-pressed"], true);
-});
-
-test("늦게 도착한 기관 설정은 사용자가 선택한 모드를 덮어쓰지 않는다", async (t) => {
-  const settings = deferred();
-  const page = harness(t, { settings: settings.promise });
-  await page.mount();
-  assert.equal(page.button("누리과정 5영역").props["aria-pressed"], true);
-  page.button("누리과정 5영역").props.onClick();
-  page.render();
-  settings.resolve({ observation_axis: "DAILY_PLAY_2" });
-  await page.flush();
-  assert.equal(page.button("누리과정 5영역").props["aria-pressed"], true);
-});
-
-test("상단 작성 링크는 없고 하단 빈 상태의 선택 아동 작성 링크는 유지한다", async (t) => {
-  const page = harness(t, { children: [tracking(101, "가아동", nuriZeros)] });
-  await page.mount();
-  assert.equal(nodes(page.header()).filter((node) => node?.type === "a").length, 0);
-  const link = nodes(page.byClass("emptyState")).find((node) => node?.type === "a");
-  assert.equal(text(link), "기록 적으러 가기 →");
-  assert.equal(link.props.href, "/records?class=class-10&child=child-101");
-  assert.equal(page.byClass("avatar").length, 0);
-  assert.equal(page.byClass("summaryAvatar").length, 0);
 });
 
 test("기관 기준을 해석할 수 없으면 기록 수로 추정하지 않고 5영역을 기본으로 둔다", async (t) => {
   const page = harness(t, { configuredAxis: "UNKNOWN_AXIS" });
   await page.mount();
-  assert.equal(page.button("누리과정 5영역").props["aria-pressed"], true);
   assert.equal(page.cards().length, 5);
 });
 
+test("전체 0건이면 칸을 0으로, 기록이 있는데 그 칸 키가 없으면 대시로 둔다", async (t) => {
+  const none = harness(t, { children: [tracking(101, "가아동", {})] });
+  await none.mount();
+  for (const domain of axis.NURI_DOMAINS) assert.equal(none.count(domain), "0", domain);
+  assert.match(none.text(), /아직 적은 기록이 없어요/);
+
+  const old = harness(t, {
+    children: [tracking(101, "가아동", { "신체운동·건강": 3, 놀이활동: 0 })],
+  });
+  await old.mount();
+  assert.equal(old.count("신체운동·건강"), "3");
+  assert.equal(old.count("의사소통"), "—");
+  assert.ok(old.empty("의사소통"));
+});
+
 for (const { label, counts, play, life } of [
-  {
-    label: "두 영역 모두 명시적 0건",
-    counts: { 놀이활동: 0, 일상생활: 0 },
-    play: "0",
-    life: "0",
-  },
+  { label: "두 영역 모두 명시적 0건", counts: { 놀이활동: 0, 일상생활: 0 }, play: "0", life: "0" },
   { label: "놀이활동만 제공", counts: { 놀이활동: 4 }, play: "4", life: "—" },
-  { label: "일상생활만 제공", counts: { 일상생활: 2 }, play: "—", life: "2" },
-  {
-    label: "두 영역 모두 기록 있음",
-    counts: { 놀이활동: 4, 일상생활: 1 },
-    play: "4",
-    life: "1",
-  },
   {
     label: "다른 기준 기록만 있고 두 영역 키 없음",
     counts: { "신체운동·건강": 3 },
@@ -417,56 +349,88 @@ for (const { label, counts, play, life } of [
     life: "—",
   },
 ]) {
-  test(`놀이·일상생활은 항상 두 카드 유지: ${label}`, async (t) => {
-    const child = tracking(101, "가아동", counts);
-    const page = harness(t, { children: [child] });
+  test(`놀이·일상생활 원은 항상 두 칸: ${label}`, async (t) => {
+    const page = harness(t, {
+      configuredAxis: "DAILY_PLAY_2",
+      children: [tracking(101, "가아동", counts)],
+    });
     await page.mount();
-    const before = text(page.byClass("timeline"));
-    page.button("놀이·일상생활").props.onClick();
-    page.render();
     assert.equal(page.cards().length, 2);
     assert.equal(page.count("놀이활동"), play);
     assert.equal(page.count("일상생활"), life);
-    assert.equal(page.byClass("domainNotice").length, 0);
-    assert.equal(text(page.byClass("timeline")), before);
-    if (play === "—") assert.ok(page.empty("놀이활동"));
-    if (life === "—") assert.ok(page.empty("일상생활"));
   });
 }
 
-const playZeros = Object.fromEntries(axis.DAILY_PLAY_DOMAINS.map((domain) => [domain, 0]));
-for (const { label, counts, expected } of [
-  {
-    label: "놀이·일상생활 기관에서 그 기준 기록만 있음",
-    counts: { ...playZeros, 놀이활동: 2, 일상생활: 2 },
-    expected: "—",
-  },
-  {
-    label: "놀이·일상생활 기관에서 전체 0건",
-    counts: playZeros,
-    expected: "0",
-  },
-]) {
-  test(`누리과정 5영역은 항상 다섯 카드 유지: ${label}`, async (t) => {
-    const child = tracking(101, "가아동", counts);
-    const page = harness(t, { configuredAxis: "DAILY_PLAY_2", children: [child] });
-    await page.mount();
-    const before = text(page.byClass("timeline"));
-    page.button("누리과정 5영역").props.onClick();
-    page.render();
-    assert.equal(page.cards().length, 5);
-    for (const domain of axis.NURI_DOMAINS) assert.equal(page.count(domain), expected, domain);
-    for (const domain of axis.NURI_DOMAINS) assert.ok(page.empty(domain), domain);
-    assert.equal(page.byClass("domainNotice").length, 0);
-    assert.doesNotMatch(page.text(), /이 기준으로 작성된 관찰 기록이 없어요/);
-    // 실제 기록 수 · 전체 타임라인은 그대로다.
-    assert.equal(text(page.byClass("timeline")), before);
-    page.button("놀이·일상생활").props.onClick();
-    page.render();
-    assert.equal(page.cards().length, 2);
-    assert.equal(page.count("놀이활동"), String(counts.놀이활동));
-  });
-}
+test("아이를 바꾸면 늦게 온 이전 아이 응답은 무시한다", async (t) => {
+  const old = deferred();
+  const page = harness(t, { observations: { 101: old.promise } });
+  await page.mount();
+  page.pickChild(102);
+  assert.equal(page.byClass("timeline").length, 0);
+  await page.flush();
+  assert.match(text(page.byClass("timeline")), /나아동/);
+  old.resolve(recordsFor(first));
+  await page.flush();
+  assert.doesNotMatch(text(page.byClass("timeline")), /가아동/);
+});
+
+test("머리의 링크는 관찰 기록으로 가는 하나뿐이고, 작성 링크들은 그 아이로 간다", async (t) => {
+  const page = harness(t, { children: [tracking(101, "가아동", nuriZeros)] });
+  await page.mount();
+  const headLinks = nodes(page.header()).filter((node) => node?.type === "a");
+  assert.deepEqual(
+    headLinks.map((a) => a.props.href),
+    ["/records"],
+  );
+  const link = nodes(page.byClass("emptyState")).find((node) => node?.type === "a");
+  assert.equal(text(link), "기록 적으러 가기 →");
+  assert.equal(link.props.href, "/records?class=class-10&child=child-101");
+  const journal = page.byClass("journalGo")[0];
+  assert.equal(text(journal), "관찰일지 작성 →");
+  assert.equal(journal.props.href, "/records/journal?child=child-101");
+});
+
+test("오래 비어 있는 순 — 한 번도 없는 아이, 오래된 아이 순, 한 주 넘으면 D+", async (t) => {
+  const kids = [
+    { ...tracking(1, "다아이", { 의사소통: 1 }), last_date: "2026-11-04" },
+    { ...tracking(2, "나아이", { 의사소통: 1 }), last_date: "2026-10-22" },
+    { ...tracking(3, "가아이", {}), last_date: null },
+  ];
+  const page = harness(t, { children: kids });
+  await page.mount();
+  const names = () => page.byClass("note").map((n) => n.props["aria-label"].split(" ·")[0]);
+  assert.deepEqual(names(), ["가아이", "나아이", "다아이"]);
+  assert.deepEqual(page.byClass("flag").map(text), ["기록 없음", "D+14"]);
+});
+
+test("칠판 띠 말은 가장 오래 비어 있는 아이에 맞춘다", async (t) => {
+  const { boardLine } = harness(t).module;
+  const kid = (id, name, last) => ({ ...tracking(id, name, {}), last_date: last });
+  const say = (kids) => {
+    const line = boardLine(kids, TODAY);
+    return line && `${line.lead}${line.names}${line.tail}|${line.sub}`;
+  };
+  assert.equal(say([]), null);
+  assert.equal(
+    say([kid(1, "가", "2026-11-04"), kid(2, "나", null)]),
+    "아직 한 번도 못 적은 아이 — 나|",
+  );
+  assert.equal(
+    say([kid(1, "가", "2026-10-22"), kid(2, "나", "2026-11-05")]),
+    "한 주 넘게 못 본 아이 — 가|마지막 기록 14일 전",
+  );
+  assert.equal(
+    say([kid(1, "가", "2026-10-22"), kid(2, "나", "2026-10-20")]),
+    "한 주 넘게 못 본 아이 — 나 · 가|가장 오래된 기록 16일 전",
+  );
+  // 모두 사흘 안 — 「한 주 넘게」라고 하지 않는다.
+  assert.equal(
+    say([kid(1, "가", "2026-11-02"), kid(2, "나", "2026-11-04")]),
+    "다음엔 가 차례예요|마지막 기록 3일 전",
+  );
+  assert.equal(say([kid(1, "가", TODAY)]), "오늘 모두 한 번씩 적었어요|");
+  assert.equal(boardLine([kid(1, "가", TODAY)], TODAY).target, null);
+});
 
 test("집계 조회 중에는 0건 카드를 만들지 않고 성공한 0건 응답 뒤 두 카드를 표시한다", async (t) => {
   const request = deferred();

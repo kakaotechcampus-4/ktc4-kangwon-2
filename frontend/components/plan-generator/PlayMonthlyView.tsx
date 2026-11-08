@@ -4,13 +4,7 @@ import Link from "next/link";
 import { useCompactShell } from "@/components/app/compact-shell";
 import workspace from "@/components/workspace/Workspace.module.css";
 import { ApiError } from "@/lib/api/client";
-import { getMe } from "@/lib/api/auth";
-import { getClasses } from "@/lib/api/classes";
-import {
-  downloadPlayMonthlyHwpx,
-  getPlayMonthly,
-  unconfirmPlayMonthly,
-} from "@/lib/api/playMonthly";
+import { downloadPlayMonthlyHwpx, getPlayMonthly } from "@/lib/api/playMonthly";
 import type { PlayMonthlyPlan } from "@/lib/api/types";
 import { usePlayMonthlySave } from "@/lib/hooks/use-play-monthly-save";
 import {
@@ -18,18 +12,28 @@ import {
   drillTarget,
   overlayCells,
   removal,
+  type PlaySection,
 } from "@/lib/plan-generator/playMonthlyQueue";
 import {
   CELL_MIN_WIDTH,
   MAX_DEPTH,
+  RATIO_RANGE,
   leaves,
   locate,
   narrowest,
   splitLeaf,
   timetablePlace,
+  tooNarrow,
+  withRatio,
 } from "@/lib/plan-generator/playMonthlyTimetable";
 import PlayCellEditor from "./PlayCellEditor";
-import PlayMonthlyConfirm, { BlankRows, PanelOverview } from "./PlayMonthlyConfirm";
+import PlayPickBoard from "@/components/plan-ui/PlayPickBoard";
+import PlayMonthlyActivityPanel, {
+  SECTION_LABEL,
+  sectionCandidates,
+} from "./PlayMonthlyActivityPanel";
+import DraftSave from "@/components/plan-ui/DraftSave";
+import PlayMonthlyConfirm, { BLANK_LEAD, BlankRows, PickCellHint } from "./PlayMonthlyConfirm";
 import PlayMonthlyConfirmBar from "./PlayMonthlyConfirmBar";
 import PlayMonthlyDrillPanel from "./PlayMonthlyDrillPanel";
 import PlayMonthlyRowRemove from "./PlayMonthlyRowRemove";
@@ -41,12 +45,11 @@ import AnnualFrame, {
   BigView,
   BUTTON,
   PlanDone,
-  UNCONFIRM,
+  pageClass,
   tabClass,
   UndoRedo,
   useSheetZoom,
 } from "./AnnualFrame";
-import UnconfirmButton from "./UnconfirmButton";
 import { PlanMemoNote } from "./PlanMemo";
 
 const STALE_NOTICE = "다른 곳에서 바뀌었어요. 최신 내용을 다시 불러왔어요.";
@@ -63,8 +66,13 @@ const INPUT_LABELS: Record<string, string> = {
 /** 고칠 수 있는 칸의 이름표. 놀이 행의 「설명」은 문서에 안 나와 행 이름을 누르면 패널에 함께 뜬다. */
 export function cellLabels(plan: PlayMonthlyPlan) {
   const labels: Record<string, string> = {
+    [plan.display.title.item_id]: "제목",
+    [plan.display.age.item_id]: "연령",
+    [plan.display.class_name.item_id]: "반 이름",
+    [plan.display.period.item_id]: "예상 기간",
     [plan.theme.item_id]: "놀이 주제",
     [plan.rationale.item_id]: "주제선정이유",
+    [plan.direction.item_id]: "예상되는 놀이 방향",
     [plan.health.cell.item_id]: "건강",
     [plan.nutrition.cell.item_id]: "영양",
   };
@@ -92,7 +100,6 @@ export default function PlayMonthlyView({ id }: { id: number }) {
     notice?: string;
     version?: number;
   } | null>(null);
-  const [names, setNames] = useState<{ classId: number; name: string } | null>(null);
   const [retry, setRetry] = useState(0);
   const key = id + ":" + retry;
   useEffect(() => {
@@ -132,30 +139,9 @@ export default function PlayMonthlyView({ id }: { id: number }) {
         ),
     );
   }
-  // 확정을 풀면 응답으로 바꾸고 번호를 올려 다시 그린다 — 확정 뒤 멈춘 저장 줄을 새로 시작한다.
-  function replace(fresh: PlayMonthlyPlan) {
-    ++lastReload.current;
-    setLoaded((cur) => ({ key, plan: fresh, error: "", version: (cur?.version ?? 0) + 1 }));
-  }
   const current = loaded?.key === key ? loaded : null;
   const plan = current?.plan ?? null;
   const error = valid ? (current?.error ?? "") : "올바른 계획안 주소가 아닙니다.";
-  // 반 이름은 읽기 전용 참고다. 계획안과 따로 받고, 늦거나 실패해도 문서는 먼저 그린다.
-  const classId = plan?.class_id;
-  useEffect(() => {
-    if (classId === undefined) return;
-    let live = true;
-    getMe()
-      .then((me) => (me.center_id ? getClasses(me.center_id) : { items: [] }))
-      .then(({ items }) => {
-        const name = items.find((c) => c.id === classId)?.name;
-        if (live && name) setNames({ classId, name });
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [classId]);
   const box = (body: ReactNode) => (
     <main className="flex w-full flex-col gap-3 px-7 pb-6 pt-5 text-[#2b2826]">{body}</main>
   );
@@ -186,10 +172,8 @@ export default function PlayMonthlyView({ id }: { id: number }) {
     <PlayMonthlyBody
       key={key + ":" + (current?.version ?? 0)}
       initial={plan}
-      className={names?.classId === plan.class_id ? names.name : ""}
       notice={current?.notice}
       onConflict={reloadAfterConflict}
-      onReplace={replace}
     />
   );
 }
@@ -210,22 +194,27 @@ export function placeOf(plan: PlayMonthlyPlan, id: string) {
 
 function PlayMonthlyBody({
   initial,
-  className,
   notice,
   onConflict,
-  onReplace,
 }: {
   initial: PlayMonthlyPlan;
-  className: string;
   notice?: string;
   onConflict: (partial?: boolean) => void;
-  onReplace: (plan: PlayMonthlyPlan) => void;
 }) {
   const [plan, setPlan] = useState(initial);
   // 입력 중 글(문서가 바로 따라간다) · 고른 칸 · 입력창을 다시 열 번호(되돌리기 · 거절) · 안내.
   const [live, setLive] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"ai" | "edit">("edit");
+  // 고를 수가 모자란 채로 열면 놀이 중심형 연간 「놀이 고르기」처럼 활동 고르기 판부터(ADR-065).
+  const [choosing, setChoosing] = useState<PlaySection | null>(() =>
+    initial.status === "DRAFT" && initial.activity_pick != null
+      ? ((["together", "free_play"] as const).find(
+          (s) => initial[s].length < initial.activity_pick!,
+        ) ?? null)
+      : null,
+  );
+  const [focus, setFocus] = useState<string | null>(null);
   const docBox = useRef<HTMLDivElement>(null);
   const sheetZoom = useSheetZoom(docBox, PAPER_WIDTH);
   // 입력창을 다시 여는 번호 — "*" 는 전부(되돌리기 · 다시 하기), 칸 id 는 그 칸만(거절). 화면 번호(state)와 핸들러가 읽는 ref 를 같이 올린다.
@@ -280,6 +269,38 @@ function PlayMonthlyBody({
     setAsking(false);
     if (save.removeCell(selected!)) setSelected(leaves(sibling)[0].item_id);
   };
+  // 글이 있거나 되돌릴 수 없으면(형제가 나뉜 묶음) 한 번 묻는다.
+  const askRemoveSlot = () => {
+    const text = cellValue(plan, selected!)?.trim();
+    if (text || removal(plan, selected!) === null) setAsking(true);
+    else removeSlot();
+  };
+  // 안전교육 칸 끌어 옮기기 — 두 주의 배치를 맞바꾼다(빈 주로 옮기면 원래 주는 빈다). 되돌리기는 두 번.
+  const moveSafety = (from: string, to: string) => {
+    const at = (weekId: string) =>
+      plan.safety_weeks.find((w) => w.week_id === weekId)?.candidate_item_id ?? null;
+    const [moved, other] = [at(from), at(to)];
+    save.placeSafety(to, moved);
+    save.placeSafety(from, other);
+  };
+  // 기본생활습관 칸 끌어 옮기기 — 두 주의 칸을 통째로 맞바꾼다. 되돌리기는 한 번.
+  const moveHabit = (from: string, to: string) => {
+    const ids = plan.habits.map((h) => h.cell.item_id);
+    const [a, b] = [from, to].map((w) => plan.habits.findIndex((h) => h.week_id === w));
+    if (a < 0 || b < 0) return;
+    [ids[a], ids[b]] = [ids[b], ids[a]];
+    save.orderHabits(ids);
+  };
+  // 행 끌어 옮기기 · 위로 · 아래로 — 같은 목록 안에서 끈 행을 놓은 행 자리에 넣는다. 되돌리기는 한 번.
+  const moveRow = (section: PlaySection, from: string, to: string) => {
+    const ids = plan[section].map((r) => r.activity_id).filter((id) => id !== from);
+    ids.splice(
+      plan[section].findIndex((r) => r.activity_id === to),
+      0,
+      from,
+    );
+    save.orderActivities(section, ids);
+  };
   const through = (direction: "undo" | "redo") => {
     if (!save[direction]()) return;
     setLive({});
@@ -295,8 +316,9 @@ function PlayMonthlyBody({
     }
   };
   const drillId = drillTarget(plan);
-  // 안전교육 줄 · 소방대피 칸은 「AI 후보」 탭부터, 나머지는 「칸 편집」.
+  // 「AI 후보에서 고르기」 칸은 고르기 판을 연다. 안전교육 줄 · 소방대피 칸은 「AI 후보」 탭부터, 나머지는 「칸 편집」.
   const select = (id: string) => {
+    if (id.startsWith("pick:")) return setChoosing(id.slice(5) as PlaySection);
     setSelected(id);
     setTab(id.startsWith("safety:") || id === drillId ? "ai" : "edit");
   };
@@ -306,6 +328,15 @@ function PlayMonthlyBody({
     : null;
   const rows = [...plan.together, ...plan.free_play];
   const row = rows.find((r) => r.name.item_id === selected);
+  // AI 후보에서 고르는 계획안(ADR-065): 그 목록의 행을 고르면 「AI 후보」에 그 목록 후보가 뜬다.
+  const picking = plan.activity_pick != null;
+  const pickSection: PlaySection | null =
+    picking && row ? (plan.together.includes(row) ? "together" : "free_play") : null;
+  // AI 후보 행은 빼면 후보로 돌아간다 — 「AI 후보」의 [빼기]를 쓰고, 되돌릴 수 없는 「이 활동 빼기」는 교사가 더한 행만.
+  const candidateRow = !!row && (plan.activity_candidates ?? []).includes(row.activity_id);
+  const short = picking
+    ? (["together", "free_play"] as const).filter((s) => plan[s].length !== plan.activity_pick)
+    : [];
   // 안전교육 줄은 그 주에 둔 후보 문장을 고친다(같은 후보를 둔 다른 주도 같이 바뀐다).
   const target = safetyWeek ? weekCandidate : selected;
   const editing = !confirmed && target && labels[target] ? [target] : [];
@@ -327,30 +358,32 @@ function PlayMonthlyBody({
       ["health", "건강", [plan.health.cell.item_id]],
       ["nutrition", "영양", [plan.nutrition.cell.item_id]],
     ] as const
-  ).map(([key, label, ids]) => ({ key, label, all: ids.length, ids: ids.filter(empty) }));
-  const total = groups.reduce((n, g) => n + g.all, 0);
-  const blankRows = groups
-    .filter((g) => g.ids.length)
-    .map(({ key, label, ids }) => ({
-      key,
-      label,
-      count: ids.length,
-      safety: key === "safety",
-      onJump: () => select(ids[0]),
-    }));
+  ).map(([key, label, ids]) => ({ key, label, ids: ids.filter(empty) }));
+  const blankRows = [
+    // 고를 수가 모자란 목록 — 빈칸과 달리 이대로는 확정할 수 없다.
+    ...short.map((s) => ({
+      key: "pick:" + s,
+      label: `${SECTION_LABEL[s]} · AI 후보 고르기`,
+      count: Math.max(0, plan.activity_pick! - plan[s].length),
+      onJump: () => select("pick:" + s),
+    })),
+    ...groups
+      .filter((g) => g.ids.length)
+      .map(({ key, label, ids }) => ({
+        key,
+        label,
+        count: ids.length,
+        safety: key === "safety",
+        onJump: () => select(ids[0]),
+      })),
+  ];
   const parentPlay =
     row?.parent_item_id &&
     plan.parent.plays.find((p) => p.play_name_item_id === row.parent_item_id);
 
   const editTab = (
     <div className="flex flex-col gap-4">
-      {!selected && (
-        <PanelOverview
-          filled={total - blankRows.reduce((n, r) => n + r.count, 0)}
-          total={total}
-          rows={blankRows}
-        />
-      )}
+      {!selected && <PickCellHint>문서에서 고칠 칸을 눌러 주세요.</PickCellHint>}
       {selected && (
         <h2 className="m-0 text-[20px] font-bold leading-tight">
           {/* 놀이 행은 문서 순서(함께 하는 활동 위→아래, 그다음 자유놀이)로 「n 번째 칸」. */}
@@ -404,42 +437,16 @@ function PlayMonthlyBody({
         <p className="m-0 text-[13px] text-[#5c5243]">이 문장을 둔 다른 주도 같이 바뀌어요.</p>
       )}
       {slot && (
-        <div className="flex flex-col gap-2 border-t border-[#efeae2] pt-4">
-          {/* 주간 대·소집단 칸 나누기와 같은 말 · 같은 버튼(WeeklyEditor). */}
-          <div role="group" aria-label="칸 나누기" className="flex flex-wrap gap-2">
-            {(["VERTICAL", "HORIZONTAL"] as const).map((axis) => {
-              const day = plan.special_activity[slot.day];
-              const width = plan.special_activity_size.column_widths[slot.day];
-              const cramped =
-                axis === "HORIZONTAL" &&
-                narrowest(splitLeaf(day, selected!, axis, "", slot.path.at(-1)!.cell!), width) <
-                  CELL_MIN_WIDTH;
-              return (
-                <button
-                  key={axis}
-                  type="button"
-                  className={BUTTON.outline}
-                  disabled={locked || slot.path.length - 1 >= MAX_DEPTH || cramped}
-                  onClick={() => save.splitCell(selected!, axis)}
-                >
-                  {axis === "VERTICAL" ? "위아래로 나누기" : "좌우로 나누기"}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              className={BUTTON.quiet}
-              disabled={locked || slot.path.length === 1}
-              onClick={() => {
-                // 글이 있거나 되돌릴 수 없으면(형제가 나뉜 묶음) 한 번 묻는다.
-                const text = cellValue(plan, selected!)?.trim();
-                if (text || removal(plan, selected!) === null) setAsking(true);
-                else removeSlot();
-              }}
-            >
-              이 칸 빼기
-            </button>
-          </div>
+        <div className="flex flex-col gap-3 border-t border-[#efeae2] pt-4">
+          <SlotTools
+            plan={plan}
+            itemId={selected!}
+            slot={slot}
+            disabled={locked}
+            onSplit={(axis) => save.splitCell(selected!, axis)}
+            onRemove={askRemoveSlot}
+            onRatio={save.resizeSplit}
+          />
           {asking && (
             <PlayMonthlyConfirm
               message={
@@ -454,13 +461,24 @@ function PlayMonthlyBody({
               onNo={() => setAsking(false)}
             />
           )}
-          <p className="m-0 text-[13px] text-[#5c5243]">
-            칸 경계선을 끌면 크기가 바뀌어요. 요일 머리의 오른쪽 선은 열 너비, 표 맨 아래 선은 전체
-            높이예요.
-          </p>
         </div>
       )}
       {row && (
+        <RowOrder
+          rows={plan.together.includes(row) ? plan.together : plan.free_play}
+          row={row}
+          disabled={locked}
+          onMove={(to) =>
+            moveRow(plan.together.includes(row) ? "together" : "free_play", row.activity_id, to)
+          }
+        />
+      )}
+      {row && candidateRow && (
+        <p className="m-0 border-t border-[#efeae2] pt-4 text-[13px] text-[#5c5243]">
+          「AI 후보」에서 − 를 누르면 후보로 돌아가요.
+        </p>
+      )}
+      {row && !candidateRow && (
         <div className="border-t border-[#efeae2] pt-4">
           <PlayMonthlyRowRemove
             activity={row}
@@ -468,6 +486,7 @@ function PlayMonthlyBody({
             onRemove={save.removeActivity}
             disabled={locked}
             isLastInSection={
+              !picking &&
               (plan.together.includes(row) ? plan.together : plan.free_play).length === 1
             }
           />
@@ -480,6 +499,15 @@ function PlayMonthlyBody({
       plan={plan}
       weekId={safetyWeek}
       onPlace={save.placeSafety}
+      onWeek={(weekId) => select("safety:" + weekId)}
+      disabled={locked}
+    />
+  ) : pickSection ? (
+    <PlayMonthlyActivityPanel
+      plan={plan}
+      section={pickSection}
+      onPick={save.pickActivity}
+      onRemove={save.removeActivity}
       disabled={locked}
     />
   ) : selected && selected === drillId ? (
@@ -487,19 +515,23 @@ function PlayMonthlyBody({
       candidates={plan.drill_candidates}
       current={plan.teacher_inputs.find((t) => t.key === "fire_disaster_drill")?.cell.value ?? ""}
       onCopy={copyDrill}
+      onClear={() => {
+        if (drillId && save.editCell(drillId, "")) {
+          clearLive(drillId);
+          bump(drillId);
+        }
+      }}
       disabled={locked}
     />
   ) : (
-    <p className="m-0 text-sm text-[#5c5243]">
-      안전교육이나 소방대피/재난대비 칸을 누르면 넣을 후보가 보여요.
-    </p>
+    <PickCellHint>칸을 누르면 후보가 보여요.</PickCellHint>
   );
   const aside = (
     <>
       <div
         role="tablist"
         aria-label="고치는 방법"
-        className="flex gap-5 border-b border-[#efeae2] px-6 pt-2"
+        className="flex gap-1 border-b border-line px-6 pt-3"
       >
         {(["ai", "edit"] as const).map((key) => (
           <button
@@ -533,46 +565,117 @@ function PlayMonthlyBody({
   if (confirmed)
     return (
       <PlanDone
-        title={`${plan.month}월 월간계획안을 확정했어요`}
+        title={`${plan.month}월 월간계획안`}
         download={(format) => downloadPlayMonthlyHwpx(plan.id, format)}
         docLabel="확정된 월간계획안"
         format="PLAY_PROJECT"
-        pages={[<PlayMonthlySheet key="sheet" plan={plan} className={className} />]}
+        pages={[<PlayMonthlySheet key="sheet" plan={plan} />]}
         next={{
           href: "/plans/monthly",
-          label: `${(plan.month % 12) + 1}월 월간 만들기 →`,
-          hint: "놀이 중심형은 주간 없이 다음 달로 가요",
+          label: `${(plan.month % 12) + 1}월 월간 만들기`,
         }}
-        unconfirm={
+        notes={
           <>
             {notice && <span role="status">{notice}</span>}
             {plan.parent_changed && <span role="status">상위 계획안이 바뀌었어요</span>}
             {message && <span role="status">{message}</span>}
-            <UnconfirmButton
-              message="확정을 풀면 다시 고칠 수 있어요."
-              className={UNCONFIRM}
-              run={() => unconfirmPlayMonthly(plan.id, plan.revision)}
-              onDone={onReplace}
-              onConflict={() => {
-                setStopped(true);
-                onConflict();
-              }}
-            />
           </>
         }
       />
     );
+  if (choosing) {
+    const max = plan.activity_pick!;
+    const picked = plan[choosing].map((r) => r.activity_id);
+    const goTo = (s: PlaySection | null) => {
+      setFocus(null);
+      setChoosing(s);
+    };
+    const toggle = (id: string) => {
+      if (locked) return;
+      if (picked.includes(id)) save.removeActivity(id);
+      else save.pickActivity(id);
+    };
+    return (
+      <main className={workspace.page}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {back}
+            <h1 className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink">
+              활동 고르기
+            </h1>
+            <span className="-rotate-2 border border-black/10 bg-[#eee4f4] px-3 py-0.5 font-display text-[18px] font-bold text-[#5e4b96] shadow-pg-card">
+              놀이 중심형
+            </span>
+            <span role="status" className="text-[13px] text-ink-soft">
+              {SAVE_LABEL[save.status]}
+            </span>
+            {save.status === "failed" && (
+              <button type="button" className={workspace.secondary} onClick={save.retry}>
+                다시 저장
+              </button>
+            )}
+          </div>
+          <div
+            role="tablist"
+            aria-label="고를 목록"
+            className="flex flex-wrap gap-0.5 rounded-md border border-line bg-paper p-0.5"
+          >
+            {(["together", "free_play"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                role="tab"
+                aria-selected={choosing === s}
+                className={`${pageClass(choosing === s)} inline-flex items-center gap-1.5`}
+                onClick={() => goTo(s)}
+              >
+                {SECTION_LABEL[s]}{" "}
+                <span className="rounded-full bg-[#f3efe8] px-1.5 text-xs font-bold">
+                  {plan[s].length}/{max}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+        {(notice || message) && (
+          <p role="status" className={workspace.notice}>
+            {notice || message}
+          </p>
+        )}
+        <PlayPickBoard
+          subject={SECTION_LABEL[choosing]}
+          max={max}
+          candidates={sectionCandidates(plan, choosing).map(({ row }) => ({
+            key: row.activity_id,
+            name: row.name.value.trim() || "(빈 후보)",
+            summary: row.description.value,
+            fields: [{ label: "설명", lines: [row.description.value] }],
+          }))}
+          picked={picked}
+          focus={focus}
+          idPrefix={`play-monthly-${plan.id}-pick`}
+          onFocus={setFocus}
+          onToggle={toggle}
+          onRemove={(id) => {
+            toggle(id);
+            document.getElementById(`play-monthly-${plan.id}-pick-heading`)?.focus();
+          }}
+          onNext={() => goTo(choosing === "together" ? "free_play" : null)}
+          nextLabel={
+            choosing === "together" ? `${SECTION_LABEL.free_play} 고르러 가기` : "문서 만들기"
+          }
+          onFinishEarly={choosing === "together" ? () => goTo(null) : undefined}
+        />
+      </main>
+    );
+  }
   return (
     <AnnualFrame
       title={`${plan.month}월 월간계획안`}
       format="PLAY_PROJECT"
       lead={back}
-      status={
-        <span className="flex items-center gap-3">
-          <span>{SAVE_LABEL[save.status]}</span>
-          <PlanMemoNote plan={plan} />
-        </span>
-      }
+      saved={SAVE_LABEL[save.status]}
+      status={<PlanMemoNote plan={plan} />}
       notice={
         (notice || message || plan.parent_changed || save.status === "failed") && (
           <div className="flex flex-wrap items-center gap-3 text-sm text-[#5c5243]">
@@ -589,16 +692,20 @@ function PlayMonthlyBody({
       }
       actions={
         <>
+          {!confirmed && (
+            <DraftSave disabled={locked} save={async () => (await save.whenIdle()).saved} />
+          )}
           <PlayMonthlyConfirmBar
             plan={plan}
             ask={
-              (blankRows.length ? "빈칸이 남아 있어요. 비운 채로 확정할 수도 있어요. " : "") +
-              "확정하면 확정을 풀기 전까지 고칠 수 없어요." +
-              (plan.notices.length ? ` 확인할 것 ${plan.notices.length}개가 남았어요.` : "")
+              short.length
+                ? `함께 하는 활동 · 자유놀이는 AI 후보에서 ${plan.activity_pick}개씩 골라야 확정할 수 있어요.`
+                : ""
             }
             // 빈칸으로 가면 확정 창을 닫는다(주제형 월간 · 주간과 같다).
             blanks={(close) => (
               <BlankRows
+                lead={short.length ? "남은 빈칸이 있어요." : BLANK_LEAD}
                 rows={blankRows.map((r) => ({
                   ...r,
                   onJump: () => {
@@ -640,7 +747,8 @@ function PlayMonthlyBody({
           <span>
             <BigView
               pages={1}
-              render={() => <PlayMonthlySheet plan={shown} className={className} />}
+              width={PAPER_WIDTH}
+              render={() => <PlayMonthlySheet plan={shown} />}
             />
           </span>
         </div>
@@ -651,12 +759,191 @@ function PlayMonthlyBody({
           plan={shown}
           selected={selected}
           onSelect={select}
-          className={className}
           scale={sheetZoom.percent / 100}
           onRatio={locked ? undefined : save.resizeSplit}
           onSize={locked ? undefined : save.resizeTable}
+          onMoveSafety={locked ? undefined : moveSafety}
+          onPlaceSafety={locked ? undefined : save.placeSafety}
+          onDropDrill={locked ? undefined : copyDrill}
+          onMoveHabit={locked ? undefined : moveHabit}
+          onMoveRow={locked ? undefined : moveRow}
         />
       </div>
     </AnnualFrame>
+  );
+}
+
+const TOOL =
+  "flex min-h-[36px] items-center gap-1.5 rounded-md px-2.5 text-[13px] font-semibold disabled:opacity-40";
+/** 끌기의 키보드 대안 — 고른 행을 같은 목록 안에서 한 칸 위 · 아래로. */
+function RowOrder({
+  rows,
+  row,
+  disabled,
+  onMove,
+}: {
+  rows: PlayMonthlyPlan["together"];
+  row: PlayMonthlyPlan["together"][number];
+  disabled: boolean;
+  onMove: (toId: string) => void;
+}) {
+  const at = rows.indexOf(row);
+  const step = (delta: -1 | 1) => {
+    const to = rows[at + delta];
+    return (
+      <button
+        type="button"
+        className={`${TOOL} text-[#5e4b96] hover:bg-[#f6f1fb]`}
+        disabled={disabled || !to}
+        onClick={() => onMove(to.activity_id)}
+      >
+        {delta < 0 ? "↑ 위로 옮기기" : "↓ 아래로 옮기기"}
+      </button>
+    );
+  };
+  return (
+    <div role="group" aria-label="행 순서" className="flex flex-wrap items-center gap-2">
+      <div className="inline-flex rounded-lg border border-[#ddd6ca] bg-white p-0.5">
+        {step(-1)}
+        {step(1)}
+      </div>
+    </div>
+  );
+}
+
+/** 16px 선 그림 — 칸 나누기 도구. */
+const icon = (d: string) => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 16 16"
+    className="h-4 w-4 shrink-0"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+  >
+    <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
+    <path d={d} />
+  </svg>
+);
+
+/**
+ * 특별활동 칸 도구 — 나누기 두 가지(한 묶음) · 빼기, 나뉜 칸이면 그 칸의 크기.
+ * 한도(깊이 · 칸 폭 3.5%)를 넘는 단추는 끈다. 최종 검사는 서버가 한다.
+ */
+function SlotTools({
+  plan,
+  itemId,
+  slot,
+  disabled,
+  onSplit,
+  onRemove,
+  onRatio,
+}: {
+  plan: PlayMonthlyPlan;
+  itemId: string;
+  slot: NonNullable<ReturnType<typeof locate>>;
+  disabled: boolean;
+  onSplit: (axis: "VERTICAL" | "HORIZONTAL") => void;
+  onRemove: () => void;
+  onRatio: (splitId: string, ratio: number) => void;
+}) {
+  const day = plan.special_activity[slot.day];
+  const width = plan.special_activity_size.column_widths[slot.day];
+  const cramped = (axis: "VERTICAL" | "HORIZONTAL") =>
+    axis === "HORIZONTAL" &&
+    narrowest(splitLeaf(day, itemId, axis, "", slot.path.at(-1)!.cell!), width) < CELL_MIN_WIDTH;
+  const parent = slot.path.at(-2);
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        {/* 주간 대·소집단 칸 나누기와 같은 말(WeeklyEditor). */}
+        <div
+          role="group"
+          aria-label="칸 나누기"
+          className="inline-flex rounded-lg border border-[#ddd6ca] bg-white p-0.5"
+        >
+          {(["VERTICAL", "HORIZONTAL"] as const).map((axis) => (
+            <button
+              key={axis}
+              type="button"
+              className={`${TOOL} text-[#5e4b96] hover:bg-[#f6f1fb]`}
+              disabled={disabled || slot.path.length - 1 >= MAX_DEPTH || cramped(axis)}
+              onClick={() => onSplit(axis)}
+            >
+              {icon(axis === "VERTICAL" ? "M2 8h12" : "M8 2.5v11")}
+              {axis === "VERTICAL" ? "위아래로 나누기" : "좌우로 나누기"}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className={`${TOOL} text-[#a2492f] hover:bg-[#fbf0ec]`}
+          disabled={disabled || !parent}
+          onClick={onRemove}
+        >
+          {icon("M5.5 8h5")}이 칸 빼기
+        </button>
+      </div>
+      {parent && (
+        <SlotSize
+          plan={plan}
+          day={slot.day}
+          parent={parent}
+          first={parent.children[0] === slot.path.at(-1)}
+          disabled={disabled}
+          onRatio={onRatio}
+        />
+      )}
+    </>
+  );
+}
+
+/** 나뉜 칸의 크기 — 경계(`split_id`) 비율을 이 칸 쪽 몫으로 보여 주고 5씩 바꾼다(비율 10~90 · 칸 폭 3.5%). */
+function SlotSize({
+  plan,
+  day,
+  parent,
+  first,
+  disabled,
+  onRatio,
+}: {
+  plan: PlayMonthlyPlan;
+  day: number;
+  parent: PlayMonthlyPlan["special_activity"][number];
+  first: boolean;
+  disabled: boolean;
+  onRatio: (splitId: string, ratio: number) => void;
+}) {
+  const ratio = parent.ratio!;
+  const share = first ? ratio : 100 - ratio;
+  const what = parent.axis === "VERTICAL" ? "높이" : "너비";
+  const next = (delta: number) => (first ? ratio + delta : ratio - delta);
+  const ok = (r: number) =>
+    r >= RATIO_RANGE[0] &&
+    r <= RATIO_RANGE[1] &&
+    !tooNarrow(
+      plan.special_activity.map((d, i) => (i === day ? withRatio(d, parent.split_id!, r) : d)),
+      plan.special_activity_size.column_widths,
+    );
+  const step = (delta: number, label: string) => (
+    <button
+      type="button"
+      aria-label={`이 칸 ${what} ${label}`}
+      className="flex h-9 w-9 items-center justify-center rounded-md text-[18px] font-bold text-[#5e4b96] hover:bg-[#f6f1fb] disabled:opacity-40"
+      disabled={disabled || !ok(next(delta))}
+      onClick={() => onRatio(parent.split_id!, next(delta))}
+    >
+      {delta < 0 ? "−" : "+"}
+    </button>
+  );
+  return (
+    <div role="group" aria-label={`이 칸 ${what}`} className="flex items-center gap-3">
+      <span className="text-sm text-[#5c5243]">이 칸 {what}</span>
+      <div className="inline-flex items-center rounded-lg border border-[#ddd6ca] bg-white p-0.5">
+        {step(-5, "줄이기")}
+        <span className="min-w-[3.5em] text-center text-sm font-bold tabular-nums">{share}%</span>
+        {step(5, "키우기")}
+      </div>
+    </div>
   );
 }

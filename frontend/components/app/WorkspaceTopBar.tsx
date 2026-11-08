@@ -17,11 +17,11 @@ const PAGE_NAMES: [prefix: string, name: string][] = [
   ["/plans", "계획안"],
   ["/templates", "계획안"],
   ["/trends", "계획안"],
-  ["/routines", "일과 기록"],
-  ["/weekly-records", "주간 기록"],
+  ["/routines", "보육일지"],
+  ["/weekly-records", "보육일지"],
   ["/records/children", "아이별 기록"],
-  ["/records", "관찰 기록"],
-  ["/compare", "관찰 기록"],
+  ["/records", "관찰일지"],
+  ["/compare", "관찰일지"],
   ["/documents", "문서 보관함"],
   ["/evaluation", "평가 점검"],
   ["/settings", "설정"],
@@ -70,7 +70,7 @@ export default function WorkspaceTopBar() {
         <Wordmark size="xs" label="쌤플 홈으로" className="hidden lg:inline-flex" />
         <span aria-hidden="true" className="hidden h-6 border-l border-line lg:inline" />
         {/* 휴대폰에서도 보인다 — 사이드바 반 카드가 없는 폭에서 지금 반을 알려 주는 곳은 여기뿐이다 */}
-        <span aria-label="상단 현재 반" className="max-w-[40vw] truncate">
+        <span aria-label="상단 현재 반" className="max-w-[calc(40*var(--app-vw))] truncate">
           {className}
         </span>
       </div>

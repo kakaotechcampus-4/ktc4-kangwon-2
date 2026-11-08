@@ -38,9 +38,13 @@ export const getWeeklyPlan = (id: number, signal?: AbortSignal) =>
  * 연도는 반의 학년도가 정한다 (월간 생성과 같은 규칙). `month` 는 `classId` 와 함께만 간다.
  */
 /** `month` 를 빼면 그 반의 모든 달이다 — 승인받은 반을 한 번에 훑을 때 쓴다. */
-export const listWeeklyPlans = (classId: number, month?: number, signal?: AbortSignal) =>
+/** 둘 다 없으면 원 전체(백엔드 규칙). `month` 는 `classId` 와 함께만. */
+export const listWeeklyPlans = (classId?: number, month?: number, signal?: AbortSignal) =>
   apiRequest<{ items: WeeklyPlanSummary[] }>(
-    "/api/plans/weekly?class_id=" + classId + (month === undefined ? "" : "&month=" + month),
+    "/api/plans/weekly" +
+      (classId === undefined
+        ? ""
+        : "?class_id=" + classId + (month === undefined ? "" : "&month=" + month)),
     { signal },
   );
 /**
@@ -68,7 +72,7 @@ export const regenerateWeeklyCell = (
     cell(id, itemId) + "/regenerate",
     json("POST", { expected_revision: expectedRevision }, signal),
   );
-/** 확정. 풀려면 `unconfirmWeeklyPlan`. */
+/** 확정. 화면에는 확정 취소가 없다 — 고치려면 지우고 다시 만든다(ADR-064). */
 export const confirmWeeklyPlan = (id: number, expectedRevision: number, signal?: AbortSignal) =>
   apiRequest<WeeklyPlan>(
     "/api/plans/weekly/" + id + "/confirm",
@@ -80,7 +84,7 @@ export const unconfirmWeeklyPlan = (id: number, expectedRevision: number, signal
     "/api/plans/weekly/" + id + "/unconfirm",
     json("POST", { expected_revision: expectedRevision }, signal),
   );
-/** 확정 전 주간계획안을 지운다. 그 주를 다시 만들려면 먼저 지워야 한다 (G5). 확정본은 409 다. */
+/** 주간계획안을 지운다(확정본도, ADR-064). 그 주를 다시 만들려면 먼저 지워야 한다 (G5). */
 export const deleteWeeklyPlan = (id: number) =>
   apiRequest<void>("/api/plans/weekly/" + id, { method: "DELETE" });
 

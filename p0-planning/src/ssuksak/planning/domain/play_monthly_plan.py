@@ -105,6 +105,9 @@ class PlayMonthlyLayout:
     together_count: int
     free_play_count: int
     drill_candidate_count: int
+    # Layout v0.3.0 (2026-11-06): the counts above are AI candidates and the teacher keeps exactly
+    # this many rows per section. None (older layouts): the generated rows are the document rows.
+    activity_pick: int | None = None
 
     def __post_init__(self) -> None:
         _non_blank(self.layout_version, "PlayMonthlyLayout.layout_version")
@@ -114,6 +117,9 @@ class PlayMonthlyLayout:
         counts = (self.together_count, self.free_play_count, self.drill_candidate_count)
         if any(type(n) is not int or n < 1 for n in counts):
             raise InvalidDomainValueError("PlayMonthlyLayout list sizes must be positive")
+        pick = self.activity_pick
+        if pick is not None and (type(pick) is not int or not 1 <= pick <= min(counts[:2])):
+            raise InvalidDomainValueError("PlayMonthlyLayout.activity_pick must fit the candidate counts")
 
     @property
     def teacher_input_keys(self) -> tuple[str, ...]:
@@ -466,6 +472,11 @@ class PlayMonthlyPlan:
     special_activity_size: TimetableSize
     audit: AuditHistory = field(default_factory=AuditHistory)
     removed_activities: tuple[RemovedActivity, ...] = ()
+    # Layout v0.3.0: every AI candidate row's name id in generation order, and the candidates not
+    # in the document. A candidate is in its section or in the pool, never both; removing one
+    # puts it back in the pool, never in ``removed_activities``. Pool rows are not editable.
+    activity_candidates: tuple[ItemId, ...] = ()
+    activity_pool: tuple[RemovedActivity, ...] = ()
     # A timetable cell a teacher removed, kept whole for history (D-7). Never printed.
     removed_timetable_cells: tuple[PlayMonthlyCell, ...] = ()
     format: str = PLAY_MONTHLY_FORMAT
@@ -528,11 +539,13 @@ class PlayMonthlyPlan:
             isinstance(r, RemovedActivity) for r in self.removed_activities
         ):
             raise InvalidDomainValueError("PlayMonthlyPlan.removed_activities must be RemovedActivity")
+        self._check_candidates()
         self._check_document_cells()
         # Archived rows and cells keep their ids, so a removed id is never used again.
         cells = (
             *self.cells(),
             *(c for r in self.removed_activities for c in (r.activity.cell, r.activity.description)),
+            *(c for r in self.activity_pool for c in (r.activity.cell, r.activity.description)),
             *self.removed_timetable_cells,
         )
         for name in ("item_id", "semantic_key"):
@@ -541,6 +554,22 @@ class PlayMonthlyPlan:
                 values += [b.split_id for day in self.special_activity for b in day.boundaries()]
             if len(values) != len(set(values)):
                 raise InvalidDomainValueError(f"PlayMonthlyPlan {name}s must be unique")
+
+    def _check_candidates(self) -> None:
+        ids, pool = self.activity_candidates, self.activity_pool
+        if not isinstance(ids, tuple) or not all(isinstance(i, ItemId) for i in ids) or len(ids) != len(set(ids)):
+            raise InvalidDomainValueError("activity_candidates must be unique ItemIds")
+        if not isinstance(pool, tuple) or not all(isinstance(r, RemovedActivity) for r in pool):
+            raise InvalidDomainValueError("activity_pool must be RemovedActivity")
+        if (ids or pool) and self.layout.activity_pick is None:
+            raise InvalidDomainValueError("Activity candidates need a layout with activity_pick")
+        pooled = tuple(r.activity.cell.item_id for r in pool)
+        if pooled != tuple(i for i in ids if i in pooled):
+            raise InvalidDomainValueError("activity_pool holds AI candidates in generation order")
+        if self.layout.activity_pick is not None and any(
+            len(getattr(self, s)) > self.layout.activity_pick for s in PLAY_SECTIONS
+        ):
+            raise InvalidDomainValueError("A section keeps at most activity_pick rows")
 
     def _check_document_cells(self) -> None:
         if not isinstance(self.direction, PlayMonthlyCell) or self.direction.semantic_key != DIRECTION_KEY:
@@ -677,15 +706,75 @@ class PlayMonthlyPlan:
         """Append a teacher's new row at the end of a section (M2-D03)."""
         self.ensure_mutable("add_activity")
         rows = self._rows(section)
+        self._require_room(section, rows)
         return self._arranged(
             section, _row_ids(rows), _row_ids((*rows, activity)), actor_id, occurred_at,
             **{section: (*rows, activity)},
         )
 
+    def pick_activity(
+        self, name_item_id: ItemId, *, actor_id: ActorId, occurred_at: datetime
+    ) -> PlayMonthlyPlan:
+        """Move a pooled AI candidate to the end of its section (layout v0.3.0)."""
+        self.ensure_mutable("pick_activity")
+        pooled = next((r for r in self.activity_pool if r.activity.cell.item_id == name_item_id), None)
+        if pooled is None:
+            raise InvalidDomainValueError(f"PlayMonthlyPlan pooled candidate not found: {name_item_id}")
+        rows = self._rows(pooled.section)
+        self._require_room(pooled.section, rows)
+        picked = (*rows, pooled.activity)
+        return self._arranged(
+            pooled.section, _row_ids(rows), _row_ids(picked), actor_id, occurred_at,
+            **{pooled.section: picked},
+            activity_pool=tuple(r for r in self.activity_pool if r is not pooled),
+        )
+
+    def _require_room(self, section: str, rows: tuple[PlayActivity, ...]) -> None:
+        if self.layout.activity_pick is not None and len(rows) >= self.layout.activity_pick:
+            raise InvalidDomainValueError(f"{section} already keeps {self.layout.activity_pick} rows")
+
+    def order_habits(
+        self, habit_item_ids: tuple[ItemId, ...], *, actor_id: ActorId, occurred_at: datetime
+    ) -> PlayMonthlyPlan:
+        """Put the habit cells in the given week order (2026-11-06). Each cell moves whole with
+        its id, semantic key, evidence and history; the same order is a no-op (no event)."""
+        self.ensure_mutable("order_habits")
+        by_id = {h.habit.cell.item_id: h.habit for h in self.habits}
+        if len(habit_item_ids) != len(by_id) or set(habit_item_ids) != set(by_id):
+            raise InvalidDomainValueError("The order must name every habit cell exactly once")
+        before = tuple(h.habit.cell.item_id.value for h in self.habits)
+        after = tuple(i.value for i in habit_item_ids)
+        if before == after:
+            return self
+        return self._arranged(
+            "habits", before, after, actor_id, occurred_at,
+            habits=tuple(
+                HabitWeek(h.week_id, by_id[i]) for h, i in zip(self.habits, habit_item_ids, strict=True)
+            ),
+        )
+
+    def order_activities(
+        self, section: str, name_item_ids: tuple[ItemId, ...], *, actor_id: ActorId, occurred_at: datetime
+    ) -> PlayMonthlyPlan:
+        """Put one section's rows in the given order (Human Decision 2026-11-05). Every row of that
+        section exactly once, nothing from the other; the same order is a no-op (no event)."""
+        self.ensure_mutable("order_activities")
+        rows = self._rows(section)
+        by_id = {a.cell.item_id: a for a in rows}
+        if len(name_item_ids) != len(rows) or set(name_item_ids) != set(by_id):
+            raise InvalidDomainValueError(f"The order must name every {section} row exactly once")
+        ordered = tuple(by_id[item_id] for item_id in name_item_ids)
+        if _row_ids(ordered) == _row_ids(rows):
+            return self
+        return self._arranged(
+            section, _row_ids(rows), _row_ids(ordered), actor_id, occurred_at, **{section: ordered}
+        )
+
     def remove_activity(
         self, name_item_id: ItemId, *, actor_id: ActorId, occurred_at: datetime
     ) -> PlayMonthlyPlan:
-        """Drop a row from the document and keep it whole in ``removed_activities`` (I-3)."""
+        """Drop a row from the document and keep it whole in ``removed_activities`` (I-3).
+        An AI candidate (layout v0.3.0) goes back to the pool instead, in generation order."""
         self.ensure_mutable("remove_activity")
         current = self.activity(name_item_id)
         if current is None:
@@ -693,10 +782,14 @@ class PlayMonthlyPlan:
         section = next(s for s in PLAY_SECTIONS if any(a is current for a in getattr(self, s)))
         rows = getattr(self, section)
         kept = tuple(a for a in rows if a is not current)
+        if name_item_id in self.activity_candidates:
+            back = {r.activity.cell.item_id: r for r in self.activity_pool}
+            back[name_item_id] = RemovedActivity(section, current)
+            archive = {"activity_pool": tuple(back[i] for i in self.activity_candidates if i in back)}
+        else:
+            archive = {"removed_activities": (*self.removed_activities, RemovedActivity(section, current))}
         return self._arranged(
-            section, _row_ids(rows), _row_ids(kept), actor_id, occurred_at,
-            **{section: kept},
-            removed_activities=(*self.removed_activities, RemovedActivity(section, current)),
+            section, _row_ids(rows), _row_ids(kept), actor_id, occurred_at, **{section: kept}, **archive
         )
 
     def place_safety(

@@ -15,6 +15,11 @@ from .errors import InvalidDomainValueError
 from .theme_reference import ActivationStatus
 
 
+def drill_cell_value(label: str, sentence: str) -> str:
+    """훈련 후보를 문서 칸에 복사한 값: 「[주제] 문장」 한 줄(Human Decision 2026-11-06 — 11-05 의 「다음 줄」을 바꿈)."""
+    return f"[{label}] {sentence}"
+
+
 class DrillKind(str, Enum):
     FIRE = "FIRE"
     DISASTER = "DISASTER"

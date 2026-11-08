@@ -24,7 +24,7 @@ import {
 import { captureSession } from "@/lib/auth/request-session";
 import { resetTour } from "@/components/app/Tour";
 import { Message, WorkspacePage, ws } from "@/components/workspace/WorkspaceUI";
-import { ClassesEditor, KidsEditor, NoteSheet, OrgEditor } from "./SettingsNoteEditors";
+import { ClassesEditor, KidsEditor, NoteSheet } from "./SettingsNoteEditors";
 import { SettingsIcon, type SettingsIconName } from "./SettingsIcons";
 import styles from "./Settings.module.css";
 
@@ -216,7 +216,9 @@ export default function SettingsPage() {
   // 아동은 이름 없이 수만 보인다.
   const chosen = chosenClassFor(settings);
   const region = [settings.regionProvince, settings.regionDistrict].filter(Boolean).join(" ");
-  const kidCount = (c: ClassroomEntry) => kidCounts[c.id] ?? c.childIds?.length ?? 0;
+  // 서버에서 센 수가 먼저다. 아직 못 받았으면 브라우저에 남은 수(ADR-013 — 이름 없이 childIds 만)로 보인다.
+  const kidCount = (c: ClassroomEntry) =>
+    kidCounts[c.id] ?? (c.children.length || c.childIds?.length || 0);
   const children = settings.classes.reduce((sum, c) => sum + kidCount(c), 0);
   const org = [
     {
@@ -224,7 +226,8 @@ export default function SettingsPage() {
       icon: "buildings",
       tone: "yellow",
       tilt: -2,
-      Editor: OrgEditor,
+      // 원 정보는 아무도 고치지 않는다 — 같은 원 선생님 모두의 정보다(ADR-068). 연필을 두지 않는다.
+      Editor: null,
       empty: "아직 등록하지 않았습니다.",
       facts: settings.orgName
         ? [
@@ -232,6 +235,9 @@ export default function SettingsPage() {
             ["지역", region],
           ]
         : [],
+      note: settings.registryKey
+        ? "정부 어린이집 목록(어린이집정보공개포털)에서 가져와 바꿀 수 없어요."
+        : "원 정보는 바꿀 수 없어요.",
     },
     {
       title: "반 수 · 담당 반",
@@ -263,9 +269,10 @@ export default function SettingsPage() {
     icon: SettingsIconName;
     tone: Tone;
     tilt: number;
-    Editor: typeof OrgEditor;
+    Editor: typeof ClassesEditor | null;
     empty: string;
     facts: string[][];
+    note?: string;
   }[];
 
   // 화살표로 옆 묶음으로 옮긴다 — 탭 목록의 키보드 약속이다.
@@ -323,26 +330,31 @@ export default function SettingsPage() {
                   icon={o.icon}
                   tone={o.tone}
                   tilt={o.tilt}
-                  peel={{
-                    // 단추 모양 없이 연필만. 누르는 자리는 44px 로 남긴다.
-                    trigger: (open) => (
-                      <button
-                        type="button"
-                        className={styles.edit}
-                        aria-label={`${o.title} 수정`}
-                        title={`${o.title} 수정`}
-                        onClick={open}
-                      >
-                        <SettingsIcon name="pencil" size={22} />
-                      </button>
-                    ),
-                    // 저장 길은 첫 설정 화면과 같다(useOnboardingFlow).
-                    content: (close) => <o.Editor onDone={close} />,
-                    // 저장하면 이 브라우저의 원 · 반 설정이 바뀐다. 쪽지 요약을 다시 읽는다.
-                    onClosed: () => setSettings(loadClassSettings() || EMPTY_CLASS_SETTINGS),
-                  }}
+                  peel={
+                    o.Editor
+                      ? {
+                          // 단추 모양 없이 연필만. 누르는 자리는 44px 로 남긴다.
+                          trigger: (open) => (
+                            <button
+                              type="button"
+                              className={styles.edit}
+                              aria-label={`${o.title} 수정`}
+                              title={`${o.title} 수정`}
+                              onClick={open}
+                            >
+                              <SettingsIcon name="pencil" size={22} />
+                            </button>
+                          ),
+                          // 저장 길은 첫 설정 화면과 같다(useOnboardingFlow).
+                          content: (close) => o.Editor && <o.Editor onDone={close} />,
+                          // 저장하면 이 브라우저의 원 · 반 설정이 바뀐다. 쪽지 요약을 다시 읽는다.
+                          onClosed: () => setSettings(loadClassSettings() || EMPTY_CLASS_SETTINGS),
+                        }
+                      : undefined
+                  }
                 >
                   <Facts facts={o.facts} empty={o.empty} />
+                  {o.note && <p className={styles.summary}>{o.note}</p>}
                 </Note>
               ))}
             </div>
@@ -387,10 +399,8 @@ export default function SettingsPage() {
             )}
             <div className={styles.two}>
               <PasswordCard />
-              <Note title="설명 다시 보기" icon="compass" tone="sage" tilt={1}>
-                <p>
-                  홈 화면으로 돌아가 <strong>쌤플</strong> 이용 방법을 다시 볼 수 있습니다.
-                </p>
+              <Note title="튜토리얼" icon="compass" tone="sage" tilt={1}>
+                <p>화면마다 처음 한 번 뜨는 튜토리얼을 다시 볼 수 있습니다.</p>
                 {/* 끈 안내도 본 안내도 되살리고 첫 화면으로 간다 — 홈에서 바로 다시 뜬다. */}
                 <button
                   type="button"
@@ -400,7 +410,7 @@ export default function SettingsPage() {
                     router.push("/");
                   }}
                 >
-                  다시 보기
+                  튜토리얼 다시 보기
                 </button>
               </Note>
             </div>
