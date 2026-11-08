@@ -58,12 +58,12 @@ youtube_channels:
   - name: 뽀로로랑 타요랑 뽀요TV
     channel_id: UCrlqF_4ePI1h02gKjIG0n2w
     uploads_playlist_id: UUrlqF_4ePI1h02gKjIG0n2w
-    name_words: [뽀로로, 타요, 뽀요]
+    name_words: [뽀로로, 뽀요]
     kind: 동요
   - name: 로보카폴리 인기 동요
     channel_id: UCmC5SDZ4YkrQJb7IS-32U2A
     uploads_playlist_id: UUmC5SDZ4YkrQJb7IS-32U2A
-    name_words: [로보카폴리, 폴리]
+    name_words: [로보카폴리]
     kind: 동요
   - name: 코코키즈 놀이음악
     channel_id: UCiZutDuXF87cNN0lXn7Uaug
