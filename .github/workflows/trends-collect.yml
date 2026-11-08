@@ -207,6 +207,8 @@ jobs:
           IS_SERVER: "true"
           ELICE_MLAPI_BASE_URL: ${{ secrets.ELICE_MLAPI_BASE_URL }}
           ELICE_MLAPI_API_KEY: ${{ secrets.ELICE_MLAPI_API_KEY }}
+          # 3단 판정은 판정 전용 모델 jev 가 한다(ADR-070). 키는 위와 같고 주소만 따로다.
+          ELICE_JEV_BASE_URL: ${{ secrets.ELICE_JEV_BASE_URL }}
         run: |
           python - <<'PY' > /tmp/judge.md
           import os

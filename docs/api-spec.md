@@ -3681,15 +3681,26 @@ ALREADY_REGISTERED       같은 아동 · 종류 · 겹치는 기간의 증빙�
 
 **앞 둘을 모델 없이 끝낸다.** 모델이 틀려도 사실은 안 틀어진다.
 
-**3단 — `POST /api/documents/{id}/verify`** — **아직 없다 (2026-10-20 확인).**
-라우터에 이 경로가 없어 지금 부르면 404 다. 아래는 만들 때 지킬 계약이고,
+**3단 — `POST /api/documents/{id}/verify`** — 판정 전용 모델 jev 로 만들었다 (ADR-071, 2026-11-08).
 서버 확정(`confirm` · `reconfirm`)은 **이 단계를 거치지 않는다** — 1·2단과 교사 체크 3개만 본다.
 
 ```json
-{ "issues": [] }
+요청 (선택)  { "sections": [ { "heading": "해석", "body": "...", "source_ids": [12] }, ... ] }
+             안 보내면 저장된 글을 본다. 보낸 글은 저장하지 않는다.
+응답 200     { "issues": [ { "heading": "해석", "sentence": "...", "code": "CONTRADICTS_SOURCE",
+                             "source_id": 12, "source_text": "...", "reason": "...", "fix": "..." } ],
+               "judge": "jev" }
 ```
 
-`issues` 가 비면 통과다. 아니면 각 항목이 **이유와 수정 지시**를 담는다.
+- `issues` 가 비고 `judge` 가 `jev` 면 통과다. 각 항목이 **이유와 수정 지시**를 담는다.
+- `judge: "mock"` 은 판정하지 않았다는 뜻이다(`LLM_MODE=mock`). 화면은 통과로 보이면 안 된다.
+- **판정 못 하면 빈 목록이 아니라 오류다.** 1·2단에 걸리면 422 `VALIDATION_FAILED`(jev 를 부르지 않는다),
+  가명 처리 실패 422 `VALUE_INVALID`, 주소 없음 503 `DEPENDENCY_UNAVAILABLE`, 한도 503 `LLM_BUDGET_EXCEEDED`,
+  답이 빠지거나 깨지거나 호출 실패 500 `GENERATION_FAILED`. 증빙으로 올린 문서(`IMPORT`) · 영유아 평가 ·
+  문장 36개 초과는 422.
+- `code` 일곱 가지: `CONTRADICTS_SOURCE`(기록과 어긋남 · `source_id` 있음) · `UNSUPPORTED_FACT`(해석 칸의
+  기록에 없는 사실) · `DIAGNOSIS` · `INVENTED_TEACHER_ACT` · `UNSUPPORTED_CHANGE` · `PRIVATE_INFO` ·
+  `SUPPORT_NOT_CONCRETE`.
 
 **무엇을 잡나**
 
@@ -3750,7 +3761,7 @@ GET    /api/documents?kind=&class_id=&child_id=&status=&stale=   → { "items": 
        FE 가 서버 순서를 그대로 쓰므로 계약에 둔다. 목록에는 sections · sources 를 담지 않는다.
 GET    /api/documents/{id}                                       단건
 GET    /api/documents/{id}/related                               겹치는 확정 문서
-POST   /api/documents/{id}/verify                                3단 LLM Judge.  **미구현 — 지금은 404**
+POST   /api/documents/{id}/verify                                3단 AI 판정(jev).  저장하지 않음 (ADR-071)
 PUT    /api/documents/{id}                                       title · sections · review_note · class_note
 POST   /api/documents/{id}/confirm                               DRAFT → CONFIRMED.  checks 3개 필요
 POST   /api/documents/{id}/unconfirm                             CONFIRMED → DRAFT.  근거로 쓴 문서 stale

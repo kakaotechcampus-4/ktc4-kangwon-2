@@ -382,6 +382,81 @@ export async function updateDocument(
   return toDocument(dto);
 }
 
+export interface VerifyIssue {
+  heading: "해석" | "지원";
+  sentence: string;
+  code: string;
+  /** 부딪힌 근거 기록의 원문. 기록과 어긋날 때만 있다. */
+  sourceText: string | null;
+  reason: string;
+  fix: string;
+}
+
+export interface VerifyResult {
+  issues: VerifyIssue[];
+  /** false 면 서버가 판정하지 않았다(mock). 빈 목록을 「문제없음」으로 읽으면 안 된다. */
+  judged: boolean;
+}
+
+/**
+ * 3단 AI 검토 (§11 · ADR-071). 저장 전 글을 보내고, 서버는 저장하지 않는다.
+ * 아이 이름은 서버가 가명으로 바꾼 뒤 판정 모델에 보낸다 — 화면은 이름을 바꾸지 않는다.
+ */
+export async function verifyDocument(
+  localId: string,
+  kind: string,
+  sections: Section[],
+): Promise<VerifyResult> {
+  const id = documentServerId(localId);
+  if (id === null) throw new Error(UNMAPPED);
+  const body = sections.map((s) => ({
+    heading: s.heading,
+    body: s.body,
+    source_ids: s.sourceIds.map((sid) => sourceServerId(kind, sid)),
+  }));
+  if (body.some((s) => s.source_ids.some((sid) => sid === null))) throw new Error(UNMAPPED);
+  const dto = await apiRequest<{
+    issues: {
+      heading: "해석" | "지원";
+      sentence: string;
+      code: string;
+      source_text: string | null;
+      reason: string;
+      fix: string;
+    }[];
+    judge: "jev" | "mock";
+  }>("/api/documents/" + id + "/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sections: body }),
+  });
+  return {
+    judged: dto.judge !== "mock",
+    issues: dto.issues.map((i) => ({
+      heading: i.heading,
+      sentence: i.sentence,
+      code: i.code,
+      sourceText: i.source_text ?? null,
+      reason: i.reason,
+      fix: i.fix,
+    })),
+  };
+}
+
+/**
+ * 검토 결과를 교사가 읽을 줄로. **한 문장에 걸린 것은 한 줄로 묶는다** — 같은 문장이 이유마다
+ * 따로 뜨면 고칠 곳이 여러 개로 보인다. 기록과 어긋나면 그 기록 원문을 같이 보여 준다.
+ */
+export function verifyLines(result: VerifyResult): string[] {
+  const lines = new Map<string, string[]>();
+  for (const i of result.issues) {
+    const key = `[${i.heading}] 「${i.sentence}」`;
+    const record = i.sourceText ? ` 기록에는 「${i.sourceText}」로 적혀 있어요.` : "";
+    lines.set(key, [...(lines.get(key) ?? []), `${i.reason}${record} ${i.fix}`]);
+  }
+  return [...lines].map(([key, notes]) => `${key} — ${notes.join(" / ")}`);
+}
+
 /** 교사 확인 세 개. 3단 LLM 검증은 서버가 확정 조건으로 요구하지 않는다 (§11). */
 export async function confirmDocument(localId: string): Promise<ServerDocument> {
   const id = documentServerId(localId);

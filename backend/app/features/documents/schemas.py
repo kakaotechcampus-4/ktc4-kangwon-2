@@ -133,6 +133,43 @@ class DocumentSectionUpdate(BaseModel):
     source_ids: list[int] = []
 
 
+class DocumentVerifyRequest(BaseModel):
+    """`POST /api/documents/{id}/verify`. 안 보내면 저장된 글을 본다.
+
+    화면은 저장 전 글을 보낸다 — 교사가 고치는 중에 묻는 기능이라서다. 받은 글은 저장하지 않는다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    sections: list[DocumentSectionUpdate] | None = None
+
+
+class DocumentVerifyIssue(BaseModel):
+    heading: Literal["해석", "지원"]
+    sentence: str
+    code: Literal[
+        "CONTRADICTS_SOURCE",
+        "UNSUPPORTED_FACT",
+        "DIAGNOSIS",
+        "INVENTED_TEACHER_ACT",
+        "UNSUPPORTED_CHANGE",
+        "PRIVATE_INFO",
+        "SUPPORT_NOT_CONCRETE",
+    ]
+    #: 부딪힌 근거 기록. CONTRADICTS_SOURCE 일 때만 있다 — 화면이 「기록에는 ○○」를 띄운다.
+    source_id: int | None = None
+    #: 그 근거의 원문(교사가 적은 이름 그대로). 상세 조회의 `sources[].text` 와 같은 글이다.
+    source_text: str | None = None
+    reason: str
+    fix: str
+
+
+class DocumentVerifyResponse(BaseModel):
+    issues: list[DocumentVerifyIssue]
+    #: `mock` 이면 판정하지 않았다는 뜻이다. 화면은 「통과」로 보이면 안 된다.
+    judge: Literal["jev", "mock"]
+
+
 class DocumentUpdateRequest(BaseModel):
     """`PUT /api/documents/{id}`. 전체 교체다 — `PATCH` 가 아니다.
 
