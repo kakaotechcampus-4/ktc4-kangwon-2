@@ -11,7 +11,7 @@
 - 주간 요일 양식은 부모 월간의 기관 근거 기반 바깥놀이를 이어 쓰고 승인 생활 문장·기존 v2 작성 기준을 참고한다 — [ADR-053](../adr/053-weekly-approved-reference-context.md) · `p0-planning/tests/adapters/test_weekly_composition.py`.
 - 부모 월간의 실내대체 인용은 주간 분류·월·연령 검사를 통과한 기록만 우선하며, 두 월간의 공용 안전 지침은 약물 경고를 양의 제한으로만 쓰지 않도록 한다 — `p0-planning/tests/retrieval/test_weekly_retrieval.py` · `p0-planning/tests/planner/test_v1_curriculum_context.py`.
 - 관찰일지 초안 20건을 운영 서버(real)에서 뽑아 읽었다 — 생성 실패 0 · 숫자 오류 0 · 지어낸 사실 0 · 과해석 3건 — [docs/observation-number-check-20261103.md](../observation-number-check-20261103.md)
-- 일지 3단(AI 판정)을 jev 로 만들고 지어낸 예시 문서 240장으로 쟀다 — 문제 문장 279개 중 277개 표시 · 기록과 어긋남 98/100 · 문제없는 문서 90/100 무알림 — [ADR-069](../adr/069-journal-judge-with-jev.md) · `backend/tests/test_documents_verify.py`
+- 일지 3단(AI 판정)을 jev 로 만들고 지어낸 예시 문서 240장으로 쟀다 — 문제 문장 279개 중 277개 표시 · 기록과 어긋남 98/100 · 문제없는 문서 90/100 무알림 — [ADR-071](../adr/071-journal-judge-with-jev.md) · `backend/tests/test_documents_verify.py`
 
 ## 통과 조건을 먼저 정했다 — 3층 규격
 

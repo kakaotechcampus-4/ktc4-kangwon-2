@@ -1,4 +1,4 @@
-"""일지 AI 검토 — 3단 게이트 3단(`POST /api/documents/{id}/verify`, ADR-069).
+"""일지 AI 검토 — 3단 게이트 3단(`POST /api/documents/{id}/verify`, ADR-071).
 
 순서가 정해져 있다 (CLAUDE.md 「3단 게이트」):
 

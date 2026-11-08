@@ -822,7 +822,7 @@ def verify_document(
     user: CurrentUser,
     body: DocumentVerifyRequest | None = None,
 ) -> DocumentVerifyResponse:
-    """3단 게이트 3단 — 교사가 고친 해석 · 지원을 근거 기록과 대조한다 (ADR-069 · api-spec §11).
+    """3단 게이트 3단 — 교사가 고친 해석 · 지원을 근거 기록과 대조한다 (ADR-071 · api-spec §11).
 
     순서: 1 · 2단(모델 없음) → 원 전체 가명 처리 → jev 판정 → 화면용 이름 되돌림.
     **판정하지 못하면 빈 목록이 아니라 오류를 낸다.** 빈 목록은 「문제없음」이라서다.
@@ -830,7 +830,7 @@ def verify_document(
     """
     doc = _own_document(session, user, document_id)
     if doc.kind not in JUDGED_KINDS:
-        # 판정 질문과 기준값은 이 세 가지로 실측했다(ADR-069). 영유아 평가는 재지 않았다.
+        # 판정 질문과 기준값은 이 세 가지로 실측했다(ADR-071). 영유아 평가는 재지 않았다.
         raise _error(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "VALIDATION_FAILED",

@@ -89,7 +89,7 @@ export interface ServerDocumentActions {
   refresh: (resolutions?: SourceResolution[]) => Promise<SavedDocument>;
   remove: () => Promise<void>;
   reconfirm?: (input: ReconfirmInput) => Promise<SavedDocument>;
-  /** 3단 AI 검토. 저장하지 않고 지금 화면의 글을 판정한다 (ADR-069). */
+  /** 3단 AI 검토. 저장하지 않고 지금 화면의 글을 판정한다 (ADR-071). */
   verify: (sections: Section[]) => Promise<VerifyResult>;
 }
 
@@ -176,7 +176,7 @@ export default function DocumentEditor({
     !imported && ["dailyLog", "weeklyLog", "observation", "assessment"].includes(doc.kind);
   const editable = doc.status !== "confirmed";
   // AI 검토는 서버 문서의 3단 검토(jev)만 쓴다 — 아이 이름을 가명으로 바꾼 뒤 판정한다.
-  // 로컬 문서는 화면 서버가 OpenAI 로 그대로 보내던 길이라 쓰지 않는다 (ADR-069).
+  // 로컬 문서는 화면 서버가 OpenAI 로 그대로 보내던 길이라 쓰지 않는다 (ADR-071).
   // 판정 기준을 잰 세 가지 문서만 받는다 — 영유아 평가는 서버도 422 다.
   const aiReview =
     !!server && !imported && ["observation", "dailyLog", "weeklyLog"].includes(doc.kind);

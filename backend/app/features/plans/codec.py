@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import functools
 import types
 import typing
 from enum import Enum
@@ -20,6 +21,11 @@ from typing import Any, TypeVar
 T = TypeVar("T")
 
 _ATOMS = (str, int, float, bool, type(None))
+
+# 클래스의 타입 힌트는 실행 중에 안 바뀐다. 클래스당 한 번만 푼다.
+# 안 그러면 계획안 하나를 읽을 때마다 문자열 힌트를 수천 번 다시 컴파일한다 — 테스트 전체 시간의
+# 약 20% 가 여기였다(2026-11-07 프로파일).
+_type_hints = functools.cache(typing.get_type_hints)
 
 
 def to_jsonable(value: Any) -> Any:
@@ -84,7 +90,7 @@ def from_jsonable(annotation: Any, value: Any) -> Any:
         if dataclasses.is_dataclass(annotation):
             # 문자열로 적힌 타입 힌트(`from __future__ import annotations`)를 실제 타입으로
             # 푼다. 안 풀면 아래 재귀가 str 을 타입으로 알고 그대로 돌려준다.
-            hints = typing.get_type_hints(annotation)
+            hints = _type_hints(annotation)
             kwargs = {
                 f.name: from_jsonable(hints[f.name], value[f.name])
                 for f in dataclasses.fields(annotation)

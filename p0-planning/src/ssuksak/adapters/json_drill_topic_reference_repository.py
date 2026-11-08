@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from pathlib import Path
 
+from .. import timing
 from ..planning.domain.drill_topic_reference import DrillKind, DrillOrigin, DrillTopic, DrillTopicCatalog
 from ..planning.domain.theme_reference import ActivationStatus
 
@@ -59,7 +59,7 @@ class JsonDrillTopicReferenceRepository:
     def get_catalog(self, catalog_id: str, catalog_version: str) -> DrillTopicCatalog | None:
         if self._cached is None:
             self._cached = tuple(
-                parse_drill_topic_payload(json.loads(Path(path).read_text(encoding="utf-8")))
+                parse_drill_topic_payload(timing.read_json(path))
                 for path in self._paths
             )
         return next(

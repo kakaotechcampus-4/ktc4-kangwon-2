@@ -109,7 +109,12 @@ function harness(send) {
     },
     "./AnnualThemeSheet": es((p) => jsx("sheet", p)),
     "./PlanMemo": { PlanMemoNote: () => null },
-    "./PlayMonthlyConfirm": es((p) => jsx("dialog", p)),
+    "@/components/plan-ui/DraftSave": es((p) => jsx("draft-save", p)),
+    "./PlayMonthlyConfirm": {
+      ...es((p) => jsx("dialog", p)),
+      CONFIRM_TITLE: "이대로 확정할까요?",
+      PickCellHint: (p) => jsx("pick-hint", p),
+    },
   });
   const render = () => {
     index = 0;

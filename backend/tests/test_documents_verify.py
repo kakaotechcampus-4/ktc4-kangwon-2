@@ -1,4 +1,4 @@
-"""POST /api/documents/{id}/verify — 3단 게이트 3단(ADR-069). 실제 DB, jev 는 가짜로 바꾼다."""
+"""POST /api/documents/{id}/verify — 3단 게이트 3단(ADR-071). 실제 DB, jev 는 가짜로 바꾼다."""
 
 import json
 from datetime import date
@@ -375,7 +375,7 @@ def test_support_question_is_asked_once_across_chunks():
 
 
 def test_new_fact_bar_is_higher_for_class_logs():
-    """관찰일지는 0.5, 일일 · 주간은 0.7 (ADR-069 실측 4 · 5회차)."""
+    """관찰일지는 0.5, 일일 · 주간은 0.7 (ADR-071 실측 4 · 5회차)."""
     sentences = [("해석", "아이들이 신문지 결을 따라 찢는 느낌을 경험했다.")]
     _state, questions = J.build_questions("일일 보육일지", sentences, {"r1": "신문지 찢기"})
     answers = _all_clear(questions)

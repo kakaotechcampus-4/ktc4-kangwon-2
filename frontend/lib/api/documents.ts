@@ -399,7 +399,7 @@ export interface VerifyResult {
 }
 
 /**
- * 3단 AI 검토 (§11 · ADR-069). 저장 전 글을 보내고, 서버는 저장하지 않는다.
+ * 3단 AI 검토 (§11 · ADR-071). 저장 전 글을 보내고, 서버는 저장하지 않는다.
  * 아이 이름은 서버가 가명으로 바꾼 뒤 판정 모델에 보낸다 — 화면은 이름을 바꾸지 않는다.
  */
 export async function verifyDocument(

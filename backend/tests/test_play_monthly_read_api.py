@@ -190,7 +190,7 @@ def test_단건은_계약_모양이고_싣지_않는_것은_없다(world):
     cell = {"item_id", "value", "evidence", "generation"}
     assert set(body["theme"]) == cell
     assert set(body["together"][0]) == {
-        "activity_id", "name", "description", "content_ids", "parent_item_id"
+        "activity_id", "name", "description", "content_ids", "parent_item_id", "trend_applied"
     }  # fmt: skip
     assert body["together"][0]["activity_id"] == body["together"][0]["name"]["item_id"]
     assert set(body["habits"][0]) == {"week_id", "entry_id", "label", "cell"}

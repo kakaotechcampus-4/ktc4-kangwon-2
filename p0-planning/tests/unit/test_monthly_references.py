@@ -45,6 +45,15 @@ def test_activity_repository_resolves_exact_versions_only():
     assert repository.get_catalog("ssuksak.outdoor-activity-reference", "activity-reference-v0.2.0-draft") is None
 
 
+def test_new_activity_repositories_share_one_parsed_catalog():
+    # Each request builds a new repository. Re-parsing the catalogs per request cost
+    # about 5% of the backend suite, so two separate repositories must share one parse.
+    key = ("ssuksak.outdoor-activity-reference", "activity-reference-v0.2.1")
+    first = JsonActivityReferenceRepository().get_catalog(*key)
+    assert first is not None
+    assert JsonActivityReferenceRepository().get_catalog(*key) is first
+
+
 def test_template_versions_have_expected_active_sections():
     repository = JsonMonthlyTemplateRepository()
     v1 = repository.get_template("ssuksak.monthly-template-a", "monthly-template-a-v0.1.1")

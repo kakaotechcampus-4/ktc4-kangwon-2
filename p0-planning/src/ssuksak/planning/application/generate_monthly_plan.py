@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ... import timing
 from dataclasses import replace
 
 from ..domain.activity_reference import ActivityCatalog, OUTDOOR_PLAY_SLOT
@@ -138,6 +139,7 @@ class GenerateMonthlyPlan:
     def execute(
         self, command: GenerateMonthlyPlanCommand
     ) -> GenerateMonthlyPlanResult:
+        timing.phase("select")
         parent = self._parents.get(command.parent_yearly_plan_id)
         if parent is None:
             raise MonthlyApplicationError(
@@ -333,6 +335,7 @@ class GenerateMonthlyPlan:
                     "Monthly LLM planning failed before any Plan was saved",
                 ) from exc
 
+        timing.phase("assemble")
         plan_id = self._ids.new_plan_id()
         now = self._clock.now()
         selection_results: list[MonthlyActivitySelectionResult] = []

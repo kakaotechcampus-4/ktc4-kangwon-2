@@ -27,7 +27,8 @@ import AnnualFrame, {
   useSheetZoom,
 } from "./AnnualFrame";
 import AnnualThemeSheet, { type ThemeSlot } from "./AnnualThemeSheet";
-import PlayMonthlyConfirm from "./PlayMonthlyConfirm";
+import DraftSave from "@/components/plan-ui/DraftSave";
+import PlayMonthlyConfirm, { CONFIRM_TITLE } from "./PlayMonthlyConfirm";
 import { PlanMemoNote } from "./PlanMemo";
 
 type Draft = { theme: string; sub_themes: string[] };
@@ -254,7 +255,9 @@ export default function ThemeAnnualResult({
     <>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
         <label className="flex flex-col gap-1.5">
-          <span className="text-[18px] font-bold leading-tight">{selected.month}월 생활주제</span>
+          <span className="penMark font-display text-[24px] font-bold leading-tight text-ink">
+            {selected.month}월 생활주제
+          </span>
           <input
             className={INPUT}
             id={slotInputId({ month: selected.month, slot: "theme" })}
@@ -265,7 +268,9 @@ export default function ThemeAnnualResult({
           />
         </label>
         <section className="flex flex-col gap-2" aria-label={`${selected.month}월 소주제`}>
-          <h2 className="m-0 text-[18px] font-bold leading-tight">소주제</h2>
+          <h2 className="penMark m-0 font-display text-[24px] font-bold leading-tight text-ink">
+            소주제
+          </h2>
           {slotMismatch(draft.sub_themes, month.week_count) && (
             <p role="status" className="m-0 text-[13px] font-bold text-[#b3261e]">
               주마다 하나씩 — {month.week_count}개를 맞춰야 확정할 수 있어요.
@@ -338,6 +343,22 @@ export default function ThemeAnnualResult({
       }
       actions={
         <>
+          <DraftSave
+            disabled={confirming}
+            // 저장 줄이 빈 뒤 화면 값이 모두 서버 값과 같아야 떠난다(저장 실패 · 빈 생활주제면 남는다).
+            save={async () => {
+              let tail;
+              do {
+                tail = queue.current;
+                await tail;
+              } while (tail !== queue.current);
+              return plan.months.every(
+                (m) =>
+                  !failed.current.has(m.month) &&
+                  same(clean(drafts[m.month]), saved.current[m.month]),
+              );
+            }}
+          />
           <div className="relative">
             <button
               type="button"
@@ -350,10 +371,7 @@ export default function ThemeAnnualResult({
             {asking && (
               <div className={POPOVER}>
                 <PlayMonthlyConfirm
-                  title="연간계획안을 확정할까요?"
-                  message={
-                    "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요.\n이 내용으로 월간계획안을 만들게 돼요."
-                  }
+                  title={CONFIRM_TITLE}
                   yes={confirming ? "확정하는 중…" : "확정하기"}
                   no="더 다듬기"
                   disabled={confirming}

@@ -71,11 +71,13 @@ export const findWeekly = (id: number) => read().weeklyPlans.find((p) => p.id ==
 export const findWeeklyFor = (classId: number, weekId: string) =>
   read().weeklyPlans.find((p) => p.class_id === classId && p.week_id === weekId);
 
-/** 그 달 주간계획안들. `targetMonth` 는 `YYYY-MM` — `week_id` 앞자리가 그 달이다 (§3-1). */
-export const listWeekly = (classIds: number[], targetMonth: string): WeeklyPlanSummary[] =>
+/** 그 달 주간계획안들. `targetMonth` 는 `YYYY-MM` — `week_id` 앞자리가 그 달이다 (§3-1). 없으면 모든 달. */
+export const listWeekly = (classIds: number[], targetMonth?: string): WeeklyPlanSummary[] =>
   read()
     .weeklyPlans.filter(
-      (p) => classIds.includes(p.class_id) && p.week_id.startsWith(targetMonth + "-W"),
+      (p) =>
+        classIds.includes(p.class_id) &&
+        (targetMonth === undefined || p.week_id.startsWith(targetMonth + "-W")),
     )
     .sort((a, b) => a.week_id.localeCompare(b.week_id) || a.id - b.id)
     .map((p) => ({

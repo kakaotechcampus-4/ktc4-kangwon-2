@@ -1,11 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { listAnnualPlans } from "@/lib/api/plans";
-import { listMonthlyPlans } from "@/lib/api/monthly";
-import { listPlayMonthly } from "@/lib/api/playMonthly";
-import type { AnnualPlanSummary, MonthlyPlanSummary, PlayMonthlySummary } from "@/lib/api/types";
+import { useRouter } from "next/navigation";
+import { getAnnualPlan, listAnnualPlans } from "@/lib/api/plans";
+import { getMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
+import { getPlayMonthly, listPlayMonthly } from "@/lib/api/playMonthly";
+import { getWeeklyPlan, listWeeklyPlans } from "@/lib/api/weekly";
+import {
+  annualChecklist,
+  monthlyChecklist,
+  playMonthlyChecklist,
+  weeklyChecklist,
+  type CheckItem,
+} from "@/lib/plan-generator/draftChecklist";
+import type {
+  AnnualPlanSummary,
+  MonthlyPlanSummary,
+  PlayMonthlySummary,
+  WeeklyPlanSummary,
+} from "@/lib/api/types";
 import AnnualImport from "./AnnualImport";
 import { Tape } from "@/components/workspace/WorkspaceUI";
 
@@ -21,15 +35,20 @@ export type DraftCard = {
   date: string;
   created: string;
   mode: string;
+  /** 위 방식 칸의 흐름 쪽지(연간 › 월간 › 주간) 중 어느 단계인지 — 무엇이 다시 열리는지 미리 보인다. */
+  step: "연간" | "월간" | "주간";
   title: string;
   href: string;
+  /** 메모지 체크 줄(AI 후보로 채우는 줄)을 그 초안 상세에서 읽는다. AI 후보가 없는 초안은 없다. */
+  checks?: (signal: AbortSignal) => Promise<CheckItem[]>;
 };
 
-/** 「이어서 하기」 카드. 확정 안 한 연간 · 월간 초안만, 최근 만든 것부터. */
+/** 「이어서 하기」 카드. 확정 안 한 연간 · 월간 · 주간 초안만, 최근 만든 것부터. */
 export function draftCards(
   annual: AnnualPlanSummary[],
   monthly: MonthlyPlanSummary[],
   play: PlayMonthlySummary[],
+  weekly: WeeklyPlanSummary[] = [],
 ): DraftCard[] {
   const cards = [
     ...annual
@@ -38,8 +57,13 @@ export function draftCards(
         key: "annual-" + p.id,
         created: p.created_at,
         mode: MODE[p.format],
+        step: "연간" as const,
         title: `${p.school_year} 연간계획안`,
         href: `/plans/annual/${p.id}`,
+        checks:
+          p.format === "PLAY_PROJECT"
+            ? (s: AbortSignal) => getAnnualPlan(p.id, s).then(annualChecklist)
+            : undefined,
       })),
     ...monthly
       .filter((p) => p.status === "DRAFT")
@@ -47,8 +71,10 @@ export function draftCards(
         key: "monthly-" + p.id,
         created: p.created_at,
         mode: MODE.MONTHLY_THEME,
+        step: "월간" as const,
         title: `${p.month}월 월간계획안`,
         href: `/plans/monthly?plan_id=${p.id}&class_id=${p.class_id}&month=${p.month}`,
+        checks: (s: AbortSignal) => getMonthlyPlan(p.id, s).then(monthlyChecklist),
       })),
     ...play
       .filter((p) => p.status === "DRAFT")
@@ -56,13 +82,61 @@ export function draftCards(
         key: "play-" + p.id,
         created: p.created_at,
         mode: MODE.PLAY_PROJECT,
+        step: "월간" as const,
         title: `${p.month}월 월간계획안`,
         href: `/plans/monthly/play/${p.id}`,
+        checks: (s: AbortSignal) => getPlayMonthly(p.id, s).then(playMonthlyChecklist),
+      })),
+    ...weekly
+      .filter((p) => p.status === "DRAFT")
+      .map((p) => ({
+        key: "weekly-" + p.id,
+        created: p.created_at,
+        mode: MODE.MONTHLY_THEME,
+        step: "주간" as const,
+        title: `${weekTitle(p.week_id)} 주간계획안`,
+        href: `/plans/weekly?plan_id=${p.id}&class_id=${p.class_id}&week_id=${p.week_id}`,
+        checks: (s: AbortSignal) => getWeeklyPlan(p.id, s).then(weeklyChecklist),
       })),
   ];
   return cards
     .sort((a, b) => b.created.localeCompare(a.created))
     .map((c) => ({ ...c, date: shortDate(c.created) }));
+}
+
+/**
+ * 월간을 바로 만들 수 있는 연간 — 월간 만들기 화면(`/plans/monthly`)처럼 **가장 최근 연간**을 보고,
+ * 그게 확정됐을 때만 돌려준다. 그 방식 칸의 「연간부터 시작하기」가 「월간계획안 만들기」로 바뀐다.
+ */
+// ponytail: 첫 화면은 반을 가리지 않고 가장 최근 연간을 본다. 반이 여럿이면 월간 화면이 고른 반과 다를 수 있다 — 그때는 고른 반 id 로 거른다.
+export function readyAnnual(annual: AnnualPlanSummary[]) {
+  const latest = [...annual].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  return latest?.status === "CONFIRMED" ? latest : null;
+}
+
+/**
+ * 주간을 바로 만들 수 있는 월간 — 확정한 연간과 같은 반 · 학년도에서 **가장 최근에 확정한** 월간.
+ * 있으면 월별 주제형 칸에 [주간계획안 만들기] 가 따로 붙고, 주간 화면이 그 달을 먼저 연다.
+ */
+export function readyMonthly(annual: AnnualPlanSummary | null, monthly: MonthlyPlanSummary[]) {
+  if (!annual) return null;
+  const done = monthly.filter(
+    (p) =>
+      p.status === "CONFIRMED" &&
+      p.class_id === annual.class_id &&
+      p.school_year === annual.school_year,
+  );
+  return (
+    done.sort((a, b) =>
+      (b.confirmed_at ?? b.created_at).localeCompare(a.confirmed_at ?? a.created_at),
+    )[0] ?? null
+  );
+}
+
+/** `YYYY-MM-Wn` → 「11월 1주」. 서버가 준 주차를 읽기만 한다. 모양이 다르면 그대로. */
+function weekTitle(weekId: string) {
+  const m = /^\d{4}-(\d{2})-W(\d+)$/.exec(weekId);
+  return m ? `${Number(m[1])}월 ${Number(m[2])}주` : weekId;
 }
 
 // 카드 날짜는 정답지처럼 「10월 30일」. 문서 보관함은 localDate(2026.10.30) 그대로.
@@ -76,7 +150,10 @@ export default function PlanNotebookPage() {
   const [importing, setImporting] = useState<{ file: File | null } | null>(null);
   const [skip, setSkip] = useState(false);
   const [drafts, setDrafts] = useState<DraftCard[] | null>(null);
+  const [ready, setReady] = useState<AnnualPlanSummary | null>(null);
+  const [weekly, setWeekly] = useState<MonthlyPlanSummary | null>(null);
   const [error, setError] = useState("");
+  const [checks, setChecks] = useState<Record<string, CheckItem[]>>({});
 
   useEffect(() => {
     const abort = new AbortController();
@@ -84,25 +161,63 @@ export default function PlanNotebookPage() {
       listAnnualPlans(undefined, abort.signal),
       listMonthlyPlans(undefined, abort.signal),
       listPlayMonthly(undefined, abort.signal),
-    ]).then(([annual, monthly, play]) => {
+      listWeeklyPlans(undefined, undefined, abort.signal),
+    ]).then(([annual, monthly, play, weekly]) => {
       if (abort.signal.aborted) return;
       const items = <T,>(r: PromiseSettledResult<{ items: T[] }>) =>
         r.status === "fulfilled" ? r.value.items : [];
       // 하나만 실패해도 나머지는 보여 준다 — 없는 초안을 없다고 말하지 않도록 알린다.
-      if ([annual, monthly, play].some((r) => r.status === "rejected"))
+      if ([annual, monthly, play, weekly].some((r) => r.status === "rejected"))
         setError("계획안 일부를 불러오지 못했어요. 새로고침해 주세요.");
-      setDrafts(draftCards(items(annual), items(monthly), items(play)));
+      setDrafts(draftCards(items(annual), items(monthly), items(play), items(weekly)));
+      const annualReady = readyAnnual(items(annual));
+      setReady(annualReady);
+      setWeekly(
+        annualReady?.format === "MONTHLY_THEME" ? readyMonthly(annualReady, items(monthly)) : null,
+      );
     });
     return () => abort.abort();
   }, []);
 
+  // 메모지 체크 줄은 초안마다 상세를 한 번 더 읽어 채운다. 못 읽으면 그 메모지만 체크 줄 없이 둔다.
+  useEffect(() => {
+    if (!drafts) return;
+    const abort = new AbortController();
+    for (const card of drafts)
+      card
+        .checks?.(abort.signal)
+        .then((items) => {
+          if (!abort.signal.aborted) setChecks((all) => ({ ...all, [card.key]: items }));
+        })
+        .catch(() => {});
+    return () => abort.abort();
+  }, [drafts]);
+
+  // 메모지 줄은 마우스 휠(위아래)로도 옆으로 넘긴다. 줄 끝에 닿으면 휠은 다시 페이지 몫.
+  const row = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return; // 트랙패드 가로 밀기는 그대로
+      const end = el.scrollWidth - el.clientWidth - 1;
+      if ((e.deltaY < 0 && el.scrollLeft <= 0) || (e.deltaY > 0 && el.scrollLeft >= end)) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY * (e.deltaMode === 1 ? 40 : 1); // 줄 단위 휠(Firefox)은 픽셀로
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [drafts, importing]);
+
   if (importing) return <AnnualImport file={importing.file} onCancel={() => setImporting(null)} />;
 
-  // 화면 높이에 맞춘다 — 페이지는 굴러가지 않고, 초안이 많으면 「이어서 하기」 카드만 안에서 굴린다.
+  // 화면 높이를 채운다(min-h) — 초안이 많으면 「이어서 하기」 메모지 줄만 가로로 굴린다. 높이를 못 박으면(h) 화면이
+  // 모자랄 때 메모지 줄이 눌려 아래가 잘린다 — 그때는 자르지 않고 페이지가 조금 내려간다.
   // 낮은 화면(높이 800 이하)에서는 여백을 줄여 카드 한 줄이 다 보이게 한다.
+  // 「이어서 하기」는 맨 아래에 붙여(mt-auto) 메모지 아랫단이 사이드바 「로그아웃」 줄과 나란하게 한다 — 그 높이가 아래 여백(lg:pb).
   return (
-    <div className="flex w-full flex-col gap-5 px-10 pb-12 pt-[26px] text-[#2b2826] lg:h-[calc(calc(100*var(--app-vh))-60px)] lg:pb-6 [@media(max-height:800px)]:gap-4 [@media(max-height:800px)]:pt-4">
-      <h1 className="m-0 font-display text-[34px] font-bold leading-[1.2] text-ink lg:text-[44px] [@media(max-height:800px)]:lg:text-[36px]">
+    <div className="flex w-full flex-col gap-5 px-10 pb-12 pt-[26px] text-[#2b2826] lg:min-h-[calc(calc(100*var(--app-vh))-60px)] lg:pb-[68px] [@media(max-height:800px)]:gap-4 [@media(max-height:800px)]:lg:pb-[76px] [@media(max-height:800px)]:pt-4">
+      <h1 className="penMark m-0 font-display text-[34px] font-bold leading-[1.2] text-ink lg:text-[44px] [@media(max-height:800px)]:lg:text-[36px]">
         어떤 계획안을 만들까요?
       </h1>
       <div
@@ -111,64 +226,393 @@ export default function PlanNotebookPage() {
       >
         <Panel
           format="MONTHLY_THEME"
+          ready={ready?.format === "MONTHLY_THEME" ? ready : null}
+          weekly={weekly}
           skip={skip}
           onSkip={setSkip}
           onImport={(file) => setImporting({ file })}
         />
-        <Panel format="PLAY_PROJECT" skip={false} onSkip={setSkip} onImport={() => {}} />
+        <Panel
+          format="PLAY_PROJECT"
+          ready={ready?.format === "PLAY_PROJECT" ? ready : null}
+          skip={false}
+          onSkip={setSkip}
+          onImport={() => {}}
+        />
       </div>
 
-      <section
-        data-tour="plans-continue"
-        className="mt-6 flex min-h-0 flex-col gap-[14px] border-t border-[#e3ddd2] pt-6 lg:flex-1 [@media(max-height:800px)]:mt-1 [@media(max-height:800px)]:gap-3 [@media(max-height:800px)]:pt-4"
-      >
-        <div className="flex items-baseline gap-3">
-          <h2 className="m-0 font-display text-[27px] font-bold leading-tight text-ink">
-            이어서 하기
+      {/* 이어서 하기 — 초안 하나가 메모지 한 장(홈 칠판 쪽지와 같은 종이 · 테이프 · 기울기).
+          한 줄로 늘어놓고 넘치면 가로로 넘긴다 — 페이지는 화면 높이에 맞춘 채 그대로. */}
+      <section data-tour="plans-continue" className="mt-auto flex min-h-0 flex-col gap-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="m-0 min-w-0 font-display text-[28px] font-bold leading-tight text-ink">
+            <CrayonMark>이어서 하기</CrayonMark>
           </h2>
-          <span className="text-sm text-[#5c5243]">확정하지 않은 계획안이에요</span>
         </div>
         {error && (
           <p role="alert" className="m-0 text-sm text-[#a0453a]">
             {error}
           </p>
         )}
-        <div
-          className="grid content-start gap-4 lg:min-h-0 lg:overflow-y-auto"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 180px), 180px))" }}
-        >
-          {/* 목록을 받기 전에는 「없어요」라고 말하지 않는다. */}
-          {drafts === null && (
-            <p role="status" className="m-0 text-sm text-[#5c5243]">
-              불러오는 중…
-            </p>
-          )}
-          {drafts?.map((card) => (
-            <PlanCard key={card.key} card={card} />
-          ))}
-          <Link
-            href="/documents"
-            className={`${CARD_SIZE} flex flex-col items-center justify-center gap-1 break-keep rounded-2xl border border-dashed border-[#d7d0c7] px-4 py-[18px] text-center text-[#5e4b96] no-underline`}
+        {/* 목록을 받기 전에는 「없어요」라고 말하지 않는다. */}
+        {drafts === null && (
+          <p role="status" className="m-0 py-6 text-sm text-ink-soft">
+            불러오는 중…
+          </p>
+        )}
+        {/* 노끈 한 줄에 메모지를 집게로 건다. 맨 끝은 글 없는 점선 빈자리 하나
+            (초안이 없으면 그 빈자리만). 노끈은 칸마다 한 구간씩 그려 한 줄로 이어진다.
+            pb 는 기울기 · 그림자가 굴림 칸에 잘리지 않게. */}
+        {drafts && (
+          <ul
+            ref={row}
+            className="-mx-2 flex list-none gap-5 overflow-x-auto overflow-y-hidden px-2 pb-4"
           >
-            <span className="text-[15px] font-bold">
-              문서 보관함에서
-              <br />
-              모두 보기&nbsp;→
-            </span>
-            <span className="text-[13px] text-[#5c5243]">
-              확정한 계획안도
-              <br />
-              여기 있어요
-            </span>
-          </Link>
-        </div>
+            {drafts.map((card, i) => (
+              <li key={card.key} className="relative w-[240px] shrink-0 pt-5">
+                <Cord i={i} />
+                <DraftNote card={card} checks={checks[card.key]} tilt={TILT[i % TILT.length]} />
+              </li>
+            ))}
+            <li aria-hidden="true" className="relative w-[240px] shrink-0 pt-5">
+              <Cord i={drafts.length} />
+              <HangingSsample i={drafts.length} />
+              <span className={`block ${NOTE_H} border-2 border-dashed border-[#cfc6b9]`} />
+            </li>
+          </ul>
+        )}
       </section>
     </div>
   );
 }
 
-/** 이어서 쓰기 카드와 「모두 보기」 카드는 쓰다 만 계획안이 없어도 같은 크기. */
-const CARD_SIZE = "min-h-[156px] [@media(max-height:800px)]:min-h-[136px]";
+/** 단계마다 메모지 색 — 연간 빨강(홈 칠판 쪽지의 clay) · 월간 초록 · 주간 노랑(홈 사이드바 메모지).
+ *  줄은 종이 테두리 색. */
+const NOTE: Record<DraftCard["step"], string> = {
+  연간: "border-clay-line bg-clay [--pg-line:var(--pg-clay-line)]",
+  월간: "border-sage-line bg-sage [--pg-line:var(--pg-sage-line)]",
+  주간: "border-note-line bg-note [--pg-line:var(--pg-note-line)]",
+};
+/** 메모지 높이 — 줄 5칸(+ 아래 여백). 높이 880 이하에서는 4칸 — 페이지가 화면에 맞춰 줄면 메모지 아래가 잘린다. 마지막 줄이 늘 줄 위에 앉도록 34의 배수. */
+const NOTE_H = "h-[190px] [@media(max-height:880px)]:h-[156px]";
+/** 기울기 — 홈 쪽지처럼 번갈아. 같은 각도가 줄줄이 붙으면 한 장으로 보인다. */
+const TILT = ["-rotate-2", "rotate-2", "-rotate-1", "rotate-1"];
+/** 빨간 색연필 표시 — 펜을 떼지 않은 한 획: 글자를 동그라미로 감고, 아랫부분이 그대로 밑줄처럼
+ *  오른쪽으로 빠져 돼지꼬리로 한 바퀴 말린 뒤 별을 그리고 끝난다. 결은 잡음으로 획 가장자리를 흔들고
+ *  군데군데 비워 색연필로 종이를 긁은 느낌. 글자(「이어서 하기」 28px)가 그림의 x 16 · y 8 에 오게 놓는다. */
+function CrayonMark({ children }: { children: ReactNode }) {
+  return (
+    <span className="relative inline-block">
+      {children}
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 320 56"
+        className="pointer-events-none absolute -left-4 -top-2 h-[56px] w-[320px] overflow-visible text-alert-strong"
+      >
+        <defs>
+          <filter
+            id="plans-crayon"
+            filterUnits="userSpaceOnUse"
+            x="-20"
+            y="-20"
+            width="380"
+            height="100"
+          >
+            <feTurbulence
+              type="fractalNoise"
+              baseFrequency="0.85"
+              numOctaves="2"
+              seed="7"
+              result="n"
+            />
+            <feDisplacementMap in="SourceGraphic" in2="n" scale="2.2" result="d" />
+            <feColorMatrix
+              in="n"
+              type="matrix"
+              values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.2 1.9"
+              result="grain"
+            />
+            <feComposite in="d" in2="grain" operator="in" />
+          </filter>
+        </defs>
+        <path
+          d={[
+            "M150 36 C156 22 136 6 92 5 C46 4 10 12 10 27 C10 41 44 48 82 47", // 동그라미: 오른쪽 → 위 → 왼쪽 → 아래
+            "C118 46 146 43 160 35 C162 34.5 164 36.5 166 37", // 시작점 옆을 지나 닫히고, 아랫부분이 밑줄처럼 오른쪽으로
+            "C173.5 35.5 179.5 30.25 176.5 25 C173.5 19.75 166.75 22 168.25 28 C169.75 34 179.5 35.5 188.5 32.5", // 돼지꼬리 한 바퀴
+            "C192 31 196 28.5 199.6 26.7 L213.6 8.7 L212.8 31.5 L200 12.6 L221.5 20.4 L199.6 26.7", // 별(20° 기울임) — 꼬리가 별의 왼쪽 아래 꼭짓점으로 들어간다
+          ].join(" ")}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={3}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          filter="url(#plans-crayon)"
+        />
+      </svg>
+    </span>
+  );
+}
+
+/** 빈자리 노끈에 두 손으로 매달린 쌤플 쪽지(`SsampleNote` 와 같은 종이 · 얼굴, 팔다리만 더했다).
+ *  빈칸 가운데 조금 오른쪽, 노끈이 가장 처진 자리라 그 칸 처짐(SAG)만큼 내려 손을 끈에 얹는다. 장식이라 읽어 주지 않는다. */
+function HangingSsample({ i }: { i: number }) {
+  const paper = { fill: "var(--pg-note)", stroke: "var(--pg-note-line)" };
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 48 60"
+      width={56}
+      height={70}
+      style={{ top: 4 + SAG[i % SAG.length][0] }}
+      className="pointer-events-none absolute left-[112px] z-10 rotate-[3deg] overflow-visible"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <g stroke="var(--pg-ink)" strokeWidth={2.2} fill="none">
+        <path d="M13 16L12 4M35 16L36 4M18 49L17 56M27 49L28 56" />
+      </g>
+      <g fill="var(--pg-ink)">
+        <circle cx="12" cy="3.5" r="2.8" />
+        <circle cx="36" cy="3.5" r="2.8" />
+        <ellipse cx="15.5" cy="57" rx="3.4" ry="2" />
+        <ellipse cx="29.5" cy="57" rx="3.4" ry="2" />
+      </g>
+      <g strokeWidth={1.8}>
+        <path d="M8 14H40V40L31 49H8Z" style={paper} />
+        <path
+          d="M40 40H31V49Z"
+          style={{ fill: "var(--pg-note-fold)", stroke: "var(--pg-note-line)" }}
+        />
+      </g>
+      <circle cx="19.4" cy="26" r="2" fill="var(--pg-ink)" />
+      <circle cx="28.6" cy="26" r="2" fill="var(--pg-ink)" />
+      <path d="M19.2 31.4q4.8 3 9.6 0" fill="none" stroke="var(--pg-ink)" strokeWidth={1.8} />
+    </svg>
+  );
+}
+
+/** 노끈이 처지는 깊이 · 가장 처진 자리(구간 260 기준) — 칸마다 조금씩 달라 손으로 건 끈처럼. */
+const SAG = [
+  [3, 122],
+  [5, 140],
+  [2, 126],
+  [4, 136],
+  [2.5, 118],
+  [4.5, 132],
+];
+/** 노끈 한 구간 — 칸 양옆 gap 가운데에서 집게 근처로 살짝 처진다. 구간 끝은 늘 같은 높이라
+ *  칸 폭 + gap(20px)마다 이웃 칸 끈과 매끄럽게 이어진다. */
+function Cord({ i }: { i: number }) {
+  const [sag, x] = SAG[i % SAG.length];
+  const y = 8 + sag;
+  const d = `M0 8C${x / 2} 8 ${x / 2} ${y} ${x} ${y}C${(x + 260) / 2} ${y} ${(x + 260) / 2} 8 260 8`;
+  const path = { d, fill: "none", vectorEffect: "non-scaling-stroke" as const };
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 260 24"
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute -left-2.5 top-0 h-6 w-[calc(100%+20px)] overflow-visible"
+    >
+      <path {...path} stroke="#a98b5f" strokeWidth={3} strokeLinecap="round" />
+      <path {...path} stroke="#d2b98d" strokeWidth={1.2} strokeDasharray="3 4" />
+    </svg>
+  );
+}
+
+/** 가까운 날은 「오늘 · 어제」로, 그 밖은 「11월 3일」. 정확한 날짜는 `<time>` 과 마우스 올림에 남긴다. */
+function madeLabel(iso: string, now = new Date()) {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diff = Math.round((day(now) - day(at)) / 86_400_000);
+  return diff === 0 ? "오늘" : diff === 1 ? "어제" : shortDate(iso);
+}
+
+/** 방식 꼬리표(월별 주제형 · 놀이 중심형) — 단계는 메모지 색과 제목이 말한다. 글자는 읽기 쉬운 본문 글꼴. */
+function ModeBadge({ card }: { card: DraftCard }) {
+  return (
+    // 바탕만 왼쪽으로 내밀어(-ml) 꼬리표 글자가 아래 제목 글자와 같은 세로줄에 선다.
+    <span className="-ml-2 inline-flex h-6 shrink-0 items-center rounded bg-white/75 px-2 text-[13px] font-bold text-ink">
+      {card.mode}
+    </span>
+  );
+}
+
+const Made = ({ card }: { card: DraftCard }) => (
+  <time dateTime={card.created} title={`${card.date}에 시작`}>
+    {madeLabel(card.created)}
+  </time>
+);
+
+/** 이어 쓸 초안 메모지 한 장(단계 색종이 · 「지금, 한 줄」 줄 종이, 노끈에 나무 집게로 걸림) — 메모지 전체가 그 초안으로 가는 길.
+ *  집게에 매달렸으니 위 가운데를 축으로 기울고, 마우스를 올리면 똑바로 선다.
+ *  `ruledPaper` 는 34px 마다 줄 — 글 줄도 34px 칸이라 글자가 줄 위에 앉는다. 방식 꼬리표 · 날짜 / 제목 / 화살표. */
+function DraftNote({
+  card,
+  checks = [],
+  tilt,
+}: {
+  card: DraftCard;
+  checks?: CheckItem[];
+  tilt: string;
+}) {
+  const left = checks.filter((c) => !c.done).map((c) => c.label);
+  const todo = !checks.length
+    ? ""
+    : left.length
+      ? `, AI 후보 남은 줄 ${left.join(" · ")}`
+      : ", AI 후보 다 채움";
+  const router = useRouter();
+  // 누르면 집게가 튕겨 빠지고 메모지가 아래로 떨어진 뒤 그 초안으로 간다.
+  // 굴림 칸(overflow)에 잘리지 않게 메모지를 화면 위 고정 층에 복제해 떨어뜨린다.
+  // 새 탭 · 수정키 클릭과 「움직임 줄이기」는 보통 링크 그대로.
+  function drop(e: React.MouseEvent<HTMLAnchorElement>) {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    e.preventDefault();
+    const note = e.currentTarget;
+    const box = note.getBoundingClientRect();
+    const tiltM = getComputedStyle(note).transform;
+    const base = tiltM === "none" ? "" : tiltM;
+    const ghost = note.cloneNode(true) as HTMLElement;
+    Object.assign(ghost.style, {
+      position: "fixed",
+      zIndex: "60",
+      margin: "0",
+      width: `${note.offsetWidth}px`,
+      left: `${box.left + box.width / 2 - note.offsetWidth / 2}px`,
+      top: `${box.top + box.height / 2 - note.offsetHeight / 2}px`,
+      transformOrigin: "center",
+      transform: base,
+      pointerEvents: "none",
+    });
+    document.body.append(ghost);
+    note.style.visibility = "hidden";
+    const clip = ghost.querySelector<HTMLElement>("[data-clip]");
+    if (clip) {
+      const c = getComputedStyle(clip).transform;
+      clip.animate(
+        [
+          { transform: c, opacity: 1 },
+          { transform: `${c} translateY(-18px) rotate(-30deg)`, opacity: 0 },
+        ],
+        { duration: 200, easing: "ease-out", fill: "forwards" },
+      );
+    }
+    ghost
+      .animate(
+        [
+          { transform: `${base} translateY(0) rotate(0deg)` },
+          { transform: `${base} translateY(-6px) rotate(0deg)`, offset: 0.15 },
+          { transform: `${base} translateY(${innerHeight - box.top + 40}px) rotate(9deg)` },
+        ],
+        { duration: 560, delay: 120, easing: "cubic-bezier(.5,0,.9,.6)", fill: "forwards" },
+      )
+      .finished.then(() => {
+        ghost.remove();
+        router.push(card.href);
+      });
+  }
+  return (
+    <Link
+      href={card.href}
+      onClick={drop}
+      aria-label={`${card.title} 이어서 쓰기 (${card.mode}, ${card.date} 시작${todo})`}
+      className={`ruledPaper group relative flex ${NOTE_H} origin-top flex-col border px-5 pb-5 text-ink no-underline shadow-pg-card transition-transform hover:rotate-0 motion-reduce:transition-none ${NOTE[card.step]} ${tilt}`}
+    >
+      {/* 나무 빨래집게 — 가운데 쇠 용수철 한 줄. */}
+      <span
+        aria-hidden="true"
+        data-clip=""
+        className="pointer-events-none absolute -top-[19px] left-1/2 h-[30px] w-[11px] -translate-x-1/2 rounded-[2px] border border-[#a2804f] bg-[#dcbb88] shadow-[0_1px_2px_rgba(0,0,0,.25)]"
+      >
+        <span className="absolute -inset-x-px top-[10px] h-[3px] bg-[#8a8c90]" />
+      </span>
+      <span className={`${LINE} justify-between gap-2 text-sm text-[#6b6158]`}>
+        <ModeBadge card={card} />
+        <Made card={card} />
+      </span>
+      <span className={`${LINE} font-display text-[23px] font-bold`}>
+        {/* 손글씨체는 글자가 줄보다 떠 보여 살짝 내려 앉힌다. */}
+        <span className="translate-y-[6px] truncate">{card.title}</span>
+      </span>
+      {/* 아래쪽: AI 후보로 채우는 줄 이름 + 오른쪽 체크(두 칸씩, 다 채운 줄은 체크) · 오른쪽 끝 화살표.
+          메모지 전체가 링크라 화살표만 둔다 — 이름 · 체크는 aria-label 이 읽어 준다. */}
+      <span className="mt-auto flex items-end gap-2">
+        <span aria-hidden="true" className="grid min-w-0 flex-1 grid-cols-2 gap-x-2">
+          {checks.map((c) => (
+            <span key={c.label} className={`${LINE} gap-1.5 text-[13px] font-bold`}>
+              <span className="truncate">{c.label}</span>
+              <CheckBox done={c.done} />
+            </span>
+          ))}
+        </span>
+        <span className={`${LINE} text-primary`}>
+          <Arrow />
+        </span>
+      </span>
+    </Link>
+  );
+}
+
+/** 메모지 체크 칸 — 「이어서 하기」 표시와 같은 색연필 결(`plans-crayon`)로 손으로 그린 검정 네모,
+ *  다 채운 줄은 네모 밖까지 뻗는 빨간 체크. 네모는 3/4 크기로 아래에 붙인다(굵기는 그대로).
+ *  그림 1 = 1px 이라 결의 굵기가 제목 표시와 같다. */
+const CheckBox = ({ done }: { done: boolean }) => (
+  <svg
+    aria-hidden="true"
+    width="18"
+    height="18"
+    viewBox="0 0 18 18"
+    className="mb-px shrink-0 overflow-visible text-ink"
+    fill="none"
+    stroke="currentColor"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    filter="url(#plans-crayon)"
+  >
+    <path
+      d="M2.6 3.4C6.5 2.9 11 3 15.3 2.8C15.5 7 15.2 11.2 15.4 15.3C11 15.6 6.8 15.2 2.8 15.5C2.5 11.4 2.9 7.3 2.6 3.4Z"
+      transform="translate(0.675 3.85) scale(0.75)"
+      strokeWidth={2.2}
+    />
+    {done && (
+      <path
+        d="M4 10.6C5 11.5 5.8 12.6 6.6 13.8C8.6 9.8 11.4 6 15.6 2.6"
+        strokeWidth={2.4}
+        className="text-alert-strong"
+      />
+    )}
+  </svg>
+);
+
+/** 메모지 한 줄 — 줄 간격(34px) 한 칸, 글자 아래가 줄 바로 위. */
+const LINE = "flex h-[34px] min-w-0 items-end pb-1";
+
+/** 방식 칸 아래 두 단추 — 아래 그림자가 깔리고 누르면 들어간다(계획안 화면 다른 단추와 같은 손맛). */
+const PRIMARY =
+  "flex min-h-[54px] flex-1 items-center justify-center gap-2 rounded-md bg-primary text-base font-bold text-white no-underline shadow-[0_3px_0_#59416e] transition-transform hover:bg-primary-hover active:translate-y-[3px] active:shadow-none motion-reduce:transition-none";
+const SECONDARY =
+  "flex min-h-[54px] flex-1 items-center justify-center gap-2 rounded-md border-2 border-[#c5b7dd] bg-white text-base font-bold text-[#5e4b96] shadow-[0_2px_0_#c5b7dd] transition-transform hover:bg-[#f6f1fb] active:translate-y-[2px] active:shadow-none motion-reduce:transition-none";
+
+const Arrow = () => (
+  <svg
+    aria-hidden="true"
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M5 12h14" />
+    <path d="m13 6 6 6-6 6" />
+  </svg>
+);
 
 const Chevron = () => (
   <svg
@@ -189,14 +633,22 @@ const Chevron = () => (
 /**
  * 방식 하나. 월별 주제형의 [월간부터 시작하기]는 연간계획안 가져오기로 들어간다.
  * 놀이 중심형 가져오기는 아직 없다 — 단추를 잠가 둔다.
+ * `ready`(이 방식 연간을 확정함)면 흐름 쪽지 「연간」에 체크가 붙고, 단추는
+ * [월간계획안 만들기] 로 바뀐다 — 연간을 또 만들러 가지 않게. 확정한 연간은 문서 보관함에서 연다.
+ * 만들기 단추는 `?from=plans` 를 붙여 그 화면의 「←」가 이 첫 화면으로 돌아오게 한다.
+ * `weekly`(월별 주제형 월간을 확정함)면 「월간」에도 체크가 붙고 [주간계획안 만들기] 가 따로 붙는다.
  */
 function Panel({
   format,
+  ready,
+  weekly = null,
   skip,
   onSkip,
   onImport,
 }: {
   format: keyof typeof MODE;
+  ready: AnnualPlanSummary | null;
+  weekly?: MonthlyPlanSummary | null;
   skip: boolean;
   onSkip: (skip: boolean) => void;
   onImport: (file: File | null) => void;
@@ -207,71 +659,102 @@ function Panel({
   return (
     <section
       data-tour={v1 ? "plans-theme" : "plans-play"}
-      className="relative flex min-h-[340px] flex-col justify-between gap-5 border border-line bg-paper rounded-md px-8 py-7 [@media(max-height:800px)]:min-h-0 [@media(max-height:800px)]:gap-4 [@media(max-height:800px)]:py-5"
+      className="relative flex flex-col justify-between gap-5 bg-paper shadow-pg px-8 py-7 [@media(max-height:800px)]:gap-[14px] [@media(max-height:800px)]:py-5"
     >
       <Tape />
-      {/* 오른쪽 위 ⓘ — 누르면 어디서 시작하는지 설명이 열린다(다시 누르면 닫힌다). */}
-      <details className="group absolute right-5 top-5 z-10">
-        <summary
-          aria-label={`${MODE[format]} 시작 안내`}
-          title="시작 안내"
-          className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full border border-line bg-paper text-[#5e4b96] group-open:bg-[#f6f1fb] [&::-webkit-details-marker]:hidden"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.6"
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <path d="M12 11v6" />
-            <path d="M12 7h.01" />
-          </svg>
-        </summary>
-        <p className="absolute right-0 top-full m-0 mt-2 w-[260px] rounded-md border border-line bg-paper px-4 py-3 text-[14px] leading-relaxed text-[#2b2826]">
-          {v1
-            ? "월간부터 시작하면 우리 원 연간계획안을 먼저 넣어요."
-            : "놀이 중심형은 연간부터 시작해요."}
-        </p>
-      </details>
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5">
         <span className={`text-sm font-bold ${v1 ? "text-[#49654f]" : "text-[#5e4b96]"}`}>
           {v1 ? "생활주제 따라" : "아이들 놀이 따라"}
         </span>
         <h2 className="m-0 font-display text-[34px] font-bold leading-tight">{MODE[format]}</h2>
         <p className="m-0 text-base leading-relaxed text-[#5c5243]">
           {v1
-            ? "연간에서 월간, 월간에서 주간으로 차근차근 내려가요."
-            : "놀이에서 출발해 프로젝트로 이어가요. 주간은 없어요."}
+            ? "달마다 생활주제를 정하고, 주제에 맞춰 놀이와 활동을 짜요."
+            : "계절마다 놀이를 고르고, 아이들 흥미를 따라 한 달 놀이를 짜요."}
         </p>
       </div>
       <div className="flex items-center gap-[10px]">
         {steps.map((s, i) => (
           <span key={s} className="contents">
             {i > 0 && <Chevron />}
-            <span className={`flex-1 rounded-md py-4 text-center text-base font-bold ${chip}`}>
+            <span
+              className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 font-display text-[19px] font-bold shadow-pg-card ${i % 2 ? "rotate-1" : "-rotate-1"} ${chip}`}
+            >
               {s}
+              {((ready && i === 0) || (weekly && i === 1)) && (
+                <>
+                  <svg
+                    aria-hidden="true"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="m4.5 12.5 5 5L20 6.5" />
+                  </svg>
+                  <span className="sr-only">확정함</span>
+                </>
+              )}
             </span>
           </span>
         ))}
         {!v1 && (
           <span className="contents">
             <span aria-hidden="true" className="w-[18px]" />
-            <span className="flex-1 rounded-md border border-dashed border-[#d7d0c7] py-[15px] text-center text-[15px] text-ink-soft">
-              주간 없음
+            {/* 주간 쪽지 자리 — 비어 있는 점선 쪽지에 「주간」을 줄 그어 지웠다. 「없음」은 화면 낭독에만. */}
+            <span className="flex flex-1 rotate-1 items-center justify-center border-2 border-dashed border-[#d7d0c7] py-[7px] text-center">
+              <span className="font-display text-[19px] font-bold text-[#b1a89c] line-through decoration-[#c98a7e] decoration-2">
+                주간
+              </span>
+              <span className="sr-only">없음</span>
             </span>
           </span>
         )}
       </div>
-      {skip ? (
+      {ready ? (
+        // 월간 · 주간 만들기는 단추를 따로. 주간 달은 주간 화면에서 고른다(가장 최근 확정한 달이 먼저 열림).
+        <div className="flex items-center gap-3">
+          <Link href="/plans/monthly?from=plans" className={PRIMARY}>
+            월간계획안 만들기
+            <Arrow />
+          </Link>
+          {weekly && (
+            <Link href={`/plans/weekly?month=${weekly.month}&from=plans`} className={PRIMARY}>
+              주간계획안 만들기
+              <Arrow />
+            </Link>
+          )}
+        </div>
+      ) : skip ? (
         <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-stretch gap-3">
             {/* 파일 고르기는 브라우저 기본 창을 쓴다. 고르는 순간 가져오기 화면으로 넘어간다. */}
-            <label className="flex min-h-[54px] flex-[2] cursor-pointer items-center justify-center gap-2 rounded-md border-2 border-dashed border-[#7053a0] bg-[#f6f1fb] text-base font-bold text-[#5e4b96] focus-within:outline focus-within:outline-2 focus-within:outline-[#7053a0]">
-              연간계획안 파일 올리기
+            <label className="flex min-h-[58px] flex-[2] cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-[#7053a0] bg-[#f6f1fb] px-3 py-1.5 text-base font-bold text-[#5e4b96] hover:bg-[#efe6f8] focus-within:outline focus-within:outline-2 focus-within:outline-[#7053a0]">
+              <span className="flex items-center gap-2">
+                <svg
+                  aria-hidden="true"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 15V4" />
+                  <path d="m7.5 8.5 4.5-4.5 4.5 4.5" />
+                  <path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" />
+                </svg>
+                연간계획안 파일 올리기
+              </span>
+              <span className="text-[12px] font-medium text-[#7a6aa0]">
+                HWP · HWPX · DOCX · PDF
+              </span>
               <input
                 type="file"
                 accept=".hwp,.hwpx,.docx,.pdf"
@@ -285,59 +768,49 @@ function Panel({
             <button
               type="button"
               onClick={() => onImport(null)}
-              className="min-h-[54px] flex-1 rounded-md border border-[#ddd6ca] bg-white text-[15px] font-bold text-[#5e4b96]"
+              className="flex min-h-[58px] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border-2 border-[#c5b7dd] bg-white px-4 text-[15px] font-bold text-[#5e4b96] hover:bg-[#f6f1fb]"
             >
-              파일 없이 직접 입력
+              <svg
+                aria-hidden="true"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M4 20h4L19 9l-4-4L4 16v4Z" />
+                <path d="m13.5 6.5 4 4" />
+              </svg>
+              직접 작성하기
             </button>
             <button
               type="button"
               onClick={() => onSkip(false)}
-              className="min-h-[54px] px-3 text-[15px] text-[#5c5243]"
+              className="min-h-[58px] rounded-md px-4 text-[15px] font-bold text-ink-soft hover:bg-[#f7f4ee]"
             >
               취소
             </button>
           </div>
-          <p className="m-0 text-right text-[13px] text-[#5c5243]">HWP · HWPX · DOCX · PDF</p>
         </div>
       ) : (
         <div className="flex items-center gap-3">
-          <Link
-            href={`/plans/annual/new?format=${format}`}
-            className="flex min-h-[54px] flex-1 items-center justify-center rounded-md bg-primary hover:bg-primary-hover text-base font-bold text-white no-underline transition-transform active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
-          >
+          <Link href={`/plans/annual/new?format=${format}`} className={PRIMARY}>
             연간부터 시작하기
+            <Arrow />
           </Link>
           <button
             type="button"
             onClick={() => onSkip(true)}
             disabled={!v1}
-            className="min-h-[54px] flex-1 rounded-md border border-[#ddd6ca] bg-white text-base font-bold text-[#5e4b96] disabled:cursor-not-allowed disabled:opacity-50"
+            className={`${SECONDARY} disabled:cursor-not-allowed disabled:border-dashed disabled:border-[#d7d0c7] disabled:text-ink-soft disabled:shadow-none disabled:hover:bg-white disabled:active:translate-y-0`}
           >
-            {v1 ? "월간부터 시작하기" : "월간부터 시작하기 (준비 중)"}
+            월간부터 시작하기
           </button>
         </div>
       )}
     </section>
-  );
-}
-
-function PlanCard({ card }: { card: DraftCard }) {
-  return (
-    <Link
-      href={card.href}
-      className={`${CARD_SIZE} flex flex-col gap-3 border border-line bg-paper px-5 py-[18px] text-[#2b2826] no-underline`}
-    >
-      <span className="flex items-center justify-between">
-        <span className="rounded-full bg-[#f7edce] px-[10px] py-[3px] text-[13px] font-bold text-[#705936]">
-          작성 중
-        </span>
-        <span className="text-[13px] text-[#5c5243]">{card.date}</span>
-      </span>
-      <span className="flex flex-col gap-0.5">
-        <span className="text-[13px] text-[#5c5243]">{card.mode}</span>
-        <span className="text-[17px] font-bold">{card.title}</span>
-      </span>
-      <span className="text-sm font-bold text-[#5e4b96]">이어서 쓰기 →</span>
-    </Link>
   );
 }

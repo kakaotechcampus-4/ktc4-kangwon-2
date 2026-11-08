@@ -82,6 +82,11 @@
   --pg-board-deep: #2b332e;
   --pg-board-ink: #f4f1e8; /* 분필 — 칠판 위에서 11:1 */
   --pg-board-ink-soft: #cfdcd4; /* 분필 보조 글씨 — 칠판 위에서 7:1 */
+  /* 로그인 · 가입의 나무 책상과 그 위 글자(4.6:1). 그 화면에만 쓴다 */
+  --pg-desk: #e8d5b5;
+  --pg-desk-ink: #6b5a45;
+  /* 입력칸 테두리 — 흰 종이 위 3.3:1 (입력칸 경계 기준 3:1). --pg-line 은 1.4:1 이라 칸이 묻힌다 */
+  --pg-field-line: #968c7d;
   --pg-frame: #8c6d49;
   --pg-frame-lit: #9a7850;
   --pg-frame-side: #7b5f3f;

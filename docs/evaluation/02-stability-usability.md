@@ -30,6 +30,7 @@
 
   보조 글자를 옛 갈색(`#705d47` · 5.43:1)에서 한 단계 진하게 바꿨다. **문제는 대비가 아니라 크기였다** —
   9~11px 글자가 60군데 있었고 그걸 걷어냈다
+- 로그인 · 가입 입력칸 테두리를 흰 종이 위 1.4:1 에서 3.3:1 로 올렸다(입력칸 경계 기준 3:1) — `frontend/styles/plan-generator-tokens.css` `--pg-field-line`
 - 메뉴를 「기록 · 문서」로 갈라 이름을 고쳤다 — 커밋 `3ba17a7`
 - 말로 적기(받아쓰기) — `frontend/lib/hooks/use-dictation.ts`
 - 홈에서 아이를 드롭다운으로 찾지 않는다 — 반 전체가 격자로 깔리고 칸마다 마지막 기록·이번 주 횟수가 보인다 — 커밋 `ea67852` · `frontend/components/app/ChildPicker.tsx`
@@ -46,6 +47,7 @@
 
 - 13주차 멘토 리뷰(PR #380) 화면 지적을 PR 하나씩으로 반영했다 — 메뉴를 교사가 쓰는 말 「보육일지」로 합침(#412) · 튜토리얼 이전 버튼 · 짧은 문장 · 빠졌던 세 화면(#413) · 홈 칠판 메모 앞뒤 넘기기(#411) · 보관함 카드에서 바로 열기(#417) · 놀이 중심 연간 쪽 탭에 계절 이름 · 놀이 다시 고르기(#420) · 평가 점검 확인창 미리 알림 · 결과 안내 · 「평가제가 뭐예요?」(#421)
 - 설정 내 계정을 한 장 목록으로 — 이름 · 메일 · 비밀번호 · 튜토리얼 · 로그아웃(#419)
+- 비밀번호 없이 카카오로 들어온다. 키가 없으면 카카오만 503 이고 이메일 로그인은 그대로 돈다 — ADR-069 · `backend/app/features/auth/kakao.py` · `backend/tests/test_auth_kakao.py`
 
 ## 고친 실제 사고
 
@@ -65,6 +67,7 @@
 | 주소만 치고 들어온 첫 방문이 로그인 화면으로 감 | 로그인 안 한 사람은 어느 주소든 `/login` 으로 보냈다 — 첫 방문(`/`)만 소개 화면으로 | `frontend/lib/auth/local-account.ts` `accessRedirect` · `frontend/tests/auth-access.test.mjs` |
 | 휴대폰(390px) 홈 「오늘 적은 기록으로 · 보육일지」 글이 한 단어씩 세로로 쪼개짐(멘토 화면) | 왼쪽 띠가 `flex-1`(기본 폭 0)이라 줄을 안 바꾸고 오른쪽 안내 · 버튼에 밀려 줄었다 | `frontend/components/dashboard/HomePage.tsx` `min-w-[12rem]` |
 | 휴대폰에서 두 자리 날짜(「11.18」)가 보육일지 주간 칸을 넘침 | 칸 최소 폭 52px 이 글자 46px 에 여백을 못 담았다 | `frontend/components/workspace/DocumentArchive.module.css` · `frontend/e2e/document-archive-layout.spec.ts` |
+| 설정의 아동 명단 쪽지가 아이가 있어도 0명으로 보임 | 브라우저 저장소에서 셌는데, 아동 명단은 거기 남기지 않는다(ADR-013) | `frontend/components/auth/SettingsPage.tsx` — 서버에서 받아 수만 남긴다 |
 
 세 번 같은 실수를 하고 **규칙으로 굳혔다** — 「한 번 찍어보고 쓴다」.
 
@@ -72,6 +75,7 @@
 
 - 휴대폰 하단 메뉴가 데스크톱 값에 덮여 글자가 두 줄로 꺾인다 — 이슈 #237
 - 부하 시험을 한 적이 없다
+- 카카오 로그인을 진짜 키로 눌러 본 적이 없다 — 가짜 카카오 응답으로만 시험했다(ADR-069)
 
 ## 더 모을 근거
 

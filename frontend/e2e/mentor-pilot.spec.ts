@@ -95,7 +95,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   expect(savedAnnual.months[0].safety_education_state).toBe("SOURCE_REQUIRED");
   await page.getByRole("button", { name: "확정하기", exact: true }).click();
   await page
-    .getByRole("group", { name: /확정하면 고칠 수 없어요/ })
+    .getByRole("group", { name: /이대로 확정할까요\?/ })
     .getByRole("button", { name: "확정하기", exact: true })
     .click();
   await expect(
@@ -113,7 +113,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await page.screenshot({ path: info.outputPath("annual-confirmed.png"), fullPage: true });
 
   // 확정 화면 → 월간 만들기. 넣을 칸은 만들기 화면에서 고른다(따로 양식 화면이 없다, 2026-11-03).
-  await page.getByRole("link", { name: "월간계획안 만들기 →", exact: true }).click();
+  await page.getByRole("link", { name: "월간계획안 만들기", exact: true }).click();
   await expect(page.getByRole("group", { name: "어떤 칸을 넣을까요?" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /실내 대체활동/ })).not.toBeChecked();
   await page.getByRole("button", { name: /월간계획안 만들기/ }).click();
@@ -156,7 +156,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await page.getByRole("button", { name: "확정하기", exact: true }).click();
   // 안전교육을 아직 놓지 않은 주는 빈칸으로 센다(c4cb083c) — 확정 창이 「빈칸이 남아 있어요」로 시작한다.
   await page
-    .getByRole("group", { name: /확정하면 고칠 수 없어요/ })
+    .getByRole("group", { name: /이대로 확정할까요\?/ })
     .getByRole("button", { name: "확정하기", exact: true })
     .click();
   await expect(
@@ -164,9 +164,10 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   ).toBeVisible();
   // 확정 후 화면: 확정본 · 한글 내보내기 · 주간 만들기 · 홈.
   await expect(page.getByRole("heading", { name: /월 월간계획안을 확정했어요$/ })).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "주간계획안 만들기 →", exact: true }),
-  ).toHaveAttribute("href", "/plans/weekly");
+  await expect(page.getByRole("link", { name: "주간계획안 만들기", exact: true })).toHaveAttribute(
+    "href",
+    "/plans/weekly",
+  );
   await page.reload();
   await expect(cell(0)).toHaveText("친구와 함께 만드는 새로운 우리 반 놀이");
   await expect(cell(0)).not.toHaveAttribute("role", "button");
@@ -190,8 +191,9 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await page.setViewportSize({ width: 1440, height: 1000 });
 
   // 확정 화면 → 주간 만들기 → 칸 고치기 → 확정 → 한글 다운로드. 주간도 API 로 건너뛰지 않는다.
-  // 주 이름 표기 · 확정 창 문구는 자주 바뀌어서 끝말 「주간계획안 만들기」 · 「확정하면」 으로만 찾는다.
-  await page.getByRole("link", { name: "주간계획안 만들기 →", exact: true }).click();
+  // 주 이름 표기는 자주 바뀌어서 끝말 「주간계획안 만들기」로만 찾는다. 확정 창은 연간 · 월간 · 주간이 같은
+  // 제목 「이대로 확정할까요?」(PlayMonthlyConfirm CONFIRM_TITLE, 11-07)으로 찾는다.
+  await page.getByRole("link", { name: "주간계획안 만들기", exact: true }).click();
   await page.getByRole("button", { name: /주간계획안 만들기$/ }).click();
   await expect(page).toHaveURL(/\/plans\/weekly\?plan_id=\d+/);
   const weeklyText = "낙엽을 모아 우리 반 길을 꾸민다.";
@@ -210,7 +212,7 @@ test("멘토: 연간 생성·편집·확정·한글 다운로드와 월간 연�
   await expect(weekOutdoor).toHaveText(weeklyText);
   await page.getByRole("button", { name: "확정하기", exact: true }).click();
   await page
-    .getByRole("group", { name: /확정하면/ })
+    .getByRole("group", { name: /이대로 확정할까요\?/ })
     .getByRole("button", { name: "확정하기", exact: true })
     .click();
   await expect(page.getByRole("heading", { name: /주간계획안을 확정했어요$/ })).toBeVisible();
@@ -483,8 +485,8 @@ test("멘토: 등록한 반 수정을 시도해도 새 반과 새 아동으로 �
   const before = await api(page, `/api/centers/${user.center_id}/classes`);
   await page.getByRole("link", { name: "설정", exact: true }).first().click();
   // 반 쪽지를 떼어 연다. 등록한 반은 고칠 칸 없이 글로만 보인다. 저장 길은 첫 설정 화면과 같다.
-  await page.getByRole("button", { name: "반 · 담당 반 수정", exact: true }).click();
-  const note = page.getByRole("dialog", { name: "반 · 담당 반" });
+  await page.getByRole("button", { name: "반 수 · 담당 반 수정", exact: true }).click();
+  const note = page.getByRole("dialog", { name: "반 수 · 담당 반" });
   await expect(note.getByText("햇살반", { exact: true })).toBeVisible();
   await expect(note.getByRole("textbox", { name: "반 이름" })).toHaveCount(0);
   await note.getByRole("button", { name: "저장", exact: true }).click();

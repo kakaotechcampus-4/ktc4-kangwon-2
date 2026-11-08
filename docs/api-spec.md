@@ -69,6 +69,30 @@ me       GET /api/auth/me                                               → 200 
 승인이 필요하면 `403 CLASS_ACCESS_REQUIRED`, 승인받아 보기만 되는 교사가 쓰려 하면
 `403 CLASS_READ_ONLY` 다. 둘 다 `fields: ["class_id"]`.
 
+### 0-1. 카카오 로그인 — `GET /api/auth/kakao/authorize` · `POST /api/auth/kakao`
+
+[ADR-069](adr/069-kakao-login.md). 키가 없어도 이메일 로그인은 그대로 돈다.
+
+```
+1  화면   state 를 만든다(16~128자, A-Z a-z 0-9 _ -). sessionStorage 에 둔다
+2  화면 → GET /api/auth/kakao/authorize?state=...            → 200 { "url": "https://kauth.kakao.com/..." }
+3  화면   그 url 로 이동 → 카카오 동의 → KAKAO_REDIRECT_URI(/login/kakao?code=...&state=...) 로 돌아온다
+4  화면   돌아온 state 가 1 과 다르면 멈춘다. 같으면
+   화면 → POST /api/auth/kakao  { "code": "..." }             → 200  §0 로그인과 같은 응답
+```
+
+**처음이면 계정을 만들고, 같은 이메일 계정이 있으면 거기에 잇는다.** 응답은 늘 200 이다 —
+`center_id` 가 null 이면 온보딩으로 간다(§0 과 같다).
+
+| code | HTTP | 언제 |
+|---|---|---|
+| `DEPENDENCY_UNAVAILABLE` | 503 | 서버에 키 · Redirect URI 가 없다 · 카카오에 닿지 못했다 |
+| `VALIDATION_FAILED` | 422 | `fields: ["code"]` 카카오가 코드를 거절(만료 · 이미 씀). 처음부터 다시 |
+| `VALIDATION_FAILED` | 422 | `fields: ["email"]` 카카오 계정 이메일이 없거나 검증 안 됨 |
+| `ALREADY_EXISTS` | 409 | 그 이메일 계정이 이미 다른 카카오 계정에 연결돼 있다 |
+
+**인가 코드는 한 번만 쓴다.** 같은 코드로 두 번 보내면 두 번째는 422 다 — 화면은 한 번만 보낸다.
+
 ### 401 을 받으면 화면이 하는 일
 
 **토큰이 12시간짜리고 갱신이 없다.** 교사가 아침에 로그인해서 저녁에 쓰면 **쓰는 도중에
@@ -2935,6 +2959,7 @@ activity_pool         문서에 넣지 않은 AI 후보 — together · free_pla
 content_ids           그 놀이에 지금 걸린 누리과정 내용 ID.  **응답은 0~3개** — 생성한 행은 1~3개이고 행 추가 직후의 빈 행은 0개다.  연결 바꾸기 요청과 확정 조건은 1~3개.  공식 문구는 저장하지 않는다(Reference 에서 읽는다)
                       name.evidence 의 CURRICULUM 은 만들 때의 연결이고 바뀌지 않는다
 parent_item_id        이 행이 부모 연간의 놀이 하나를 이은 것이면 그 놀이명 칸의 item_id.  아니면 null.  name.evidence 에 PARENT_PLAN 이 있을 때만 값이 있다
+trend_applied         그 행이 트렌드봇 자료를 반영했는가(표시용, ADR-072).  name.evidence 에 TREND 가 있을 때 true.  꺼짐 · 자료 없음 · 옛 계획안은 false
 safety_candidates     candidates 의 주소는 cell.item_id 다 (경로의 {item_id} · 본문의 candidate_item_id)
 kind                  STATUTORY (법정 여섯 영역, category_id 만) | SUPPLEMENTAL (생활안전, topic_group 만)
 habits[].label        한글 문서가 「[분류]」로 찍는 일상생활 항목 이름(entry_id 의 label, 계획안이 읽은 판에서).  문장이 비었거나 항목에서 고르지 않았거나 판이 없어졌으면 ""(하민 결정 2026-11-06).  화면은 「[분류]」 다음 줄에 문장을 쓴다
@@ -3656,7 +3681,7 @@ ALREADY_REGISTERED       같은 아동 · 종류 · 겹치는 기간의 증빙�
 
 **앞 둘을 모델 없이 끝낸다.** 모델이 틀려도 사실은 안 틀어진다.
 
-**3단 — `POST /api/documents/{id}/verify`** — 판정 전용 모델 jev 로 만들었다 (ADR-069, 2026-11-08).
+**3단 — `POST /api/documents/{id}/verify`** — 판정 전용 모델 jev 로 만들었다 (ADR-071, 2026-11-08).
 서버 확정(`confirm` · `reconfirm`)은 **이 단계를 거치지 않는다** — 1·2단과 교사 체크 3개만 본다.
 
 ```json
@@ -3736,7 +3761,7 @@ GET    /api/documents?kind=&class_id=&child_id=&status=&stale=   → { "items": 
        FE 가 서버 순서를 그대로 쓰므로 계약에 둔다. 목록에는 sections · sources 를 담지 않는다.
 GET    /api/documents/{id}                                       단건
 GET    /api/documents/{id}/related                               겹치는 확정 문서
-POST   /api/documents/{id}/verify                                3단 AI 판정(jev).  저장하지 않음 (ADR-069)
+POST   /api/documents/{id}/verify                                3단 AI 판정(jev).  저장하지 않음 (ADR-071)
 PUT    /api/documents/{id}                                       title · sections · review_note · class_note
 POST   /api/documents/{id}/confirm                               DRAFT → CONFIRMED.  checks 3개 필요
 POST   /api/documents/{id}/unconfirm                             CONFIRMED → DRAFT.  근거로 쓴 문서 stale

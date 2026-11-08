@@ -403,6 +403,44 @@ body {
 /* 공책 줄. 테두리를 두르지 않고도 「여기 적는 칸」이라고 알린다.
  * 줄 간격은 글줄 높이(20px x 1.7 = 34px)와 같아야 글자가 줄 위에 앉는다 —
  * 글자 크기를 바꾸면 이 값도 같이 바꿔야 한다. */
+/* 손으로 그은 형광펜 — 계획안 제목 · 칸 제목. 글자 아래 절반만 칠한다. */
+/* 넣기 [+] · 빼기 [−] 단추의 표시 — 글자 대신 둥근 막대로 그려 늘 한가운데 놓인다. 글자는 화면 낭독용으로만 남는다. */
+.pgPlus,
+.pgMinus {
+  position: relative;
+  font-size: 0;
+}
+.pgPlus::before,
+.pgPlus::after,
+.pgMinus::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 13px;
+  height: 2.5px;
+  border-radius: 2px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+.pgPlus::after {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.penMark {
+  width: fit-content;
+  background: linear-gradient(transparent 58%, var(--pg-note) 58% 90%, transparent 90%);
+  padding-inline: 4px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* 스프링 노트 위 구멍 줄 — 계획안 편집 패널 머리. */
+.notebookHoles {
+  background: radial-gradient(circle, var(--pg-shell-hover) 4.5px, transparent 5.5px) 6px 6px / 26px
+    22px repeat-x;
+}
+
 .ruledPaper {
   background-image: repeating-linear-gradient(
     to bottom,
@@ -494,4 +532,40 @@ body {
   background-size: 7px 3px;
   background-repeat: repeat-x;
   background-position: center;
+}
+
+/* 로그인 ↔ 회원가입 — 공책 한 장이 길이만 바뀐다. 글은 늘어나지 않게 위에 붙여 겹쳐 바꾼다
+   (components/auth/AuthFrame.tsx 의 ViewTransition). 클래스 이름은 CSS 모듈이 바꾸지 못하게 여기 둔다 */
+::view-transition-group(.auth-sheet) {
+  animation-duration: 0.35s;
+  animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+::view-transition-old(.auth-sheet),
+::view-transition-new(.auth-sheet) {
+  height: 100%;
+  object-fit: none;
+  object-position: top;
+}
+::view-transition-old(.auth-sheet) {
+  animation: auth-sheet-out 0.15s ease-in both;
+}
+::view-transition-new(.auth-sheet) {
+  animation: auth-sheet-in 0.25s 0.1s ease-out both;
+}
+@keyframes auth-sheet-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes auth-sheet-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(.auth-sheet),
+  ::view-transition-old(.auth-sheet),
+  ::view-transition-new(.auth-sheet) {
+    animation: none;
+  }
 }

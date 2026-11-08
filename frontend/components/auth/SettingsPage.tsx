@@ -11,6 +11,7 @@ import {
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { EMPTY_CLASS_SETTINGS, type ClassroomEntry } from "@/lib/onboarding/types";
+import { hydrateClassChildren } from "@/lib/api/onboarding";
 import { changePassword, getCurrentUser } from "@/lib/api/auth";
 import { invalidFields } from "@/lib/api/client";
 import { getCenterSettings, saveCenterSettings } from "@/lib/api/centers";
@@ -28,7 +29,7 @@ import { SettingsIcon, type SettingsIconName } from "./SettingsIcons";
 import styles from "./Settings.module.css";
 
 const TABS = [
-  { key: "center", label: "우리 원" },
+  { key: "center", label: "어린이집" },
   { key: "records", label: "기록 · 계획안" },
   { key: "account", label: "내 계정" },
 ] as const;
@@ -76,7 +77,6 @@ function Note({
   icon,
   tone,
   tilt,
-  badge,
   peel,
   children,
 }: {
@@ -84,7 +84,6 @@ function Note({
   icon: SettingsIconName;
   tone: Tone;
   tilt: number;
-  badge?: boolean;
   peel?: Peel;
   children: ReactNode;
 }) {
@@ -122,7 +121,6 @@ function Note({
             <SettingsIcon name={icon} />
             {title}
           </h2>
-          {badge && <span className={styles.badge}>바로 저장</span>}
         </div>
         <div className={styles.noteBody}>
           {children}
@@ -169,10 +167,11 @@ export default function SettingsPage() {
   );
   const [error, setError] = useState("");
   const [centerId, setCenterId] = useState<number | null>(null);
+  const [account, setAccount] = useState<{ name: string; email: string } | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
   const [tab, setTab] = useState<Tab>("center");
 
-  // 관찰 영역 · 트렌드봇은 원 번호로 저장한다.
+  // 관찰 영역 · 트렌드봇은 원 번호로 저장한다. 내 계정 칸의 이름 · 이메일도 여기서 받는다.
   useEffect(() => {
     let active = true;
     const session = captureSession();
@@ -180,6 +179,7 @@ export default function SettingsPage() {
       try {
         const user = await getCurrentUser();
         session.assertCurrent();
+        if (active) setAccount({ name: user.name, email: user.email });
         if (user.center_id === null) throw new Error("원 정보를 먼저 등록해야 합니다.");
         if (active) setCenterId(user.center_id);
       } catch (e) {
@@ -193,6 +193,21 @@ export default function SettingsPage() {
     };
   }, [requestVersion]);
 
+  // 아동 수는 서버에서 센다. 브라우저 저장소에는 아동 명단이 남지 않는다(ADR-013).
+  // 쪽지를 닫으면 settings 가 새로 읽혀 다시 센다. 이름은 버리고 수만 둔다.
+  const [kidCounts, setKidCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    let live = true;
+    hydrateClassChildren(settings)
+      .then((classes) => {
+        if (live) setKidCounts(Object.fromEntries(classes.map((c) => [c.id, c.children.length])));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [settings]);
+
   function retry() {
     setError("");
     setRequestVersion((v) => v + 1);
@@ -201,33 +216,42 @@ export default function SettingsPage() {
   // 아동은 이름 없이 수만 보인다.
   const chosen = chosenClassFor(settings);
   const region = [settings.regionProvince, settings.regionDistrict].filter(Boolean).join(" ");
-  // 브라우저에는 아이 이름을 두지 않아(ADR-013) 서버에서 받은 명단은 `childIds` 에만 수가 남는다.
-  const kidsIn = (c: ClassroomEntry) => c.children.length || c.childIds?.length || 0;
-  const children = settings.classes.reduce((sum, c) => sum + kidsIn(c), 0);
+  // 서버에서 센 수가 먼저다. 아직 못 받았으면 브라우저에 남은 수(ADR-013 — 이름 없이 childIds 만)로 보인다.
+  const kidCount = (c: ClassroomEntry) =>
+    kidCounts[c.id] ?? (c.children.length || c.childIds?.length || 0);
+  const children = settings.classes.reduce((sum, c) => sum + kidCount(c), 0);
   const org = [
     {
-      title: "원 정보",
+      title: "어린이집 정보",
       icon: "buildings",
       tone: "yellow",
       tilt: -2,
       // 원 정보는 아무도 고치지 않는다 — 같은 원 선생님 모두의 정보다(ADR-068). 연필을 두지 않는다.
       Editor: null,
-      summary: settings.orgName
-        ? [settings.orgName, region].filter(Boolean).join(" · ")
-        : "아직 등록하지 않았습니다.",
+      empty: "아직 등록하지 않았습니다.",
+      facts: settings.orgName
+        ? [
+            ["이름", settings.orgName],
+            ["지역", region],
+          ]
+        : [],
       note: settings.registryKey
         ? "정부 어린이집 목록(어린이집정보공개포털)에서 가져와 바꿀 수 없어요."
         : "원 정보는 바꿀 수 없어요.",
     },
     {
-      title: "반 · 담당 반",
+      title: "반 수 · 담당 반",
       icon: "users",
       tone: "plum",
       tilt: 1.5,
       Editor: ClassesEditor,
-      summary: settings.classes.length
-        ? `반 ${settings.classes.length}개${chosen ? ` · 담당 ${chosen.className}` : ""}`
-        : "아직 등록한 반이 없습니다.",
+      empty: "아직 등록한 반이 없습니다.",
+      facts: settings.classes.length
+        ? [
+            ["반 수", `${settings.classes.length}`],
+            ...(chosen ? [["담당 반", chosen.className]] : []),
+          ]
+        : [],
     },
     {
       title: "아동 명단",
@@ -235,13 +259,21 @@ export default function SettingsPage() {
       tone: "clay",
       tilt: -1,
       Editor: KidsEditor,
-      summary: chosen
-        ? `${chosen.className} ${kidsIn(chosen)}명`
-        : settings.classes.length
-          ? `전체 ${children}명`
-          : "아직 등록한 아동이 없습니다.",
+      empty: "아직 등록한 아동이 없습니다.",
+      facts: settings.classes.length
+        ? [chosen ? [chosen.className, `${kidCount(chosen)}명`] : ["전체", `${children}명`]]
+        : [],
     },
-  ] as const;
+  ] satisfies {
+    title: string;
+    icon: SettingsIconName;
+    tone: Tone;
+    tilt: number;
+    Editor: typeof ClassesEditor | null;
+    empty: string;
+    facts: string[][];
+    note?: string;
+  }[];
 
   // 화살표로 옆 묶음으로 옮긴다 — 탭 목록의 키보드 약속이다.
   function moveTab(step: number) {
@@ -254,7 +286,7 @@ export default function SettingsPage() {
   return (
     <WorkspacePage
       title="설정"
-      description="우리 원 정보, 기록과 계획안에 사용하는 설정, 내 계정을 관리합니다."
+      description="어린이집 정보, 기록과 계획안 작성에 필요한 설정, 내 계정을 관리합니다."
     >
       <div
         role="tablist"
@@ -321,8 +353,8 @@ export default function SettingsPage() {
                       : undefined
                   }
                 >
-                  <p className={styles.summary}>{o.summary}</p>
-                  {"note" in o && <p className={styles.summary}>{o.note}</p>}
+                  <Facts facts={o.facts} empty={o.empty} />
+                  {o.note && <p className={styles.summary}>{o.note}</p>}
                 </Note>
               ))}
             </div>
@@ -360,6 +392,11 @@ export default function SettingsPage() {
             hidden={tab !== "account"}
             className={styles.panel}
           >
+            {account && (
+              <div className={styles.strip}>
+                <AccountCard name={account.name} email={account.email} />
+              </div>
+            )}
             <div className={styles.two}>
               <PasswordCard />
               <Note title="튜토리얼" icon="compass" tone="sage" tilt={1}>
@@ -381,6 +418,37 @@ export default function SettingsPage() {
         </div>
       </div>
     </WorkspacePage>
+  );
+}
+
+/**
+ * 쪽지 요약. 정보 이름(이름 · 지역 · 반 수 …)은 문장에 섞지 않고 손글씨 이름표로 뺀다.
+ * 등록한 것이 없으면 안내 한 줄만.
+ */
+function Facts({ facts, empty }: { facts: string[][]; empty: string }) {
+  if (!facts.length) return <p className={styles.summary}>{empty}</p>;
+  return (
+    <dl className={styles.facts}>
+      {facts.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** 지금 로그인한 계정. 이름 첫 글자를 동그라미에 넣는다. */
+function AccountCard({ name, email }: { name: string; email: string }) {
+  return (
+    <div className={styles.me}>
+      <span className={styles.meMark} aria-hidden="true">
+        {name.slice(0, 1) || "쌤"}
+      </span>
+      <span className={styles.meName}>{name ? `${name} 선생님` : "선생님"}</span>
+      <span className={styles.meEmail}>{email}</span>
+    </div>
   );
 }
 
@@ -418,11 +486,9 @@ function ObservationAxisCard({ centerId }: { centerId: number }) {
   }
 
   return (
-    <Note title="관찰 영역" icon="search" tone="sage" tilt={-1.5} badge>
+    <Note title="관찰 영역" icon="search" tone="sage" tilt={-1.5}>
       <p>
-        우리 원에서 사용하는 관찰일지 양식에 맞춰 어떤 영역으로 분류할지 정합니다.
-        <strong> 기존 기록은 그대로 유지됩니다.</strong> 변경된 설정은 새로 작성하는 기록부터
-        적용됩니다.
+        어린이집에서 사용하는 관찰일지 양식에 맞춰 영역을 구분합니다. 기존 기록은 그대로 유지됩니다.
       </p>
       <label className={`${ws.field} ${styles.inlineField}`}>
         영역 구분
@@ -438,7 +504,6 @@ function ObservationAxisCard({ centerId }: { centerId: number }) {
           ))}
         </select>
       </label>
-      <p className={ws.muted}>{AXES[axis ?? DEFAULT_AXIS].join(" · ")}</p>
       {error && <Message error>{error}</Message>}
       <p role="status">{busy ? "변경하고 있습니다." : ""}</p>
     </Note>
@@ -482,10 +547,10 @@ function TrendsCard({ centerId }: { centerId: number }) {
   }
 
   return (
-    <Note title="트렌드봇" icon="sparkle" tone="clay" tilt={1.2} badge>
+    <Note title="트렌드봇" icon="sparkle" tone="clay" tilt={1.2}>
       <p>
-        최근 유행하는 놀이 소재를 모아 계획안에 참고 자료로 제공합니다. 사용하지 않을 경우 기능을 끌
-        수 있습니다. 이미 작성된 계획안에는 영향을 주지 않습니다.
+        최근 유행하는 놀이 소재를 모아 계획안에 참고 자료로 제공합니다. 이미 작성된 계획안에는
+        영향을 주지 않습니다.
       </p>
       <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <input
@@ -506,7 +571,7 @@ function TrendsCard({ centerId }: { centerId: number }) {
 }
 
 /**
- * 비밀번호 바꾸기.
+ * 비밀번호 변경.
  *
  * **다른 곳에서 쓰던 비밀번호로 가입한 교사에게 바꿀 자리가 있어야 한다.** 크롬은 자기가
  * 저장해 둔 비밀번호가 다른 주소의 입력 칸에 들어가면 피싱으로 의심하고 구글에 알린다.
@@ -515,7 +580,7 @@ function PasswordCard() {
   const [done, setDone] = useState(false);
   return (
     <Note
-      title="비밀번호 바꾸기"
+      title="비밀번호 변경"
       icon="lock"
       tone="yellow"
       tilt={-1.5}
@@ -529,7 +594,7 @@ function PasswordCard() {
               open();
             }}
           >
-            비밀번호 바꾸기
+            비밀번호 변경
           </button>
         ),
         content: (close) => (
@@ -543,10 +608,7 @@ function PasswordCard() {
         ),
       }}
     >
-      <p>
-        다른 서비스에서 사용하는 비밀번호와 동일하다면 변경하는 것이 좋습니다.
-        <strong> 쌤플에서만 사용하는 비밀번호</strong>를 설정하면 더욱 안전합니다.
-      </p>
+      <p>다른 서비스에서 사용한 적 없는 비밀번호 사용을 권장합니다.</p>
       <p role="status">{done ? "비밀번호를 변경했습니다." : ""}</p>
     </Note>
   );
@@ -594,7 +656,7 @@ function PasswordForm({ onCancel, onChanged }: { onCancel: () => void; onChanged
               취소
             </button>
             <button type="submit" className={`${styles.btn} ${styles.solid}`} disabled={busy}>
-              바꾸기
+              변경
             </button>
           </>
         }

@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from ssuksak import timing
 from ssuksak.adapters.in_memory_plan_repository import InMemoryPlanRepository
 from ssuksak.adapters.request_aware_weekly_llm import RequestAwareWeeklyLlm
 from ssuksak.adapters.weekly_composition import (
@@ -208,6 +209,7 @@ def _generation_error(error: MonthlyApplicationError):
 
 
 @router.post("", response_model=WeeklyPlanOut, status_code=status.HTTP_201_CREATED)
+@timing.timed("weekly", logging.getLogger("app.server.timing").info)
 def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: CurrentUser):
     """한 주치를 만들어 DRAFT 로 저장한다. 실패하면 아무것도 남지 않는다."""
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
@@ -282,6 +284,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
         raise _generation_error(error) from error
 
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
+    timing.phase("save")
     _lock_parent(session, parent_id, "월간계획안을 먼저 만들어 확정해주세요.")
     if _existing(session, center_id, class_id, week) is not None:
         raise _ALREADY_EXISTS

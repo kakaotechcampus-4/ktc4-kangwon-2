@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from .. import timing
 from ..planning.domain.errors import InvalidDomainValueError
 from ..planning.evidence.artifact import EXPECTED_NORMATIVE_STATUS, EXPECTED_STORE_ID
 from ..planning.evidence.safety_classification import (
@@ -115,7 +116,7 @@ class JsonSafetyEvidenceClassificationRepository:
     def get_classification(self) -> SafetyEvidenceClassification:
         if self._cached is None:
             try:
-                payload = json.loads(self._path.read_text(encoding="utf-8"))
+                payload = timing.read_json(self._path)
             except (FileNotFoundError, json.JSONDecodeError) as exc:
                 raise SafetyEvidenceClassificationError(f"Cannot read safety classification: {self._path}") from exc
             self._cached = load_safety_classification_from_dict(payload)

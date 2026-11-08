@@ -7,7 +7,14 @@
  * 저장하지 못한 글은 되돌리지 않고 남겨 다시 저장하게 한다 — 그동안 확정 · 반 · 월 이동은 멈춘다.
  */
 
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+  type TdHTMLAttributes,
+} from "react";
 import { ApiError } from "@/lib/api/client";
 import {
   confirmMonthlyPlan,
@@ -28,12 +35,16 @@ import PlayCellEditor from "@/components/plan-generator/PlayCellEditor";
 import workspace from "./Workspace.module.css";
 import PlayMonthlyDrillPanel from "@/components/plan-generator/PlayMonthlyDrillPanel";
 import PlayMonthlySafetyPanel, {
+  DRILL_DRAG,
   DROP,
   dropTo,
 } from "@/components/plan-generator/PlayMonthlySafetyPanel";
+import DraftSave from "@/components/plan-ui/DraftSave";
 import PlayMonthlyConfirm, {
   BLANK_LEAD,
   BlankRows,
+  CONFIRM_TITLE,
+  PickCellHint,
 } from "@/components/plan-generator/PlayMonthlyConfirm";
 import AnnualFrame, {
   BACK_BUTTON,
@@ -195,8 +206,6 @@ export default function MonthlyPlanEditor({
   const tableCell = confirmed
     ? undefined
     : tableCells(plan.teacher_tables).find((c) => c.cell.item_id === selected);
-  // 안전교육 미배치 안내는 후보를 두는 방식일 때만 뜻이 있다.
-  const notices = candidateMode ? plan.notices : [];
 
   const accept = (next: MonthlyPlan) => {
     latest.current = next;
@@ -463,7 +472,7 @@ export default function MonthlyPlanEditor({
 
   const editTab = (
     <div className="flex flex-col gap-4">
-      {!where && <p className="m-0 text-sm text-[#5c5243]">문서에서 고칠 칸을 눌러 주세요.</p>}
+      {!where && <PickCellHint>문서에서 고칠 칸을 눌러 주세요.</PickCellHint>}
       {where && (
         <div className="flex items-end justify-between gap-3">
           <h2 className="m-0 text-[20px] font-bold leading-tight">{where}</h2>
@@ -555,18 +564,15 @@ export default function MonthlyPlanEditor({
         candidates={plan.drill_candidates}
         current={shown(drillCell)}
         onCopy={copyDrill}
+        onClear={() => saveCell(drillCell.item_id, "")}
         disabled={locked}
       />
     ) : (
-      <p className="m-0 text-sm text-[#5c5243]">
-        {candidateMode && drillId
-          ? "안전교육이나 소방대피/재난대비 칸을 누르면 넣을 후보가 보여요."
-          : candidateMode
-            ? "안전교육 칸을 누르면 넣을 후보가 보여요."
-            : drillId
-              ? "소방대피/재난대비 칸을 누르면 넣을 후보가 보여요."
-              : "이 양식에는 넣을 후보가 없어요. 「칸 편집」에서 고쳐 주세요."}
-      </p>
+      <PickCellHint>
+        {candidateMode || drillId
+          ? "칸을 누르면 후보가 보여요."
+          : "이 양식에는 넣을 후보가 없어요. 「칸 편집」에서 고쳐 주세요."}
+      </PickCellHint>
     );
   const aside = (
     <>
@@ -575,7 +581,7 @@ export default function MonthlyPlanEditor({
         <div
           role="tablist"
           aria-label="고치는 방법"
-          className="flex gap-5 border-b border-[#efeae2] px-6 pt-2"
+          className="flex gap-1 border-b border-line px-6 pt-3"
         >
           {(["ai", "edit"] as const).map((key) => (
             <button
@@ -620,12 +626,18 @@ export default function MonthlyPlanEditor({
         </th>
         {section.repeat_by !== "WEEK" ? (
           // 소방대피/재난대비는 양식 순서상 이 표에 온다 — 한글 양식처럼 세로 가운데(목표 글은 왼쪽).
-          <td
+          // 훈련 칸은 「AI 후보」 훈련 카드를 끌어 놓아도 넣는다(놀이 월간과 같다).
+          <DrillTd
             colSpan={span}
             className={`${LINE} ${section.section_key === "goals" ? GOALS : "align-middle"}`}
+            onDrill={
+              section.section_key === "drill" && drillId && !confirmed && !locked
+                ? copyDrill
+                : undefined
+            }
           >
             {one(section, at)}
-          </td>
+          </DrillTd>
         ) : (
           weeks.map((w) => {
             if (safetyRow) {
@@ -681,10 +693,6 @@ export default function MonthlyPlanEditor({
       {BACK_ICON}
     </button>
   );
-  const askConfirm =
-    (notices.length ? `확인할 것 ${notices.length}개가 남았어요.\n` : "") +
-    "확정하면 고칠 수 없어요. 고치려면 문서 보관함에서 「수정하기」를 눌러요.\n" +
-    "이 내용으로 주간계획안을 만들게 돼요.";
 
   const docOf = (at: Pick, scale?: number) => (
     <Paper
@@ -773,15 +781,14 @@ export default function MonthlyPlanEditor({
   if (confirmed)
     return (
       <PlanDone
-        title={`${plan.month}월 월간계획안을 확정했어요`}
+        title={`${plan.month}월 월간계획안`}
         docLabel="확정된 월간계획안"
         format="MONTHLY_THEME"
         pages={[docOf(still)]}
         download={(format) => downloadMonthlyHwpx(plan.id, format)}
         next={{
           href: "/plans/weekly",
-          label: "주간계획안 만들기 →",
-          hint: `${plan.month}월 1주부터 이 월간을 바탕으로 만들어요`,
+          label: "주간계획안 만들기",
         }}
         notes={
           <>
@@ -832,6 +839,7 @@ export default function MonthlyPlanEditor({
       }
       actions={
         <>
+          <DraftSave disabled={locked} save={flush} />
           <div className="relative">
             <button
               type="button"
@@ -844,8 +852,7 @@ export default function MonthlyPlanEditor({
             {asking === "confirm" && (
               <div className="absolute right-0 top-full z-20 mt-2 w-[380px]">
                 <PlayMonthlyConfirm
-                  title="월간계획안을 확정할까요?"
-                  message={askConfirm}
+                  title={CONFIRM_TITLE}
                   yes="확정하기"
                   no="더 다듬기"
                   disabled={locked}
@@ -882,6 +889,21 @@ export default function MonthlyPlanEditor({
     >
       <div ref={docBox}>{docOf(editing, sheetZoom.percent / 100)}</div>
     </AnnualFrame>
+  );
+}
+
+/** 「AI 후보」 훈련 카드를 끌어 놓으면 넣는 칸(놀이 월간과 같다). `onDrill` 이 없으면(훈련 칸 아님 · 확정 · 저장 중) 보통 칸. */
+function DrillTd({
+  onDrill,
+  className,
+  ...rest
+}: { onDrill?: (candidateItemId: string) => void } & TdHTMLAttributes<HTMLTableCellElement>) {
+  return (
+    <td
+      {...rest}
+      className={onDrill ? `${className} transition-colors ${DROP}` : className}
+      {...(onDrill && dropTo(onDrill, DRILL_DRAG))}
+    />
   );
 }
 

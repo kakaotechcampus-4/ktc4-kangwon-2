@@ -6,6 +6,7 @@ p0-planning 의 테스트가 본다. 이 파일은 「계약대로 내려주나 
 """
 
 import json
+import logging
 from dataclasses import dataclass
 
 import pytest
@@ -312,6 +313,33 @@ def test_생성이_실패하면_부분_결과가_남지_않는다(db_session, mi
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "GENERATION_FAILED"
     assert client.get("/api/plans/annual").json()["items"] == []
+
+
+def test_생성_요청마다_시간_요약이_한_줄_남는다(db_session, mine, monkeypatch):
+    """실패(409)도 남는다. 숫자와 구간 이름만이다(CLAUDE.md §21)."""
+    timing_log = logging.getLogger("app.server.timing")
+    # conftest 가 같은 프로세스에서 alembic 을 돌려 기존 로거를 꺼 둔다(fileConfig).
+    # 운영은 마이그레이션이 따로 돈다.
+    monkeypatch.setattr(timing_log, "disabled", False)
+    lines = []
+    handler = logging.Handler()
+    handler.emit = lambda record: lines.append(record.getMessage())
+    timing_log.addHandler(handler)
+    try:
+        _create(mine)
+        client.post(
+            "/api/plans/annual",
+            json={"format": "MONTHLY_THEME", "class_id": mine.id, "form_id": None},
+        )
+    finally:
+        timing_log.removeHandler(handler)
+
+    lines = [line for line in lines if line.startswith("plan_timing")]
+    assert len(lines) == 2
+    assert "kind=annual_theme outcome=ok" in lines[0]
+    assert all(f" {name}_ms=" in lines[0] for name in ("db_read", "select", "assemble", "save"))
+    assert "outcome=http_409" in lines[1]
+    assert "햇살반" not in "".join(lines)
 
 
 def test_같은_반에_연간을_두_번_만들지_못한다(db_session, mine):
