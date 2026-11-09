@@ -280,21 +280,11 @@ class WeeklyPlan:
     # requests generation could not apply (shown to the teacher, never blocking).
     teacher_memo: str = ""
     memo_notices: tuple[MemoNotice, ...] = ()
-    # 2026-11-10 하민: the inputs candidate retrieval got at generation, kept so the sampled
-    # evidence replays without server logs. None / () = fixed cut, no earlier weeks.
-    candidate_sample_seed: int | None = None
-    prior_week_evidence: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan_id, PlanId):
             raise InvalidDomainValueError("WeeklyPlan.plan_id must be PlanId")
         require_memo_fields("WeeklyPlan", self.teacher_memo, self.memo_notices)
-        if self.candidate_sample_seed is not None and (
-            type(self.candidate_sample_seed) is not int or self.candidate_sample_seed < 0
-        ):
-            raise InvalidDomainValueError("WeeklyPlan.candidate_sample_seed must be a non-negative int")
-        if type(self.prior_week_evidence) is not tuple or not all(type(r) is str for r in self.prior_week_evidence):
-            raise InvalidDomainValueError("WeeklyPlan.prior_week_evidence must be a tuple of evidence ids")
         if type(self.school_year) is not int or not 1 <= self.school_year <= 9998:
             raise InvalidDomainValueError("WeeklyPlan.school_year must be 1 through 9998")
         if not isinstance(self.week_id, WeekId):

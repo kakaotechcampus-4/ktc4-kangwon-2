@@ -218,15 +218,6 @@ def test_앞_주차가_후보에_쓴_근거는_다음_주가_뒤로_미룬다(wo
     assert seen[0] == () and seen[2] == ()  # 앞 주차가 없거나 뒤 주차만 있다
     assert second and set(seen[1]) == second
     assert len(third & second) < len(second)
-    # 11-10 하민: 후보 검색에 준 seed · 앞 주차 근거가 본문에 남는다 — 로그 없이 재현한다.
-    stored = (
-        world["session"]
-        .scalars(select(Plan).where(Plan.kind == "weekly", Plan.week_id == "2026-09-W3"))
-        .one()
-    )
-    plan = from_jsonable(WeeklyPlan, stored.body)
-    assert plan.prior_week_evidence == seen[1]
-    assert type(plan.candidate_sample_seed) is int and plan.candidate_sample_seed >= 0
 
 
 @pytest.mark.parametrize("saturday", [False, True])

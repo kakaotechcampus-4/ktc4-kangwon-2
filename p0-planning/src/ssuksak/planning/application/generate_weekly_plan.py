@@ -443,8 +443,6 @@ class GenerateWeeklyPlan:
             indoor_play_selection=command.indoor_play_candidates,
             teacher_memo=command.teacher_memo,
             memo_notices=outcome.memo_skipped if outcome is not None else (),
-            candidate_sample_seed=command.candidate_sample_seed,
-            prior_week_evidence=command.prior_week_evidence,
         )
         try:
             plan = replace(plan, verification_report=verify_weekly_plan(plan, catalog, parent))
