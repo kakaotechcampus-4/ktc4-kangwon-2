@@ -1,12 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import type { AutoIndicator, DirectorCheck, DocumentMark } from "@/lib/api/evaluation";
 import {
   DIRECTOR_ITEMS,
   TEACHER_DOCS,
-  gapText,
   scanNames,
   sourceLines,
   stampSources,
@@ -33,22 +40,6 @@ function shortDate(value: string) {
   return `${m}월 ${d}일(${WEEKDAY[new Date(y, m - 1, d).getDay()]})`;
 }
 
-/** 접힌 칸 앞의 꺾쇠. 열렸는지 닫혔는지 글자만으로는 몰랐다. */
-export function FoldMark() {
-  return (
-    <svg className={styles.foldMark} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path
-        d="M9 5.5 16.5 12 9 18.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 /** 서류 한 줄에서 쌤플이 아는 쪽. 쌤플이 만들지 않는 서류는 `null` 이다. */
 interface Made {
   /** 「확정 24건」처럼 한 줄로 읽히는 숫자 */
@@ -56,7 +47,10 @@ interface Made {
   done: boolean;
   /** 기준은 못 채웠지만 확정한 문서가 있다 — 근거 줄을 점선(모자람)으로 보인다 */
   some: boolean;
-  /** 채울 서류 카드에 「무엇이 모자라요」로 적는 말. 기준을 채웠으면 없다 */
+  /**
+   * 근거 줄 숫자로는 뜻이 안 읽힐 때만 카드에 적는 말(반 · 아이를 아직 등록하지 않음).
+   * 「확정 0건 · 0/2반」을 말로 다시 풀어 쓴 문장은 같은 내용이 두 번 보여 뺐다(11-09).
+   */
   need?: string;
   /** 지금 손댈 수 있는 길. 없으면 단추를 두지 않는다. */
   go?: { href: string; label: string };
@@ -85,13 +79,7 @@ function madeInSsample(docId: string, autos: AutoIndicator[]): Made | null {
       text: `확정 ${count}건 · ${classes.met}/${classes.total}반`,
       done,
       some: count > 0,
-      need: done
-        ? undefined
-        : !classes.total
-          ? "올해 등록한 반이 없어요"
-          : !count
-            ? `검토 기간에 확정한 ${journal ? "보육일지가" : "월간계획안이"} 없어요`
-            : `${classes.total - classes.met}개 반의 ${journal ? "평일 일지가 비어요" : "월간계획안이 없어요"}`,
+      need: classes.total ? undefined : "올해 등록한 반이 없어요",
       go: journal
         ? { href: "/routines", label: "보육일지 쓰기" }
         : { href: "/plans/monthly", label: "월간계획안 만들기" },
@@ -104,14 +92,11 @@ function madeInSsample(docId: string, autos: AutoIndicator[]): Made | null {
     const children = item.children ?? { met: 0, total: 0 };
     const done = children.total > 0 && children.met === children.total;
     return {
-      text: `${children.total}명 중 ${children.met}명`,
+      // 「채움」까지 써야 숫자만으로 읽힌다 — 4-2 카드도 같은 말을 쓴다.
+      text: `${children.total}명 중 ${children.met}명 채움`,
       done,
       some: item.document_ids.length > 0,
-      need: done
-        ? undefined
-        : children.total
-          ? `${children.total - children.met}명이 아직 ${item.required ?? 2}번을 못 채웠어요`
-          : "반에 등록한 아이가 없어요",
+      need: children.total ? undefined : "반에 등록한 아이가 없어요",
       go: { href: "/documents?kind=assessment", label: "영유아 평가 쓰기" },
       importKind: "assessment",
     };
@@ -299,9 +284,11 @@ function StampSlot({
           />
         )}
       </span>
-      <p className={styles.slotName}>
+      <p className={styles.slotName} title={doc.title}>
         {/* 평가항목 번호(4-1 등)는 도장판에서 뺐다(11-08). 아래 표에는 남아 있다. */}
-        {doc.title}
+        {/* 괄호 속 종류는 이름을 두 줄로 밀어 칸 높이가 어긋났다(11-09). 종류는 아래 서류 카드에 나온다. */}
+        {nameOf(doc)}
+        {kindsOf(doc) && <span className="sr-only"> ({kindsOf(doc)})</span>}
         {/* 도장 그림은 화면 읽기에서 뺐다. 근거를 글로 읽어 준다. */}
         <span className="sr-only">
           {" "}
@@ -444,235 +431,343 @@ function foundLabel(result: DocResult | undefined) {
 }
 
 /**
- * 채울 서류 카드 — 도장판의 빈 칸 하나. 무엇이 모자라는지와 지금 할 일을 크게 둔다(시안 ⑤).
- * 펼친 내용(찾은 파일 · 예전 서류 올리기)은 카드 안에 둔다. 이 화면에 있는 동안 도장이 찍히면 카드는 그 자리에서
- * 도장만 바뀐다 — `EvaluationSheet` 참고.
+ * 쪽지를 카드 밑에 놓는다. 쪽지는 맨 위 층(popover)에 올라 있어 가로 칸이 어디인지 모른다 — 단추 자리를 재서 정한다.
+ * 폭 · 왼쪽 끝은 그 카드에 맞추고(양옆 8px 넓게), 아래가 모자라면 단추 위에 놓는다. 좌우는 화면 안으로 민다.
+ * 박스 좌표는 화면 배율(--app-zoom)이 곱해져 나오고 CSS 값에는 안 곱해진다 — 배율로 나눠 맞춘다.
  */
-function TodoCard({ row, onImported }: { row: SheetRow; onImported: () => void }) {
-  const { doc, made, result, folder } = row;
-  const [open, setOpen] = useState<"found" | "import" | null>(null);
-  const id = `eval-doc-${doc.id}`;
-  const toggle = (panel: "found" | "import") => setOpen(open === panel ? null : panel);
-  const more = useRef<HTMLDivElement | null>(null);
-  const foundButton = useRef<HTMLButtonElement | null>(null);
-  const closeNote = () => {
-    setOpen(null);
-    foundButton.current?.focus();
-  };
+function placeNote(note: HTMLElement, anchor: HTMLElement) {
+  const zoom = Number.parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+  const card = (anchor.closest("article") ?? anchor).getBoundingClientRect();
+  const rect = anchor.getBoundingClientRect();
+  const edge = 8;
+  note.style.width = `${card.width / zoom + 2 * edge}px`;
+  const left = Math.min(
+    card.left / zoom - edge,
+    window.innerWidth / zoom - note.offsetWidth - edge,
+  );
+  const under = rect.bottom / zoom + 6;
+  const top =
+    under + note.offsetHeight + edge <= window.innerHeight / zoom
+      ? under
+      : Math.max(edge, rect.top / zoom - 6 - note.offsetHeight);
+  note.style.left = `${Math.max(edge, left)}px`;
+  note.style.top = `${top}px`;
+}
 
-  // 떠 있는 쪽지는 바깥을 누르거나 Esc 로 닫는다.
+/**
+ * 예전 서류 올리기 판 — 작은 모달. 네이티브 `<dialog>` 라서 포커스를 가두고 Esc 로 닫는다(RegionSheet 와 같다).
+ * 닫힌 뒤 포커스는 부모가 눌렀던 단추로 돌린다. 올린 결과는 판 안에 그대로 남아 닫을 때까지 보인다.
+ */
+function ImportDialog({
+  kind,
+  onImported,
+  onClose,
+}: {
+  kind: "dailyLog" | "assessment";
+  onImported: () => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+
   useEffect(() => {
-    if (open !== "found") return;
+    const dialog = ref.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }, []);
+
+  return (
+    <dialog
+      ref={ref}
+      className={styles.importDialog}
+      aria-labelledby={titleId}
+      onClose={onClose}
+      onClick={(e) => e.target === ref.current && ref.current.close()}
+    >
+      <div className={styles.importHead}>
+        <h2 id={titleId}>{IMPORT_LABEL[kind]}</h2>
+        <button
+          type="button"
+          className={styles.noteClose}
+          aria-label="닫기"
+          onClick={() => ref.current?.close()}
+        >
+          ×
+        </button>
+      </div>
+      <div className={styles.importBody}>
+        <EvidenceImport kind={kind} onImported={onImported} />
+      </div>
+    </dialog>
+  );
+}
+
+/**
+ * 서류 한 장 — 가로 칸의 카드 하나. 같은 틀에 세 모양이다.
+ * - `todo` 도장판의 빈 칸 — 점선. 무엇이 모자라는지와 지금 할 일(쓰기 · 예전 서류 올리기)을 둔다.
+ * - `done` 찍힌 서류 — 실선 · 흰 바탕. 있는 근거만 짧게.
+ * - `opt`  해당 반만 내는 서류 — 옅게.
+ *
+ * 펼치는 것은 카드 키를 바꾸지 않는다(사용자 결정 11-09 — 카드 안에서 펴면 같은 줄 카드가 다 같이 늘어났다).
+ * 찾은 파일 · 이름 규칙 · 자세히는 단추 옆에 뜨는 쪽지로, 예전 서류 올리기는 작은 모달로 띄운다.
+ * 둘 다 맨 위 층에 올라 가로 칸(`overflow`)에 잘리지 않는다.
+ */
+function DocCard({
+  row,
+  kind,
+  onImported,
+}: {
+  row: SheetRow;
+  kind: "todo" | "done" | "opt";
+  onImported: () => void;
+}) {
+  const { doc, made, result, folder } = row;
+  const [open, setOpen] = useState<"note" | "import" | null>(null);
+  const id = `eval-doc-${doc.id}`;
+  const note = useRef<HTMLDivElement>(null);
+  const noteButton = useRef<HTMLButtonElement>(null);
+  const importButton = useRef<HTMLButtonElement>(null);
+  const todo = kind === "todo";
+
+  // 쪽지는 열 때 맨 위 층에 올리고 단추 밑에 놓는다. 바깥을 누르거나 Esc · 스크롤 · 창 크기가 바뀌면 닫는다.
+  useLayoutEffect(() => {
+    const el = note.current;
+    const anchor = noteButton.current;
+    if (!el || !anchor) return;
+    if (open !== "note") {
+      if (el.matches(":popover-open")) el.hidePopover();
+      return;
+    }
+    el.showPopover();
+    placeNote(el, anchor);
     const away = (e: PointerEvent) => {
-      if (!more.current?.contains(e.target as Node)) setOpen(null);
+      if (!el.contains(e.target as Node) && !anchor.contains(e.target as Node)) setOpen(null);
     };
     const esc = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       setOpen(null);
-      foundButton.current?.focus();
+      anchor.focus();
     };
+    // 가로 칸이 밀리면 단추만 움직이고 쪽지는 제자리에 남는다. 쪽지 안 스크롤은 닫지 않는다.
+    const drift = (e: Event) => {
+      if (!el.contains(e.target as Node)) setOpen(null);
+    };
+    const close = () => setOpen(null);
     document.addEventListener("pointerdown", away);
     document.addEventListener("keydown", esc);
+    window.addEventListener("scroll", drift, true);
+    window.addEventListener("resize", close);
     return () => {
       document.removeEventListener("pointerdown", away);
       document.removeEventListener("keydown", esc);
+      window.removeEventListener("scroll", drift, true);
+      window.removeEventListener("resize", close);
     };
   }, [open]);
 
-  const need = [
-    made ? made.need : "쌤플이 만들지 않는 서류예요 · 위 도장판 동그라미를 눌러 찍어요",
-    folder?.status === "partial" ? `컴퓨터 파일은 ${gapText(doc, folder.gaps)}` : undefined,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  // 컴퓨터 파일이 일부 빠진 날짜는 내컴퓨터 근거 줄에 같은 글자로 있어 여기 다시 적지 않는다(11-09).
+  const need = made ? made.need : "쌤플이 만들지 않는 서류예요 · 위 도장판 동그라미를 눌러 찍어요";
+  const closeNote = () => {
+    setOpen(null);
+    noteButton.current?.focus();
+  };
+
   return (
-    <article className={styles.todoCard} aria-label={doc.title}>
+    <article className={styles.docCard} data-kind={kind} aria-label={doc.title}>
       {/* 이름은 한 줄로 둔다 — 두 줄이 되면 앞의 동그라미가 옆 카드와 높이가 달라졌다(11-09).
           괄호 안 갈래(「월간 · 주간 · 일일」)는 본문 글씨로 작게 붙인다. 그래도 넘치면 말줄임, 전체 이름은 title 에. */}
-      <h3 className={styles.todoTitle}>
-        <Mini state={row.done ? "done" : "empty"} />
+      <h3 className={styles.docTitle}>
+        <Mini state={row.done ? "done" : doc.optional ? "opt" : "empty"} />
         <span className={styles.todoName} title={doc.title}>
           {nameOf(doc)}
           {kindsOf(doc) && <small className={styles.todoKinds}>{kindsOf(doc)}</small>}
           <span className={styles.docIndicator}>{indicatorOf(doc)}</span>
         </span>
       </h3>
-      <p className={styles.docBasis}>{basisOf(doc)}</p>
-      {!row.done && need && <p className={styles.need}>{need}</p>}
-      <Sources row={row} />
-      {made?.go && (
-        <div className={styles.todoActs}>
-          <Link href={made.go.href} className={ws.primary}>
-            {made.go.label}
-          </Link>
-          {made.importKind && (
+      <div className={styles.docMeta}>
+        <p className={styles.docBasis}>{basisOf(doc)}</p>
+        <button
+          ref={noteButton}
+          type="button"
+          className={styles.linkButton}
+          aria-expanded={open === "note"}
+          aria-controls={`${id}-note`}
+          onClick={() => setOpen(open === "note" ? null : "note")}
+        >
+          {todo ? foundLabel(result) : "자세히"} ▾
+        </button>
+        <div
+          id={`${id}-note`}
+          ref={note}
+          popover="manual"
+          role="group"
+          aria-label={`${nameOf(doc)} 자세히`}
+          className={styles.foundNote}
+        >
+          <button type="button" className={styles.noteClose} aria-label="닫기" onClick={closeNote}>
+            ×
+          </button>
+          <FoundDetail doc={doc} result={result} folder={folder} />
+          {!todo && made?.importKind && (
             <button
               type="button"
               className={ws.secondary}
-              aria-expanded={open === "import"}
-              aria-controls={`${id}-import`}
-              onClick={() => toggle("import")}
+              aria-haspopup="dialog"
+              onClick={() => setOpen("import")}
             >
               {IMPORT_LABEL[made.importKind]}
             </button>
           )}
         </div>
-      )}
-      {/* 「이름 규칙」은 늘 단추 줄 밑에 둔다 — 단추가 하나뿐인 계획안에서만 옆에 붙어 위로 올라가 보였다(11-09).
-          펼친 내용은 카드 밖에 떠 있는 쪽지로 보인다. 카드 안에서 펴면 같은 줄 카드가 다 같이 늘어났다(사용자 결정 11-09). */}
-      <div className={styles.todoMore} ref={more}>
-        <button
-          ref={foundButton}
-          type="button"
-          className={styles.linkButton}
-          aria-expanded={open === "found"}
-          aria-controls={`${id}-found`}
-          onClick={() => toggle("found")}
-        >
-          {foundLabel(result)} ▾
-        </button>
-        <div id={`${id}-found`} className={styles.foundNote} hidden={open !== "found"}>
-          <button type="button" className={styles.noteClose} aria-label="닫기" onClick={closeNote}>
-            ×
-          </button>
-          <FoundDetail doc={doc} result={result} folder={folder} />
-        </div>
       </div>
-      {made?.importKind && (
-        <div id={`${id}-import`} className={styles.panel} hidden={open !== "import"}>
-          <EvidenceImport kind={made.importKind} onImported={onImported} />
-        </div>
-      )}
-    </article>
-  );
-}
-
-/** 찍힌 서류 한 줄 — 있는 근거만 짧게. 「자세히」를 누르면 그 밑에 찾은 파일 · 예전 서류 올리기를 편다. */
-function DoneRow({ row, onImported }: { row: SheetRow; onImported: () => void }) {
-  const { doc, made, result, folder, done } = row;
-  const [open, setOpen] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const id = `eval-doc-${doc.id}`;
-  const opt = doc.optional && !done;
-  return (
-    <li className={styles.doneRow} data-opt={opt || undefined}>
-      <Mini state={done ? "done" : doc.optional ? "opt" : "empty"} />
-      <div>
-        <p className={styles.doneName}>
-          {doc.title}
-          <span className={styles.docIndicator}>{indicatorOf(doc)}</span>
-        </p>
-        <p className={styles.docBasis}>{basisOf(doc)}</p>
-      </div>
-      {opt ? (
+      {todo && !row.done && need && <p className={styles.need}>{need}</p>}
+      {kind === "opt" ? (
         <p className={styles.optNote}>
           해당하면 따로 챙겨 주세요
           {folder && ` · 내 컴퓨터에서 ${folder.status === "found" ? "찾음" : "못 찾음"}`}
         </p>
       ) : (
-        <Sources row={row} inline />
+        <Sources row={row} inline={!todo} />
       )}
-      <span className={styles.acts}>
-        {made?.go && (
-          <Link href={made.go.href} className={styles.linkButton}>
-            {made.go.label}
-          </Link>
-        )}
-        <button
-          type="button"
-          className={styles.linkButton}
-          aria-expanded={open}
-          aria-controls={`${id}-more`}
-          onClick={() => setOpen(!open)}
-        >
-          자세히 ▾
-        </button>
-      </span>
-      <div id={`${id}-more`} className={styles.donePanel} hidden={!open}>
-        <FoundDetail doc={doc} result={result} folder={folder} />
-        {made?.importKind && (
-          <>
-            <button
-              type="button"
-              className={styles.linkButton}
-              aria-expanded={importing}
-              aria-controls={`${id}-import`}
-              onClick={() => setImporting(!importing)}
-            >
-              {IMPORT_LABEL[made.importKind]} ▾
-            </button>
-            <div id={`${id}-import`} hidden={!importing}>
-              <EvidenceImport kind={made.importKind} onImported={onImported} />
-            </div>
-          </>
-        )}
-      </div>
-    </li>
+      {made?.go && (
+        <div className={styles.docActs}>
+          {todo ? (
+            <>
+              <Link href={made.go.href} className={ws.primary}>
+                {made.go.label}
+              </Link>
+              {made.importKind && (
+                <button
+                  ref={importButton}
+                  type="button"
+                  className={ws.secondary}
+                  aria-haspopup="dialog"
+                  onClick={() => setOpen("import")}
+                >
+                  {IMPORT_LABEL[made.importKind]}
+                </button>
+              )}
+            </>
+          ) : (
+            <Link href={made.go.href} className={styles.linkButton}>
+              {made.go.label}
+            </Link>
+          )}
+        </div>
+      )}
+      {open === "import" && made?.importKind && (
+        <ImportDialog
+          kind={made.importKind}
+          onImported={onImported}
+          onClose={() => {
+            setOpen(null);
+            (todo ? importButton : noteButton).current?.focus();
+          }}
+        />
+      )}
+    </article>
   );
 }
 
 /**
- * 도장판 아래 — 시안 ⑤ 「빈 칸 먼저」(2026-11-08).
- * 채울 서류(도장판의 빈 칸)는 카드로 크게, 찍힌 서류와 해당 반만 내는 서류는 한 줄씩.
+ * 도장판 아래 — 서류 6장이 한 줄로 서는 가로 칸(2026-11-09). 시안 ⑤ 「빈 칸 먼저」를 가로로 옮겼다.
+ * 빈 서류 카드 → 찍힌 서류 카드 → 해당 반만 내는 서류 카드 순이고, ‹ › 나 Tab 으로 옆으로 넘긴다.
  * 근거는 도장 안 낱말(쌤플확정 · 내컴퓨터 · 직접확인)로 줄마다 따로 적는다 — 쌤플 숫자와 폴더 결과는 세는 법이 달라
  * 칸 하나에 합쳐 쓰지 않는다(ADR-019 · ADR-045).
  *
  * 어느 쪽에 둘지는 **처음 열 때 한 번만** 정한다. 도장을 찍거나 폴더를 다시 고르거나 예전 서류를 올릴 때마다
  * 카드가 자리를 옮기면 읽던 곳을 잃고, 펼쳐 둔 올리기 폼 · 「등록했어요」 안내가 새로 그려져 사라진다.
  * 그동안 바뀐 것은 그 자리의 도장 · 근거 줄로 보이고, 다시 열면 새로 나눈다.
+ * `children` 은 가로 칸 바로 아래 한 줄 — 「내용이 기준을 채웠는지는…」 안내를 받는다.
  */
 export default function EvaluationSheet({
   rows,
   onImported,
+  children,
 }: {
   rows: SheetRow[];
   /** 예전 서류를 올리면 숫자를 다시 받는다. */
   onImported: () => void;
+  children?: ReactNode;
 }) {
   const [todoIds] = useState(() =>
     rows.filter((row) => !row.done && !row.doc.optional).map((row) => row.doc.id),
   );
-  const todo = rows.filter((row) => todoIds.includes(row.doc.id));
   const rest = rows.filter((row) => !todoIds.includes(row.doc.id));
-  // 해당 반만 내는 서류는 맨 아래
-  const listed = [
-    ...rest.filter((row) => !row.doc.optional),
-    ...rest.filter((row) => row.doc.optional),
+  const cards = [
+    ...rows
+      .filter((row) => todoIds.includes(row.doc.id))
+      .map((row) => ({ row, kind: "todo" as const })),
+    // 해당 반만 내는 서류는 맨 끝
+    ...rest.filter((row) => !row.doc.optional).map((row) => ({ row, kind: "done" as const })),
+    ...rest
+      .filter((row) => row.doc.optional)
+      .map((row) => ({ row, kind: row.done ? ("done" as const) : ("opt" as const) })),
   ];
-  // 제목 숫자는 그 묶음 안에서 센다 — 이번에 연 동안 찍힌 카드는 위 묶음에 남아 있으니 거기서 빠진다.
-  const left = todo.filter((row) => !row.done).length;
-  const stamped = listed.filter((row) => row.done).length;
+
+  const rail = useRef<HTMLDivElement>(null);
+  // 끝에 닿은 쪽 단추를 끄고, 끝에서는 오른쪽 흐림도 걷는다. 소수점 오차를 1px 로 받는다.
+  const [edge, setEdge] = useState({ start: true, end: false });
+  useEffect(() => {
+    const el = rail.current;
+    if (!el) return;
+    const measure = () =>
+      setEdge({
+        start: el.scrollLeft < 1,
+        end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 1,
+      });
+    el.addEventListener("scroll", measure, { passive: true });
+    // 처음 한 번과 창 폭이 바뀔 때 — 카드가 다 보이는 폭이면 두 단추 모두 꺼진다.
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener("scroll", measure);
+      observer.disconnect();
+    };
+  }, []);
+
+  /** 카드 한 장 폭 + 간격 = 첫 두 카드 왼쪽 끝의 차이. 화면 배율(zoom)이 있어도 스크롤 값과 같은 단위다. */
+  function slide(direction: 1 | -1) {
+    const el = rail.current;
+    const [first, second] = Array.from(el?.children ?? []) as HTMLElement[];
+    if (!el || !second) return;
+    el.scrollBy({
+      left: direction * (second.offsetLeft - first.offsetLeft),
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+  }
 
   return (
     <section className={styles.sheet} aria-label="서류마다 자세히" data-tour="eval-sheet">
-      {todo.length > 0 && (
-        <>
-          <h2 className={styles.secTitle}>
-            {left ? (
-              <>
-                채울 서류 <em>{left}가지</em>
-                <span>도장판의 빈 칸이에요</span>
-              </>
-            ) : (
-              "채울 서류를 다 찍었어요"
-            )}
-          </h2>
-          <div className={styles.todo}>
-            {todo.map((row) => (
-              <TodoCard key={row.doc.id} row={row} onImported={onImported} />
-            ))}
-          </div>
-        </>
-      )}
-      <h2 className={styles.secTitle}>
-        도장 찍힌 서류 {stamped}가지
-        <span>해당 반만 내는 서류도 여기</span>
-      </h2>
-      <ul className={styles.doneList}>
-        {listed.map((row) => (
-          <DoneRow key={row.doc.id} row={row} onImported={onImported} />
+      <div className={styles.sheetHead}>
+        <h2 className={styles.secTitle}>
+          서류 {rows.length}가지
+          <span>빈 칸 먼저 · 옆으로 넘겨요</span>
+        </h2>
+        <div className={styles.sheetArrows}>
+          <button
+            type="button"
+            aria-label="이전 서류 카드"
+            disabled={edge.start}
+            onClick={() => slide(-1)}
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            aria-label="다음 서류 카드"
+            disabled={edge.end}
+            onClick={() => slide(1)}
+          >
+            ›
+          </button>
+        </div>
+      </div>
+      <div className={styles.rail} ref={rail} data-end={edge.end || undefined}>
+        {cards.map(({ row, kind }) => (
+          <DocCard key={row.doc.id} row={row} kind={kind} onImported={onImported} />
         ))}
-      </ul>
+      </div>
+      {children}
     </section>
   );
 }
@@ -698,6 +793,118 @@ function ScanStat({ at, total, folders }: { at: Date; total?: number; folders: F
   );
 }
 
+/** 폴더 고르기 창이 돌려주는 항목 — 쓰는 칸만 적었다. File System Access 타입이 TS 의 dom 라이브러리에 다 들어 있지 않다. */
+type FolderEntry = {
+  kind: "file" | "directory";
+  name: string;
+  values?: () => AsyncIterable<FolderEntry>;
+};
+type FolderWindow = { showDirectoryPicker?: (options: { mode: "read" }) => Promise<FolderEntry> };
+
+/**
+ * 크롬 계열(크롬 · 엣지 · 웨일)에만 있는 폴더 고르기(File System Access). 이쪽은 브라우저가 「모든 파일을 업로드하시겠습니까?」 대신
+ * 폴더를 봐도 되는지 묻는다 — 실제로 하는 일(이름만 읽기)에 더 가깝다(시안 ③, 11-09). 사파리 · 파이어폭스는 webkitdirectory.
+ */
+const canViewFolder = () => typeof (window as FolderWindow).showDirectoryPicker === "function";
+
+/** 하위 폴더까지 파일 이름만 모은다 — webkitdirectory 가 주는 범위와 같다. 파일 내용은 열지 않는다. */
+async function namesIn(dir: FolderEntry, names: string[] = []): Promise<string[]> {
+  for await (const entry of dir.values?.() ?? []) {
+    if (entry.kind === "file") names.push(entry.name);
+    else await namesIn(entry, names);
+  }
+  return names;
+}
+
+/**
+ * 폴더를 처음 고를 때만 뜨는 안내(시안 ②, 11-09). 바로 다음에 뜨는 브라우저 확인 창은 바꿀 수 없어서,
+ * 그 창이 무엇을 묻고 무엇을 누르면 되는지 미리 말한다. 크롬이 「취소」를 칠해 둬서 놀라 누르기 쉬웠다.
+ */
+function FolderGuide({
+  view,
+  onGo,
+  onClose,
+}: {
+  view: boolean;
+  onGo: () => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }, []);
+
+  return (
+    <dialog
+      ref={ref}
+      className={styles.importDialog}
+      aria-labelledby={titleId}
+      onClose={onClose}
+      onClick={(e) => e.target === ref.current && ref.current.close()}
+    >
+      <div className={`${styles.importHead} ${styles.guideHead}`}>
+        <Posty pose="point" size={44} label={null} />
+        <h2 id={titleId}>폴더를 고르기 전에</h2>
+        <button
+          type="button"
+          className={styles.noteClose}
+          aria-label="닫기"
+          onClick={() => ref.current?.close()}
+        >
+          ×
+        </button>
+      </div>
+      <div className={styles.importBody}>
+        <ol className={styles.guideSteps}>
+          <li>
+            <span>
+              다음 창에서 서류를 모아 둔 <strong>폴더</strong>를 골라요.
+            </span>
+          </li>
+          <li>
+            {view ? (
+              <span>
+                브라우저가 쌤플이 이 폴더의 파일을 <strong>봐도 되는지</strong> 물어요. 허락해
+                주세요.
+              </span>
+            ) : (
+              <span>
+                브라우저가 「모든 파일을 업로드하시겠습니까?」 하고 물으면 <strong>업로드</strong>를
+                눌러 주세요.
+              </span>
+            )}
+          </li>
+          <li>
+            <span>
+              쌤플은 파일 <strong>이름만</strong> 읽어요. 파일은 이 컴퓨터 밖으로 나가지 않고, 찾은{" "}
+              <strong>개수</strong>만 저장해요.
+            </span>
+          </li>
+        </ol>
+        <div className={styles.guideActions}>
+          <button type="button" className={ws.secondary} onClick={() => ref.current?.close()}>
+            취소
+          </button>
+          <button
+            type="button"
+            className={ws.primary}
+            onClick={() => {
+              // 고르기 창은 누른 그 순간에만 열린다(사용자 동작). 그래서 안내 창을 닫기 전에 먼저 연다.
+              onGo();
+              ref.current?.close();
+            }}
+          >
+            폴더 고르러 가기
+          </button>
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
 /** 내 컴퓨터 폴더 — 고르면 파일 이름만 읽어 서류가 있는지 찾는다. 노란 쪽지(시안 ③). */
 export function FolderCard({
   scan,
@@ -719,30 +926,63 @@ export function FolderCard({
         ? { at: new Date(saved[0].scanned_at), folders: saved }
         : null;
 
-  function pick(e: ChangeEvent<HTMLInputElement>) {
-    const names = Array.from(e.target.files ?? [], (file) => file.name);
+  const [guide, setGuide] = useState<"view" | "upload" | null>(null);
+  const [reading, setReading] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  function found(names: string[]) {
     onScan(scanNames(names, today()));
     setAt(new Date());
+  }
+
+  function pick(e: ChangeEvent<HTMLInputElement>) {
+    found(Array.from(e.target.files ?? [], (file) => file.name));
     // 같은 폴더를 다시 골라도 change 가 일어나게 비운다. File 객체는 들고 있지 않는다.
     e.target.value = "";
   }
+
+  function open() {
+    setFailed(false);
+    if (!canViewFolder()) {
+      input.current?.click();
+      return;
+    }
+    (window as FolderWindow).showDirectoryPicker!({ mode: "read" })
+      .then((dir) => {
+        setReading(true);
+        return namesIn(dir);
+      })
+      // 고르기 창을 닫거나 크롬 확인 창에서 「취소」를 누르면 AbortError 다 — 아무 말도 하지 않는다.
+      .then(found, (err: unknown) => setFailed((err as Error)?.name !== "AbortError"))
+      .finally(() => setReading(false));
+  }
+
+  // 처음 고를 때만 안내 창을 거친다. 한 번 고른 뒤(서버에 결과가 있으면)는 바로 연다.
+  const start = () => (stat ? open() : setGuide(canViewFolder() ? "view" : "upload"));
 
   return (
     <section className={styles.folderNote} aria-label="내 컴퓨터 폴더" data-tour="eval-folder">
       <span aria-hidden="true" className={`${ws.tape} ${styles.noteTape}`} />
       <h2 className={styles.folderTitle}>내 컴퓨터 폴더</h2>
-      {/* 설명은 한 문장만 둔다(11-08). 「업로드할까요?」 창 안내(멘토 11-05)도 뺐다. */}
+      {/* 설명은 한 문장만 둔다(11-08). 「업로드할까요?」 창 안내(멘토 11-05)는 처음 고를 때 뜨는 안내 창으로 옮겼다(11-09). */}
       <p className={styles.folderLead}>
         폴더를 고르면 파일 <strong>이름만</strong> 읽어요.
       </p>
       <button
         type="button"
         className={stat ? ws.secondary : ws.primary}
-        onClick={() => input.current?.click()}
+        disabled={reading}
+        onClick={start}
       >
-        {stat ? "폴더 다시 고르기" : "폴더 고르기"}
+        {reading ? "폴더를 읽는 중…" : stat ? "폴더 다시 고르기" : "폴더 고르기"}
       </button>
       {stat && <ScanStat {...stat} />}
+      {failed && (
+        <p role="alert" className={styles.folderLead}>
+          폴더를 읽지 못했어요. 다른 폴더를 골라 주세요.
+        </p>
+      )}
+      {guide && <FolderGuide view={guide === "view"} onGo={open} onClose={() => setGuide(null)} />}
       {/* webkitdirectory 는 React 타입에 없어 직접 단다. 아이폰 사파리는 폴더 선택을 못 한다. */}
       <input
         type="file"
@@ -758,43 +998,41 @@ export function FolderCard({
   );
 }
 
+const directorOn = (checks: DirectorCheck[], item: string) =>
+  checks.some((c) => c.item === item && c.checked);
+export const directorDone = (checks: DirectorCheck[]) =>
+  DIRECTOR_ITEMS.filter((item) => directorOn(checks, item.id)).length;
+
 /**
- * 원장님이 챙기는 서류. 선생님 폴더에는 보통 없어 찾지 않고 체크만 받는다. 처음부터 펴 둔다(시안 ⑤).
+ * 원장님이 챙기는 서류 체크 목록(서랍 안, 시안 ④). 선생님 폴더에는 보통 없어 찾지 않고 체크만 받는다.
  * 체크는 원 단위다 — 같은 원 선생님이 같이 본다(ADR-074 결정 4).
  */
-export function DirectorFold({
+export function DirectorList({
   checks,
   onToggle,
 }: {
   checks: DirectorCheck[];
   onToggle: (item: string, on: boolean) => void;
 }) {
-  const on = (item: string) => checks.some((c) => c.item === item && c.checked);
-  const done = DIRECTOR_ITEMS.filter((item) => on(item.id)).length;
+  // 안내는 바탕에, 체크는 흰 카드에 — 다른 두 서랍(4-1 · 4-2 카드, 영역 카드)과 같은 틀(11-09).
   return (
-    <details className={styles.fold} aria-label="원장님이 챙기는 서류" open>
-      <summary>
-        <FoldMark />
-        원장님이 챙기는 서류 · {done} / {DIRECTOR_ITEMS.length}
-      </summary>
-      <div className={styles.directorBody}>
-        <p className={ws.hint}>같은 원 선생님 모두 같은 체크를 봐요.</p>
-        {DIRECTOR_ITEMS.map((item) => {
-          return (
-            <label key={item.id} className={styles.directorItem}>
-              <input
-                type="checkbox"
-                checked={on(item.id)}
-                onChange={(e) => onToggle(item.id, e.target.checked)}
-              />
-              <span>
-                {item.title}
-                <small>{item.basis}</small>
-              </span>
-            </label>
-          );
-        })}
+    <div className={styles.director}>
+      <p className={ws.hint}>같은 원 선생님 모두 같은 체크를 봐요.</p>
+      <div className={styles.directorCard}>
+        {DIRECTOR_ITEMS.map((item) => (
+          <label key={item.id} className={styles.directorItem}>
+            <input
+              type="checkbox"
+              checked={directorOn(checks, item.id)}
+              onChange={(e) => onToggle(item.id, e.target.checked)}
+            />
+            <span>
+              {item.title}
+              <small>{item.basis}</small>
+            </span>
+          </label>
+        ))}
       </div>
-    </details>
+    </div>
   );
 }
