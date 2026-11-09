@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
+from itertools import pairwise
 from typing import Callable, Iterable
 
 from ..domain.errors import InvalidDomainValueError
@@ -162,7 +163,7 @@ def _lyric_like(segment: str) -> bool:
     if sum(1 for count in grams.values() if count >= 2) >= LYRIC_REPEATED_GRAMS:
         return True
     words = re.findall(r"\w{2,}", segment)
-    return any(a == b for a, b in zip(words, words[1:]))  # 「나비야 나비야」
+    return any(a == b for a, b in pairwise(words))  # 「나비야 나비야」
 
 
 def lyric_hits(texts: dict[str, str]) -> tuple[str, ...]:

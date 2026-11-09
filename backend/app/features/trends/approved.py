@@ -77,9 +77,12 @@ def load() -> ApprovedSources:
 
 
 def is_approved(source: str, origin: str) -> bool:
-    """ADR-016 4단: 지금 승인 목록에 있는 곳에서 왔는가. 목록에서 뺀 출처의 지난 주 자료를 걸러낸다.
+    """ADR-016 4단: 지금 승인 목록에 있는 곳에서 왔는가.
 
-    유튜브는 채널 이름, 기사는 언론사 도메인이 `RawItem.origin` 이다(sources.py). 모르는 소스는 아니다.
+    목록에서 뺀 출처의 지난 주 자료를 걸러낸다.
+
+    유튜브는 채널 이름, 기사는 언론사 도메인이 `RawItem.origin` 이다(sources.py).
+    모르는 소스는 아니다.
     """
     sources = load()
     if source == "youtube":

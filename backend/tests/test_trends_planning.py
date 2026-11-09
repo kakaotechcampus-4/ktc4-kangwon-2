@@ -63,7 +63,10 @@ def test_disabled_missing_or_broken_files_fall_back_without_raising(tmp_path):
 
 
 def test_songs_only_from_song_channels(tmp_path):
-    """ADR-072 결정 12: 노래는 승인 파일에서 채널 종류가 동요인 채널 것만 노래로 넘긴다 — 제목 낱말로 정하지 않는다."""
+    """ADR-072 결정 12: 노래는 승인 파일에서 채널 종류가 동요인 채널 것만 노래로 넘긴다.
+
+    제목 낱말로 정하지 않는다.
+    """
     result = provider(
         tmp_path,
         [
