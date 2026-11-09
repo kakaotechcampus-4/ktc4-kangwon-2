@@ -23,7 +23,7 @@ from app.features.documents.export import TEMPLATE_DIR
 from app.features.documents.models import Document, DocumentSection, DocumentSource
 from app.features.forms import hwp_form
 from app.features.observations.models import Observation
-from app.features.routines.models import RoutineRecord
+from app.features.routines.models import RoutineRecord, RoutineWeather
 from app.main import app
 from app.shared.hwpx import NS, TemplateMismatch, fill_grid
 
@@ -548,6 +548,29 @@ def test_일과가_하나면_원형_줄만_채운다(db_session, mine):
 
     assert table.get("rowCnt") == "4"
     assert rows[1] == ["09:00~10:00", "실내놀이", "", "블록으로 다리를 만들었다."]
+
+
+def test_일일_보육일지_머리_줄에_날짜와_날씨를_넣고_없으면_비운다(db_session, mine):
+    """실물 일일 양식의 머리는 날짜 · 요일 · 날씨다(ADR-078). 표 밖, 제목 바로 아래 문단이다."""
+    klass, _ = mine
+    only = _routine(
+        db_session, klass, position=0, start=None, end=None, name="등원", execution="인사했다."
+    )
+    doc = _daily_log(db_session, klass, [only])
+
+    def head_line() -> str:
+        content = client.get(f"/api/documents/{doc.id}/export/hwp").content
+        section = etree.fromstring(_archive(content).read("Contents/section0.xml"))
+        title, head = section.findall("hp:p", NS)[:2]
+        assert "".join(title.itertext()) == "햇살반 일일 보육일지 (9/22)"
+        return "".join(head.itertext())
+
+    # 지난 날이라 자동 값이 없다 — 「날씨 :」 뒤를 비워 손으로 적게 둔다.
+    assert head_line() == "날짜 : 2026년 9월 22일 (화)      날씨 : "
+
+    db_session.add(RoutineWeather(class_id=klass.id, date=date(2026, 9, 22), sky="비나 눈"))
+    db_session.flush()
+    assert head_line() == "날짜 : 2026년 9월 22일 (화)      날씨 : 비나 눈"
 
 
 def test_줄을_늘린_일일_보육일지도_hwp_로_바꿔_내려준다(db_session, mine, tmp_path):
