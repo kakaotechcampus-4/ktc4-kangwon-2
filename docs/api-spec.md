@@ -3352,7 +3352,7 @@ DAILY_PLAY_2  일상생활 · 놀이활동
 **수정** `PUT /api/observations/{id}` — `date` · `domain` · `context` · `fact` 만 받는다.
 `class_id` · `child_id` 는 바꾸지 못한다. 대상이 바뀌면 다른 기록이다. 삭제 후 재등록한다.
 
-**삭제** `DELETE /api/observations/{id}` → `204`.
+**삭제** `DELETE /api/observations/{id}` → `204`. 영향 건수가 필요하면 아래 `include_impact=true`.
 
 ### 기록을 고치면 그걸 쓴 문서가 무효가 된다
 
@@ -3364,6 +3364,26 @@ DAILY_PLAY_2  일상생활 · 놀이활동
 ```
 
 **이 판정은 문자열 대조다. 모델이 개입하지 않는다.** 3단 게이트의 2단이 이것이다.
+
+### 저장 뒤 재검토 안내 — 선택 응답
+
+일과 기록(§10-1 「저장 뒤 재검토 안내」)과 같은 모양이다. 옵션을 빼면 응답은 지금과 같다.
+
+- `PUT /api/observations/{id}?include_impact=true` → 기록 필드에 `review_impact` 를 더한 `200`.
+- `DELETE /api/observations/{id}?include_impact=true` → `review_impact` 만 담은 `200`. 옵션이 없으면 본문 없는 `204`.
+
+```json
+{ "review_impact": {
+  "affected_document_ids": [7, 12],
+  "newly_stale_document_ids": [12]
+} }
+```
+
+`affected_document_ids` 는 **이 기록을 직접 인용한 확정 문서**(관찰일지 · 영유아 평가) 가운데 이번에
+사본과 달라졌거나(사실 · 날짜 · 영역 · 상황) 원본이 지워진 것이다. `newly_stale_document_ids` 는 그중
+이번 요청으로 `stale=false` 에서 `true` 가 된 문서다. 초안과 연쇄로 따라간 문서는 stale 로 바꾸되
+세지 않는다. 화면은 신규 수를 「N건이 다시 검토 대상」으로, 나머지를 「이미 재검토 대상」으로 띄우고
+그 일지로 가는 링크를 단다.
 
 | | |
 |---|---|

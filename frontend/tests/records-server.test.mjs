@@ -259,9 +259,30 @@ test("수정은 서버 id 로 네 칸만 보낸다", async () => {
     restore();
   }
 
-  assert.equal(calls[0].url, "/api/observations/12");
+  assert.equal(calls[0].url, "/api/observations/12?include_impact=true");
   assert.equal(calls[0].method, "PUT");
   assert.deepEqual(Object.keys(calls[0].body).sort(), ["context", "date", "domain", "fact"]);
+});
+
+test("수정 · 삭제는 「다시 검토」 영향을 같이 받아 온다 (§10)", async () => {
+  browser();
+  const impact = { affected_document_ids: [7, 9], newly_stale_document_ids: [7] };
+  const { calls, restore } = serve((n) =>
+    n === 1 ? json({ ...DTO, review_impact: impact }) : json({ review_impact: impact }),
+  );
+  let edited, removed;
+  try {
+    edited = await records.editRecord("observation:12", INPUT);
+    removed = await records.removeRecord("observation:12");
+  } finally {
+    restore();
+  }
+
+  assert.equal(edited.record.id, "observation:12");
+  assert.deepEqual(edited.impact, { affected: [7, 9], newlyStale: [7] });
+  assert.deepEqual(removed, { affected: [7, 9], newlyStale: [7] });
+  assert.equal(calls[1].url, "/api/observations/12?include_impact=true");
+  assert.equal(calls[1].method, "DELETE");
 });
 
 test("수정은 반·아동을 보내지 않는다", async () => {
@@ -304,13 +325,17 @@ test("삭제는 204 를 본문 없이 처리한다", async () => {
   const writes = browser();
   const { calls, restore } = serve(() => new Response(null, { status: 204 }));
   try {
-    assert.equal(await records.removeRecord("observation:12"), undefined);
+    // 옛 서버(204)면 영향이 없는 것으로 읽는다.
+    assert.deepEqual(await records.removeRecord("observation:12"), {
+      affected: [],
+      newlyStale: [],
+    });
   } finally {
     restore();
   }
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, "/api/observations/12");
+  assert.equal(calls[0].url, "/api/observations/12?include_impact=true");
   assert.equal(calls[0].method, "DELETE");
   assert.deepEqual(writes, []);
 });

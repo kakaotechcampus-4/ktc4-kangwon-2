@@ -5,6 +5,7 @@ import {
   updateObservation,
   deleteObservation,
   observationServerId,
+  type ApiReviewImpact,
   type ServerObservation,
 } from "./observations";
 import { classServerId, childServerId } from "./onboarding";
@@ -47,18 +48,34 @@ export async function addRecord(
   );
 }
 
+/**
+ * 고치거나 지워서 「다시 검토」가 된 확정 문서의 **서버 id** (§10 「저장 뒤 재검토 안내」).
+ * `newlyStale` 은 이번에 처음 stale 이 된 것, `affected` 는 이미 stale 이던 것까지.
+ */
+export interface ReviewImpact {
+  affected: number[];
+  newlyStale: number[];
+}
+
+const impactOf = (raw?: ApiReviewImpact): ReviewImpact => ({
+  affected: raw?.affected_document_ids ?? [],
+  newlyStale: raw?.newly_stale_document_ids ?? [],
+});
+
 /** 반·아동은 바꾸지 못한다 — 대상이 바뀌면 다른 기록이다 (§10). */
 export async function editRecord(
   localId: string,
   record: ObservationUpdate,
-): Promise<ServerObservation> {
+): Promise<{ record: ServerObservation; impact: ReviewImpact }> {
   const id = observationServerId(localId);
   if (id === null) throw new Error(UNMAPPED);
-  return toLocalObservation(await updateObservation(id, record));
+  const saved = await updateObservation(id, record, { impact: true });
+  return { record: toLocalObservation(saved), impact: impactOf(saved.review_impact) };
 }
 
-export async function removeRecord(localId: string): Promise<void> {
+export async function removeRecord(localId: string): Promise<ReviewImpact> {
   const id = observationServerId(localId);
   if (id === null) throw new Error(UNMAPPED);
-  await deleteObservation(id);
+  const done = await deleteObservation(id, { impact: true });
+  return impactOf(done ? done.review_impact : undefined);
 }

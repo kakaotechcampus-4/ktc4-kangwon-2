@@ -350,3 +350,74 @@ def test_지우면_원본_없음이라_stale(db_session, chain):
     assert client.delete(f"/api/observations/{chain['record']['id']}").status_code == 204
 
     assert _stale(db_session, chain["docs"]) == [True, True, False]
+
+
+# ── 고치거나 지운 뒤 「N건 다시 검토」 안내 (api-spec §10 「저장 뒤 재검토 안내」) ─────────
+
+
+@pytest.fixture
+def journals(db_session, mine):
+    """한 기록을 쓴 관찰일지 셋 — 확정 · 이미 stale 인 확정 · 초안. 그리고 확정본을 쓴 문서 하나."""
+    record = _post(mine["sun"], mine["seojun"]).json()
+    rows = [("observation", record["id"], record["fact"], record["date"])]
+    fresh = _document(db_session, mine["sun"], "observation", rows, mine["seojun"])
+    old = _document(db_session, mine["sun"], "observation", rows, mine["seojun"])
+    draft = _document(db_session, mine["sun"], "observation", rows, mine["seojun"])
+    fresh.status = old.status = "CONFIRMED"
+    old.stale = True
+    chained = _document(
+        db_session,
+        mine["sun"],
+        "assessment",
+        [("document", fresh.id, record["fact"], record["date"])],
+        mine["seojun"],
+    )
+    db_session.flush()
+    return {"record": record, "fresh": fresh, "old": old, "draft": draft, "chained": chained}
+
+
+def test_고치면_직접_쓴_확정_일지만_영향으로_센다(db_session, journals):
+    record = journals["record"]
+    url = f"/api/observations/{record['id']}?include_impact=true"
+
+    response = client.put(url, json=_keep(record, fact="5분 동안 바라보았다."))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["fact"] == "5분 동안 바라보았다."
+    assert body["review_impact"] == {
+        "affected_document_ids": sorted([journals["fresh"].id, journals["old"].id]),
+        "newly_stale_document_ids": [journals["fresh"].id],
+    }
+    # 초안과 연쇄로 따라간 문서도 stale 이 되지만 안내 건수에는 없다(일과 기록과 같은 규칙).
+    assert _stale(db_session, [journals["draft"], journals["chained"]]) == [True, True]
+
+
+def test_사본과_같으면_영향이_비고_옵션이_없으면_예전_응답이다(db_session, journals):
+    record = journals["record"]
+    url = f"/api/observations/{record['id']}"
+
+    same = client.put(url + "?include_impact=true", json=_keep(record))
+    plain = client.put(url, json=_keep(record, fact="바뀐 글"))
+
+    assert same.json()["review_impact"] == {
+        "affected_document_ids": [],
+        "newly_stale_document_ids": [],
+    }
+    assert "review_impact" not in plain.json()
+
+
+def test_지우면_영향만_담은_200_이고_옵션이_없으면_204(db_session, journals, mine):
+    record = journals["record"]
+    other = _post(mine["sun"], mine["seojun"]).json()
+
+    response = client.delete(f"/api/observations/{record['id']}?include_impact=true")
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "review_impact": {
+            "affected_document_ids": sorted([journals["fresh"].id, journals["old"].id]),
+            "newly_stale_document_ids": [journals["fresh"].id],
+        }
+    }
+    assert client.delete(f"/api/observations/{other['id']}").status_code == 204

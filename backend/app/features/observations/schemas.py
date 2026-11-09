@@ -61,3 +61,21 @@ class ObservationResponse(BaseModel):
 
 class ObservationListResponse(BaseModel):
     items: list[ObservationResponse]
+
+
+class ReviewImpact(BaseModel):
+    """이 기록을 직접 인용한 확정 문서 ID. 이미 stale 이던 것과 이번에 stale 이 된 것을 나눈다.
+
+    일과 기록의 `RoutineReviewImpact` 와 같은 모양이다 — 화면이 같은 문구로 센다(§10).
+    """
+
+    affected_document_ids: list[int]
+    newly_stale_document_ids: list[int]
+
+
+class ObservationMutationResponse(ObservationResponse):
+    review_impact: ReviewImpact
+
+
+class ObservationDeleteResponse(BaseModel):
+    review_impact: ReviewImpact

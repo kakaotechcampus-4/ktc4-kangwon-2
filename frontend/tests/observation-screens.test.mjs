@@ -212,7 +212,9 @@ function browser(t, search = "") {
 
 // ── 관찰 기록 (RecordsPage) ────────────────────────────────────────────────
 
-function recordsPage(t) {
+const NO_IMPACT = { affected: [], newlyStale: [] };
+
+function recordsPage(t, api = {}) {
   browser(t);
   const app = host();
   const warned = [];
@@ -223,9 +225,11 @@ function recordsPage(t) {
     "@/lib/api/records": {
       listRecords: async () => [RECORD],
       addRecord: async () => ({}),
-      editRecord: async () => ({}),
-      removeRecord: async () => {},
+      editRecord: async () => ({ record: {}, impact: NO_IMPACT }),
+      removeRecord: async () => NO_IMPACT,
+      ...api,
     },
+    "@/lib/api/documents": { documentLocalId: (id) => `document:${id}` },
     "@/lib/workspace/child-mark": { markFor: () => 0 },
     "./WorkspaceUI": {
       WorkspacePage: "page",
@@ -320,6 +324,39 @@ test("F11 관찰일지로 가는 길이 반을 들고 간다", async (t) => {
   view.open();
   const card = view.links().find((n) => textOf(n) === "이 기록으로 일지 만들기");
   assert.equal(card.props.href, "/records/journal?record=observation%3A1&class=class-a");
+});
+
+test("A5 고친 기록을 쓴 확정 일지가 있으면 「N건 다시 검토」와 그 일지 링크를 띄운다", async (t) => {
+  const impact = { affected: [7], newlyStale: [7] };
+  const view = recordsPage(t, { editRecord: async () => ({ record: {}, impact }) });
+  await view.flush();
+  view.open();
+  await view.press("고치기");
+  view.type(view.fact(), "개미를 5분 동안 보았다.");
+  await view
+    .nodes()
+    .find((n) => n.type === "form")
+    .props.onSubmit({ preventDefault() {} });
+  await view.flush();
+
+  assert.match(view.text(), /이 기록을 쓴 일지 1건이 다시 검토 대상이 되었어요/);
+  const link = view.links().find((n) => textOf(n).includes("일지 보기"));
+  assert.equal(link.props.href, "/documents?id=document%3A7");
+});
+
+test("A5 지워서 여러 일지가 다시 검토 대상이 되면 보관함으로 잇는다", async (t) => {
+  const impact = { affected: [7, 8], newlyStale: [7] };
+  const view = recordsPage(t, { removeRecord: async () => impact });
+  globalThis.window.confirm = () => true;
+  await view.flush();
+  view.open();
+  await view.press("지우기");
+  await view.flush();
+
+  assert.match(view.text(), /이 기록을 쓴 일지 1건이 다시 검토 대상이 되었어요/);
+  assert.match(view.text(), /이미 재검토 대상인 일지 1건도/);
+  const link = view.links().find((n) => textOf(n).includes("문서 보관함"));
+  assert.equal(link.props.href, "/documents");
 });
 
 // ── 관찰일지 만들기 (ObservationJournalPage) ──────────────────────────────

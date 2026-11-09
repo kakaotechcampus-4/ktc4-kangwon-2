@@ -5,7 +5,14 @@ import { today, validDate } from "@/lib/workspace/model";
 import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
 import { DOMAIN_LOOK } from "@/lib/workspace/domain-look";
 import { isUnauthenticated, invalidFields } from "@/lib/api/client";
-import { listRecords, addRecord, editRecord, removeRecord } from "@/lib/api/records";
+import {
+  listRecords,
+  addRecord,
+  editRecord,
+  removeRecord,
+  type ReviewImpact,
+} from "@/lib/api/records";
+import { documentLocalId } from "@/lib/api/documents";
 import type { ServerObservation } from "@/lib/api/observations";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { useUnsavedWarning } from "@/lib/hooks/use-unsaved-warning";
@@ -104,6 +111,8 @@ export default function RecordsPage() {
   const [ask, setAsk] = useState<ServerObservation | "leave" | null>(null);
   const askDialog = useRef<HTMLDialogElement>(null);
   const [message, setMessage] = useState("");
+  /** 방금 고치거나 지운 기록을 쓴 확정 일지 — 「N건 다시 검토」 안내 (§10). */
+  const [review, setReview] = useState<ReviewImpact | null>(null);
   const [invalid, setInvalid] = useState<string[]>([]);
   const [classError, setClassError] = useState("");
   const classes = useClasses(setClassError);
@@ -257,9 +266,10 @@ export default function RecordsPage() {
     const body = { date, domain, context: context.trim(), fact: fact.trim() };
     setPending(true);
     setMessage("");
+    setReview(null);
     try {
       // 실패하면 입력값을 그대로 둔다 — 다시 적게 하지 않는다.
-      if (editId) await editRecord(editId, body);
+      if (editId) setReview((await editRecord(editId, body)).impact);
       else await addRecord({ ...body, classId, childId });
       await reload();
       setFact("");
@@ -281,8 +291,9 @@ export default function RecordsPage() {
     if (!window.confirm("이 관찰 기록을 지울까요? 되돌릴 수 없어요.")) return;
     setPending(true);
     setMessage("");
+    setReview(null);
     try {
-      await removeRecord(record.id);
+      setReview(await removeRecord(record.id));
       if (editId === record.id) cancelEdit();
       await reload();
       setMessage("기록을 지웠어요.");
@@ -325,6 +336,7 @@ export default function RecordsPage() {
           자리인데 하는 말이 없었고, 거기 달린 단추는 다른 화면으로 나가는 길이었다.
           보러 온 교사 눈에 제일 먼저 들어오는 것이 「나가기」였다. */}
       <Message>{message}</Message>
+      <ReviewNotice impact={review} />
       {/* 왼쪽에 적고 오른쪽에 쌓인다 — 일과 기록 · 계획안과 같은 짜임이다.
           폼을 화면 너비로 펴면 「본 대로 적기」 한 줄이 1,800px 로 늘어나 읽히지 않았고,
           쌓인 기록은 폼 밑으로 밀려 스크롤해야 보였다. 폼은 따라 내려와 있어
@@ -610,6 +622,32 @@ export default function RecordsPage() {
         </div>
       </dialog>
     </WorkspacePage>
+  );
+}
+
+/**
+ * 고치거나 지운 기록을 쓴 확정 일지 수와 그 일지로 가는 길. 일과 기록 화면과 같은 문구다.
+ * 하나면 그 일지를 바로 열고, 여럿이면 보관함으로 보낸다.
+ */
+function ReviewNotice({ impact }: { impact: ReviewImpact | null }) {
+  if (!impact?.affected.length) return null;
+  const fresh = impact.newlyStale.length;
+  const already = impact.affected.length - fresh;
+  const only = impact.affected.length === 1;
+  return (
+    <Message>
+      {fresh > 0 && `이 기록을 쓴 일지 ${fresh}건이 다시 검토 대상이 되었어요. `}
+      {already > 0 && `이미 재검토 대상인 일지 ${already}건도 이 변경의 영향을 받았어요. `}
+      <Link
+        href={
+          only
+            ? `/documents?id=${encodeURIComponent(documentLocalId(impact.affected[0]))}`
+            : "/documents"
+        }
+      >
+        {only ? "일지 보기 →" : "문서 보관함에서 보기 →"}
+      </Link>
+    </Message>
   );
 }
 

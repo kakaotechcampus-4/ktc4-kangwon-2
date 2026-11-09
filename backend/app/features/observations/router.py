@@ -10,20 +10,24 @@
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.features.auth.models import User
 from app.features.centers.models import Center, Child, Class
-from app.features.documents.stale import observation_changed
+from app.features.documents.stale import SourceImpact, observation_changed
 from app.features.observations.models import AXES, DEFAULT_AXIS, NURI_DOMAINS, Observation
 from app.features.observations.schemas import (
     ObservationCreate,
+    ObservationDeleteResponse,
     ObservationListResponse,
+    ObservationMutationResponse,
     ObservationResponse,
     ObservationUpdate,
+    ReviewImpact,
 )
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import (
@@ -163,24 +167,50 @@ def list_observations(
     return ObservationListResponse(items=[_response(row) for row in session.execute(query)])
 
 
-@router.put("/{observation_id}", response_model=ObservationResponse)
+def _impact(impact: SourceImpact) -> ReviewImpact:
+    return ReviewImpact(
+        affected_document_ids=list(impact.affected_document_ids),
+        newly_stale_document_ids=list(impact.newly_stale_document_ids),
+    )
+
+
+@router.put("/{observation_id}", response_model=ObservationMutationResponse | ObservationResponse)
 def update_observation(
-    observation_id: int, body: ObservationUpdate, session: DbSession, user: CurrentUser
-) -> ObservationResponse:
+    observation_id: int,
+    body: ObservationUpdate,
+    session: DbSession,
+    user: CurrentUser,
+    include_impact: bool = False,
+) -> ObservationResponse | ObservationMutationResponse:
+    """`include_impact=true` 면 `review_impact` 를 더한다 — 화면이 「N건 다시 검토」를 띄운다."""
     observation = _own(session, user, observation_id, lock=True)[0]
     _check_axis(session, user, observation.class_id, body.domain)
     domain_moved = observation.domain != body.domain
     for field, value in body.model_dump().items():
         setattr(observation, field, value)
-    observation_changed(session, observation_id, observation, domain_moved=domain_moved)
+    impact = observation_changed(session, observation_id, observation, domain_moved=domain_moved)
     session.commit()
-    return _response(_own(session, user, observation_id))
+    result = _response(_own(session, user, observation_id))
+    if include_impact:
+        return ObservationMutationResponse(**result.model_dump(), review_impact=_impact(impact))
+    return result
 
 
-@router.delete("/{observation_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_observation(observation_id: int, session: DbSession, user: CurrentUser) -> None:
+@router.delete(
+    "/{observation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+    responses={200: {"model": ObservationDeleteResponse}},
+)
+def delete_observation(
+    observation_id: int, session: DbSession, user: CurrentUser, include_impact: bool = False
+) -> Response:
     observation = _own(session, user, observation_id, lock=True)[0]
     require_own_class(session, user, observation.class_id)
-    observation_changed(session, observation_id, None)
+    impact = observation_changed(session, observation_id, None)
     session.delete(observation)
     session.commit()
+    if include_impact:
+        result = ObservationDeleteResponse(review_impact=_impact(impact))
+        return JSONResponse(result.model_dump(), status_code=status.HTTP_200_OK)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

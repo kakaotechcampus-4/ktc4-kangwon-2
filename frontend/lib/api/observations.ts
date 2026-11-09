@@ -92,7 +92,19 @@ export const createObservation = (data: ObservationInput) => {
   });
 };
 
-export const updateObservation = (id: number, data: ObservationUpdate) => {
+/** 이 기록을 직접 쓴 확정 문서. `include_impact=true` 일 때만 온다 (§10 「저장 뒤 재검토 안내」). */
+export interface ApiReviewImpact {
+  affected_document_ids: number[];
+  newly_stale_document_ids: number[];
+}
+
+const IMPACT = "?include_impact=true";
+
+export const updateObservation = (
+  id: number,
+  data: ObservationUpdate,
+  { impact = false }: { impact?: boolean } = {},
+) => {
   // 런타임의 추가 필드를 제외한다.
   const body: ObservationUpdate = {
     date: data.date,
@@ -100,13 +112,19 @@ export const updateObservation = (id: number, data: ObservationUpdate) => {
     context: data.context,
     fact: data.fact,
   };
-  return apiRequest<ApiObservation>("/api/observations/" + id, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return apiRequest<ApiObservation & { review_impact?: ApiReviewImpact }>(
+    "/api/observations/" + id + (impact ? IMPACT : ""),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
 };
 
-/** 204 No Content — 본문이 없어 `undefined` 를 돌려준다. */
-export const deleteObservation = (id: number) =>
-  apiRequest<void>("/api/observations/" + id, { method: "DELETE" });
+/** 204 No Content — 본문이 없어 `undefined` 를 돌려준다. `impact` 면 영향을 담은 200 이다. */
+export const deleteObservation = (id: number, { impact = false }: { impact?: boolean } = {}) =>
+  apiRequest<{ review_impact: ApiReviewImpact } | void>(
+    "/api/observations/" + id + (impact ? IMPACT : ""),
+    { method: "DELETE" },
+  );

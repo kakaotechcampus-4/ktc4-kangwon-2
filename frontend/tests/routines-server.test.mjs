@@ -1563,6 +1563,7 @@ function recordsPage(
       editRecord: async () => ({}),
       removeRecord: async () => {},
     },
+    "@/lib/api/documents": { documentLocalId: (id) => `document:${id}` },
     "./WorkspaceUI": {
       WorkspacePage: "page",
       Empty: "empty",
