@@ -532,13 +532,18 @@ const REFLECT_MARKS: [ReflectMark, string][] = [
  */
 function ReflectMarkCard({ centerId }: { centerId: number }) {
   const [mark, setMark] = useState<ReflectMark | null>(null);
+  const [canEdit, setCanEdit] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let live = true;
     getCenterSettings(centerId)
-      .then((s) => live && setMark(s.reflect_mark ?? "(반영)"))
+      .then((s) => {
+        if (!live) return;
+        setMark(s.reflect_mark ?? "(반영)");
+        setCanEdit(s.can_edit !== false);
+      })
       .catch(() => live && setError("반영 표기 설정을 불러오지 못했습니다."));
     return () => {
       live = false;
@@ -566,7 +571,7 @@ function ReflectMarkCard({ centerId }: { centerId: number }) {
         표기
         <select
           value={mark ?? "(반영)"}
-          disabled={mark === null || busy}
+          disabled={mark === null || busy || !canEdit}
           onChange={(e) => choose(e.target.value as ReflectMark)}
         >
           {REFLECT_MARKS.map(([value, label]) => (
@@ -576,6 +581,7 @@ function ReflectMarkCard({ centerId }: { centerId: number }) {
           ))}
         </select>
       </label>
+      {!canEdit && <p className={ws.muted}>{CREATOR_ONLY}</p>}
       {error && <Message error>{error}</Message>}
       <p role="status">{busy ? "변경하고 있습니다." : ""}</p>
     </Note>

@@ -358,6 +358,7 @@ def _settings_out(center: Center, user: User) -> CenterSettings:
         trends_enabled=center.trends_enabled,
         weekly_saturday_enabled=center.weekly_saturday_enabled,
         observation_axis=center.observation_axis,
+        reflect_mark=center.reflect_mark,
         can_edit=center.created_by is not None and center.created_by == user.id,
     )
 
