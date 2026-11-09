@@ -10,6 +10,8 @@ import {
   addRecord,
   editRecord,
   removeRecord,
+  suggestRecordDomain,
+  missingInRecord,
   type ReviewImpact,
 } from "@/lib/api/records";
 import { documentLocalId } from "@/lib/api/documents";
@@ -35,6 +37,18 @@ const ENTRY_NONE = { classId: "", childId: "" };
 const CONTEXT_MAX = 50;
 
 export type RecordsStatus = ViewStatus;
+
+/** 적다가 이만큼 멈추면 AI 에게 영역을 묻는다. 치는 동안 매번 부르지 않는다. */
+const SUGGEST_PAUSE_MS = 900;
+/** 이보다 짧은 글로는 묻지 않는다 — 몇 글자로는 영역이 안 보인다. */
+const SUGGEST_MIN = 6;
+
+/** 저장 뒤 빠진 것 쪽지(ADR-082). 서버가 준 순서의 첫 하나만 띄운다. */
+const GAP_TEXT: Record<string, string> = {
+  상황: "어디서 무엇을 하던 중인지 안 보여요. 한 줄 더 쓸까요?",
+  행동: "아이가 한 행동이나 말이 안 보여요. 한 줄 더 쓸까요?",
+  반응: "아이 반응이 안 보여요. 한 줄 더 쓸까요?",
+};
 
 /** 서버가 짚는 칸 이름 → 화면 입력 (docs/api-spec.md §10 의 POST·PUT body). */
 const FIELD_INPUT: Record<string, string> = {
@@ -92,8 +106,14 @@ export default function RecordsPage() {
   // 원이 축을 바꾸기 전에 쓴 기록이면 지금 목록에 없는 이름일 수 있다.
   const domains = useObservationDomains();
   // **고른 영역 하나만 둔다.** 칸에 띄운 값과 보내는 값이 달라지면 안 된다.
+  // 기본값이 없다 — 첫 영역이 눌린 채 저장돼 블록 놀이가 신체 줄에 들어갔다(ADR-082).
   const [picked, setDomain] = useState("");
-  const domain = picked || domains[0];
+  const domain = picked;
+  /** AI 가 제안한 영역. 칩에 점선만 친다 — 고르는 것은 교사다. */
+  const [suggested, setSuggested] = useState<string | null>(null);
+  const asking = useRef(0);
+  /** 방금 저장한 기록에서 빠진 것 하나 — 쪽지 한 줄로 띄운다. */
+  const [gap, setGap] = useState<{ record: ServerObservation; part: string } | null>(null);
   const [context, setContext] = useState("");
   /** 아이 이름 칩을 펼쳤나. 아이를 고르면 접히고, 문장 속 이름을 누르면 다시 펼친다. */
   const [kidsOpen, setKidsOpen] = useState(false);
@@ -145,6 +165,22 @@ export default function RecordsPage() {
     : "/records/journal";
   // 늦게 온 옛 조회가 최신 목록을 덮지 않게 조회마다 번호를 매긴다.
   const latest = useRef(0);
+
+  /*
+    적고 멈추면 AI 에게 영역을 묻는다(ADR-082). 이미 골랐거나 고치는 중이면 묻지 않는다.
+    늦게 온 옛 답은 버린다 — 고친 글과 다른 글에 대한 제안이다.
+  */
+  useEffect(() => {
+    if (picked || editId || !classId || fact.trim().length < SUGGEST_MIN) return;
+    const mine = ++asking.current;
+    const timer = setTimeout(() => {
+      void suggestRecordDomain(classId, fact.trim(), context.trim()).then((found) => {
+        if (mine === asking.current) setSuggested(found);
+      });
+    }, SUGGEST_PAUSE_MS);
+    return () => clearTimeout(timer);
+  }, [fact, context, picked, editId, classId]);
+  const suggestion = !picked && !editId && fact.trim() ? suggested : null;
 
   useEffect(() => {
     const mine = ++latest.current;
@@ -263,18 +299,30 @@ export default function RecordsPage() {
       setMessage("반·아동·관찰 날짜와 실제 관찰 내용을 확인해주세요.");
       return;
     }
+    if (!domain) {
+      setMessage("영역을 골라 주세요.");
+      setInvalid((prev) => [...prev.filter((f) => f !== "domain"), "domain"]);
+      return;
+    }
     const body = { date, domain, context: context.trim(), fact: fact.trim() };
     setPending(true);
     setMessage("");
     setReview(null);
+    setGap(null);
     try {
       // 실패하면 입력값을 그대로 둔다 — 다시 적게 하지 않는다.
-      if (editId) setReview((await editRecord(editId, body)).impact);
-      else await addRecord({ ...body, classId, childId });
+      let saved: ServerObservation;
+      if (editId) {
+        const done = await editRecord(editId, body);
+        saved = done.record;
+        setReview(done.impact);
+      } else saved = await addRecord({ ...body, classId, childId });
+      lookForGap(saved);
       await reload();
       setFact("");
       setContext("");
       setEditId("");
+      setDomain("");
       setInvalid([]);
       // 다른 아이 기록만 보고 있는 채로 새 기록을 저장하면 저장한 것이 목록에 안 보인다.
       // 「저장했어요」만 뜨고 아무것도 안 늘어나면 저장이 안 된 것으로 읽힌다.
@@ -286,6 +334,12 @@ export default function RecordsPage() {
     } finally {
       setPending(false);
     }
+  }
+  /** 저장한 기록에 빠진 것이 있나 AI 에게 묻는다. 기다리지 않는다 — 저장은 이미 끝났다. */
+  function lookForGap(saved: ServerObservation) {
+    void missingInRecord(saved.id).then((parts) => {
+      if (parts[0] && GAP_TEXT[parts[0]]) setGap({ record: saved, part: parts[0] });
+    });
   }
   async function remove(record: ServerObservation) {
     if (!window.confirm("이 관찰 기록을 지울까요? 되돌릴 수 없어요.")) return;
@@ -337,6 +391,14 @@ export default function RecordsPage() {
           보러 온 교사 눈에 제일 먼저 들어오는 것이 「나가기」였다. */}
       <Message>{message}</Message>
       <ReviewNotice impact={review} />
+      {gap && (
+        <p className={ws.recordGap} role="status">
+          {GAP_TEXT[gap.part]}{" "}
+          <button type="button" className={ws.link} onClick={() => startEdit(gap.record)}>
+            이어 쓰기
+          </button>
+        </p>
+      )}
       {/* 왼쪽에 적고 오른쪽에 쌓인다 — 일과 기록 · 계획안과 같은 짜임이다.
           폼을 화면 너비로 펴면 「본 대로 적기」 한 줄이 1,800px 로 늘어나 읽히지 않았고,
           쌓인 기록은 폼 밑으로 밀려 스크롤해야 보였다. 폼은 따라 내려와 있어
@@ -484,27 +546,36 @@ export default function RecordsPage() {
                       aria-labelledby="record-area-label"
                       {...fieldErrorProps("domain", invalid)}
                     >
-                      {(domains.includes(domain) ? domains : [domain, ...domains]).map((d) => (
-                        <button
-                          key={d}
-                          type="button"
-                          className={ws.recordArea}
-                          data-tone={DOMAIN_LOOK[d]?.tone}
-                          data-plain={!DOMAIN_LOOK[d] || undefined}
-                          aria-pressed={d === domain}
-                          onClick={() => {
-                            setDomain(d);
-                            clearInvalid("domain");
-                          }}
-                        >
-                          {DOMAIN_LOOK[d] && (
-                            <Icon name={DOMAIN_LOOK[d].icon} width={17} height={17} />
-                          )}
-                          <span>{d}</span>
-                        </button>
-                      ))}
+                      {(!domain || domains.includes(domain) ? domains : [domain, ...domains]).map(
+                        (d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            className={ws.recordArea}
+                            data-tone={DOMAIN_LOOK[d]?.tone}
+                            data-plain={!DOMAIN_LOOK[d] || undefined}
+                            data-suggested={d === suggestion || undefined}
+                            aria-describedby={d === suggestion ? "record-area-hint" : undefined}
+                            aria-pressed={d === domain}
+                            onClick={() => {
+                              setDomain(d);
+                              clearInvalid("domain");
+                            }}
+                          >
+                            {DOMAIN_LOOK[d] && (
+                              <Icon name={DOMAIN_LOOK[d].icon} width={17} height={17} />
+                            )}
+                            <span>{d}</span>
+                          </button>
+                        ),
+                      )}
                     </div>
                   </div>
+                  {suggestion && (
+                    <small id="record-area-hint" className={ws.recordAreaHint}>
+                      점선은 AI 제안이에요. 맞으면 눌러 주세요.
+                    </small>
+                  )}
                   <FieldError name="domain" invalid={invalid} />
                   <div className={ws.recordSubmit}>
                     {editId && (

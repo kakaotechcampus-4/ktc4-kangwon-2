@@ -227,6 +227,8 @@ function recordsPage(t, api = {}) {
       addRecord: async () => ({}),
       editRecord: async () => ({ record: {}, impact: NO_IMPACT }),
       removeRecord: async () => NO_IMPACT,
+      suggestRecordDomain: async () => null,
+      missingInRecord: async () => [],
       ...api,
     },
     "@/lib/api/documents": { documentLocalId: (id) => `document:${id}` },
@@ -357,6 +359,91 @@ test("A5 지워서 여러 일지가 다시 검토 대상이 되면 보관함으�
   assert.match(view.text(), /이미 재검토 대상인 일지 1건도/);
   const link = view.links().find((n) => textOf(n).includes("문서 보관함"));
   assert.equal(link.props.href, "/documents");
+});
+
+/** 적고 멈추기를 기다리지 않는다 — 타이머를 바로 돌린다. */
+function instantTimers(t) {
+  const { setTimeout: later, clearTimeout: cancel } = globalThis;
+  globalThis.setTimeout = (fn) => (fn(), 0);
+  globalThis.clearTimeout = () => {};
+  t.after(() => {
+    globalThis.setTimeout = later;
+    globalThis.clearTimeout = cancel;
+  });
+}
+const submitForm = async (view) => {
+  await view
+    .nodes()
+    .find((n) => n.type === "form")
+    .props.onSubmit({ preventDefault() {} });
+  await view.flush();
+};
+
+test("A2 영역은 아무것도 안 눌린 채 시작하고, 안 고르면 저장하지 않는다", async (t) => {
+  const saved = [];
+  const view = recordsPage(t, { addRecord: async (body) => (saved.push(body), { id: "o:1" }) });
+  await view.flush();
+  assert.equal(view.pickedDomain(), undefined);
+
+  await view.press("김하늘");
+  view.type(view.fact(), "블록 세 개를 쌓았다.");
+  await submitForm(view);
+  assert.equal(saved.length, 0);
+  assert.match(view.text(), /영역을 골라/);
+
+  await view.press("사회관계");
+  await submitForm(view);
+  assert.equal(saved[0].domain, "사회관계");
+});
+
+test("A2 사실을 적고 멈추면 AI 가 영역 하나를 점선으로 제안만 하고, 눌러야 들어간다", async (t) => {
+  instantTimers(t);
+  const asked = [];
+  const view = recordsPage(t, {
+    suggestRecordDomain: async (...args) => (asked.push(args), "사회관계"),
+  });
+  await view.flush();
+  view.type(view.fact(), "친구에게 같이 만들자고 말했다.");
+  await view.flush();
+
+  assert.deepEqual(asked.at(-1), ["class-a", "친구에게 같이 만들자고 말했다.", ""]);
+  const chip = view.button("사회관계");
+  assert.equal(chip.props["data-suggested"], true);
+  assert.equal(chip.props["aria-pressed"], false);
+  assert.equal(view.pickedDomain(), undefined);
+
+  await view.press("사회관계");
+  assert.equal(textOf(view.pickedDomain()), "사회관계");
+});
+
+test("A2 제안이 없으면 점선도 없다", async (t) => {
+  instantTimers(t);
+  const view = recordsPage(t);
+  await view.flush();
+  view.type(view.fact(), "비 오는 소리를 듣고 톡톡 하고 따라 말했다.");
+  await view.flush();
+  assert.equal(
+    view.nodes().some((n) => n.props["data-suggested"]),
+    false,
+  );
+});
+
+test("A4 저장한 뒤 빠진 것이 있으면 쪽지 한 줄만 띄우고 막지 않는다", async (t) => {
+  const asked = [];
+  const view = recordsPage(t, {
+    addRecord: async () => ({ ...RECORD, id: "observation:5" }),
+    missingInRecord: async (id) => (asked.push(id), ["반응", "상황"]),
+  });
+  await view.flush();
+  await view.press("김하늘");
+  await view.press("사회관계");
+  view.type(view.fact(), "블록 세 개를 쌓았다.");
+  await submitForm(view);
+
+  assert.deepEqual(asked, ["observation:5"]);
+  assert.match(view.text(), /관찰 기록을 저장했어요/);
+  assert.match(view.text(), /아이 반응이 안 보여요/);
+  assert.doesNotMatch(view.text(), /어디서/);
 });
 
 // ── 관찰일지 만들기 (ObservationJournalPage) ──────────────────────────────

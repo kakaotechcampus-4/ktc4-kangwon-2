@@ -4,6 +4,8 @@ import {
   createObservation,
   updateObservation,
   deleteObservation,
+  suggestDomain,
+  checkMissing,
   observationServerId,
   type ApiReviewImpact,
   type ServerObservation,
@@ -78,4 +80,32 @@ export async function removeRecord(localId: string): Promise<ReviewImpact> {
   if (id === null) throw new Error(UNMAPPED);
   const done = await deleteObservation(id, { impact: true });
   return impactOf(done ? done.review_impact : undefined);
+}
+
+/**
+ * 적던 사실로 AI 가 제안하는 영역. 없거나 실패하면 `null` — 덤이라 화면을 멈추지 않는다 (ADR-082).
+ */
+export async function suggestRecordDomain(
+  classId: string,
+  fact: string,
+  context: string,
+): Promise<string | null> {
+  const class_id = classServerId(classId);
+  if (class_id === null) return null;
+  try {
+    return (await suggestDomain({ class_id, fact, context })).domain;
+  } catch {
+    return null;
+  }
+}
+
+/** 저장한 기록에서 빠진 것. 실패하면 빈 목록 — 쪽지를 안 띄울 뿐이다 (ADR-082). */
+export async function missingInRecord(localId: string): Promise<string[]> {
+  const id = observationServerId(localId);
+  if (id === null) return [];
+  try {
+    return (await checkMissing(id)).missing;
+  } catch {
+    return [];
+  }
 }

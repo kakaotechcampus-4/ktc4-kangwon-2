@@ -128,3 +128,18 @@ export const deleteObservation = (id: number, { impact = false }: { impact?: boo
     "/api/observations/" + id + (impact ? IMPACT : ""),
     { method: "DELETE" },
   );
+
+/** 영역 추천 (ADR-082). `domain` 은 제안일 뿐이다 — 화면은 교사가 눌러야 고른다. */
+export const suggestDomain = (data: { class_id: number; fact: string; context: string }) =>
+  apiRequest<{ domain: string | null; confidence: number | null }>(
+    "/api/observations/domain-suggest",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ class_id: data.class_id, fact: data.fact, context: data.context }),
+    },
+  );
+
+/** 저장한 기록에서 빠진 것 — 「상황」 「행동」 「반응」 중 (ADR-082). */
+export const checkMissing = (id: number) =>
+  apiRequest<{ missing: string[] }>(`/api/observations/${id}/missing`, { method: "POST" });

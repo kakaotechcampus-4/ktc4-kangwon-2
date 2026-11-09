@@ -2184,6 +2184,36 @@ button.recordBlank:disabled {
 .recordArea[aria-pressed="true"][data-tone="nature"] {
   background: var(--pg-sage-tint);
 }
+/* AI 가 놓아 둔 제안 — 보라 점선(「이 활동 했어요」와 같은 뜻). 이름을 펴 두고, 눌러야 고른 것이다. */
+.recordArea[data-suggested] {
+  gap: 5px;
+  padding: 0 13px 0 11px;
+  border: 1.5px dashed var(--pg-primary);
+  background: var(--pg-primary-tint);
+}
+.recordArea[data-suggested] span {
+  max-width: 9em;
+  opacity: 1;
+}
+.recordAreaHint {
+  font-size: 12.5px;
+  color: var(--pg-primary-ink);
+}
+/* 저장 뒤 빠진 것 쪽지 — 잠깐 붙여 둔 노란 쪽지 한 줄(ADR-082). */
+.recordGap {
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--pg-note-soft-line);
+  background: var(--pg-note-soft);
+  box-shadow: var(--pg-shadow-card);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pg-ink);
+  rotate: -1deg;
+}
 .recordSubmit {
   display: flex;
   justify-content: flex-end;
