@@ -289,11 +289,14 @@ def _daily_log(
 def _daily_head(session: Session, doc: Document) -> str:
     """제목 아래 머리 줄 — `날짜 : 2026년 9월 22일 (화)      날씨 : 맑음` (ADR-089).
 
-    날씨는 교사가 고른 값, 없으면 자동 값이다. 둘 다 없으면 「날씨 :」 뒤를 비워 손으로 적게 둔다.
+    날씨는 확정 때 박은 값이다(교사가 고른 값, 없으면 자동 값).
+    없으면 「날씨 :」 뒤를 비워 손으로 적게 둔다.
     미세먼지는 싣지 않는다 — 실물 양식에 칸이 없다.
     """
     day = doc.start_date
-    sky = day_weather(session, doc.class_id, day).sky or ""
+    # 확정 때 박은 값이 먼저다. 그 칸이 생기기 전에 확정한 옛 문서(NULL)만 지금 값을 읽는다.
+    sky = doc.weather if doc.weather is not None else day_weather(session, doc.class_id, day).sky
+    sky = sky or ""
     return (
         f"날짜 : {day.year}년 {day.month}월 {day.day}일 ({WEEKDAYS[day.weekday()]})"
         f"{' ' * 6}날씨 : {sky}"

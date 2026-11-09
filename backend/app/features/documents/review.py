@@ -27,6 +27,7 @@ from app.features.documents.schemas import (
 from app.features.documents.stale import document_changed
 from app.features.observations.models import Observation
 from app.features.routines.models import RoutineRecord
+from app.features.routines.weather import stamp_confirmed_weather
 from app.shared.auth.ownership import require_own_class
 from app.shared.gates.sections import check_sections, input_extras, join_facts
 
@@ -425,6 +426,7 @@ def reconfirm(session: Session, user: User, document_id: int, body: DocumentReco
     doc.stale = False
     doc.status = "CONFIRMED"
     doc.updated_at = datetime.now(UTC)
+    stamp_confirmed_weather(session, doc)
     document_changed(session, doc.id)
     # **끝난 뒤** 근거 모습을 다시 잰다. 재시도는 그때의 값과 비교하므로, 근거를 빼거나
     # 바꾼 재확정이면 변경 전 해시로는 영영 어긋난다. 재시도가 재는 것과 같은 길로 잰다.

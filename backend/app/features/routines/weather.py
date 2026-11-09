@@ -124,6 +124,16 @@ def day_weather(session: Session, class_id: int, day: datetime.date) -> DayWeath
     return DayWeather(day, sky, dust, source, indoor_hint(sky, dust))
 
 
+def stamp_confirmed_weather(session: Session, doc) -> None:
+    """일일 보육일지를 확정할 때 그날 날씨를 문서에 박는다. 종이가 이 값을 싣는다(ADR-081 보완).
+
+    확정한 종이는 확정 뒤에 바뀌면 안 된다 — 교사가 날씨를 고쳐도 확정본은 확정 때 값이다.
+    새 값을 싣고 싶으면 확정을 풀고 다시 확정한다. 다른 종류 문서는 날씨 칸이 없어 그대로 둔다.
+    """
+    if doc.kind == "dailyLog":
+        doc.weather = day_weather(session, doc.class_id, doc.start_date).sky or ""
+
+
 def indoor_hint(sky: str | None, dust: str | None) -> IndoorHint | None:
     """대체놀이 칩을 띄울 까닭. 비 · 눈이 먼저다 — 비 오는 날은 미세먼지와 상관없이 실내다."""
     if sky in ("비", "눈", "비나 눈"):

@@ -28,6 +28,7 @@ from app.main import app
 from app.shared.hwpx import NS, TemplateMismatch, fill_grid
 
 client = TestClient(app)
+CHECKS = {"fact": True, "interpretation": True, "support": True}
 
 INTERPRETATION = "개미의 움직임을 오래 지켜보며 작은 생물에 관심을 보였다."
 SUPPORT = "돋보기를 바깥놀이 영역에 두고 개미가 다니는 길을 함께 찾아본다."
@@ -639,6 +640,31 @@ def test_일일_보육일지_머리_줄에_날짜와_날씨를_넣고_없으면_
     db_session.add(RoutineWeather(class_id=klass.id, date=date(2026, 9, 22), sky="비나 눈"))
     db_session.flush()
     assert head_line() == "날짜 : 2026년 9월 22일 (화)      날씨 : 비나 눈"
+
+
+def test_확정_뒤_날씨를_바꿔도_확정본_종이는_확정_때_값이다(db_session, mine):
+    """확정한 종이가 확정 뒤에 바뀌면 안 된다(ADR-081 보완, ADR-080 과 같은 원칙)."""
+    klass, _ = mine
+    only = _routine(
+        db_session, klass, position=0, start=None, end=None, name="등원", execution="인사했다."
+    )
+    db_session.add(RoutineWeather(class_id=klass.id, date=date(2026, 9, 22), sky="흐림"))
+    doc = _daily_log(db_session, klass, [only], status="DRAFT")
+    assert (
+        client.post(f"/api/documents/{doc.id}/confirm", json={"checks": CHECKS}).status_code == 200
+    )
+    assert doc.weather == "흐림"
+
+    weather = db_session.scalar(select(RoutineWeather).where(RoutineWeather.class_id == klass.id))
+    weather.sky = "맑음"
+    db_session.flush()
+    content = client.get(f"/api/documents/{doc.id}/export/hwp").content
+    head = etree.fromstring(_archive(content).read("Contents/section0.xml")).findall("hp:p", NS)[1]
+    assert "".join(head.itertext()).endswith("날씨 : 흐림")
+
+    # 확정을 풀면 박아 둔 값도 푼다 — 다시 확정할 때 그때 값을 다시 박는다.
+    assert client.post(f"/api/documents/{doc.id}/unconfirm").status_code == 200
+    assert doc.weather is None
 
 
 def test_줄을_늘린_일일_보육일지도_hwp_로_바꿔_내려준다(db_session, mine, tmp_path):

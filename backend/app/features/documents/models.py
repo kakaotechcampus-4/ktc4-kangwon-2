@@ -94,6 +94,14 @@ class Document(Base):
             "지원의 지문이고, 지금 글과 다르면 보이지 않는다 (ADR-083)"
         ),
     )
+    weather: Mapped[str | None] = mapped_column(
+        String(10),
+        comment=(
+            "일일 보육일지를 확정할 때의 날씨(ADR-081 보완). 종이는 이 값을 싣는다 — "
+            "확정 뒤 날씨를 바꿔도 확정본 종이는 그대로다. 값이 없었으면 빈 문자열, "
+            "NULL 은 초안이거나 이 칸이 생기기 전에 확정한 옛 문서다(지금 값을 읽는다)"
+        ),
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
