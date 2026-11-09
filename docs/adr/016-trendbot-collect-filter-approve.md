@@ -314,7 +314,7 @@ YouTube Data API v3 의 `search.list` 는 호출당 100 units, `playlistItems.li
 
 ## 지금 코드와 다른 곳 (2026-11-10 덧붙임)
 
-결정 문장은 그대로 두고, develop(5d247ea4) 코드와 다른 곳만 적는다. 정해지지 않은 것(정보나루 · 데이터랩 소스, 화면의 승인 목록 대조, 줄 단위 승인, `reference/` 손 입력)은 PM 결정으로 남겼다.
+결정 문장은 그대로 두고, develop(5d247ea4) 코드와 다른 곳만 적는다. 정해지지 않은 것(정보나루 · 데이터랩 소스, 줄 단위 승인, `reference/` 손 입력)은 PM 결정으로 남겼다.
 
 | 결정 | 지금 코드 | 근거 |
 |---|---|---|
@@ -327,4 +327,5 @@ YouTube Data API v3 의 `search.list` 는 호출당 100 units, `playlistItems.li
 | [트렌드 빼기]는 생성 후에 둔다 · 트렌드에서 온 칸만 골라 다시 만든다 | 빼기 단추는 없다. 반영한 후보에 ✦ 표시만 달고, 교사가 고르지 않으면 들어가지 않는다. 주간 칸을 다시 만들면 트렌드 없이 쓴다. 놀이 중심 월간은 후보 칸 재생성이 없다 | `frontend/components/plan-ui/PlayPickBoard.tsx` · `domain/trend.py` |
 | 연간에서 트렌드 칸을 빼려면 그 달을 PUT 으로 고친다 | 연간에는 트렌드가 들어가지 않는다(ADR-072 결정 1) | `plans/weekly_router.py` · `play_monthly_router.py` |
 | 8. 캐릭터 이름은 그대로 쓴다 | 계획안 글에 채널 · 캐릭터 이름을 쓰지 않는다. 출처는 근거란에만 남는다(ADR-072 결정 11) | `planner/trend.py` · `planner/weekly.py` |
+| 4단 승인 소스인가 (2026-11-10 PM 결정) | 생성(`planning.py`)과 트렌드 화면 목록(`GET /api/trends`) 둘 다 **지금** 승인 목록과 대조한다. 머지 뒤에 목록에서 뺀 채널 · 언론사의 지난 주 자료는 화면에도 생성에도 나오지 않는다 | `backend/app/features/trends/approved.py` `is_approved` · `router.py` |
 | API 계정 — 네이버 개발자센터(검색) | 네이버 뉴스 검색은 네이버 클라우드 플랫폼 API HUB 로 옮겼다 | `backend/app/features/trends/sources.py` |
