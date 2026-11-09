@@ -63,5 +63,6 @@ CI가 PR마다 backend + planning core pytest · ruff · alembic · docker build
 ## 6. 아직 아닌 것
 
 - 「실패 구간만 다시」 · 「겹친 후보만 다시」는 가짜 LLM으로만 확인했다. 실제 모델 30회에서 실패 · 겹침이 0건이라 그 경로를 탄 적이 없다.
+- LLM 재시도(ADR-076)는 실제 모델로 확인했다(11-10, 46원): 503 한 번 → 1.5초 뒤 재시도 → 201, 두 번 연속 → 폴백 없이 500. 시도 수는 `plan_timing llm_calls`로 남는다 — [runs/2026-11-10-retry](../evaluation/runs/2026-11-10-retry/README.md).
 - 한글 숫자(「네 개」)는 추출 대조 밖이다.
 - 근거에 없는 내용을 덧붙였는지는 검사(`UNSUPPORTED_FACT`)가 일부만 잡는다. 근거 대조 실측에서 ✗ 6개가 저장까지 갔다 — [evaluation.md](evaluation.md) §3
