@@ -19,8 +19,12 @@ from app.db import get_session
 from app.features.auth.models import User
 from app.features.centers.models import Center, Child, Class
 from app.features.documents.stale import SourceImpact, observation_changed
+from app.features.observations import assist
 from app.features.observations.models import AXES, DEFAULT_AXIS, NURI_DOMAINS, Observation
 from app.features.observations.schemas import (
+    DomainSuggestRequest,
+    DomainSuggestResponse,
+    MissingResponse,
     ObservationCreate,
     ObservationDeleteResponse,
     ObservationListResponse,
@@ -134,6 +138,29 @@ def create_observation(
     session.add(observation)
     session.commit()
     return _response(_own(session, user, observation.id))
+
+
+@router.post("/domain-suggest", response_model=DomainSuggestResponse)
+def suggest_domain(
+    body: DomainSuggestRequest, session: DbSession, user: CurrentUser
+) -> DomainSuggestResponse:
+    """적던 사실로 영역 하나를 제안한다(ADR-082). **저장하지 않고, 고르지도 않는다.**"""
+    classroom = require_own_class(session, user, body.class_id)
+    center = session.get(Center, classroom.center_id)
+    axis = center.observation_axis if center else DEFAULT_AXIS
+    domain, confidence = assist.suggest_domain(session, classroom.id, axis, body.fact, body.context)
+    return DomainSuggestResponse(domain=domain, confidence=confidence)
+
+
+@router.post("/{observation_id}/missing", response_model=MissingResponse)
+def check_missing(observation_id: int, session: DbSession, user: CurrentUser) -> MissingResponse:
+    """저장한 기록에 상황 · 행동 · 아이 반응이 있는지 본다(ADR-082). 기록은 건드리지 않는다."""
+    observation = _own(session, user, observation_id)[0]
+    return MissingResponse(
+        missing=assist.missing_parts(
+            session, observation.class_id, observation.fact, observation.context
+        )
+    )
 
 
 @router.get("", response_model=ObservationListResponse)

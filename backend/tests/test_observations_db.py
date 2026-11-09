@@ -10,8 +10,10 @@ from sqlalchemy.exc import IntegrityError
 
 from app.features.centers.models import Center, Child, Class
 from app.features.documents.models import Document, DocumentSource
+from app.features.observations import assist
 from app.features.observations.models import Observation
 from app.main import app
+from app.shared.llm import LlmFailed
 
 client = TestClient(app)
 
@@ -421,3 +423,120 @@ def test_지우면_영향만_담은_200_이고_옵션이_없으면_204(db_sessio
         }
     }
     assert client.delete(f"/api/observations/{other['id']}").status_code == 204
+
+
+# ── jev 도움 — 영역 추천 · 빠진 것 쪽지 (ADR-082) ───────────────────────────────────
+# 실제 호출은 하지 않는다. CI 는 mock 이고, real 은 가짜 decide 로 흉내 낸다.
+
+SUGGEST = "/api/observations/domain-suggest"
+
+
+@pytest.fixture
+def jev(monkeypatch):
+    """real 모드 흉내. `answer` 에 돌려줄 답을 넣고, 보낸 state · questions 를 `sent` 에 모은다."""
+    box = {"sent": [], "answer": {}}
+
+    def fake(state, questions):
+        box["sent"].append((state, questions))
+        if isinstance(box["answer"], Exception):
+            raise box["answer"]
+        return box["answer"]
+
+    monkeypatch.setattr(assist, "is_mock", lambda: False)
+    monkeypatch.setattr(assist, "decide", fake)
+    return box
+
+
+def _domain_answer(choice, p):
+    rest = (1 - p) / 4
+    probs = {d: (p if d == choice else rest) for d in assist.NURI_DOMAINS}
+    return {"영역": {"choice": choice, "probabilities": probs}}
+
+
+def _suggest(mine, fact="블록 세 개를 쌓고 친구에게 같이 만들자고 말했다.", context=""):
+    return client.post(SUGGEST, json={"class_id": mine["sun"].id, "fact": fact, "context": context})
+
+
+def test_추천은_mock_이면_부르지_않고_비어_있다(db_session, mine):
+    response = _suggest(mine)
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"domain": None, "confidence": None}
+
+
+def test_추천은_확신이_0_8_이상일_때만_영역을_준다(db_session, mine, jev):
+    jev["answer"] = _domain_answer("사회관계", 0.86)
+    assert _suggest(mine).json() == {"domain": "사회관계", "confidence": 0.86}
+
+    jev["answer"] = _domain_answer("의사소통", 0.79)
+    assert _suggest(mine).json() == {"domain": None, "confidence": 0.79}
+
+
+def test_추천은_아이_이름을_가명으로_바꿔_보낸다(db_session, mine, jev):
+    jev["answer"] = _domain_answer("사회관계", 0.9)
+
+    _suggest(mine, fact="가서준이 나하은에게 블록을 건넸다.", context="서준이 자리")
+
+    sent = repr(jev["sent"])
+    for real in ("가서준", "서준", "나하은", "하은"):
+        assert real not in sent
+
+
+def test_추천은_2축_원이면_부르지_않는다(db_session, mine, jev, teacher):
+    db_session.get(Center, teacher.center_id).observation_axis = "DAILY_PLAY_2"
+    db_session.flush()
+
+    assert _suggest(mine).json() == {"domain": None, "confidence": None}
+    assert jev["sent"] == []
+
+
+def test_추천이_실패해도_기록은_막지_않는다(db_session, mine, jev):
+    jev["answer"] = LlmFailed("x")
+    assert _suggest(mine).json() == {"domain": None, "confidence": None}
+
+    jev["answer"] = {"영역": {"choice": "수학", "probabilities": {}}}
+    assert _suggest(mine).json() == {"domain": None, "confidence": None}
+
+
+def test_추천은_남의_반이면_404_빈_사실이면_422(db_session, mine):
+    other = _class(db_session, _center(db_session, "다른 어린이집"), "별님반")
+
+    assert client.post(SUGGEST, json={"class_id": other.id, "fact": "x"}).status_code == 404
+    assert _suggest(mine, fact="   ").status_code == 422
+
+
+def _missing(record_id):
+    return client.post(f"/api/observations/{record_id}/missing")
+
+
+def test_빠진_것은_mock_이면_묻지_않는다(db_session, mine):
+    record = _post(mine["sun"], mine["seojun"]).json()
+
+    response = _missing(record["id"])
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"missing": []}
+
+
+def test_빠진_것은_상황_행동_반응_순서로_알린다(db_session, mine, jev):
+    record = _post(mine["sun"], mine["seojun"], context="", fact="가서준이 블록 세 개를 쌓았다.")
+    jev["answer"] = {"상황": {"noul": 0.2}, "행동": {"noul": 0.95}, "반응": {"noul": 0.1}}
+
+    assert _missing(record.json()["id"]).json() == {"missing": ["상황", "반응"]}
+    assert "가서준" not in repr(jev["sent"])
+
+
+def test_상황_칸을_적었으면_상황은_묻지_않는다(db_session, mine, jev):
+    record = _post(mine["sun"], mine["seojun"], context="실내놀이, 쌓기").json()
+    jev["answer"] = {"행동": {"noul": 0.9}, "반응": {"noul": 0.9}}
+
+    assert _missing(record["id"]).json() == {"missing": []}
+    assert set(jev["sent"][0][1]) == {"행동", "반응"}
+
+
+def test_빠진_것을_못_물으면_조용히_비운다(db_session, mine, jev):
+    record = _post(mine["sun"], mine["seojun"]).json()
+    jev["answer"] = {"행동": {"noul": "?"}}
+
+    assert _missing(record["id"]).json() == {"missing": []}
+    assert _missing(999999).status_code == 404
