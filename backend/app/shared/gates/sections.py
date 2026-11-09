@@ -2,12 +2,13 @@
 
     1  스키마      사실·해석·지원 셋뿐인가, 비지 않았나, 짧지 않나
     2  추출 대조   사실이 근거 원문을 이어붙인 것과 글자 하나까지 같은가
-                   해석에 나온 숫자(횟수 · 날짜 · 인원)가 사실에도 있는가
+                   해석에 나온 숫자(횟수 · 날짜 · 인원)가 사실 · 근거 날짜 · 상황에 있는가
 
 모델을 부르지 않는다. 문서를 만들 때·고칠 때·확정할 때 모두 이 함수 하나를 지난다.
 - 기능마다 따로 만들면 한쪽만 느슨해진다.
 """
 
+import datetime
 import logging
 import re
 from collections.abc import Iterable, Sequence
@@ -38,12 +39,33 @@ def join_facts(source_texts: Iterable[str]) -> str:
     return "\n\n".join(source_texts)
 
 
+class SourceLike(Protocol):
+    date: datetime.date | None
+    context: str | None
+
+
+def input_extras(sources: Iterable[SourceLike]) -> list[str]:
+    """사실 말고 모델이 함께 받는 교사 입력 — 근거 날짜와 상황 (ADR-077).
+
+    해석이 「11월 4일」처럼 이 숫자를 써도 지어낸 것이 아니다. 날짜는 숫자로 풀어 둔다 —
+    `2026-11-04` 그대로면 「04」가 나와 「4일」을 못 받는다.
+    """
+    extras = []
+    for source in sources:
+        if source.date is not None:
+            extras.append(f"{source.date.year} {source.date.month} {source.date.day}")
+        if source.context:
+            extras.append(source.context)
+    return extras
+
+
 def check_sections(
     sections: Sequence[SectionLike],
     source_texts: Sequence[str],
     valid_source_ids: set[int],
     *,
     stage: Literal["generate", "edit", "confirm", "reconfirm", "verify"],
+    extras: Sequence[str] = (),
 ) -> list[str]:
     """틀린 칸을 전부 모아 `fields` 로 돌려준다. 비어 있으면 통과다.
 
@@ -53,8 +75,10 @@ def check_sections(
     `stage` 는 로그에만 쓴다. 모델 출력이 걸린 것(generate)과 교사가 고친 글이 걸린 것(edit)은
     따로 세야 2단이 모델 오류를 몇 건 잡았는지 나온다.
     reconfirm 은 「다시 검토」 뒤 교사가 보낸 글이다 (documents/review.py).
+
+    `extras` 는 `input_extras` 가 만든 근거 날짜 · 상황이다. 숫자 대조에만 쓴다.
     """
-    fields, numbers = _check(sections, source_texts, valid_source_ids)
+    fields, numbers = _check(sections, source_texts, valid_source_ids, extras)
     # 글은 찍지 않는다 (ADR-004). 숫자만으로는 아이를 알아볼 수 없고,
     # 걸린 것이 진짜 오류인지 오탐(「만 4세」 등)인지 가려내는 데 필요하다.
     logger.info(
@@ -71,6 +95,7 @@ def _check(
     sections: Sequence[SectionLike],
     source_texts: Sequence[str],
     valid_source_ids: set[int],
+    extras: Sequence[str] = (),
 ) -> tuple[list[str], set[str]]:
     if len(sections) != len(HEADINGS) or {s.heading for s in sections} != HEADINGS:
         return ["sections"], set()
@@ -88,7 +113,7 @@ def _check(
             fields.append(f"sections.{heading}")
     numbers: set[str] = set()
     if "sections.해석" not in fields:
-        numbers = _unsupported_numbers(by_heading["해석"].body, facts)
+        numbers = _unsupported_numbers(by_heading["해석"].body, "\n".join([facts, *extras]))
         if numbers:
             fields.append("sections.해석")
     for section in sections:

@@ -70,7 +70,7 @@ from app.shared.auth.ownership import (
 )
 from app.shared.childCode import SubstitutionError
 from app.shared.gates.judge import JUDGED_KINDS, MAX_SENTENCES, TooLong
-from app.shared.gates.sections import check_sections, join_facts
+from app.shared.gates.sections import check_sections, input_extras, join_facts
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -684,8 +684,11 @@ def _create_document(
     facts = [c.text for c in copies]
     try:
         # 교사는 옆 반 아이 이름도 적는다. 검증 · 계획안 메모와 같게 원 전체 아이로 표를 만든다.
-        table = name_table(session, body.class_id, "\n".join(facts))
-        drafted = draft_sections(body.kind, facts, body.source_ids, table, sorted(domains))
+        # 상황(`context`)도 모델로 나간다 — 표를 만드는 글에 같이 넣는다.
+        table = name_table(
+            session, body.class_id, "\n".join([*facts, *(c.context or "" for c in copies)])
+        )
+        drafted = draft_sections(body.kind, copies, body.source_ids, table, sorted(domains))
     except SubstitutionError as exc:
         raise _error(
             status.HTTP_500_INTERNAL_SERVER_ERROR, "GENERATION_FAILED", NAME_MASK_FAILED, []
@@ -710,7 +713,9 @@ def _create_document(
             for d in drafted
         ),
     ]
-    if check_sections(sections, facts, set(body.source_ids), stage="generate"):
+    if check_sections(
+        sections, facts, set(body.source_ids), stage="generate", extras=input_extras(copies)
+    ):
         raise _error(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "GENERATION_FAILED",
@@ -825,7 +830,11 @@ def update_document(
             raise _invalid(["sections"])
         sources = _sources(session, document_id)
         fields = check_sections(
-            body.sections, [s.text for s in sources], {s.source_id for s in sources}, stage="edit"
+            body.sections,
+            [s.text for s in sources],
+            {s.source_id for s in sources},
+            stage="edit",
+            extras=input_extras(sources),
         )
         if fields:
             raise _invalid(fields)
@@ -970,7 +979,11 @@ def verify_document(
             session.scalars(select(DocumentSection).where(DocumentSection.document_id == doc.id))
         )
     fields = check_sections(
-        sections, [s.text for s in sources], {s.source_id for s in sources}, stage="verify"
+        sections,
+        [s.text for s in sources],
+        {s.source_id for s in sources},
+        stage="verify",
+        extras=input_extras(sources),
     )
     if fields:
         # 1 · 2단에 걸린 글은 3단에 보내지 않는다 (CLAUDE.md 「3단 게이트」 — 순서를 바꾸지 않는다).
@@ -1066,7 +1079,11 @@ def confirm_document(
             session.scalars(select(DocumentSection).where(DocumentSection.document_id == doc.id))
         )
         fields = check_sections(
-            stored, [s.text for s in sources], {s.source_id for s in sources}, stage="confirm"
+            stored,
+            [s.text for s in sources],
+            {s.source_id for s in sources},
+            stage="confirm",
+            extras=input_extras(sources),
         )
         if fields:
             raise _invalid(fields)

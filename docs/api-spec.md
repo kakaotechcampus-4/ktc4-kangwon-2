@@ -3501,7 +3501,7 @@ source_kind   값                받는 kind      근거
       "text": "...", "class_id": 1, "child_id": 5 }
   ],
   "observation_axis": "NURI_5",
-  "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v1" },
+  "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v4" },
   "review_note": "", "class_note": "",
   "created_at": "...", "updated_at": "..."
 }
@@ -3839,7 +3839,7 @@ ALREADY_REGISTERED       같은 아동 · 종류 · 겹치는 기간의 증빙�
 ```
 1  스키마      위 거절 규칙                      서버.  모델 없음
 2  추출 대조   사실 == sources 원문              서버.  문자열 비교.  모델 없음
-               해석의 숫자 ⊂ 사실의 숫자
+               해석의 숫자 ⊂ 사실 · 근거 날짜 · 상황의 숫자
 3  LLM Judge   미관찰 내용 · 근거 없는 해석 검사    LLM
 4  교사 확인    UI 체크 하나 → API checks 세 필드    사람
 ```
@@ -3941,6 +3941,7 @@ GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?f
 고칠 수 없는 문서를 지울 수 있으면 확정이 의미가 없다.
 
 **해석에 사실에 없는 숫자가 있으면 `sections.해석` 으로 거절한다.**
+근거의 날짜(연 · 월 · 일)와 상황에 든 숫자는 사실과 같이 친다 — 「11월 4일」은 교사가 준 날짜다(ADR-077).
 지원은 앞으로의 계획이라 새 숫자가 나와도 된다.
 
 **`PUT` 이 `사실` 을 바꾸면 거절한다.** 원본과 일치해야 한다는 규칙이 그대로 적용된다.
@@ -4040,7 +4041,8 @@ assessment    observation · dailyLog
 
 `observations` 를 참조만 하면 원본이 수정될 때 문서의 `사실` 이 조용히 바뀐다.
 **무효 판정을 하려면 만들 당시의 원문이 남아 있어야 한다.** 관찰 기록 근거는 원문과 함께 날짜 · 영역 · 상황을,
-문서는 영역 축을 사본으로 둔다(ADR-077).
+문서는 영역 축을 사본으로 둔다(ADR-077). AI 초안은 사본만 받는다 — 사실마다 `{fact, date, domain, context}`,
+`fact` · `context` 둘 다 가명으로 바꾼 뒤다(`rule_version` `v4`).
 필요한 테이블은 맨 아래 「채워야 할 곳 — BE」 에 적었다.
 
 ---

@@ -225,6 +225,61 @@ def test_refresh_는_사본이_없는_옛_문서를_채운다(sun, db_session):
     assert (body["sources"][0]["domain"], body["sources"][0]["context"]) == ("자연탐구", "바깥놀이")
 
 
+# ── G1 · G2 LLM 입력 (재현 테스트를 뒤집은 것) ───────────────────────────────
+
+
+def test_G1_G2_LLM_에_사실마다_날짜_영역_상황이_가명으로_간다(sun, llm_seen):
+    me = _child(sun)
+    friend = _child(sun, "박하준")
+    a = _obs(sun, me, 5, "개미를 바라보았다.", context="박하준과 모래놀이터")
+    b = _obs(sun, me, 9, "이서윤이 말을 걸었다.", domain="의사소통", context="")
+
+    res = _create(sun, me, [a, b])
+
+    assert res.status_code == 201, res.text
+    assert res.json()["generation"]["rule_version"] == "v4"
+    raw = llm_seen["payloads"][0]
+    assert "이서윤" not in raw and "박하준" not in raw
+    assert json.loads(raw)["facts"] == [
+        {
+            "fact": "개미를 바라보았다.",
+            "date": "2026-09-05",
+            "domain": "자연탐구",
+            "context": f"{friend['code']}과 모래놀이터",
+        },
+        {
+            "fact": f"{me['code']}이 말을 걸었다.",
+            "date": "2026-09-09",
+            "domain": "의사소통",
+            "context": "",
+        },
+    ]
+
+
+def test_해석에_근거_날짜를_써도_숫자_게이트를_지난다(sun, llm_seen):
+    """「11월 4일」은 사실 글에 없지만 교사가 준 날짜다. 지어낸 숫자가 아니다."""
+    me = _child(sun)
+    obs = _obs(sun, me, 4, "개미를 바라보았다.", month=11)
+    llm_seen["interpretation"] = "11월 4일에 작은 생물을 오래 지켜보며 자연에 관심을 보인다."
+
+    res = _create(sun, me, [obs], month=11)
+
+    assert res.status_code == 201, res.text
+    doc_id = res.json()["id"]
+    assert client.post(f"/api/documents/{doc_id}/confirm", json=ALL_CHECKED).status_code == 200
+
+
+def test_근거에_없는_날짜는_여전히_숫자_게이트에_걸린다(sun, llm_seen):
+    me = _child(sun)
+    obs = _obs(sun, me, 4, "개미를 바라보았다.", month=11)
+    llm_seen["interpretation"] = "11월 7일에 작은 생물을 오래 지켜보며 자연에 관심을 보인다."
+
+    res = _create(sun, me, [obs], month=11)
+
+    assert res.status_code == 500
+    assert res.json()["error"]["code"] == "GENERATION_FAILED"
+
+
 # ── 마이그레이션 채우기 규칙 ─────────────────────────────────────────────────
 
 _MIGRATION = (

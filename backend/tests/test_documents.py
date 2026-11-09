@@ -702,8 +702,9 @@ def test_create_document_masks_child_names_before_generation(db_session, monkeyp
     response = client.post("/api/documents", json=_create_body(klass, child, [record]))
 
     assert response.status_code == 201
-    assert "이가명" not in seen["facts"][0] and "가명" not in seen["facts"][0]
-    assert "도담" in seen["facts"][0]
+    fact = seen["facts"][0]["fact"]
+    assert "이가명" not in fact and "가명" not in fact
+    assert "도담" in fact
     # 돌아온 글은 교사에게 주기 전에 실명으로 되돌린다.
     by_heading = {s["heading"]: s["body"] for s in response.json()["sections"]}
     assert by_heading["해석"].startswith("이가명 해석")
@@ -1310,7 +1311,7 @@ def test_create_document_redrafts_from_the_latest_record_when_it_changes_meanwhi
     seen = []
 
     def generate_while_teacher_edits(kind, masked_facts, curriculum=()):
-        seen.append(list(masked_facts))
+        seen.append([f["fact"] for f in masked_facts])
         if len(seen) == 1:
             record.fact = "개미를 5분 동안 바라보았다."
             db_session.flush()
