@@ -144,8 +144,13 @@ export default function RecordsPage() {
     invalid: string[];
   } | null>(null);
   /** 적던 글이 있어 묻는 중인 일 — 고칠 기록이거나, 관찰일지로 나가기. */
-  const [ask, setAsk] = useState<ServerObservation | "leave" | null>(null);
+  const [ask, setAsk] = useState<ServerObservation | null>(null);
   const askDialog = useRef<HTMLDialogElement>(null);
+  /** 떠나려다 붙잡힌 링크 · 단추. 쪽지를 띄운 동안만 있다. */
+  const [held, setHeld] = useState<HTMLElement | null>(null);
+  const leaveNote = useRef<HTMLDialogElement>(null);
+  /** 머리줄 「저장됨」. 다시 적기 시작하면 내린다. */
+  const [savedMark, setSavedMark] = useState(false);
   const [message, setMessage] = useState("");
   /** 방금 고치거나 지운 기록을 쓴 확정 일지 — 「N건 다시 검토」 안내 (§10). */
   const [review, setReview] = useState<ReviewImpact | null>(null);
@@ -288,7 +293,7 @@ export default function RecordsPage() {
   const clearInvalid = (name: string) =>
     setInvalid((prev) => (prev.includes(name) ? prev.filter((f) => f !== name) : prev));
 
-  function askFirst(next: ServerObservation | "leave") {
+  function askFirst(next: ServerObservation) {
     setAsk(next);
     askDialog.current?.showModal();
   }
@@ -331,14 +336,18 @@ export default function RecordsPage() {
   }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    await save();
+  }
+  /** 저장한다. 떠날 때도 이 길을 탄다. 저장했으면 true — 실패하면 적던 글이 그대로 남는다. */
+  async function save(): Promise<boolean> {
     if (!classroom || !child || !validDate(date) || !fact.trim() || date > today()) {
       setMessage("반·아동·관찰 날짜와 실제 관찰 내용을 확인해주세요.");
-      return;
+      return false;
     }
     if (!domain) {
       setMessage("영역을 골라 주세요.");
       setInvalid((prev) => [...prev.filter((f) => f !== "domain"), "domain"]);
-      return;
+      return false;
     }
     const body = { date, domain, context: context.trim(), fact: fact.trim() };
     setPending(true);
@@ -365,12 +374,47 @@ export default function RecordsPage() {
       // 「저장했어요」만 뜨고 아무것도 안 늘어나면 저장이 안 된 것으로 읽힌다.
       if (!editId && onlyChildId && onlyChildId !== childId) setOnlyChild("");
       setMessage(editId ? "수정했어요." : "관찰 기록을 저장했어요.");
+      setSavedMark(true);
+      return true;
     } catch (e) {
       setMessage(messageFor(e));
       setInvalid(invalidFields(e, FIELD_INPUT));
+      return false;
     } finally {
       setPending(false);
     }
+  }
+
+  /*
+    떠날 때(딸깍 시안 「떠날 때」). 계획안처럼 **저장하고 이동한다.** 저장할 수 없을 때 —
+    아이나 영역을 안 골랐을 때 — 만 쪽지로 묻는다. 사이드바 링크도 같은 길이다.
+    새로고침 · 탭 닫기는 브라우저 창이 묻는다(`useUnsavedWarning`).
+  */
+  const lacking = !child ? "child" : !domain ? "domain" : null;
+  const pass = useLeaveCatch(unsaved && !!fact.trim() && !pending, (target) => {
+    if (lacking) {
+      setHeld(target);
+      leaveNote.current?.showModal();
+      return;
+    }
+    void save().then((done) => done && pass(target));
+  });
+  function closeNote() {
+    leaveNote.current?.close();
+    setHeld(null);
+  }
+  /** 쪽지의 주 버튼 — 빠진 것을 고르러 돌아간다. */
+  function pickMissing() {
+    closeNote();
+    if (lacking === "child") {
+      setKidsOpen(true);
+      setInvalid((prev) => [...prev.filter((f) => f !== "childId"), "childId"]);
+    } else setInvalid((prev) => [...prev.filter((f) => f !== "domain"), "domain"]);
+  }
+  function discardAndGo() {
+    const target = held;
+    closeNote();
+    if (target) pass(target);
   }
   /** 저장한 기록에 빠진 것이 있나 AI 에게 묻는다. 기다리지 않는다 — 저장은 이미 끝났다. */
   function lookForGap(saved: ServerObservation) {
@@ -445,18 +489,17 @@ export default function RecordsPage() {
           {/* 왼쪽 · 오른쪽 머리를 같은 줄에 세운다 — 카드 안에 있던 제목이 오른쪽 「쌓인 기록」보다
               한 칸 내려앉아 두 칸 높이가 어긋나 보였다. */}
           <div className={ws.recordListHead}>
-            <h2 className={ws.recordListTitle}>{editId ? "기록 고치기" : "오늘 본 것 적기"}</h2>
+            <h2 className={ws.recordListTitle}>
+              {editId ? "기록 고치기" : "오늘 본 것 적기"}
+              {savedMark && (
+                <span className={ws.recordSaved} role="status">
+                  저장됨
+                </span>
+              )}
+            </h2>
             {/* 기록하러 온 교사가 다음에 하려는 일이 관찰일지다. 목록 머리 작은 단추로는 눈에 안
                 띄었다. 적는 칸 바로 위, 화면을 열자마자 보이는 자리에 둔다. */}
-            <Link
-              className={ws.recordJournalLink}
-              href={journalHref}
-              onClick={(e) => {
-                if (!unsaved) return;
-                e.preventDefault();
-                askFirst("leave");
-              }}
-            >
+            <Link className={ws.recordJournalLink} href={journalHref}>
               관찰일지 만들기 →
             </Link>
           </div>
@@ -568,6 +611,7 @@ export default function RecordsPage() {
                     {...fieldErrorProps("fact", invalid)}
                     onChange={(e) => {
                       setFact(e.target.value);
+                      setSavedMark(false);
                       clearInvalid("fact");
                     }}
                     placeholder={"블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다."}
@@ -722,25 +766,83 @@ export default function RecordsPage() {
       >
         <Posty pose="hand" face="oh" tone="note" size={78} label={null} />
         <h3 id="record-ask-title">잠깐만요!</h3>
-        <p>{ask === "leave" ? "적던 글이 사라져요." : "적던 글을 버리고 이 기록을 고칠까요?"}</p>
+        <p>적던 글을 버리고 이 기록을 고칠까요?</p>
         <div>
           <button type="button" className={ws.secondary} autoFocus onClick={closeAsk}>
             계속 쓰기
           </button>
-          {ask === "leave" && (
-            <Link className={ws.link} href={journalHref}>
-              버리고 나가기
-            </Link>
-          )}
-          {ask && ask !== "leave" && (
+          {ask && (
             <button type="button" className={ws.link} onClick={() => beginEdit(ask)}>
               버리고 고치기
             </button>
           )}
         </div>
       </dialog>
+      {/* 떠날 때 저장할 수 없으면 붙는 포스트잇. 테이프에 매달려 처음 한 번 흔들린다. */}
+      <dialog
+        ref={leaveNote}
+        className={ws.recordLeave}
+        aria-labelledby="record-leave-title"
+        aria-describedby="record-leave-why"
+        onClose={() => setHeld(null)}
+      >
+        {held && (
+          <>
+            <h3 id="record-leave-title">잠깐만요!</h3>
+            <p id="record-leave-why">
+              {lacking === "domain" ? "영역을 골라야 저장돼요." : "누구 기록인지 골라야 저장돼요."}
+            </p>
+            <div>
+              <button type="button" className={ws.primary} autoFocus onClick={pickMissing}>
+                {lacking === "domain" ? "영역 고르기" : "아이 고르기"}
+              </button>
+              <button type="button" className={ws.recordDiscard} onClick={discardAndGo}>
+                버리고 이동
+              </button>
+            </div>
+          </>
+        )}
+      </dialog>
     </WorkspacePage>
   );
+}
+
+/**
+ * 이 화면을 떠나는 누르기(앱 안 링크 · `data-leave` 단추)를 누르기 전에 붙잡는다(캡처 단계).
+ * Next 앱 라우터에는 이동을 멈추는 훅이 없다. 돌려주는 함수로 붙잡은 것을 다시 누르면 그대로 떠난다.
+ * 관찰일지 편집기(`ObservationJournalEditor` 의 `useLeaveGuard`)와 같은 방식이다.
+ *
+ * ponytail: 브라우저 뒤로 가기는 붙잡지 않는다. 편집기처럼 history 칸을 끼워 넣으면 되지만
+ * 저장하고 이동하는 길과 겹쳐 따로 맞춰야 한다.
+ */
+function useLeaveCatch(on: boolean, onLeave: (target: HTMLElement) => void) {
+  const passing = useRef(false);
+  const latest = useRef(onLeave);
+  useEffect(() => {
+    latest.current = onLeave;
+  });
+  useEffect(() => {
+    if (!on) return;
+    const catchLeave = (event: MouseEvent) => {
+      if (passing.current || event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = (event.target as Element | null)?.closest<HTMLElement>(
+        'a[href]:not([target="_blank"]):not([download]), [data-leave]',
+      );
+      if (!target || target.closest("dialog")) return;
+      if (target.getAttribute("href")?.startsWith("#")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      latest.current(target);
+    };
+    document.addEventListener("click", catchLeave, true);
+    return () => document.removeEventListener("click", catchLeave, true);
+  }, [on]);
+  return (target: HTMLElement) => {
+    passing.current = true;
+    target.click();
+    passing.current = false;
+  };
 }
 
 /**

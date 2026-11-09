@@ -303,21 +303,115 @@ test("F2 적던 글이 있으면 고치기 전에 화면 안에서 묻고, 버�
   assert.equal(view.fact().props.value, RECORD.fact);
 });
 
-test("F3 적던 글이 있으면 떠날 때 경고하고, 관찰일지 길도 먼저 묻는다", async (t) => {
+/**
+ * 화면을 떠나는 누르기를 흉내 낸다. 화면이 document 에 건 캡처 단계 click 을 붙잡아 둔다.
+ * `go(href)` 는 그 링크를 누른 것이고, 화면이 다시 누르면 `clicked` 에 남는다.
+ */
+function leaving() {
+  const listeners = [];
+  globalThis.document.addEventListener = (type, fn) => type === "click" && listeners.push(fn);
+  globalThis.document.removeEventListener = (type, fn) => {
+    const i = listeners.indexOf(fn);
+    if (i >= 0) listeners.splice(i, 1);
+  };
+  const clicked = [];
+  return {
+    clicked,
+    /** 링크를 누른다. 화면이 막았으면 true. */
+    go(href) {
+      const anchor = {
+        getAttribute: () => href,
+        closest: () => null,
+        click() {
+          clicked.push(href);
+          // 화면이 다시 누른 것도 같은 손잡이를 지난다 — 이번엔 막으면 안 된다.
+          for (const fn of [...listeners]) fn(event(anchor));
+        },
+      };
+      let stopped = false;
+      const event = (target) => ({
+        button: 0,
+        defaultPrevented: false,
+        target: { closest: () => target },
+        preventDefault: () => (stopped = true),
+        stopPropagation() {},
+      });
+      for (const fn of [...listeners]) fn(event(anchor));
+      return stopped;
+    },
+  };
+}
+
+test("A1 적은 게 없으면 그냥 떠나고, 적던 글이 있으면 브라우저 경고를 건다", async (t) => {
   const view = recordsPage(t);
+  const leave = leaving();
   await view.flush();
   assert.equal(view.warned.at(-1), false);
-  const journal = () => view.links().find((n) => textOf(n).includes("관찰일지 만들기"));
-  let stopped = false;
-  journal().props.onClick({ preventDefault: () => (stopped = true) });
-  assert.equal(stopped, false, "적은 게 없으면 그냥 간다");
+  assert.equal(leave.go("/routines"), false);
 
   view.type(view.fact(), "적던 새 글");
+  await view.flush();
   assert.equal(view.warned.at(-1), true);
-  journal().props.onClick({ preventDefault: () => (stopped = true) });
+});
+
+test("A1 아이 · 영역을 골랐으면 떠날 때 저장하고 이동하며 머리줄에 「저장됨」", async (t) => {
+  const saved = [];
+  const view = recordsPage(t, {
+    addRecord: async (body) => (saved.push(body), { ...RECORD, id: "observation:9" }),
+  });
+  const leave = leaving();
+  await view.flush();
+  await view.press("김하늘");
+  await view.press("사회관계");
+  view.type(view.fact(), "블록 세 개를 쌓았다.");
+  await view.flush();
+
+  assert.equal(leave.go("/routines"), true, "저장 전에 먼저 떠나지 않는다");
+  await view.flush();
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].domain, "사회관계");
+  assert.deepEqual(leave.clicked, ["/routines"]);
+  assert.match(view.text(), /저장됨/);
+});
+
+test("A1 아이를 안 골랐으면 쪽지를 띄우고, 「버리고 이동」을 눌러야 떠난다", async (t) => {
+  const saved = [];
+  const view = recordsPage(t, { addRecord: async (body) => (saved.push(body), {}) });
+  const leave = leaving();
+  await view.flush();
+  view.type(view.fact(), "적던 새 글");
+  await view.flush();
+
+  assert.equal(leave.go("/records/journal"), true);
   view.render();
-  assert.equal(stopped, true);
-  assert.ok(view.links().some((n) => textOf(n) === "버리고 나가기"));
+  assert.match(view.text(), /잠깐만요!/);
+  assert.match(view.text(), /누구 기록인지 골라야 저장돼요/);
+  assert.deepEqual(leave.clicked, []);
+
+  await view.press("아이 고르기");
+  assert.doesNotMatch(view.text(), /누구 기록인지/);
+  assert.ok(view.button("김하늘"), "아이 칩이 펼쳐져 있다");
+  assert.deepEqual(leave.clicked, []);
+
+  leave.go("/records/journal");
+  view.render();
+  await view.press("버리고 이동");
+  assert.deepEqual(leave.clicked, ["/records/journal"]);
+  assert.equal(saved.length, 0);
+});
+
+test("A1 아이만 고르고 영역이 비었으면 「영역 고르기」 쪽지다", async (t) => {
+  const view = recordsPage(t);
+  const leave = leaving();
+  await view.flush();
+  await view.press("김하늘");
+  view.type(view.fact(), "적던 새 글");
+  await view.flush();
+
+  leave.go("/routines");
+  view.render();
+  assert.match(view.text(), /영역을 골라야 저장돼요/);
+  assert.ok(view.button("영역 고르기"));
 });
 
 test("F11 관찰일지로 가는 길이 반을 들고 간다", async (t) => {

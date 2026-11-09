@@ -2275,12 +2275,116 @@ button.recordBlank:disabled {
   background: var(--pg-primary-tint);
   color: var(--pg-primary-ink);
 }
+/* 머리줄 「저장됨」 — 도장. 손글씨는 제목 · 숫자 · 도장에만 쓴다. */
+.recordListTitle .recordSaved {
+  padding: 1px 6px 0;
+  border: 2px solid currentColor;
+  border-radius: 6px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--pg-sage-ink);
+  rotate: -8deg;
+}
+/* 떠날 때 저장할 수 없으면 붙는 포스트잇. 테이프에 매달린 채 툭 붙으며 처음 한 번 흔들린다(0.7초). */
+.recordLeave {
+  position: fixed;
+  overflow: visible;
+  width: min(300px, calc(100vw - 32px));
+  padding: 26px 18px 16px;
+  border: 1px solid var(--pg-note-line);
+  background: var(--pg-note);
+  color: var(--pg-ink);
+  text-align: center;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.26);
+  rotate: -1.5deg;
+  transform-origin: 50% 0;
+}
+.recordLeave[open] {
+  animation: recordWobble 0.7s cubic-bezier(0.3, 1.4, 0.5, 1) 1;
+}
+.recordLeave::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  width: 80px;
+  height: 24px;
+  border-inline: 1px solid rgba(255, 255, 255, 0.6);
+  background: var(--pg-tape);
+  box-shadow: var(--pg-shadow-tape);
+  translate: -50% 0;
+  rotate: -3deg;
+}
+.recordLeave::backdrop {
+  background: rgba(43, 51, 46, 0.55);
+}
+.recordLeave h3 {
+  margin: 0 0 4px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 30px;
+  line-height: 1.05;
+}
+.recordLeave p {
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.recordLeave > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.recordLeave button {
+  min-height: 44px;
+}
+/* 노란 쪽지 위 보라는 약하다 — 주 버튼을 먹색으로 세운다(관찰일지 편집기 쪽지와 같다). */
+.recordLeave > div > button:first-child {
+  border-color: var(--pg-ink);
+  background: var(--pg-ink);
+  color: var(--pg-paper);
+}
+/* 되돌릴 수 없는 일이라 글자만 빨강. */
+.recordDiscard {
+  border: 0;
+  background: none;
+  color: var(--pg-alert-ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+@keyframes recordWobble {
+  0% {
+    rotate: -1.5deg;
+    translate: 0 -10px;
+  }
+  30% {
+    rotate: 3deg;
+    translate: 0 0;
+  }
+  55% {
+    rotate: -3.5deg;
+  }
+  78% {
+    rotate: 1deg;
+  }
+  100% {
+    rotate: -1.5deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .recordLeave[open] {
+    animation: none;
+  }
+}
 /* 저장 뒤 빠진 것 쪽지 — 잠깐 붙여 둔 노란 쪽지 한 줄(ADR-082). */
 .recordGap {
   justify-self: start;
   width: fit-content;
   max-width: 100%;
-  margin: 0;
+  margin: 0 0 14px;
   padding: 10px 14px;
   border: 1px solid var(--pg-note-soft-line);
   background: var(--pg-note-soft);
