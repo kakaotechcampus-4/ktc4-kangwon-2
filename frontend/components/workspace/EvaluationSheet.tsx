@@ -250,7 +250,7 @@ function StampSlot({
   const value = made
     ? made.text
     : checked
-      ? "다시 누르면 지워요"
+      ? "다시 누르면 지워져요"
       : done
         ? "눌러서 직접확인도 찍어요"
         : doc.optional
