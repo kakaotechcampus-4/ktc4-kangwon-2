@@ -143,7 +143,7 @@ me       GET /api/auth/me                                               → 200 
 | `GATE_BLOCKED` | 409 | 앞 단계가 안 끝났다 — 층 게이트(연간 확정 전 월간 §9-1 · 월간 확정 전 주간 · §11 주간 보육일지) · 사람 승인 전 Template 으로 Profile 시작(§9-4) · 확정 전 내보내기(놀이 프로젝트형 DRAFT 포함, §9) · `stale` 문서 확정 · 놀이 프로젝트형을 부모로 기존 월간 생성(§9-1) · 연간 형식에 맞지 않는 수정 API 호출(§6 · §6-1) · 기존 월간 경로 ↔ 놀이 중심 월간 경로(§9-7)에 서로의 id · 놀이 중심 월간 아래 주간 생성(§9-6 · §9-7) · 아이 명단이 있는 반의 동의 끄기(§2 반 수정) · 동의 확인 전 반에 아이 추가(§2-1) |
 | `ALREADY_EXISTS` | 409 | 같은 대상에 이미 있음. 조회로 찾는다 |
 | `IN_USE` | 409 | 지우려는 계획안으로 만든 하위 계획안이 있다(연간 → 월간 · 월간 → 주간). 하위를 먼저 지운다(§9 「계획안 삭제」 · ADR-064) |
-| `ALREADY_CONFIRMED` | 409 | 확정된 계획안·문서를 수정하려 함. 문서는 `unconfirm` 으로 되돌린다(§11). **계획안에는 확정 취소가 없다**(ADR-030 PM-03) |
+| `ALREADY_CONFIRMED` | 409 | 확정된 계획안·문서를 수정하려 함. 문서는 `unconfirm` 으로 되돌린다(§11). 계획안도 `unconfirm` 으로 확정을 푼다(§7-2, ADR-055 — ADR-030 PM-03 대체) |
 | `UNSUPPORTED_FILE_TYPE` | 400 | 지원하지 않는 파일 형식 |
 | `NO_ACTIVITIES` | 503 | 활동 풀이 비었음 (운영 오류). **재시도해도 같다** |
 | `LLM_BUDGET_EXCEEDED` | 503 | 예산 초과로 키가 삭제돼 호출이 실패. 운영 문의 ↓ |
@@ -1666,7 +1666,7 @@ GET    /api/plans/annual/{id}/audit       연간 변경 이력 — §7-1 (구현
 GET    /api/plans/monthly/{id}/audit      월간 변경 이력 — §9-5 (구현됨, BE-2)
 POST   /api/plans/weekly                  주간 — §9-6 (생성 · 조회 · 목록 · 삭제 W5a · 편집 · 재생성 · 확정 · 이력 W5b 구현됨)
 POST   /api/plans/monthly/play            놀이 중심 월간 — §9-7 (구현됨. 목록 · 단건 · 칸 · 행 · 안전 배치 · 훈련 복사 · 확정 · 이력 모두 §9-7)
-PUT    /api/centers/{center_id}/plan-config   uses_monthly · weekly_location — 계약 안 씀(아래)
+PUT    /api/centers/{center_id}/plan-config   P0 에는 없는 경로 — 받지 않는다(아래)
 DELETE /api/plans/annual/{id}             연간 삭제 — 초안 · 확정본 모두 204. 그 반 · 학년도 월간이 있으면 409 IN_USE
 DELETE /api/plans/annual/{id}/test-reset  시험용 전부 지우기 — §7-3 (기본 꺼짐 · 꺼져 있으면 404)
 DELETE /api/plans/monthly/{id}            월간 삭제 — 초안 · 확정본 모두 204. 이 월간으로 만든 주간이 있으면 409 IN_USE
