@@ -285,6 +285,15 @@ export default function DocumentsPage() {
   const shownDocs = (filterQuery ? (filteredDocs ?? []) : serverDocs).filter((d) =>
     passesFilter(d, filter),
   );
+  const shownPlans = plans?.items.filter((p) =>
+    passesFilter(
+      {
+        title: `${p.school_year}학년도 ${DOCUMENT_KINDS.annual}`,
+        status: p.status === "CONFIRMED" ? "confirmed" : "draft",
+      },
+      filter,
+    ),
+  );
 
   // 마운트할 때 한 번. 일지를 고치거나 만들어도 계획안 목록은 바뀌지 않는다.
   useEffect(() => {
@@ -412,30 +421,20 @@ export default function DocumentsPage() {
       createdAt: d.createdAt,
       stale: d.stale,
     })),
-    ...(plans?.items ?? [])
-      .filter((p) =>
-        passesFilter(
-          {
-            title: `${p.school_year}학년도 ${DOCUMENT_KINDS.annual}`,
-            status: p.status === "CONFIRMED" ? "confirmed" : "draft",
-          },
-          filter,
-        ),
-      )
-      .map((p) => ({
-        id: `annual:${p.id}`,
-        source: "plan" as const,
-        serverId: p.id,
-        format: p.format,
-        title: `${p.school_year}학년도 ${DOCUMENT_KINDS.annual}`,
-        // 목록에는 반 이름이 없다. 모르는 반이면 비워 둔다 — 지어내지 않는다.
-        className: classes.find((c) => classServerId(c.id) === p.class_id)?.className ?? "",
-        childName: "",
-        kind: "annual" as const,
-        status: (p.status === "CONFIRMED" ? "confirmed" : "draft") as SavedDocument["status"],
-        createdAt: p.created_at,
-        stale: false,
-      })),
+    ...(shownPlans ?? []).map((p) => ({
+      id: `annual:${p.id}`,
+      source: "plan" as const,
+      serverId: p.id,
+      format: p.format,
+      title: `${p.school_year}학년도 ${DOCUMENT_KINDS.annual}`,
+      // 목록에는 반 이름이 없다. 모르는 반이면 비워 둔다 — 지어내지 않는다.
+      className: classes.find((c) => classServerId(c.id) === p.class_id)?.className ?? "",
+      childName: "",
+      kind: "annual" as const,
+      status: (p.status === "CONFIRMED" ? "confirmed" : "draft") as SavedDocument["status"],
+      createdAt: p.created_at,
+      stale: false,
+    })),
   ];
 
   // 보관함 탐색(반 → 종류 → 기간)이 쓰는 목록. 계획안은 각자 API 가 따로 준다.
@@ -736,7 +735,7 @@ export default function DocumentsPage() {
           selection.select("", null);
         }}
         documents={archiveDocs}
-        annual={plans?.items ?? null}
+        annual={shownPlans ?? null}
         onAnnualChanged={reloadPlans}
         activeId={active}
         editingId={editingId}
