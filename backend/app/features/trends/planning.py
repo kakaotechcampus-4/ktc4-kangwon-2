@@ -3,7 +3,7 @@
 실시간 수집이 아니다. 저장소에 머지된 주 파일을 읽는다(ADR-016). 원이 껐거나 · 파일이 없거나 ·
 깨졌으면 트렌드 없이 만든다 — 결과 객체로 알리고 예외를 내지 않는다(CLAUDE.md §7).
 
-넘기는 것: 지금도 승인 목록에 있는 유튜브 채널 자료. 다시 거르지 않는다 — 머지된 파일은 사람이
+넘기는 것: 지금도 승인 목록에 있는 유튜브 채널 자료. 노래는 채널 종류가 동요인 채널 것만. 다시 거르지 않는다 — 머지된 파일은 사람이
 수집 PR 에서 2단 위험 표시 · 3단 판정을 보고 지운 뒤 승인한 것이다(트렌드 화면과 같다, ADR-016).
 기사는 놀이 서술이 아니라 넘기지 않는다(ADR-016 「소재 발굴 · 확인용」).
 링크 · 조회수도 넘기지 않는다.
@@ -47,7 +47,8 @@ def trend_items(raw: list[RawItem], week: str) -> list[TrendItem]:
         if row.source != "youtube" or channel is None or channel.kind == "제외":
             continue
         kind = trend_kind(row.title, TrendKind(channel.kind) if channel.kind else None)
-        if kind is None:
+        # ADR-072 결정 12: 노래는 승인 파일에서 종류가 동요인 채널 것만. 다른 채널의 노래 영상은 넘기지 않는다.
+        if kind is None or (kind is TrendKind.SONG and channel.kind != TrendKind.SONG.value):
             continue
         items.append(
             TrendItem(
