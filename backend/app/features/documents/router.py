@@ -418,8 +418,9 @@ def create_document(
         fields.append("child_id")
     if body.kind == "dailyLog" and body.start != body.end:
         fields.append("end")
-    if body.kind == "dailyLog" and body.child_id is not None:
-        # 반 단위 문서다 — 근거인 일과 기록에 아이가 없다 (§11 「종이 한 장」).
+    if body.kind in ("dailyLog", "weeklyLog") and body.child_id is not None:
+        # 반 단위 문서다 — 근거인 일과 기록 · 일일 보육일지에 아이가 없다
+        # (§11 「종이 한 장」, ADR-044).
         fields.append("child_id")
     if body.start > body.end:
         fields.append("start")
@@ -496,6 +497,15 @@ def create_document(
                     status.HTTP_409_CONFLICT,
                     "GATE_BLOCKED",
                     "확정된 일일 보육일지만 근거로 쓸 수 있습니다.",
+                    [f"sources.{source_id}"],
+                )
+            if source.stale:
+                # 근거가 바뀐 일일 보육일지다. 그대로 받으면 낡은 사실로 만든 주간이
+                # stale=False 로 확정 · 출력된다.
+                raise _error(
+                    status.HTTP_409_CONFLICT,
+                    "GATE_BLOCKED",
+                    "근거가 바뀐 일일 보육일지예요. 먼저 바뀐 근거를 반영하고 다시 확정해주세요.",
                     [f"sources.{source_id}"],
                 )
             if source.class_id != body.class_id or not (
@@ -1046,7 +1056,9 @@ def refresh_document(
         field = f"sources.{copy.source_id}"
         if copy.source_kind == "observation":
             observation = session.get(Observation, copy.source_id)
-            if observation is None:
+            if observation is None or not (doc.start_date <= observation.date <= doc.end_date):
+                # 문서 기간 밖으로 옮긴 기록은 이 문서의 근거가 아니다 — 만들 때와 같은 규칙.
+                # 일과 근거와 같이 「사라진 근거」로 다룬다.
                 missing.append(field)
                 missing_ids.add(copy.source_id)
                 fresh.append(None)
@@ -1078,8 +1090,8 @@ def refresh_document(
             missing.append(field)
             missing_ids.add(copy.source_id)
             fresh.append(None)
-        elif source.status != "CONFIRMED":
-            # 만들 때와 같은 규칙이다 — 초안인 일일 보육일지를 근거로 두지 않는다.
+        elif source.status != "CONFIRMED" or source.stale:
+            # 만들 때와 같은 규칙이다 — 초안이거나 근거가 바뀐 일일 보육일지를 근거로 두지 않는다.
             unconfirmed.append(field)
             fresh.append(None)
         else:

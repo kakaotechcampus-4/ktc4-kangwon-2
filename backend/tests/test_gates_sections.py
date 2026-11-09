@@ -32,7 +32,8 @@ def test_empty_facts_reject_the_document_even_when_interpretation_and_support_ar
         Section("지원", SUPPORT, []),
     ]
 
-    assert check_sections(sections, [], set(), stage="generate") == ["sections.사실"]
+    # 근거도 비어 있어 칸마다 source_ids 도 같이 걸린다.
+    assert check_sections(sections, [], set(), stage="generate")[0] == "sections.사실"
 
 
 def test_numbers_in_interpretation_that_appear_in_facts_pass():

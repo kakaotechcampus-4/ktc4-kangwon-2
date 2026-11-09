@@ -92,7 +92,8 @@ def _check(
         if numbers:
             fields.append("sections.해석")
     for section in sections:
-        if not set(section.source_ids) <= valid_source_ids:
+        # 비어 있으면 근거 연결이 끊긴 칸이다 — 부분집합 검사만으로는 [] 가 통과한다.
+        if not section.source_ids or not set(section.source_ids) <= valid_source_ids:
             fields.append(f"sections.{section.heading}.source_ids")
     return fields, numbers
 

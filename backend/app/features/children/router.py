@@ -19,6 +19,7 @@ from app.features.children.schemas import (
     ChildTracking,
     ChildTrackingResponse,
 )
+from app.features.documents.models import Document, DocumentSource
 from app.features.observations.models import AXES, DEFAULT_AXIS, NURI_DOMAINS, Observation
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_child, require_own_class
@@ -171,5 +172,21 @@ def delete_child(
     발급 이력을 따로 남기지 않는다.
     """
     child = require_own_child(session, user, child_id)
+    # 기록 · 문서가 이 아이를 가리키면 FK 에 걸려 500 이 났다. 무엇 때문인지 말해 준다.
+    # 기록째 지우는 길은 아직 없다 — 지우면 확정한 일지의 근거가 사라진다.
+    referenced = any(
+        session.scalar(select(model.id).where(model.child_id == child_id).limit(1)) is not None
+        for model in (Observation, Document, DocumentSource)
+    )
+    if referenced:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "GATE_BLOCKED",
+                "message": "이 아이의 관찰 기록이나 문서가 있어 지울 수 없어요. "
+                "기록과 문서를 먼저 지워주세요.",
+                "fields": ["child_id"],
+            },
+        )
     session.delete(child)
     session.commit()
