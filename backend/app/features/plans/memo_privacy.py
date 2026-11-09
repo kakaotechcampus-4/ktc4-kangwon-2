@@ -23,7 +23,7 @@ from app.shared.childCode import (
     load_pool,
     mask,
     table_for_text,
-    unmask,
+    unmask_as_written,
 )
 
 MASK_FAILED = HTTPException(
@@ -83,8 +83,9 @@ def mask_memo(memo: str, table: NameTable | None) -> str:
     return memo if table is None else mask(memo, table)
 
 
-def unmask_text(text: str, table: NameTable | None) -> str:
-    return text if table is None else unmask(text, table)
+def unmask_text(text: str, table: NameTable | None, memo: str) -> str:
+    """답의 가명을 메모에 적힌 표기로 되돌린다 — 등록 실명으로 돌리면 메모에 없던 이름이 생긴다."""
+    return text if table is None else unmask_as_written(text, table, memo)
 
 
 class MemoMaskFailed(Exception):
@@ -101,7 +102,7 @@ def raise_if_mask_failed(error: BaseException, failure: HTTPException = MASK_FAI
 
 
 class MaskedMemoProvider:
-    """어떤 생성 공급자든 감싼다: 요청의 user_content 속 메모만 가명으로, 답은 실명으로.
+    """어떤 생성 공급자든 감싼다: 요청의 user_content 속 메모만 가명으로, 답은 메모에 적힌 표기로.
 
     수리 요청은 앞 답(실명으로 되돌린 것)을 다시 싣는다. 메모에 나온 아이 이름이 요청 어디에든
     남아 있으면 부르지 않는다 — 「하나씩」처럼 낱말과 겹쳐도 내보내지 않는 쪽을 고른다.
@@ -110,6 +111,7 @@ class MaskedMemoProvider:
     def __init__(self, inner, memo: str, table: NameTable) -> None:
         self._inner = inner
         self._table = table
+        self._memo = memo
         # 요청 본문은 JSON 이다. 메모가 들어간 모양(따옴표 안)을 그대로 찾아 바꾼다.
         self._real = json.dumps(memo, ensure_ascii=False)[1:-1]
         self._fake = json.dumps(mask(memo, table), ensure_ascii=False)[1:-1]
@@ -128,7 +130,8 @@ class MaskedMemoProvider:
             if any(variant in text for variant in self._names):
                 raise MemoMaskFailed
             response = method(masked, *args, **kwargs)
-            return replace(response, content=unmask(response.content, self._table))
+            content = unmask_as_written(response.content, self._table, self._memo)
+            return replace(response, content=content)
 
         return call
 

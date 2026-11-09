@@ -213,3 +213,14 @@ def test_다른_반_아이와_가명이나_이름이_겹쳐도_에러_없이_다
     masked = mask(text, table)
     assert "가명" not in masked and "다솜" not in masked
     assert table_for_text(load_pool(), [("이가명", "도담")], [], "공룡 놀이") is None
+
+
+def test_연간_메모_답은_메모에_적힌_표기로_돌아온다():
+    # 다른 반 「김하늘」의 「하늘」이 메모 낱말과 겹쳐 가려져도
+    # 소주제에 「김하늘」이 생기지 않는다.
+    from app.features.plans.memo_privacy import unmask_text
+
+    table = table_for_text(load_pool(), [], [("김하늘", "하람")], "하늘 관찰 놀이")
+    code = table.masking["하늘"]
+    assert unmask_text(f"{code} 관찰", table, "하늘 관찰 놀이") == "하늘 관찰"
+    assert unmask_text("봄 소풍", None, "하늘 관찰 놀이") == "봄 소풍"

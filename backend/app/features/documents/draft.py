@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from ssuksak.adapters.v1_curriculum import v1_curriculum_catalog
 
-from app.shared.childCode import NameTable, SubstitutionError, mask, unmask
+from app.shared.childCode import NameTable, SubstitutionError, mask, unmask_as_written
 from app.shared.llm import LlmFailed, LlmUnavailable, complete_json, is_mock
 
 # 문서의 generation.rule_version 으로 남는다. `_generate` 의 만드는 방식이 바뀌면 올린다.
@@ -133,8 +133,10 @@ def draft_sections(
     except SubstitutionError as exc:
         raise DraftFailed(NAME_MASK_FAILED) from exc
 
+    original = "\n".join(facts)
+
     def restore(text: str) -> str:
-        return text if table is None else unmask(text, table)
+        return text if table is None else unmask_as_written(text, table, original)
 
     curriculum = _curriculum_for(domains) if kind == "observation" else []
     interpretation, support = _generate(kind, masked, curriculum)

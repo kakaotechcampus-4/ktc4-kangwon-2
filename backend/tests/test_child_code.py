@@ -14,6 +14,8 @@ from app.shared.childCode import (
     mask,
     name_variants,
     unmask,
+    unmask_as_written,
+    unmask_from,
 )
 
 # ── 받침 ──────────────────────────────────────────────
@@ -108,6 +110,29 @@ def test_되돌리면_등록된_전체_이름이_나온다():
     # 성을 뗀 표기로 들어갔어도 복원은 등록 이름으로 한다.
     table = NameTable({"박서준": "민준"})
     assert unmask(mask("서준이가 놀았다", table), table) == "박서준이가 놀았다"
+
+
+def test_모델이_쓴_글은_원문에_적힌_표기로_되돌린다():
+    # 다른 반 「김하늘」의 「하늘」이 원문 낱말과 겹쳐 가려졌다. 등록 실명으로 돌리면
+    # 사실에 없던 「김하늘」이 생긴다 — 원문에 적힌 「하늘」로 돌린다.
+    table = NameTable({"이가명": "도담", "김하늘": "하람"})
+    original = "이가명이 하늘을 보며 구름 모양을 이야기했다."
+    written = "도담이 하람을 보며 구름을 이야기한다."
+    assert unmask_as_written(written, table, original) == "이가명이 하늘을 보며 구름을 이야기한다."
+    # 교사가 성을 빼고 적었으면 그 표기로.
+    assert unmask_as_written("도담이가 웃었다", table, "가명이가 웃었다") == "가명이가 웃었다"
+
+
+def test_원문에_그_아이_표기가_없으면_가명을_그대로_둔다():
+    # 등록 실명을 새로 만들어 넣는 것이 바로 막으려는 일이다.
+    table = NameTable({"김하늘": "하람"})
+    assert unmask_as_written("하람과 놀았다", table, "모래를 팠다") == "하람과 놀았다"
+
+
+def test_원문에서_못_찾은_옮긴_글도_등록_실명을_만들지_않는다():
+    # 연간 가져오기: 모델이 「여름 물놀이」를 「…과 물놀이」로 고쳐 옮기면 원문에서 못 찾는다.
+    table = NameTable({"김여름": "가을"})
+    assert unmask_from("7월 가을과 물놀이", table, "7월 여름 물놀이") == "7월 여름과 물놀이"
 
 
 def test_긴_이름을_먼저_바꾼다():

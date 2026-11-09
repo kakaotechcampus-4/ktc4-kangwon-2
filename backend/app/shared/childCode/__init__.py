@@ -16,7 +16,7 @@
 from .allocation import table_for_text
 from .names import name_variants
 from .pool import PseudonymPool, SubstitutionError, has_final, load_pool
-from .substitute import NameTable, mask, unmask, unmask_from
+from .substitute import NameTable, mask, unmask, unmask_as_written, unmask_from
 
 __all__ = [
     "NameTable",
@@ -28,5 +28,6 @@ __all__ = [
     "name_variants",
     "table_for_text",
     "unmask",
+    "unmask_as_written",
     "unmask_from",
 ]

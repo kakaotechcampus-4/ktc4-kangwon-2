@@ -1,7 +1,8 @@
 """실명을 가명으로 바꾸고 되돌린다.
 
-    mask    교사가 쓴 글 -> LLM 에 보낼 글
-    unmask  LLM 이 준 글 -> 교사에게 보여줄 글
+    mask               교사가 쓴 글 -> LLM 에 보낼 글
+    unmask_as_written  LLM 이 새로 쓴 글 -> 교사에게 보여줄 글(원문에 적힌 표기로)
+    unmask_from        원문에서 그대로 옮긴 글 -> 원문 그 글자로
 
 두 방향이 같은 표를 써야 한다. 따로 넘기면 한쪽만 고치는 날이 오고,
 그날 실명이 나간다. 그래서 NameTable 하나로 묶는다.
@@ -12,14 +13,14 @@ import re
 from .names import name_variants
 from .pool import SubstitutionError, has_final
 
-__all__ = ["NameTable", "SubstitutionError", "mask", "unmask", "unmask_from"]
+__all__ = ["NameTable", "SubstitutionError", "mask", "unmask", "unmask_as_written", "unmask_from"]
 
 
 class NameTable:
     """한 번의 LLM 호출에 등장할 수 있는 아이들의 실명 <-> 가명 표.
 
     입력은 {등록 실명: 가명} 이다. children 테이블의 name -> code 를 그대로 넘긴다.
-    치환할 때는 성을 뗀 이름까지 찾고, 되돌릴 때는 등록 실명으로 돌린다.
+    치환할 때는 성을 뗀 이름까지 찾는다. 되돌릴 때는 원문에 적힌 표기로 돌린다(unmask_as_written).
     """
 
     def __init__(self, names: dict[str, str]) -> None:
@@ -102,10 +103,35 @@ def mask(text: str, table: NameTable) -> str:
 
 
 def unmask(text: str, table: NameTable) -> str:
-    """가명을 등록된 실명으로 되돌린다. mask() 에 넘긴 것과 같은 표를 넘긴다."""
+    """가명을 등록된 실명으로 되돌린다. mask() 에 넘긴 것과 같은 표를 넘긴다.
+
+    LLM 이 쓴 글에는 쓰지 않는다 — 원문 낱말이 이름과 겹쳐 가려졌던 자리에 사실에 없던
+    전체 이름을 만든다. 그때는 unmask_as_written 을 쓴다.
+    """
     if not isinstance(table, NameTable):
         raise SubstitutionError("NameTable 을 넘긴다")
     return _replace(text, table.restoring)
+
+
+def unmask_as_written(text: str, table: NameTable, original: str) -> str:
+    """LLM 이 쓴 글의 가명을, 교사가 원문에 적은 표기로 되돌린다.
+
+    원 전체 아이로 표를 만들면 다른 반 「김하늘」의 성 뗀 이름 「하늘」이 원문 「하늘을 보며」와
+    겹쳐 가명이 된다. unmask 로 되돌리면 그 자리가 「김하늘」이 되어, 사실에 없던 다른 반 아이의
+    전체 이름이 문서에 들어간다. 그래서 아이마다 원문에 실제로 적힌 표기 가운데 가장 긴 것으로
+    되돌린다(name_variants 는 긴 것부터). 원문에 그 아이의 표기가 하나도 없으면 가명을 그대로 둔다
+    — 등록 실명을 새로 만들어 넣는 것이 바로 막으려는 일이다.
+
+    한계: 한 아이를 한 가지 표기로만 되돌린다. 「김하늘이 하늘을 보며」처럼 같은 아이가 원문에
+    두 표기로 적혔으면 둘 다 「김하늘」이 된다. 글이 틀어질 뿐 새 이름이 생기지는 않는다.
+    """
+    if not isinstance(table, NameTable):
+        raise SubstitutionError("NameTable 을 넘긴다")
+    as_written = {
+        code: next((v for v in name_variants(real) if v in original), code)
+        for code, real in table.restoring.items()
+    }
+    return _replace(text, as_written)
 
 
 def unmask_from(text: str, table: NameTable, original: str) -> str:
@@ -113,7 +139,8 @@ def unmask_from(text: str, table: NameTable, original: str) -> str:
 
     unmask 는 가명을 등록 실명으로 돌린다. 주제 칸의 「여름」이 김여름의 이름과 같아 가려졌으면
     unmask 는 「김여름」을 돌려준다. 옮겨 온 글이니 가명 자리에 그 아이의 표기를 넣어 원문에서
-    찾고, 찾은 글자를 그대로 준다. 원문에 없으면 unmask 와 같다.
+    찾고, 찾은 글자를 그대로 준다. 원문에서 못 찾으면(모델이 글을 고쳐 옮겼으면)
+    unmask_as_written 과 같다.
     """
     restoring = table.restoring
     if not any(code in text for code in restoring):
@@ -128,4 +155,4 @@ def unmask_from(text: str, table: NameTable, original: str) -> str:
         return "(?:" + "|".join(map(re.escape, options)) + ")"
 
     found = re.search("".join(spot(i, p) for i, p in enumerate(parts)), original)
-    return found[0] if found else unmask(text, table)
+    return found[0] if found else unmask_as_written(text, table, original)
