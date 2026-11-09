@@ -84,8 +84,14 @@ export async function registerAccount(name: string, email: string, password: str
     throw new Error("이미 가입된 이메일이에요. 다른 이메일을 입력하거나 로그인해주세요.");
   const account: Account = { name: name.trim(), email: email.trim().toLowerCase() };
   await signup(account.name, account.email, password);
-  localStorage.setItem(accountKey(email), JSON.stringify(account));
-  finishSignIn(account);
+  // **여기부터는 계정이 이미 서버에 있다.** 브라우저 저장소가 막혀 있어도 원래 오류를 띄우면
+  // 가입이 안 된 줄 알고 다시 가입하다 「이미 가입된 이메일」을 본다. 로그인으로 보낸다.
+  try {
+    localStorage.setItem(accountKey(email), JSON.stringify(account));
+    finishSignIn(account);
+  } catch {
+    throw new Error("가입은 됐어요. 로그인 화면에서 다시 로그인해주세요.");
+  }
 }
 /**
  * 개발용 임시 계정. `NODE_ENV === "development"`에서만 동작하고,

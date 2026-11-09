@@ -164,3 +164,28 @@ test("registration signs in with a mixed-case email and enters onboarding", asyn
   delete globalThis.localStorage;
   delete globalThis.window;
 });
+
+test("signup that reached the server but cannot write sessionStorage says the account exists", async () => {
+  // 계정은 서버에 이미 생겼다. 브라우저 저장만 막혔으면 「가입은 됐어요」로 로그인 화면에 보낸다.
+  const values = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  globalThis.window = {
+    localStorage,
+    sessionStorage: {
+      getItem: () => null,
+      setItem: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+      removeItem: () => {},
+    },
+  };
+  await assert.rejects(
+    registerAccount("민지", "blocked@example.com", "demo-password-123"),
+    /가입은 됐어요/,
+  );
+  delete globalThis.localStorage;
+  delete globalThis.window;
+});
