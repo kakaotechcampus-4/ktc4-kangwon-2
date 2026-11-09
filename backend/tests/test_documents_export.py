@@ -643,7 +643,7 @@ def test_일일_보육일지_머리_줄에_날짜와_날씨를_넣고_없으면_
 
 
 def test_확정_뒤_날씨를_바꿔도_확정본_종이는_확정_때_값이다(db_session, mine):
-    """확정한 종이가 확정 뒤에 바뀌면 안 된다(ADR-081 보완, ADR-080 과 같은 원칙)."""
+    """확정한 종이가 확정 뒤에 바뀌면 안 된다(ADR-081 보완, ADR-088 과 같은 원칙)."""
     klass, _ = mine
     only = _routine(
         db_session, klass, position=0, start=None, end=None, name="등원", execution="인사했다."
