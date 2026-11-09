@@ -621,6 +621,88 @@ def test_일일_보육일지도_근거_기록이_사라졌으면_내보내지_�
     assert response.json()["error"]["fields"] == [f"sources.{gone.id}"]
 
 
+def _other_class(session):
+    """다른 원의 반. 같은 번호의 기록이 여기 있으면 내보내기가 남의 일과를 읽는지 드러난다."""
+    center = Center(
+        name="다른어린이집",
+        director_name="박원장",
+        region_sido="강원특별자치도",
+        region_sigungu="원주시",
+    )
+    session.add(center)
+    session.flush()
+    klass = Class(
+        center_id=center.id,
+        name="달빛반",
+        school_year=2026,
+        age_min=4,
+        age_max=4,
+        teacher_name="박선생",
+    )
+    session.add(klass)
+    session.flush()
+    return klass
+
+
+def test_관찰_근거로_만든_옛_일일_보육일지는_다른_원_일과를_읽지_않고_거절한다(db_session, mine):
+    """옛 일일 보육일지는 관찰 기록을 근거로 만들었다(ADR-024). 그 번호를 일과 번호로 읽으면
+    번호가 우연히 같은 다른 원의 일과 이름 · 계획 · 실행이 종이에 찍힌다."""
+    klass, child = mine
+    observation = _observation(db_session, klass, child, 22, "자연탐구", "개미를 바라보았다.")
+    db_session.add(
+        RoutineRecord(
+            id=observation.id,
+            class_id=_other_class(db_session).id,
+            date=date(2026, 9, 22),
+            position=0,
+            name="남의 일과",
+            plan="남의 계획",
+            execution="남의 실행",
+        )
+    )
+    doc = _daily_log(db_session, klass, [])
+    db_session.add(
+        DocumentSource(
+            document_id=doc.id,
+            source_kind="observation",
+            source_id=observation.id,
+            class_id=klass.id,
+            child_id=child.id,
+            date=observation.date,
+            text=observation.fact,
+        )
+    )
+    db_session.flush()
+
+    response = client.get(f"/api/documents/{doc.id}/export/hwp")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "GATE_BLOCKED"
+    assert response.json()["error"]["fields"] == ["source_kind"]
+
+
+@pytest.mark.parametrize("where", ["other_class", "other_day"])
+def test_일일_보육일지는_그_반_그날의_일과만_읽는다(db_session, mine, where):
+    klass, _ = mine
+    kept = _routine(
+        db_session, klass, position=0, start=None, end=None, name="등원", execution="인사했다."
+    )
+    stray = _routine(
+        db_session, klass, position=1, start=None, end=None, name="남의 일과", execution="먹었다."
+    )
+    doc = _daily_log(db_session, klass, [kept, stray])
+    if where == "other_class":
+        stray.class_id = _other_class(db_session).id
+    else:
+        stray.date = date(2026, 9, 23)
+    db_session.flush()
+
+    response = client.get(f"/api/documents/{doc.id}/export/hwp")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["fields"] == [f"sources.{stray.id}"]
+
+
 def test_양식_표_줄_수가_머리_원형_꼬리와_다르면_만들지_않는다():
     """관찰일지 양식(7줄)은 머리 1 · 원형 1 · 꼬리 1 모양이 아니다."""
     with pytest.raises(TemplateMismatch):

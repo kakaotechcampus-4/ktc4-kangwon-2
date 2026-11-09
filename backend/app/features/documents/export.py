@@ -183,11 +183,27 @@ def _daily_log(
     session: Session, doc: Document, sources: list[DocumentSource], evaluation: str
 ) -> bytes:
     """일과 기록마다 한 줄씩, 꼬리 칸에 해석 + 지원을 넣는다. 줄 수는 그날 일과 수다."""
+    # 옛 일일 보육일지는 관찰 기록을 근거로 만들었다(ADR-024). 그 번호는 일과 번호가 아니다 —
+    # 일과 테이블에서 찾으면 번호가 우연히 같은 다른 반 · 다른 원의 일과가 종이에 찍힌다.
+    # 일과 줄을 채울 원본이 없으니 내보내지 않는다. 재확정 · refresh 도 같은 문서를 막는다.
+    if any(s.source_kind != "routine" for s in sources):
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "GATE_BLOCKED",
+            "관찰 기록으로 만든 예전 일일 보육일지는 한글 파일로 내보낼 수 없습니다. "
+            "일과 기록으로 새로 만들어주세요.",
+            ["source_kind"],
+        )
     ids = [s.source_id for s in sources]
     # 일과 기록 화면과 같은 순서다 — 종이의 행 순서다(routines/router.py).
+    # 이 문서의 반 · 그날 일과만 읽는다. 만들 때와 같은 조건이다(router.py 일일 근거 검사).
     routines = session.scalars(
         select(RoutineRecord)
-        .where(RoutineRecord.id.in_(ids))
+        .where(
+            RoutineRecord.id.in_(ids),
+            RoutineRecord.class_id == doc.class_id,
+            RoutineRecord.date == doc.start_date,
+        )
         .order_by(
             RoutineRecord.position,
             RoutineRecord.start_time.asc().nulls_last(),
