@@ -7,14 +7,18 @@
     3단      shared/gates/judge.py — jev 가 문장마다 판정
     이름 되돌림  화면에 보일 문장만 원래 이름으로
 
-판정 결과는 저장하지 않는다. 확정은 이 단계를 요구하지 않는다(router.confirm_document).
+판정 결과는 검토한 글의 지문(hash)과 함께 문서에 붙여 둔다(ADR-082 — ADR-071 결정 8 보완).
+글이 바뀌면 보이지 않는다. 확정은 이 단계를 요구하지 않는다(router.confirm_document).
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from collections import Counter
 from collections.abc import Sequence
+from dataclasses import asdict
 from typing import Literal
 
 from sqlalchemy import select
@@ -23,10 +27,17 @@ from sqlalchemy.orm import Session
 from app.features.centers.models import Child, Class
 from app.features.documents.draft import KIND_LABELS
 from app.features.documents.models import Document, DocumentSource
-from app.shared.childCode import NameTable, load_pool, mask, table_for_text, unmask_from
-from app.shared.gates.judge import Issue, Source, judge
+from app.shared.childCode import (
+    NameTable,
+    SubstitutionError,
+    load_pool,
+    mask,
+    table_for_text,
+    unmask_from,
+)
+from app.shared.gates.judge import MAX_SENTENCES, Issue, Source, TooLong, judge
 from app.shared.gates.sections import SectionLike
-from app.shared.llm import decide, is_mock
+from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable, decide, is_mock
 
 logger = logging.getLogger("app.server")
 
@@ -102,3 +113,61 @@ def verify_sections(
         ",".join(f"{code}:{n}" for code, n in sorted(counts.items())) or "-",
     )
     return shown, "jev"
+
+
+def review_hash(sections: Sequence[SectionLike]) -> str:
+    """검토한 글의 지문. 사실까지 넣는다 — 근거를 다시 받아 사실이 바뀌어도 옛 결과가 된다."""
+    bodies = {s.heading: s.body for s in sections}
+    raw = json.dumps([bodies.get(h, "") for h in ("사실", "해석", "지원")], ensure_ascii=False)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def review_record(
+    sections: Sequence[SectionLike],
+    issues: Sequence[Issue] = (),
+    judge_name: Literal["jev", "mock"] | None = None,
+    message: str = "",
+) -> dict:
+    """문서에 붙여 둘 검토 결과. `judge_name` 이 없으면 검토하지 못한 것이다(`failed`)."""
+    state = {"jev": "done", "mock": "mock", None: "failed"}[judge_name]
+    return {
+        "state": state,
+        "issues": [asdict(i) for i in issues],
+        "message": message,
+        "hash": review_hash(sections),
+    }
+
+
+def current_review(doc: Document, sections: Sequence[SectionLike]) -> dict | None:
+    """지금 글을 검토한 결과만. 글이 바뀌었으면 None — 옛 결과를 지금 글의 결과로 보이지 않는다."""
+    review = doc.ai_review
+    return review if review and review.get("hash") == review_hash(sections) else None
+
+
+def review_draft(
+    session: Session,
+    doc: Document,
+    sections: Sequence[SectionLike],
+    sources: Sequence[DocumentSource],
+) -> dict:
+    """초안을 만들 때 같이 돌리는 검토. **실패해도 초안은 남긴다** (ADR-071 결정 8).
+
+    판정하지 못하면 빈 목록이 아니라 `failed` 와 이유다 — 「문제없음」으로 보이면 안 된다.
+    """
+    try:
+        issues, judge_name = verify_sections(session, doc, sections, sources)
+    except SubstitutionError:
+        return review_record(
+            sections, message="아이 이름을 가명으로 바꾸지 못해 검토하지 않았어요."
+        )
+    except TooLong:
+        return review_record(
+            sections, message=f"해석 · 지원 문장이 {MAX_SENTENCES}개를 넘어 검토하지 않았어요."
+        )
+    except LlmBudgetExceeded:
+        return review_record(sections, message="AI 사용 한도를 넘었어요. 담당자에게 알려 주세요.")
+    except LlmUnavailable:
+        return review_record(sections, message="지금은 AI 검토를 쓸 수 없어요.")
+    except (LlmFailed, KeyError):
+        return review_record(sections, message="AI 검토를 하지 못했어요. 다시 검토해 주세요.")
+    return review_record(sections, issues, judge_name)

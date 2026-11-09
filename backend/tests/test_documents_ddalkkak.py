@@ -180,3 +180,128 @@ def test_만드는_동안_같은_초안이_먼저_저장되면_그것을_돌려�
     assert response.status_code == 200
     assert response.json()["id"] == landed["id"]
     assert db_session.query(Document).count() == 1
+
+
+# ── 초안에 AI 검토 붙여 오기 ────────────────────────────────────────────────
+
+
+def _answers(questions, flag="s1"):
+    """한 문장만 기록에 없는 일을 덧붙였다고 답하고 나머지는 문제없음."""
+    from app.shared.gates import judge as J
+
+    out = {}
+    for name in questions:
+        key = name.split(".")[0]
+        if name.endswith(".대조"):
+            hit = key == flag
+            out[name] = {
+                "type": "choice",
+                "choice": J.NEW_FACT if hit else J.SAME,
+                "probabilities": {
+                    J.CONFLICT: 0.0,
+                    J.SAME: 0.1 if hit else 0.98,
+                    J.NEW_FACT: 0.9 if hit else 0.0,
+                    J.INTERPRETATION: 0.0 if hit else 0.02,
+                },
+            }
+        elif name.endswith(".근거"):
+            out[name] = {"type": "choice", "choice": "없음"}
+        elif name == "지원.구체":
+            out[name] = {"type": "noul", "noul": 0.95}
+        else:
+            out[name] = {"type": "noul", "noul": 0.02}
+    return out
+
+
+@pytest.fixture
+def jev(monkeypatch):
+    from app.features.documents import verify as verify_module
+
+    calls = []
+
+    def fake_decide(state, questions):
+        calls.append(questions)
+        return _answers(questions)
+
+    monkeypatch.setattr(verify_module, "is_mock", lambda: False)
+    monkeypatch.setattr(verify_module, "decide", fake_decide)
+    return calls
+
+
+def test_mock_초안은_검토_못_함으로_붙는다(db_session):
+    # mock 판정을 「문제없음」으로 보이게 하지 않는다(ADR-071 결정 7).
+    klass, (kid,) = _room(db_session)
+    record = _record(db_session, klass, kid, 5, "개미를 오래 바라보았다.")
+
+    made = _create(klass, kid, [record]).json()
+
+    assert made["ai_review"]["state"] == "mock"
+    assert made["ai_review"]["issues"] == []
+    items = client.get("/api/documents", params={"kind": "observation"}).json()["items"]
+    assert items[0]["ai_review_state"] == "mock"
+
+
+def test_초안을_만들면_검토_결과가_붙고_글을_고치면_떨어진다(db_session, jev):
+    klass, (kid,) = _room(db_session)
+    record = _record(db_session, klass, kid, 5, "개미를 오래 바라보았다.")
+
+    made = _create(klass, kid, [record]).json()
+
+    assert jev, "만들 때 검토를 같이 돌린다"
+    review = made["ai_review"]
+    assert review["state"] == "done"
+    assert [i["code"] for i in review["issues"]] == ["UNSUPPORTED_FACT"]
+    assert review["issues"][0]["heading"] == "해석"
+    detail = client.get(f"/api/documents/{made['id']}").json()
+    assert detail["ai_review"] == review
+
+    # 검토한 글과 지금 글이 다르면 옛 결과를 지금 글의 결과로 보이지 않는다.
+    sections = [
+        {**s, "body": "개미를 오래 바라보며 작은 생물에 관심을 보인다."}
+        if s["heading"] == "해석"
+        else s
+        for s in detail["sections"]
+    ]
+    put = client.put(
+        f"/api/documents/{made['id']}",
+        json={"sections": sections, "updated_at": detail["updated_at"]},
+    )
+    assert put.status_code == 200, put.text
+    assert put.json()["ai_review"] is None
+    items = client.get("/api/documents", params={"kind": "observation"}).json()["items"]
+    assert items[0]["ai_review_state"] is None
+
+
+def test_검토가_실패해도_초안은_남고_검토_못_함이_붙는다(db_session, monkeypatch):
+    from app.features.documents import verify as verify_module
+    from app.shared.llm import LlmFailed
+
+    def broken(state, questions):
+        raise LlmFailed("jev 가 답하지 않았다")
+
+    monkeypatch.setattr(verify_module, "is_mock", lambda: False)
+    monkeypatch.setattr(verify_module, "decide", broken)
+    klass, (kid,) = _room(db_session)
+    record = _record(db_session, klass, kid, 5, "개미를 오래 바라보았다.")
+
+    made = _create(klass, kid, [record])
+
+    assert made.status_code == 201
+    review = made.json()["ai_review"]
+    assert review["state"] == "failed"
+    assert review["message"]
+
+
+def test_다시_검토하면_결과를_그_글에_묶어_둔다(db_session, jev):
+    klass, (kid,) = _room(db_session)
+    record = _record(db_session, klass, kid, 5, "개미를 오래 바라보았다.")
+    made = _create(klass, kid, [record]).json()
+    db_session.get(Document, made["id"]).ai_review = None
+    db_session.flush()
+
+    verified = client.post(f"/api/documents/{made['id']}/verify")
+
+    assert verified.status_code == 200
+    detail = client.get(f"/api/documents/{made['id']}").json()
+    assert detail["ai_review"]["state"] == "done"
+    assert detail["ai_review"]["issues"] == verified.json()["issues"]

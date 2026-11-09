@@ -37,6 +37,7 @@ from app.features.documents.review import (
     resolution_trail,
 )
 from app.features.documents.schemas import (
+    DocumentAiReview,
     DocumentConfirmRequest,
     DocumentCreateRequest,
     DocumentDetailResponse,
@@ -59,7 +60,14 @@ from app.features.documents.schemas import (
     RelatedDocumentsResponse,
 )
 from app.features.documents.stale import SourceImpact, document_changed
-from app.features.documents.verify import name_table, verify_sections
+from app.features.documents.verify import (
+    current_review,
+    name_table,
+    review_draft,
+    review_hash,
+    review_record,
+    verify_sections,
+)
 from app.features.observations.models import AXES, DEFAULT_AXIS, Observation
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.dependency import CurrentUser
@@ -223,6 +231,8 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
     ).all()
     sources = _sources(session, doc.id)
     domains = _observation_domains(session, sources)
+    review = current_review(doc, sections)
+    texts = {s.source_id: s.text for s in sources}
 
     return DocumentDetailResponse(
         id=doc.id,
@@ -262,9 +272,36 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
         ),
         review_note=doc.review_note,
         class_note=doc.class_note,
+        ai_review=DocumentAiReview(
+            state=review["state"],
+            message=review["message"],
+            issues=[
+                DocumentVerifyIssue(**i, source_text=texts.get(i["source_id"]))
+                for i in review["issues"]
+            ],
+        )
+        if review
+        else None,
         created_at=doc.created_at.astimezone(UTC),
         updated_at=doc.updated_at.astimezone(UTC),
     )
+
+
+def _review_states(session: Session, docs: list[Document]) -> dict[int, str]:
+    """목록의 AI 검토 상태 — 붙은 결과가 지금 글의 것일 때만. 결과가 있는 문서만 칸을 읽는다."""
+    reviewed = {d.id: d for d in docs if d.ai_review}
+    if not reviewed:
+        return {}
+    bodies: dict[int, list[DocumentSection]] = {}
+    for section in session.scalars(
+        select(DocumentSection).where(DocumentSection.document_id.in_(reviewed))
+    ):
+        bodies.setdefault(section.document_id, []).append(section)
+    return {
+        doc_id: doc.ai_review["state"]
+        for doc_id, doc in reviewed.items()
+        if doc.ai_review.get("hash") == review_hash(bodies.get(doc_id, []))
+    }
 
 
 @router.get("", response_model=DocumentListResponse)
@@ -315,6 +352,7 @@ def list_documents(
         query = query.where(Document.stale == stale)
 
     rows = session.execute(query).all()
+    states = _review_states(session, [row[0] for row in rows])
     items = [
         DocumentListItem(
             id=doc.id,
@@ -335,6 +373,7 @@ def list_documents(
                 rule_version=doc.generation_rule_version,
             ),
             sources_count=sources_count_value,
+            ai_review_state=states.get(doc.id),
             created_at=doc.created_at,
             updated_at=doc.updated_at,
         )
@@ -801,7 +840,8 @@ def _create_document(
             response.status_code = status.HTTP_200_OK
             return _build_detail_response(session, existing)
         if existing is not None:
-            # 「넣어서 다시」 — 새 초안을 쓰는 같은 트랜잭션에서 지운다. 생성이 실패했으면 여기 안 온다.
+            # 「넣어서 다시」 — 새 초안을 쓰는 같은 트랜잭션에서 지운다.
+            # 생성이 실패했으면 여기 안 온다.
             _remove_rows(session, existing)
 
     subject = child.name if child else classroom.name
@@ -836,6 +876,10 @@ def _create_document(
             )
         )
     session.commit()
+    if body.kind == "observation":
+        # 초안을 먼저 저장하고 검토를 붙인다 — 검토가 실패해도 초안은 남는다(ADR-082).
+        doc.ai_review = review_draft(session, doc, sections, copies)
+        session.commit()
     return _build_detail_response(session, doc)
 
 
@@ -1087,6 +1131,9 @@ def verify_document(
             "AI 검토를 하지 못했어요. 다시 시도해 주세요.",
             [],
         ) from exc
+    # 검토한 글에 묶어 둔다. 아직 저장 안 한 글이면 그 글이 저장될 때 보인다(ADR-082).
+    doc.ai_review = review_record(sections, issues, judge_name)
+    session.commit()
     texts = {s.source_id: s.text for s in sources}
     return DocumentVerifyResponse(
         issues=[
