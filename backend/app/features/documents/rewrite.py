@@ -25,7 +25,7 @@ from app.features.documents.router import (
     _sources,
 )
 from app.features.documents.schemas import DocumentSectionUpdate, DocumentVerifyIssue
-from app.features.documents.verify import _name_table, verify_sections
+from app.features.documents.verify import name_table, verify_sections
 from app.shared.auth.dependency import CurrentUser
 from app.shared.childCode import SubstitutionError, mask, unmask
 from app.shared.gates.judge import JUDGED_KINDS, TooLong, split_sentences
@@ -124,7 +124,7 @@ def rewrite_sentence(
 
     facts = [s.text for s in sources]
     try:
-        table = _name_table(session, doc.class_id, "\n".join([*facts, *bodies.values()]))
+        table = name_table(session, doc.class_id, "\n".join([*facts, *bodies.values()]))
 
         def hide(text: str) -> str:
             return text if table is None else mask(text, table)

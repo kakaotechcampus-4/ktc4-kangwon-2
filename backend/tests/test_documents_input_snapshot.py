@@ -237,7 +237,7 @@ def test_G1_G2_LLM_에_사실마다_날짜_영역_상황이_가명으로_간다(
     res = _create(sun, me, [a, b])
 
     assert res.status_code == 201, res.text
-    assert res.json()["generation"]["rule_version"] == "v5"
+    assert res.json()["generation"]["rule_version"] == "v6"
     raw = llm_seen["payloads"][0]
     assert "이서윤" not in raw and "박하준" not in raw
     assert json.loads(raw)["facts"] == [

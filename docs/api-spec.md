@@ -3599,7 +3599,7 @@ source_kind   값                받는 kind      근거
 `"replace_draft": true` 면 새로 만들고, **새 초안을 저장하는 같은 트랜잭션에서** 옛 초안을 지운다(「넣어서 다시」).
 생성이 실패하면 옛 초안은 그대로다. 새 기록이 몇 개인지는 화면이 기록의 `created_at` 과 초안의 `created_at` 으로 센다.
 
-**관찰일지 초안은 그 교사의 말투 예시를 같이 받는다** (AI ③, ADR-083, 규칙 `v5`). 그 교사 반의 최근 확정 관찰일지 10장의
+**관찰일지 초안은 그 교사의 말투 예시를 같이 받는다** (AI ③, ADR-083, 규칙 `v6`). 그 교사 반의 최근 확정 관찰일지 10장의
 해석 · 지원에서 10~60자 문장을 고르되, 원 아이 이름 · 따옴표 · 이름 꼴(「하윤이가」)이 든 문장은 **가리지 않고 뺀다**.
 아이마다 다른 문장부터 셋을 돌려 고른다. 모델에는 「말투 참고」로만 가고, 검사(1 · 2 · 3단)는 그대로다.
 
@@ -3624,7 +3624,7 @@ source_kind   값                받는 kind      근거
       "context": "바깥놀이", "text": "...", "class_id": 1, "child_id": 5 }
   ],
   "observation_axis": "NURI_5",
-  "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v5" },
+  "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v6" },
   "review_note": "", "class_note": "",
   "ai_review": { "state": "done", "issues": [], "message": "" },
   "created_at": "...", "updated_at": "..."
@@ -4223,7 +4223,7 @@ hwpx 여러 장을 한 파일로 잇지 않는다 — 양식을 다시 짜야 �
 `observations` 를 참조만 하면 원본이 수정될 때 문서의 `사실` 이 조용히 바뀐다.
 **무효 판정을 하려면 만들 당시의 원문이 남아 있어야 한다.** 관찰 기록 근거는 원문과 함께 날짜 · 영역 · 상황을,
 문서는 영역 축을 사본으로 둔다(ADR-088). AI 초안은 사본만 받는다 — 사실마다 `{fact, date, domain, context}`,
-`fact` · `context` 둘 다 가명으로 바꾼 뒤다(`rule_version` `v5`).
+`fact` · `context` 둘 다 가명으로 바꾼 뒤다(`rule_version` `v5` 부터).
 필요한 테이블은 맨 아래 「채워야 할 곳 — BE」 에 적었다.
 
 ---
