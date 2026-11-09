@@ -1,5 +1,6 @@
 from datetime import date as date_
 from datetime import datetime
+from datetime import time as time_
 
 from sqlalchemy import (
     CheckConstraint,
@@ -9,6 +10,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    Time,
     UniqueConstraint,
     func,
 )
@@ -222,6 +224,14 @@ class DocumentSource(Base):
     text: Mapped[str] = mapped_column(
         Text, comment="생성 시점 원문 복사본. 원본이 나중에 바뀌어도 이 값은 안 바뀐다"
     )
+    # 아래는 일과 근거일 때 **확정 시점** 종이 한 줄의 사본이다(ADR-086 결정 7). 확정본 종이는
+    # 이것만 읽는다. 초안 · 일과가 아닌 근거 · 이 칸이 생기기 전 확정본은 NULL(원본을 읽는다).
+    position: Mapped[int | None] = mapped_column(comment="확정 시점 일과 순서 사본")
+    name: Mapped[str | None] = mapped_column(String(50), comment="확정 시점 일과 이름 사본")
+    start_time: Mapped[time_ | None] = mapped_column(Time, comment="확정 시점 시작 시간 사본")
+    end_time: Mapped[time_ | None] = mapped_column(Time, comment="확정 시점 끝 시간 사본")
+    plan: Mapped[str | None] = mapped_column(Text, comment="확정 시점 활동계획 사본")
+    execution: Mapped[str | None] = mapped_column(Text, comment="확정 시점 활동실행 사본")
     reflected: Mapped[bool | None] = mapped_column(
         comment=(
             "일과 근거일 때 확정 시점 「반영」 표시 사본(ADR-086). 확정본 종이가 이것만 읽는다. "

@@ -1109,6 +1109,41 @@ def test_확정본_종이는_확정_때_박은_반영과_활동을_싣는다(db_
     assert (copy.reflected, copy.activities) == (None, None)
 
 
+def test_확정본_종이는_확정_때_박은_일과_이름_시간_계획_순서를_싣는다(db_session, mine):
+    """확정본 종이는 확정 뒤 어느 칸도 바뀌지 않는다 — 일과 기록 원본을 고쳐도 사본을 읽는다."""
+    klass, _ = mine
+    first = _routine(
+        db_session,
+        klass,
+        position=0,
+        start=time(9, 0),
+        end=time(10, 0),
+        name="실내놀이",
+        plan="블록 쌓기",
+        execution="블록으로 다리를 만들었다.",
+    )
+    second = _routine(
+        db_session,
+        klass,
+        position=1,
+        start=None,
+        end=None,
+        name="바깥놀이",
+        execution="둑을 쌓았다.",
+    )
+    doc = _daily_log(db_session, klass, [first, second], status="DRAFT")
+    confirmed = client.post(f"/api/documents/{doc.id}/confirm", json={"checks": CHECKS})
+    assert confirmed.status_code == 200, confirmed.text
+
+    # stale 을 거치지 않고 원본만 바뀐 경우(옛 코드 · 손 고침)
+    first.name, first.start_time, first.plan, first.position = "다른 이름", time(8, 0), "새 계획", 5
+    first.execution = "고친 글"
+    db_session.flush()
+    _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+    assert rows[1] == ["09:00~10:00", "실내놀이", "블록 쌓기", "블록으로 다리를 만들었다."]
+    assert rows[2][1] == "바깥놀이"
+
+
 def test_주간_확정본의_우리반_놀이는_확정_때_박은_활동이다(db_session, mine):
     klass, _ = mine
     doc = _weekly_log(

@@ -28,9 +28,9 @@ def fact_key(record: RoutineRecord) -> tuple:
     return (record.date, record.start_time, record.end_time, record.name, record.execution)
 
 
-def paper_marks(record: RoutineRecord) -> tuple[bool, list[str]]:
-    """사실 칸은 아니지만 종이에 나가는 표시 — 「반영」 · 맞다고 한 활동 (ADR-086)."""
-    return (bool(record.reflected), list(record.activities or []))
+def paper_marks(record: RoutineRecord) -> tuple[bool, list[str], str]:
+    """사실 칸은 아니지만 종이에 나가는 것 — 「반영」 · 맞다고 한 활동 · 활동계획 (ADR-086)."""
+    return (bool(record.reflected), list(record.activities or []), record.plan)
 
 
 def mark_if_changed(
@@ -38,7 +38,7 @@ def mark_if_changed(
     record: RoutineRecord,
     before: tuple,
     center_id: int,
-    before_marks: tuple[bool, list[str]] | None = None,
+    before_marks: tuple[bool, list[str], str] | None = None,
 ) -> SourceImpact:
     """고친 뒤 사실 칸이 달라졌으면 그 기록을 쓴 일지를 `stale` 로 바꾼다.
 

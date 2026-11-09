@@ -108,15 +108,15 @@ def source_changed(
     *,
     center_id: int | None = None,
     force: bool = False,
-    marks: tuple[bool, list[str]] | None = None,
+    marks: tuple[bool, list[str], str] | None = None,
 ) -> SourceImpact:
     """근거 원본(관찰 기록 · 일과 기록)이 바뀌었거나(`text`·`date`) 사라졌다(둘 다 None).
 
     `text` 는 문서가 사본으로 남긴 문자열과 같은 모양이어야 한다 — 일과 기록은
     `RoutineRecord.fact_text()` 다. 사본과 같으면 문서를 건드리지 않는다.
 
-    `marks` 는 일과 기록의 (반영, 맞다고 한 활동)이다. 확정 때 박은 사본과 다르면 그 확정본도
-    `stale` 이다 — 사실 칸은 아니지만 종이에 나간다(ADR-086).
+    `marks` 는 일과 기록의 (반영, 맞다고 한 활동, 활동계획)이다. 확정 때 박은 사본과 다르면
+    그 확정본도 `stale` 이다 — 사실 칸은 아니지만 종이에 나간다(ADR-086).
     """
     query = _sources(center_id).where(
         DocumentSource.source_kind == kind,
@@ -125,15 +125,16 @@ def source_changed(
     if text is not None and not force:
         differs = [DocumentSource.text != text, DocumentSource.date.is_distinct_from(date)]
         if marks is not None:
-            # 확정 때 박은 「반영」 · 활동 사본과 다르면 종이가 바뀐다(ADR-086). 박지 않은
-            # 사본(초안 · 옛 확정본)은 원본을 읽으므로 보지 않는다.
-            reflected, activities = marks
+            # 확정 때 박은 「반영」 · 활동 · 활동계획 사본과 다르면 종이가 바뀐다(ADR-086).
+            # 박지 않은 사본(초안 · 옛 확정본)은 원본을 읽으므로 보지 않는다.
+            reflected, activities, plan = marks
             differs.append(
                 and_(
                     DocumentSource.reflected.is_not(None),
                     or_(
                         DocumentSource.reflected != reflected,
                         DocumentSource.activities != cast(activities, JSONB),
+                        DocumentSource.plan.is_distinct_from(plan),
                     ),
                 )
             )

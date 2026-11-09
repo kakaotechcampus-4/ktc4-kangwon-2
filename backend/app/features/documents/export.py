@@ -7,7 +7,8 @@
 실물 양식에는 해석 칸과 지원 칸이 따로 없다. 꼬리 칸 하나에 해석, 빈 줄, 지원 순서로 잇는다.
 
 **근거가 바뀐(`stale`) 문서는 내보내지 않는다.** 일과 기록의 시간 · 일과 이름 · 활동계획은
-원본에서 읽는다. 날씨 · 「반영」 · 맞다고 한 활동은 확정 때 박은 사본을 읽는다(`paper.py`).
+원본에서 읽지 않는다 — 확정 때 박은 사본(순서 · 이름 · 시간 · 활동계획 · 활동실행 ·
+「반영」 · 활동 · 날씨)을 읽는다(`paper.py`, ADR-086). 사본이 없는 옛 확정본만 원본을 읽는다.
 근거가 바뀐 채로 내보내면 교사가 확정한 것과 다른 종이가 나간다.
 관찰 기록의 영역 · 상황과 영역 축은 문서가 만들 때 찍은 사본에서 읽는다(ADR-088). 사본이 없는
 옛 문서만 예전처럼 원본 영역과 원의 지금 축을 읽는다.
@@ -253,6 +254,60 @@ def _daily_log(
             "일과 기록으로 새로 만들어주세요.",
             ["source_kind"],
         )
+    # 어제 지원을 반영한 줄은 원이 고른 표기를 앞에 붙인다. 표시는 사실 글에 없다 (ADR-086).
+    mark = session.scalar(
+        select(Center.reflect_mark)
+        .where(Center.id == Class.center_id)
+        .where(Class.id == doc.class_id)
+    )
+    routines = _stamped_lines(sources) or _routine_lines(session, doc, sources)
+    rows = [
+        [r.time_range(), r.name.strip(), r.plan.strip(), _executed(r.execution, r.reflected, mark)]
+        for r in routines
+    ]
+    return fill_grid(
+        (TEMPLATE_DIR / "daily_log.hwpx").read_bytes(),
+        doc.title,
+        DAILY_LOG_HEADER_ROWS,
+        rows,
+        [
+            ["놀이 평가 및 다음날 지원계획", evaluation],
+            # 공식 양식 5종 전부에 있는 칸이다. 교사가 안 적었으면 빈 칸으로 나간다 —
+            # 종이에서 칸 자체가 사라지면 제출할 때 손으로 그려 넣어야 한다.
+            ["반 운영 특이사항", doc.class_note.strip()],
+        ],
+        lines={DAILY_HEAD_PLACEHOLDER: _daily_head(session, doc)},
+    )
+
+
+def _stamped_lines(sources: list[DocumentSource]) -> list[RoutineRecord]:
+    """확정 때 박은 종이 한 줄들(ADR-086 결정 7). 하나라도 박지 않았으면 빈 목록 — 원본을 읽는다.
+
+    세션에 넣지 않는 임시 객체다. `time_range` 를 원본과 같은 규칙으로 쓰려고 같은 모양으로 만든다.
+    """
+    if not sources or any(s.name is None for s in sources):
+        return []
+    lines = [
+        RoutineRecord(
+            id=s.source_id,
+            position=s.position,
+            name=s.name,
+            start_time=s.start_time,
+            end_time=s.end_time,
+            plan=s.plan or "",
+            execution=s.execution or "",
+            reflected=bool(s.reflected),
+        )
+        for s in sources
+    ]
+    # 확정 때의 종이 순서 — 원본 조회와 같은 규칙(순서 · 시작 시간 · 번호)이다.
+    return sorted(lines, key=lambda r: (r.position, r.start_time is None, r.start_time or 0, r.id))
+
+
+def _routine_lines(
+    session: Session, doc: Document, sources: list[DocumentSource]
+) -> list[RoutineRecord]:
+    """사본을 박지 않은 옛 확정본 — 일과 기록 원본을 읽는다."""
     ids = [s.source_id for s in sources]
     # 일과 기록 화면과 같은 순서다 — 종이의 행 순서다(routines/router.py).
     # 이 문서의 반 · 그날 일과만 읽는다. 만들 때와 같은 조건이다(router.py 일일 근거 검사).
@@ -271,37 +326,7 @@ def _daily_log(
     ).all()
     found = {r.id for r in routines}
     _missing([f"sources.{i}" for i in ids if i not in found])
-
-    # 어제 지원을 반영한 줄은 원이 고른 표기를 앞에 붙인다. 표시는 사실 글에 없다 (ADR-086).
-    mark = session.scalar(
-        select(Center.reflect_mark)
-        .where(Center.id == Class.center_id)
-        .where(Class.id == doc.class_id)
-    )
-    # 확정 때 박은 「반영」 사본이 먼저다. 박지 않은 옛 확정본만 원본을 읽는다.
-    stamped = {s.source_id: s.reflected for s in sources if s.reflected is not None}
-    rows = [
-        [
-            r.time_range(),
-            r.name.strip(),
-            r.plan.strip(),
-            _executed(r.execution, stamped.get(r.id, r.reflected), mark),
-        ]
-        for r in routines
-    ]
-    return fill_grid(
-        (TEMPLATE_DIR / "daily_log.hwpx").read_bytes(),
-        doc.title,
-        DAILY_LOG_HEADER_ROWS,
-        rows,
-        [
-            ["놀이 평가 및 다음날 지원계획", evaluation],
-            # 공식 양식 5종 전부에 있는 칸이다. 교사가 안 적었으면 빈 칸으로 나간다 —
-            # 종이에서 칸 자체가 사라지면 제출할 때 손으로 그려 넣어야 한다.
-            ["반 운영 특이사항", doc.class_note.strip()],
-        ],
-        lines={DAILY_HEAD_PLACEHOLDER: _daily_head(session, doc)},
-    )
+    return list(routines)
 
 
 def _executed(execution: str, reflected: bool, mark: str | None) -> str:

@@ -23,7 +23,13 @@ from app.db import get_session
 from app.features.auth.models import User
 from app.features.centers.models import Class
 from app.features.documents.stale import SourceImpact, source_changed
-from app.features.routines.drafts import fact_key, find_draft, mark_if_changed, save_draft
+from app.features.routines.drafts import (
+    fact_key,
+    find_draft,
+    mark_if_changed,
+    paper_marks,
+    save_draft,
+)
 from app.features.routines.models import (
     ClassRoutineTemplate,
     RoutineDraft,
@@ -264,10 +270,10 @@ def update_routine(
 ) -> RoutineResponse | RoutineMutationResponse:
     record = _own(session, user, record_id, lock=True)[0]
     require_own_class(session, user, record.class_id)
-    # 사본이 이미 과거 값이어도 계획/자리만 고친 요청은 새 근거 변경이 아니다.
-    before = fact_key(record)
+    # 자리만 고친 요청은 근거 변경이 아니다. 계획은 확정 때 박은 사본과 비교한다(ADR-086).
+    before, before_marks = fact_key(record), paper_marks(record)
     _apply(record, body)
-    impact = mark_if_changed(session, record, before, user.center_id)
+    impact = mark_if_changed(session, record, before, user.center_id, before_marks)
     session.commit()
     result = _response(_own(session, user, record_id))
     if include_impact:

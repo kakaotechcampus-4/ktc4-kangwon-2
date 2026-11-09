@@ -1,8 +1,9 @@
 """확정한 종이는 확정 뒤 바뀌지 않는다 — 확정할 때 종이에만 쓰는 값을 문서 쪽에 박는다.
 
-날씨(ADR-081 결정 9)와 일과 줄의 「반영」 · 맞다고 한 활동(ADR-086)이다. 셋 다 3층 사실이 아니라
-근거 사본(`text`)에 들어가지 않지만 종이에는 나간다. 확정 · 재확정 때 박고, 확정을 풀면 푼다.
-박은 뒤 일과 기록의 반영 · 활동이 바뀌면 그 확정본은 `stale` 이다(`routines/drafts.py`).
+날씨(ADR-081 결정 9)와 일과 줄 종이 한 줄 전부 — 순서 · 이름 · 시간 · 활동계획 · 활동실행 ·
+「반영」 · 맞다고 한 활동(ADR-086 결정 5 · 7)이다. 확정본 종이는 일과 기록 원본을 읽지 않는다.
+확정 · 재확정 때 박고, 확정을 풀면 푼다. 박은 뒤 일과 기록의 사실 · 활동계획 · 반영 · 활동이
+바뀌면 그 확정본은 `stale` 이다(`routines/drafts.py`).
 """
 
 from sqlalchemy import select, update
@@ -32,6 +33,9 @@ def stamp_confirmed(session: Session, doc: Document) -> None:
         if copy.source_kind == "routine" and copy.source_id in routines:
             record = routines[copy.source_id]
             copy.reflected, copy.activities = record.reflected, list(record.activities)
+            copy.position, copy.name, copy.plan = record.position, record.name, record.plan
+            copy.start_time, copy.end_time = record.start_time, record.end_time
+            copy.execution = record.execution
         elif copy.source_kind == "document":
             copy.activities = _daily_activities(session, copy.source_id)
 
@@ -58,5 +62,14 @@ def clear_confirmed(session: Session, doc: Document) -> None:
     session.execute(
         update(DocumentSource)
         .where(DocumentSource.document_id == doc.id)
-        .values(reflected=None, activities=None)
+        .values(
+            reflected=None,
+            activities=None,
+            position=None,
+            name=None,
+            start_time=None,
+            end_time=None,
+            plan=None,
+            execution=None,
+        )
     )
