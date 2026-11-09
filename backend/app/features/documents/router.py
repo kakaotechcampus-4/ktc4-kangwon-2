@@ -60,6 +60,7 @@ from app.features.documents.schemas import (
     RelatedDocumentsResponse,
 )
 from app.features.documents.stale import SourceImpact, document_changed
+from app.features.documents.style import teacher_examples
 from app.features.documents.verify import (
     current_review,
     name_table,
@@ -769,7 +770,12 @@ def _create_document(
         table = name_table(
             session, body.class_id, "\n".join([*facts, *(c.context or "" for c in copies)])
         )
-        drafted = draft_sections(body.kind, copies, body.source_ids, table, sorted(domains))
+        examples = (
+            teacher_examples(session, user, body.child_id) if body.kind == "observation" else []
+        )
+        drafted = draft_sections(
+            body.kind, copies, body.source_ids, table, sorted(domains), examples
+        )
     except CallNameNeeded as exc:
         # 교사가 고칠 수 있다 — 부르는 이름을 적거나 낱말을 바꾼다. 다시 시도해도 안 된다.
         raise _error(

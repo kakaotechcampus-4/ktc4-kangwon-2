@@ -692,7 +692,7 @@ def test_create_document_masks_child_names_before_generation(db_session, monkeyp
     record = _observation(db_session, klass, child, 5, "이가명이 가명이와 블록을 쌓았다.")
     seen = {}
 
-    def fake_generate(kind, masked_facts, curriculum=()):
+    def fake_generate(kind, masked_facts, curriculum=(), examples=()):
         seen["facts"] = masked_facts
         return (
             "도담 해석입니다. 기록에 드러난 사실만 근거로 씁니다.",
@@ -1306,7 +1306,7 @@ def test_observation_draft_hands_the_chosen_domain_curriculum_to_the_model(db_se
     record = _observation(db_session, klass, child, 5, "도토리를 바구니에 담았다.")
     seen = {}
 
-    def fake_generate(kind, masked_facts, curriculum=()):
+    def fake_generate(kind, masked_facts, curriculum=(), examples=()):
         seen["curriculum"] = list(curriculum)
         return (
             "자연탐구의 생활 속에서 탐구하기를 경험한다. 기록에 드러난 사실만 근거로 씁니다.",
@@ -1428,7 +1428,7 @@ def test_create_document_redrafts_from_the_latest_record_when_it_changes_meanwhi
     record = _observation(db_session, klass, child, 5, "개미를 3분 동안 바라보았다.")
     seen = []
 
-    def generate_while_teacher_edits(kind, masked_facts, curriculum=()):
+    def generate_while_teacher_edits(kind, masked_facts, curriculum=(), examples=()):
         seen.append([f["fact"] for f in masked_facts])
         if len(seen) == 1:
             record.fact = "개미를 5분 동안 바라보았다."

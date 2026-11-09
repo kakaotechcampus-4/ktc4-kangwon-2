@@ -41,7 +41,7 @@ def _room(session, names=("이가명",)):
     )
     session.add(klass)
     session.flush()
-    codes = ["도담", "하람", "누리", "가온"]
+    codes = ["도담", "누리", "하람", "가온"]  # 받침이 이름과 같아야 한다
     kids = []
     for name, code in zip(names, codes, strict=False):
         kid = Child(class_id=klass.id, name=name, code=code)
@@ -113,7 +113,8 @@ def test_기간이_다르거나_확정본이면_새로_만든다(db_session):
     db_session.get(Document, month.json()["id"]).status = "CONFIRMED"
     db_session.flush()
     # 확정본은 덮지 않는다 — 같은 기간의 새 초안은 따로 생긴다.
-    assert _create(klass, kid, [record]).status_code == 201
+    res = _create(klass, kid, [record])
+    assert res.status_code == 201, res.text
 
 
 def test_넣어서_다시는_새_기록까지_넣어_만들고_옛_초안을_지운다(db_session):
@@ -409,3 +410,87 @@ def test_칸에_없는_문장이나_확정본은_고쳐_쓰지_않는다(db_sess
     db_session.get(Document, made["id"]).status = "CONFIRMED"
     db_session.flush()
     assert _rewrite(made["id"], sections).status_code == 409
+
+
+# ── 말투 예시 (AI ③) ──────────────────────────────────────────────────────────
+
+
+def test_말투_예시는_아이가_안_나오는_짧은_문장만_고르고_아이마다_돌려_쓴다():
+    from app.features.documents.style import pick_examples
+
+    texts = [
+        "이가명은 개미를 오래 바라본다. 작은 생물의 움직임에 관심을 보인다.",
+        "「같이 하자」고 말하며 친구에게 다가간다. 놀이 재료를 더 놓아 주면 좋을 것 같다.",
+        "가명이가 블록을 쌓는다. 하윤이가 웃었다. 탐색을 이어 가도록 돋보기를 놓아 주겠다.",
+        "다음 바깥놀이에서 관찰을 이어 가겠다.",
+    ]
+    picked = pick_examples(texts, names=["이가명"], offset=0, limit=10)
+
+    # 이름이 나온 문장(성을 뗀 「가명이」 포함) · 따옴표 · 이름처럼 보이는 「하윤이가」는 뺀다.
+    assert picked == [
+        "작은 생물의 움직임에 관심을 보인다.",
+        "놀이 재료를 더 놓아 주면 좋을 것 같다.",
+        "탐색을 이어 가도록 돋보기를 놓아 주겠다.",
+        "다음 바깥놀이에서 관찰을 이어 가겠다.",
+    ]
+    first = pick_examples(texts, names=["이가명"], offset=0, limit=2)
+    second = pick_examples(texts, names=["이가명"], offset=1, limit=2)
+    assert first != second and len(first) == len(second) == 2
+
+
+def test_전에_확정한_관찰일지에서_말투_예시를_골라_보낸다(db_session, monkeypatch):
+    from app.features.documents.models import DocumentSection
+
+    klass, (kid, friend) = _room(db_session, names=("이가명", "박친구"))
+    old = Document(
+        kind="observation",
+        title="박친구 관찰일지 (8월)",
+        class_id=klass.id,
+        child_id=friend.id,
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 31),
+        status="CONFIRMED",
+        origin="AI",
+        stale=False,
+        review_note="",
+    )
+    db_session.add(old)
+    db_session.flush()
+    db_session.add_all(
+        [
+            DocumentSection(
+                document_id=old.id, heading="사실", body="모래를 팠다.", source_ids=[1]
+            ),
+            DocumentSection(
+                document_id=old.id,
+                heading="해석",
+                body="박친구는 모래를 깊게 판다. 손끝으로 흙의 감촉을 느껴 본다.",
+                source_ids=[1],
+            ),
+            DocumentSection(
+                document_id=old.id,
+                heading="지원",
+                body="다음에는 삽과 체를 같이 놓아 주면 좋을 것 같다.",
+                source_ids=[1],
+            ),
+        ]
+    )
+    db_session.flush()
+    record = _record(db_session, klass, kid, 5, "개미를 오래 바라보았다.")
+    seen = {}
+
+    def fake_generate(kind, masked_facts, curriculum=(), examples=()):
+        seen["examples"] = list(examples)
+        return (
+            "작은 생물의 움직임에 관심을 보이며 탐색을 경험한다.",
+            "다음 바깥놀이에서 돋보기를 놓아 주면 좋을 것 같다.",
+        )
+
+    monkeypatch.setattr("app.features.documents.draft._generate", fake_generate)
+    res = _create(klass, kid, [record])
+    assert res.status_code == 201, res.text
+
+    assert sorted(seen["examples"]) == [
+        "다음에는 삽과 체를 같이 놓아 주면 좋을 것 같다.",
+        "손끝으로 흙의 감촉을 느껴 본다.",
+    ]
