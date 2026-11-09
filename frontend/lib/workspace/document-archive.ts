@@ -5,24 +5,29 @@
  * 주차를 세기 시작하면 서버와 어긋나고, 어긋난 쪽이 교사 눈에 먼저 보인다.
  */
 
-export type ArchiveStatus = "confirmed" | "draft" | "none";
+export type ArchiveStatus = "confirmed" | "stale" | "draft" | "none";
 
 export const ARCHIVE_STATUS_LABEL: Record<ArchiveStatus, string> = {
   confirmed: "확정",
+  // 관찰일지 화면 목록(`ObservationJournalPage` 의 statusLabel)과 같은 말이다.
+  stale: "확정 · 다시 확인 필요",
   draft: "검토 중",
   none: "미작성",
 };
 
 /**
- * 목록에 보여 줄 상태. 셋뿐이다 — 확정 · 검토 중 · 미작성.
+ * 목록에 보여 줄 상태 — 확정 · 확정이지만 다시 확인 필요 · 검토 중 · 미작성.
  *
- * **`stale` 을 보지 않는다.** 근거가 바뀐 확정본도 목록에서는 확정이다. 확정은 교사가 누른
- * 것이고 `stale` 은 별개 사실이라, 여기서 초안으로 끌어내리면 안 된다 (ADR-030).
- * 재확인 안내와 재확정은 **문서 상세 안에서** 그대로 돈다 — 그 길을 막지 않는다.
+ * **근거가 바뀐 확정본을 초안으로 끌어내리지 않는다.** 확정은 교사가 누른 것이고 `stale` 은
+ * 별개 사실이다 (ADR-030). 그렇다고 그냥 「확정」으로 보이면 교사가 다시 볼 문서를 못 찾는다.
+ * 확정은 그대로 두고 「다시 확인 필요」를 붙인다. 재확인과 재확정은 문서 상세 안에서 돈다.
  */
-export function archiveStatus(doc?: { status: "draft" | "confirmed" } | null): ArchiveStatus {
+export function archiveStatus(
+  doc?: { status: "draft" | "confirmed"; stale?: boolean } | null,
+): ArchiveStatus {
   if (!doc) return "none";
-  return doc.status === "confirmed" ? "confirmed" : "draft";
+  if (doc.status !== "confirmed") return "draft";
+  return doc.stale ? "stale" : "confirmed";
 }
 
 /** 계획안 목록은 대문자 상태만 준다 — `stale` 이라는 개념이 없다. */
