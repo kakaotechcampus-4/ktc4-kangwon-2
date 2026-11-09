@@ -17,12 +17,30 @@ import ObservationJournalEditor from "./ObservationJournalEditor";
 import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
 import { useServerDocument } from "./use-server-document";
 import { openPicker } from "./RecordsPage";
+import ObservationClassDrafts from "./ObservationClassDrafts";
+import oj from "./ObservationJournal.module.css";
 
 const NO_ENTRY = { classId: "", childId: "", recordId: "" };
 
 function messageFor(error: unknown) {
   return error instanceof Error ? error.message : "요청을 처리하지 못했어요.";
 }
+
+const pad = (n: number) => String(n).padStart(2, "0");
+/** 기간 칩 — 한 번 눌러 기간을 정한다. 끝은 오늘을 넘지 않는다(날짜 칸의 max 와 같다). */
+export const PERIODS: { label: string; range: (day: string) => [string, string] }[] = [
+  { label: "이번 주", range: (day) => [weekStart(day), day] },
+  { label: "이번 달", range: (day) => [`${day.slice(0, 8)}01`, day] },
+  {
+    label: "지난달",
+    range: (day) => {
+      const [y, m] = day.split("-").map(Number);
+      const [py, pm] = m === 1 ? [y - 1, 12] : [y, m - 1];
+      const last = new Date(Date.UTC(py, pm, 0)).getUTCDate();
+      return [`${py}-${pad(pm)}-01`, `${py}-${pad(pm)}-${pad(last)}`];
+    },
+  },
+];
 
 /**
  * 관찰일지 만들기 — **관찰 기록 화면 바로 아래(/records/journal)** 에서 만들고 끝까지 쓴다.
@@ -108,6 +126,10 @@ export default function ObservationJournalPage() {
   }
 
   const child = classroom?.children.find((c) => c.id === childId);
+  const inPeriod = (r: ServerObservation) =>
+    r.classId === classId && r.date >= start && r.date <= end;
+  const hasRecords = (kidId: string) =>
+    (records ?? []).some((r) => r.childId === kidId && inPeriod(r));
   const inRange = useMemo(
     () =>
       (records ?? [])
@@ -121,6 +143,33 @@ export default function ObservationJournalPage() {
   // 올린 서류(IMPORT)는 AI 편집기로 열지 않는다 — 문서 보관함이 연다.
   const mine = docs.filter((d) => d.childId === childId && d.origin === "ai");
   const periodOk = validDate(start) && validDate(end) && start <= end;
+
+  /** 반 전체 초안의 다음 아이 — 반 순서로 이 일지 다음, 같은 기간 초안이 있는 첫 아이. */
+  function nextDraft(docId: string) {
+    const open = docs.find((d) => d.id === docId);
+    const order = classroom?.children.map((c) => c.id) ?? [];
+    if (!open) return undefined;
+    return order
+      .slice(order.indexOf(open.childId) + 1)
+      .map((kid) =>
+        docs.find(
+          (d) =>
+            d.childId === kid &&
+            d.start === open.start &&
+            d.end === open.end &&
+            d.status === "draft" &&
+            d.origin === "ai",
+        ),
+      )
+      .find(Boolean)?.id;
+  }
+  const next = openId ? nextDraft(openId) : undefined;
+
+  function pickPeriod(range: [string, string]) {
+    setStart(range[0]);
+    setEnd(range[1]);
+    setLeft([]);
+  }
 
   const blocked = !child
     ? "아이를 먼저 골라 주세요."
@@ -184,6 +233,7 @@ export default function ObservationJournalPage() {
           id={openId}
           onChanged={() => setReload((n) => n + 1)}
           onClose={() => setOpenId("")}
+          onNext={next ? () => setOpenId(next) : undefined}
         />
       ) : (
         <div className={`${ws.grid} ${ws.recordGrid}`}>
@@ -198,27 +248,49 @@ export default function ObservationJournalPage() {
                   <div className={ws.jrStep}>
                     <h2 id="jr-kids">누구 관찰일지인가요?</h2>
                     <div className={ws.recordKids} role="group" aria-labelledby="jr-kids">
-                      {classroom.children.map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          className={ws.recordKid}
-                          aria-pressed={c.id === childId}
-                          disabled={busy}
-                          onClick={() => {
-                            setChildId(c.id);
-                            setLeft([]);
-                            setOpenId("");
-                          }}
-                        >
-                          <ChildNote name={c.name} mark={markFor(c.id)} size={24} />
-                          {c.name}
-                        </button>
-                      ))}
+                      {classroom.children.map((c) => {
+                        // 숫자는 쓰지 않는다 — 「가람 7」은 무슨 숫자인지 안 읽힌다. 없는 아이만 점선.
+                        const none = records !== null && !hasRecords(c.id);
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            className={`${ws.recordKid} ${none ? oj.kidNone : ""}`}
+                            aria-pressed={c.id === childId}
+                            disabled={busy}
+                            onClick={() => {
+                              setChildId(childId === c.id ? "" : c.id);
+                              setLeft([]);
+                              setOpenId("");
+                            }}
+                          >
+                            <ChildNote name={c.name} mark={markFor(c.id)} size={24} />
+                            {c.name}
+                            {none && <small>기록 없음</small>}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                   <div className={ws.jrStep}>
-                    <h2>기간</h2>
+                    <h2 id="jr-period">기간</h2>
+                    <div className={oj.chips} role="group" aria-labelledby="jr-period">
+                      {PERIODS.map(({ label, range }) => {
+                        const [from, to] = range(today());
+                        return (
+                          <button
+                            key={label}
+                            type="button"
+                            className={oj.chip}
+                            aria-pressed={from === start && to === end}
+                            disabled={busy}
+                            onClick={() => pickPeriod([from, to])}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
                     <div className={ws.jrPeriod}>
                       <input
                         type="date"
@@ -306,33 +378,48 @@ export default function ObservationJournalPage() {
           </div>
 
           <div className={ws.stack}>
-            <section className={`${ws.card} ${ws.jrList}`}>
-              <h2>{child ? `${child.name} 관찰일지` : "만든 관찰일지"}</h2>
-              {!child ? (
-                <div className={ws.jrEmpty}>
-                  <Posty pose="wave" face="base" tone="note" size={72} label={null} />
-                  <p>왼쪽에서 아이를 고르면, 그 아이 기록으로 초안을 만들 수 있어요.</p>
-                </div>
-              ) : !mine.length ? (
-                <div className={ws.jrEmpty}>
-                  <Posty pose="hand" face="base" tone="lilac" size={72} label={null} />
-                  <p>아직 만든 관찰일지가 없어요. 「초안 만들기」를 누르면 여기서 바로 열려요.</p>
-                </div>
-              ) : (
-                <ul className={ws.jrDocs}>
-                  {mine.map((d) => (
-                    <li key={d.id}>
-                      <button type="button" onClick={() => setOpenId(d.id)}>
-                        <b>{d.title}</b>
-                        <small>
-                          {d.start === d.end ? d.start : `${d.start} ~ ${d.end}`} · {statusLabel(d)}
-                        </small>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
+            {!child && classroom?.children.length ? (
+              // 아이를 고르지 않았으면 반 전체 — 한 번 눌러 기록 있는 아이 전부 (ADR-085).
+              <ObservationClassDrafts
+                kids={classroom.children}
+                records={records ?? []}
+                docs={docs}
+                start={start}
+                end={end}
+                classId={classId}
+                onOpen={setOpenId}
+                onChanged={() => setReload((n) => n + 1)}
+              />
+            ) : (
+              <section className={`${ws.card} ${ws.jrList}`}>
+                <h2>{child ? `${child.name} 관찰일지` : "만든 관찰일지"}</h2>
+                {!child ? (
+                  <div className={ws.jrEmpty}>
+                    <Posty pose="wave" face="base" tone="note" size={72} label={null} />
+                    <p>왼쪽에서 아이를 고르면, 그 아이 기록으로 초안을 만들 수 있어요.</p>
+                  </div>
+                ) : !mine.length ? (
+                  <div className={ws.jrEmpty}>
+                    <Posty pose="hand" face="base" tone="lilac" size={72} label={null} />
+                    <p>아직 만든 관찰일지가 없어요. 「초안 만들기」를 누르면 여기서 바로 열려요.</p>
+                  </div>
+                ) : (
+                  <ul className={ws.jrDocs}>
+                    {mine.map((d) => (
+                      <li key={d.id}>
+                        <button type="button" onClick={() => setOpenId(d.id)}>
+                          <b>{d.title}</b>
+                          <small>
+                            {d.start === d.end ? d.start : `${d.start} ~ ${d.end}`} ·{" "}
+                            {statusLabel(d)}
+                          </small>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
           </div>
         </div>
       )}
@@ -345,10 +432,12 @@ function JournalEditor({
   id,
   onChanged,
   onClose,
+  onNext,
 }: {
   id: string;
   onChanged: () => void;
   onClose: () => void;
+  onNext?: () => void;
 }) {
   const edit = useServerDocument(id, { onChanged, onRemoved: onClose });
   const domains = useObservationDomains();
@@ -360,6 +449,7 @@ function JournalEditor({
       initial={edit.doc}
       server={edit.server}
       domains={domains}
+      onNext={onNext}
     />
   );
 }

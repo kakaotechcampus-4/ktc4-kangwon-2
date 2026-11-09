@@ -1,0 +1,284 @@
+/* 관찰일지 딸깍 (ADR-085) — 반 전체 초안 · 기간 칩 · 문장 형광펜 · 고친 문장.
+ * 종이와 판(docs/design/종이와-판.md): 도장은 손글씨 · 기울임, 누르는 것 44px, 움직임 줄이기면 멈춤. */
+
+/* ── 기간 칩 · 아이 칩 ───────────────────────────────────── */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.chip {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chip[aria-pressed="true"] {
+  border-color: var(--pg-ink);
+  background: var(--pg-ink);
+  color: var(--pg-paper);
+}
+/* 기록이 없는 아이 — 점선과 「기록 없음」. 숫자는 쓰지 않는다. */
+.kidNone {
+  border-style: dashed !important;
+  color: var(--pg-ink-soft) !important;
+}
+.kidNone small {
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+/* ── 반 전체 ──────────────────────────────────────────────── */
+.drafts {
+  display: grid;
+  gap: 12px;
+}
+.draftsHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.draftsHead h2 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+}
+.draftsActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.draftsNote {
+  margin: 0;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.draftRows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--pg-line);
+}
+.draftRow {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto 104px;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 52px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--pg-line);
+}
+.draftRow[data-status="기록 없음"] .draftName {
+  color: var(--pg-ink-soft);
+}
+.draftPick {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+}
+.draftPick input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--pg-ink);
+}
+.draftName {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--pg-ink);
+  text-align: left;
+  display: inline-flex;
+  align-items: center;
+}
+button.draftName {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--pg-line-strong);
+  text-underline-offset: 4px;
+}
+.draftCount {
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.draftMark {
+  justify-self: end;
+}
+/* 도장 — 확정 · 초안 두 가지만. 손글씨 · 살짝 기울임. */
+.stamp {
+  padding: 2px 10px;
+  border: 2.5px double var(--pg-ink-soft);
+  border-radius: 6px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+  rotate: -4deg;
+}
+.draftRow[data-status="확정"] .stamp {
+  border-color: var(--pg-alert-strong-line);
+  color: var(--pg-alert-strong-line);
+}
+/* 사람이 봐야 하는 것 — 못 만듦 · 물어볼 것 · 검토 못 함 · 기록 없음. 도장이 아니라 글자. */
+.tag {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pg-peach-ink);
+}
+.draftRow[data-status="기록 없음"] .tag {
+  font-weight: 500;
+  color: var(--pg-ink-soft);
+}
+.making {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.making i {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--pg-line-strong);
+  border-top-color: var(--pg-ink);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.draftAsk,
+.draftWhy {
+  grid-column: 2 / -1;
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.draftAsk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 14px;
+}
+.draftAsk span {
+  font-weight: 700;
+  color: var(--pg-peach-ink);
+}
+.draftAsk button {
+  min-height: 44px;
+}
+.draftWhy {
+  color: var(--pg-ink-soft);
+}
+
+/* ── 문장 형광펜 · 칸 아래 쪽지 · 고친 문장 ──────────────── */
+.notes {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+.note {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 2px;
+  background: var(--pg-note-soft);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.18);
+  color: var(--pg-ink);
+  font-size: 14px;
+  rotate: -0.6deg;
+}
+.note:nth-child(even) {
+  rotate: 0.5deg;
+}
+.note mark {
+  padding: 1px 2px;
+  background: var(--pg-note);
+  color: inherit;
+}
+.note p {
+  margin: 0;
+}
+.reason {
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.rewrites {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.rewrites button {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--pg-line-strong);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+/* 고친 문장 — 아직 교사가 받지 않은 AI 제안이라 보라 점선. */
+.candidate {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1.5px dashed var(--pg-plum-line);
+  border-radius: 4px;
+  background: var(--pg-paper);
+}
+.candidate small {
+  font-size: 12.5px;
+  color: var(--pg-ink-soft);
+}
+.recheck {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1.5px solid var(--pg-board-ink-soft);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--pg-board-ink);
+  cursor: pointer;
+}
+.recheck:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+/* 종이 미리보기의 빈 영역 줄 — 화면에만. 내려받는 종이에는 빈칸이다. */
+.noObs {
+  color: var(--pg-ink-hint);
+  font-size: 13px;
+}
+
+@media (max-width: 560px) {
+  .draftRow {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+  }
+  .draftMark {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .making i {
+    animation: none;
+  }
+}
