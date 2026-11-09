@@ -159,6 +159,20 @@ def test_사실이_공백뿐이거나_5영역_밖이면_422_를_한꺼번에(db_
     assert set(response.json()["error"]["fields"]) == {"fact", "domain"}
 
 
+def test_사실은_5000자까지만_받는다(db_session, mine):
+    # 화면 입력칸과 같은 상한이다. 이 글이 그대로 일지 초안 LLM 으로 간다.
+    assert _post(mine["sun"], mine["seojun"], fact="가" * 5000).status_code == 201
+    too_long = _post(mine["sun"], mine["seojun"], fact="가" * 5001)
+    assert too_long.status_code == 422
+    assert too_long.json()["error"]["fields"] == ["fact"]
+
+    created = _post(mine["sun"], mine["seojun"]).json()
+    update = {"date": "2026-09-23", "domain": "자연탐구", "context": "", "fact": "가" * 5001}
+    response = client.put(f"/api/observations/{created['id']}", json=update)
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == ["fact"]
+
+
 def test_고치면_네_칸만_바뀌고_대상은_못_바꾼다(db_session, mine):
     created = _post(mine["sun"], mine["seojun"]).json()
     update = {

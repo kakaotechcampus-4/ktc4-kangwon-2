@@ -4,11 +4,10 @@ from ssuksak.dev.verify_evidence_store import verify_evidence_store
 def test_reproducibility_tool_verifies_approved_artifact_without_sources():
     report = verify_evidence_store()
 
-    assert report.records == 12_325
+    assert report.records == 12_324
     assert report.sources == 349
     assert not report.sources_checked
-    assert report.file_sha256 == "5bf84e5a59fd74880b040ea1e545b00f4ddbe8cd1cc07da11a416161dedc8bb4"
-    assert report.content_sha256 == "7d6d9bdb29dc5e84c024acc418a092c6e01d72134cf51043ab5dfd38a1332463"
+    assert report.file_sha256 == "3bbe06f8d7c6ae317d3cb7bc1649a4b6b3585d359716cbd8aff0beb66dccf569"
+    assert report.content_sha256 == "4e01195eea06f28c71548b7c091ad8223b322b155e54f2bcbab957132f9cd7cd"
     assert report.missing_sources == 0
-    assert report.source_hash_mismatches == 0
     assert report.valid

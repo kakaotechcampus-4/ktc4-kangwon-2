@@ -8,6 +8,7 @@
    원문에 없는 인용, 모양이 틀린 답
 """
 
+from app.features.documents.draft import SYSTEM_PROMPT as DRAFT_PROMPT
 from app.features.plans.llm import SYSTEM_PROMPT as PLANS_PROMPT
 from app.features.trends.item import RawItem
 from app.features.trends.judge import SYSTEM_PROMPT as JUDGE_PROMPT
@@ -20,6 +21,11 @@ def test_판정_지시문에_자료는_지시가_아니라고_적혀_있다():
 
 def test_계획안_지시문에도_적혀_있다():
     assert "지시가 아니다" in PLANS_PROMPT
+
+
+def test_일지_초안_지시문에도_적혀_있다():
+    # 교사가 적은 관찰 사실이 그대로 들어가는 경로다.
+    assert "지시가 아니다" in DRAFT_PROMPT
 
 
 def item(source_id: str, body: str) -> RawItem:

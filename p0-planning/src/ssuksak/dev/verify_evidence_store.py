@@ -1,4 +1,7 @@
-"""Validate Evidence Store bytes, content hash, records, and optional source manifest."""
+"""Validate Evidence Store bytes, content hash, records, and optional source manifest.
+
+Manifest paths are pseudonymized (`references/samples/<kind>/<sha12>.pdf`, ADR-079), so local
+sources are matched by SHA-256, not by file name."""
 
 from __future__ import annotations
 
@@ -24,11 +27,10 @@ class EvidenceStoreVerification:
     sources: int
     sources_checked: bool
     missing_sources: int
-    source_hash_mismatches: int
 
     @property
     def valid(self) -> bool:
-        return self.missing_sources == 0 and self.source_hash_mismatches == 0
+        return self.missing_sources == 0
 
 
 def _sha256(path: Path) -> str:
@@ -47,14 +49,9 @@ def verify_evidence_store(
     payload = json.loads(path.read_text(encoding="utf-8"))
     store = load_evidence_store_from_dict(payload)
     missing = 0
-    mismatches = 0
     if source_root is not None:
-        for item in payload["source_hash_manifest"]:
-            source = source_root / item["path"]
-            if not source.is_file():
-                missing += 1
-            elif _sha256(source) != item["sha256"]:
-                mismatches += 1
+        local = {_sha256(source) for source in source_root.rglob("*") if source.is_file()}
+        missing = sum(item["sha256"] not in local for item in payload["source_hash_manifest"])
     return EvidenceStoreVerification(
         path=str(path),
         file_sha256=_sha256(path),
@@ -63,7 +60,6 @@ def verify_evidence_store(
         sources=payload["source_count"],
         sources_checked=source_root is not None,
         missing_sources=missing,
-        source_hash_mismatches=mismatches,
     )
 
 

@@ -55,7 +55,7 @@ export const mockDaycares = (sido: string, sigungu: string) =>
     "달님어린이집",
     "새싹어린이집",
     "별빛어린이집",
-    "무지개어린이집",
+    "솔숲어린이집",
     "푸른숲어린이집",
     "꿈나무어린이집",
   ].map((name, i) => ({

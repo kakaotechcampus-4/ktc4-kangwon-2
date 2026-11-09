@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -18,8 +19,8 @@ from ssuksak.planning.domain.provenance import EvidenceSourceType
 from ssuksak.planning.evidence.models import ExtractionQuality, ReusePolicy
 from ssuksak.planning.evidence.ports import InstitutionEvidenceRepository
 
-EXPECTED_FILE_SHA = "5bf84e5a59fd74880b040ea1e545b00f4ddbe8cd1cc07da11a416161dedc8bb4"
-EXPECTED_CONTENT_SHA = "7d6d9bdb29dc5e84c024acc418a092c6e01d72134cf51043ab5dfd38a1332463"
+EXPECTED_FILE_SHA = "3bbe06f8d7c6ae317d3cb7bc1649a4b6b3585d359716cbd8aff0beb66dccf569"
+EXPECTED_CONTENT_SHA = "4e01195eea06f28c71548b7c091ad8223b322b155e54f2bcbab957132f9cd7cd"
 
 
 @pytest.fixture(scope="module")
@@ -34,14 +35,14 @@ def store():
 
 def test_approved_artifact_bytes_and_lf_are_frozen():
     raw = DEFAULT_EVIDENCE_STORE_PATH.read_bytes()
-    assert len(raw) == 14_007_752
+    assert len(raw) == 12_506_326
     assert b"\r" not in raw
     assert hashlib.sha256(raw).hexdigest() == EXPECTED_FILE_SHA
 
 
 def test_real_store_contract_and_counts(store, payload):
     assert isinstance(JsonInstitutionEvidenceRepository(), InstitutionEvidenceRepository)
-    assert len(store) == payload["record_count"] == 12_325
+    assert len(store) == payload["record_count"] == 12_324
     assert payload["source_count"] == len(payload["source_hash_manifest"]) == 349
     assert payload["source_text_layer_count"] == 326
     assert payload["source_image_only_count"] == 23
@@ -57,8 +58,23 @@ def test_new_repositories_share_one_loaded_store(store):
 def test_privacy_derivative_keeps_none_of_the_removed_records(payload):
     # The v0.1.0 original was deleted; the derivation was checked against it when v0.2.0 was approved.
     removed = set(payload["build"]["removed_record_ids"])
-    assert len(removed) == 42
+    assert len(removed) == 43
     assert not removed & {r["record_id"] for r in payload["records"]}
+
+
+def test_shipped_data_carries_only_pseudonymous_institution_fields(payload):
+    """ADR-079: 다시 빌드해도 실명 · 유형 · 실명 경로가 data 에 돌아오지 않는다."""
+    path = re.compile(r"references/samples/[^/]+/([0-9a-f]{12})\.pdf")
+    for record in payload["records"]:
+        assert re.fullmatch(r"inst_\d{3}", record.get("institution_id", "inst_000")), record["record_id"]
+        assert path.fullmatch(record["source_path"])[1] == record["source_sha256"][:12], record["record_id"]
+    for source in payload["source_hash_manifest"]:
+        assert path.fullmatch(source["path"])[1] == source["sha256"][:12], source["path"]
+    for data_file in DEFAULT_EVIDENCE_STORE_PATH.parents[1].rglob("*.json"):
+        if data_file.parent.name == "rules":
+            continue  # 법정 Rule 의 institution_types 는 법 적용 시설 종류(어린이집 · 유치원 …)다
+        text = data_file.read_text(encoding="utf-8")
+        assert '"institution_type' not in text, data_file.name
 
 
 def test_record_uses_pr0_evidence_source_and_preserves_reuse_policy(store):

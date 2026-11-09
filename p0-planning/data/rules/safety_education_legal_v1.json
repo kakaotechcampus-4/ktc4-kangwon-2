@@ -286,7 +286,7 @@
     "safety_education": "법정 6구분 및 기관 안전교육 항목",
     "emergency_response": "비상대응. safety_education에 자동 병합하지 않는다.",
     "drill": "대피·소방훈련. safety_education에 자동 병합하지 않는다.",
-    "evidence": "docs/template-a-validation.md §7.1 — 금산군청과 아이들세상이 비상대응을 안전교육과 별도 행으로 둔다."
+    "evidence": "docs/template-a-validation.md §7.1 — inst_027과 inst_012이 비상대응을 안전교육과 별도 행으로 둔다."
   },
   "placement_policy_version": null,
   "placement_policy_version_note": "제품 기본 safety placement policy는 P0에서 발행하지 않는다. legal_rule_version과 분리된 별도 데이터이며 값이 null인 것은 미발행을 뜻한다. 확정된 최소 폴백이 있다고 표현하지 않는다."
