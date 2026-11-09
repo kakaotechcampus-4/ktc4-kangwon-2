@@ -64,6 +64,11 @@ _GAP = re.compile(
 )
 _WEEKDAY = re.compile(r"([월화수목금토일])요일")
 _MONTH_DAY = re.compile(r"(?:(\d{1,2})\s*월\s*)?(\d{1,2})\s*일(?!\s*(?:뒤|후|만|째|동안|간))")
+# v5 — 「월요일과 견주면 ~해졌다」의 월요일은 문장이 말하는 일의 날이 아니라 견주는 쪽의 날이다.
+# 이런 날 말과, 한 문장에 날이 둘 이상인 말(「월요일에는 ~, 수요일에는 ~」)은
+# jev 가 고른 기록 하나와 견줄 수 없다(v4 는 첫 요일만 읽어 다른 날 기록과 견줬다).
+# 그 요일 · 날짜의 기록이 있는지만 본다.
+_COMPARE_AFTER = re.compile(r"\s*(?:에\s*)?(?:과|와|보다|에\s*비|에\s*견주|기록)")
 _PART_OF_DAY = re.compile(r"오전|오후")
 _FIRST_RECORD = re.compile(r"첫\s*(?:번째\s*)?기록")
 # 앞으로의 일은 기록과 견주지 않는다(「다음 주 화요일에 ~하겠다」).
@@ -174,6 +179,9 @@ class TimeClaim:
     day: int | None = None
     part: str | None = None  # 오전 · 오후
     routine: tuple[str, str] | None = None  # (일과 이름, 「뒤」 또는 「전」)
+    # 기록 하나에 매지 않고 「그날의 기록이 있나」만 보는 요일 · (월, 일) — `_COMPARE_AFTER`
+    any_weekdays: frozenset[int] = frozenset()
+    any_days: frozenset[tuple[int | None, int]] = frozenset()
 
     @property
     def needs_anchor(self) -> bool:
@@ -194,10 +202,17 @@ def time_claim(sentence: str, sources: Sequence[Source]) -> TimeClaim | None:
     gap = None
     if m := _GAP.search(sentence):
         gap = _DAY_WORDS[m.group(1)] if m.group(1) else int(m.group(2)) if m.group(2) else 1
-    weekday = WEEKDAYS.index(m.group(1)) if (m := _WEEKDAY.search(sentence)) else None
-    month = day = None
-    if m := _MONTH_DAY.search(sentence):
-        month, day = (int(m.group(1)) if m.group(1) else None), int(m.group(2))
+    weekday, any_weekdays = _one_or_any(
+        [(WEEKDAYS.index(m.group(1)), m.end()) for m in _WEEKDAY.finditer(sentence)], sentence
+    )
+    found_day, any_days = _one_or_any(
+        [
+            ((int(m.group(1)) if m.group(1) else None, int(m.group(2))), m.end())
+            for m in _MONTH_DAY.finditer(sentence)
+        ],
+        sentence,
+    )
+    month, day = found_day if found_day is not None else (None, None)
     part = m.group(0) if (m := _PART_OF_DAY.search(sentence)) else None
     routine = None
     names = {name.split()[0] for src in sources for name, _, _ in _routine_times(src.text) if name}
@@ -207,8 +222,31 @@ def time_claim(sentence: str, sources: Sequence[Source]) -> TimeClaim | None:
         ):
             routine = (name, "뒤" if m.group(1) in ("뒤", "후", "이후", "다음") else "전")
             break
-    claim = TimeClaim(gap, bool(_FIRST_RECORD.search(sentence)), weekday, month, day, part, routine)
+    claim = TimeClaim(
+        gap,
+        bool(_FIRST_RECORD.search(sentence)),
+        weekday,
+        month,
+        day,
+        part,
+        routine,
+        any_weekdays,
+        any_days,
+    )
     return None if claim == TimeClaim(from_first=claim.from_first) else claim
+
+
+def _one_or_any(found: list[tuple[object, int]], sentence: str) -> tuple[object, frozenset]:
+    """날 말 [(값, 끝 위치)] → (문장이 말하는 일의 날, 있기만 하면 되는 날들).
+
+    날 말이 하나이고 견주는 쪽(`_COMPARE_AFTER`)이 아닐 때만 문장의 일의 날로 본다.
+    둘 이상이면(「월요일과 수요일에」 「월요일에는 ~, 금요일에는 ~」) 어느 일이 어느 날인지
+    코드가 모르므로 모두 「그날 기록이 있나」만 본다.
+    """
+    values = {v for v, _end in found}
+    if len(values) == 1 and not _COMPARE_AFTER.match(sentence, found[0][1]):
+        return next(iter(values)), frozenset()
+    return None, frozenset(values)
 
 
 def time_conflict(
@@ -231,6 +269,14 @@ def time_conflict(
         else (next(iter(dates)) if len(dates) == 1 else None)
     )
     blame = target or (sources[0] if sources else None)
+    on_record = [src.date for src in sources if src.date is not None]
+    if on_record and any(all(d.weekday() != w for d in on_record) for w in claim.any_weekdays):
+        return blame
+    if on_record and any(
+        all(d.day != dd or (mm is not None and d.month != mm) for d in on_record)
+        for mm, dd in claim.any_days
+    ):
+        return blame
     if day is not None:
         if claim.weekday is not None and day.weekday() != claim.weekday:
             return blame

@@ -160,3 +160,19 @@ def test_added_fact_question_is_only_for_interpretation_and_support_conflict_rea
         for i in J.read_issues(sentences, _conflicting(questions), {"r1": 1}, None)
     ]
     assert ("지원", "CONTRADICTS_SOURCE") in codes and ("지원", "UNSUPPORTED_FACT") not in codes
+
+
+def test_compared_or_several_weekdays_are_only_checked_to_exist():
+    """v5 — 「월요일과 견주면」의 월요일 · 한 문장의 여러 요일은 고른 기록과 견주지 않는다."""
+    compared = J.time_claim("월요일과 견주면 금요일에는 공을 멀리 굴렸다.", WEEK)
+    assert compared.weekday is None and compared.any_weekdays == {0, 4}
+    assert J.time_conflict(compared, WEEK[1], None, WEEK) is None
+    alone = J.time_claim("월요일과 견주면 공을 멀리 굴렸다.", WEEK)
+    assert alone.weekday is None and J.time_conflict(alone, WEEK[2], None, WEEK) is None
+    several = J.time_claim("월요일에는 공을 굴렸고 수요일에는 공을 던졌다.", WEEK)
+    assert several.weekday is None and several.any_weekdays == {0, 2}
+    assert J.time_conflict(several, WEEK[2], None, WEEK) is None
+    wrong = J.time_claim("화요일에는 공을 굴렸고 수요일에는 공을 던졌다.", WEEK)
+    assert J.time_conflict(wrong, WEEK[1], None, WEEK) is WEEK[1]  # 화요일 기록이 없다
+    days = J.time_claim("11월 2일과 4일에 공을 굴렸다.", WEEK)
+    assert days.day is None and J.time_conflict(days, WEEK[2], None, WEEK) is None
