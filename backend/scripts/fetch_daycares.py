@@ -26,6 +26,9 @@ SIDO = "11 12 26 27 28 30 31 36 41 43 44 47 48 49 51 52".split()
 FIELDS = ["sido", "sigungu", "name", "kind", "status", "address"]
 # 포털 표 칸 순서: 번호 · 시도 · 시군구 · 어린이집명 · 유형 · 운영현황 · 우편번호 · 주소 …
 COLUMNS = {"sido": 1, "sigungu": 2, "name": 3, "kind": 4, "status": 5, "address": 7}
+# 한 시도가 지난 사본보다 이만큼 넘게 줄면 덮어쓰지 않는다. 한 달에 문을 닫는 곳은 1% 남짓이다
+# (2026-10 휴지 512 / 25,546). 이보다 크게 줄면 포털 표가 잘렸을 가능성이 더 크다.
+MAX_DROP = 0.2
 
 
 # 우리 지역 고르개(frontend/lib/onboarding/regions.ts)는 기초자치단체까지만 나눈다.
@@ -105,6 +108,30 @@ def fetch(sido: str, year: int, month: int) -> list[dict[str, str]]:
     return out
 
 
+def _by_sido(rows: list[dict[str, str]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row["sido"]] = counts.get(row["sido"], 0) + 1
+    return counts
+
+
+def shrunk(old: list[dict[str, str]], new: list[dict[str, str]]) -> list[str]:
+    """지난 사본보다 `MAX_DROP` 넘게 줄었거나 사라진 시도. 지난 사본이 없으면 빈 목록이다."""
+    before, after = _by_sido(old), _by_sido(new)
+    return [
+        f"{sido} {count} → {after.get(sido, 0)}"
+        for sido, count in sorted(before.items())
+        if after.get(sido, 0) < count * (1 - MAX_DROP)
+    ]
+
+
+def _previous() -> list[dict[str, str]]:
+    if not OUT.exists():
+        return []
+    with OUT.open(encoding="utf-8", newline="") as f:
+        return list(csv.DictReader(f))
+
+
 def main() -> None:
     if len(sys.argv) == 3:
         year, month = int(sys.argv[1]), int(sys.argv[2])
@@ -115,9 +142,15 @@ def main() -> None:
     for sido in SIDO:
         got = fetch(sido, year, month)
         print(f"{sido}: {len(got)}", file=sys.stderr)
+        # 한 시도만 빈 표가 와도 덮어쓰면 그 지역 교사는 찾기 결과가 0 이 된다.
+        if not got:
+            raise SystemExit(f"시도 코드 {sido} 를 한 곳도 받지 못했다 — 사본을 덮어쓰지 않는다")
         rows.extend(got)
-    if not rows:
-        raise SystemExit("한 곳도 받지 못했다 — 사본을 덮어쓰지 않는다")
+    if dropped := shrunk(_previous(), rows):
+        raise SystemExit(
+            f"지난 사본보다 {MAX_DROP:.0%} 넘게 줄었다 ({', '.join(dropped)}) — "
+            "사본을 덮어쓰지 않는다. 포털 표를 확인하고, 진짜 줄었으면 사본을 지우고 다시 받는다"
+        )
     rows.sort(key=lambda r: (r["sido"], r["sigungu"], r["name"], r["address"]))
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with OUT.open("w", encoding="utf-8", newline="") as f:
