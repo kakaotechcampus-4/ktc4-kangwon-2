@@ -8,6 +8,7 @@ import io
 import json
 import zipfile
 
+import pytest
 import test_weekly_plans_api as weekly_api
 from ssuksak.adapters.request_aware_monthly_llm import RequestAwareMonthlyLlm
 from ssuksak.adapters.request_aware_weekly_llm import RequestAwareWeeklyLlm
@@ -82,6 +83,70 @@ def test_월간_칸을_다시_만들어도_요청_사항의_아이_이름은_가
     assert response.json()["memo"] == MEMO  # 저장된 메모는 실명 그대로다
     [prompt] = sent
     _no_names(prompt)
+
+
+ONE_SYLLABLE_MEMO = "민이가 좋아하는 공룡 놀이를 넣어 주세요"
+
+
+def _monthly_with_one_syllable_child(session, teacher, call_name):
+    """외자 아이 김민이 있는 반. 교사는 요청 사항에 「민이가」라고 쓴다."""
+    seed = _seed(session, "가원", "a@example.com")
+    teacher.center_id = seed["center"]
+    session.add(Child(class_id=seed["class"], name="김민", code="가람", call_name=call_name))
+    session.flush()
+    annual = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": seed["class"]}
+    )
+    assert client.post(f"/api/plans/annual/{annual.json()['id']}/confirm").status_code == 200
+    return seed
+
+
+def test_외자_아이의_부르는_이름도_요청_사항에서_가명으로_나간다(db_session, teacher, monkeypatch):
+    seed = _monthly_with_one_syllable_child(db_session, teacher, "민이")
+    sent = []
+
+    class Spy(RequestAwareMonthlyLlm):
+        def generate_monthly(self, request):
+            sent.append(request.user_content)
+            return super().generate_monthly(request)
+
+    monkeypatch.setattr(monthly_router, "monthly_llm_provider", Spy)
+    response = client.post(
+        "/api/plans/monthly",
+        json={
+            "class_id": seed["class"],
+            "month": 9,
+            "profile_ref": seed["profile"],
+            "memo": ONE_SYLLABLE_MEMO,
+        },
+    )
+
+    assert response.status_code == 201, response.json()
+    assert sent and all("공룡 놀이" in p and "민이가" not in p for p in sent)
+    assert any("가람이가" in p for p in sent)
+
+
+def test_부르는_이름이_없는_외자_아이는_요청_사항을_LLM_에_보내지_않는다(
+    db_session, teacher, monkeypatch
+):
+    seed = _monthly_with_one_syllable_child(db_session, teacher, None)
+    monkeypatch.setattr(
+        monthly_router, "monthly_llm_provider", lambda: pytest.fail("LLM 을 부르면 안 된다")
+    )
+    response = client.post(
+        "/api/plans/monthly",
+        json={
+            "class_id": seed["class"],
+            "month": 9,
+            "profile_ref": seed["profile"],
+            "memo": ONE_SYLLABLE_MEMO,
+        },
+    )
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["fields"] == ["memo"]
+    assert error["message"].startswith("『민』이 아이 이름이면 아이 명단에서 부르는 이름을")
 
 
 def test_칸_재생성에서_이름을_못_가리면_그_칸을_직접_고치라고_알린다(db_session, teacher):
@@ -205,11 +270,14 @@ def test_다른_반_아이와_가명이나_이름이_겹쳐도_에러_없이_다
     # 옆 반 최다솜은 가명이 우리 반 아이와 같다 — 이번 호출에서만 새로 뽑는다.
     text = "가명이 · 박가명 · 다솜이"
     table = table_for_text(
-        load_pool(), [("이가명", "도담")], [("박가명", "새롬"), ("최다솜", "도담")], text
+        load_pool(),
+        [("이가명", "도담", None)],
+        [("박가명", "새롬", None), ("최다솜", "도담", None)],
+        text,
     )
 
     assert set(table.restoring.values()) == {"이가명", "최다솜"}
     assert table.masking["가명"] == "도담" and table.masking["다솜"] != "도담"
     masked = mask(text, table)
     assert "가명" not in masked and "다솜" not in masked
-    assert table_for_text(load_pool(), [("이가명", "도담")], [], "공룡 놀이") is None
+    assert table_for_text(load_pool(), [("이가명", "도담", None)], [], "공룡 놀이") is None

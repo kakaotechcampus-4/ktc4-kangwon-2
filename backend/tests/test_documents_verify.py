@@ -291,6 +291,34 @@ def test_masking_failure_never_calls_jev(db_session, real, monkeypatch):
     assert real == []
 
 
+def _with_one_syllable_child(session, doc, call_name):
+    """같은 반 외자 아이 김민을 넣고, 첫 기록에 「민이와」를 적는다."""
+    session.add(Child(class_id=doc.class_id, name="김민", code="가람", call_name=call_name))
+    source = session.query(DocumentSource).filter_by(document_id=doc.id, source_id=200).one()
+    source.text = "이가명이 민이와 블록으로 탑을 3층까지 쌓았다."
+    fact = session.query(DocumentSection).filter_by(document_id=doc.id, heading="사실").one()
+    fact.body = "\n\n".join([source.text, FACTS[1]])
+    session.flush()
+
+
+def test_one_syllable_call_name_is_masked_before_jev(db_session, real):
+    doc = _document(db_session)
+    _with_one_syllable_child(db_session, doc, "민이")
+    res = client.post(f"/api/documents/{doc.id}/verify")
+    assert res.status_code == 200, res.json()
+    assert "민이와" not in real[0] and "가람이와" in real[0]
+
+
+def test_one_syllable_without_call_name_never_calls_jev(db_session, real):
+    doc = _document(db_session)
+    _with_one_syllable_child(db_session, doc, None)
+    res = client.post(f"/api/documents/{doc.id}/verify")
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "VALUE_INVALID"
+    assert "부르는 이름" in res.json()["error"]["message"]
+    assert real == []
+
+
 @pytest.mark.parametrize("kind", ["dailyLog", "weeklyLog"])
 def test_daily_and_weekly_logs_are_judged(db_session, real, kind):
     doc = _document(db_session, kind=kind)

@@ -764,6 +764,72 @@ def test_create_document_name_mask_failure_never_calls_llm(db_session, monkeypat
     assert called == []
 
 
+DEFAULT_INTERPRETATION = "도담 해석입니다. 기록에 드러난 사실만 씁니다."
+
+
+def _capture_generation(monkeypatch, interpretation=DEFAULT_INTERPRETATION):
+    seen = {}
+
+    def fake_generate(kind, masked_facts, curriculum=()):
+        seen["facts"] = masked_facts
+        return interpretation, "도담 지원입니다. 다음 활동에서 교사가 할 방법을 적습니다."
+
+    monkeypatch.setattr("app.features.documents.draft._generate", fake_generate)
+    return seen
+
+
+def _one_syllable_child(session, klass, call_name):
+    """외자 아이 김민. 교사는 「민이」라고 쓴다 — 등록 이름(김민)으로는 안 걸린다."""
+    session.add(Child(class_id=klass.id, name="김민", code="가람", call_name=call_name))
+    session.flush()
+
+
+def test_create_document_masks_one_syllable_call_name(db_session, monkeypatch):
+    _, klass, child = _make_center_class_child(db_session)
+    _one_syllable_child(db_session, klass, "민이")
+    record = _observation(db_session, klass, child, 5, "가명이가 민이가 쌓은 블록을 옮겼다.")
+    seen = _capture_generation(
+        monkeypatch, "도담이는 가람이가 쌓은 블록을 옮겼습니다. 사실만 씁니다."
+    )
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201, response.json()
+    assert "민이가" not in seen["facts"][0] and "가람이가" in seen["facts"][0]
+    by_heading = {s["heading"]: s["body"] for s in response.json()["sections"]}
+    assert "민이가 쌓은" in by_heading["해석"]  # 가명 꼴(가람이) -> 부르는 이름 꼴(민이)
+
+
+def test_create_document_refuses_one_syllable_without_call_name(db_session, monkeypatch):
+    # 부르는 이름이 없으면 「민이가」를 가릴 표기가 없다. LLM 을 부르지 않고 고치는 방법을 알린다.
+    _, klass, child = _make_center_class_child(db_session)
+    _one_syllable_child(db_session, klass, None)
+    record = _observation(db_session, klass, child, 5, "가명이가 민이가 쌓은 블록을 옮겼다.")
+    monkeypatch.setattr(
+        "app.features.documents.draft._generate", lambda *_: pytest.fail("LLM 을 부르면 안 된다")
+    )
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] == "VALUE_INVALID"
+    assert error["message"].startswith("『민』이 아이 이름이면 아이 명단에서 부르는 이름을")
+
+
+@pytest.mark.parametrize("fact", ["가명이가 민속놀이를 했다.", "가명이가 고민 끝에 골랐다."])
+def test_one_syllable_inside_a_word_is_not_refused(db_session, monkeypatch, fact):
+    _, klass, child = _make_center_class_child(db_session)
+    _one_syllable_child(db_session, klass, None)
+    record = _observation(db_session, klass, child, 5, fact)
+    seen = _capture_generation(monkeypatch)
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201, response.json()
+    assert fact.removeprefix("가명이가 ") in seen["facts"][0]
+
+
 @pytest.mark.parametrize(
     "overrides,field",
     [
