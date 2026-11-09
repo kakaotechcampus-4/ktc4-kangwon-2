@@ -807,8 +807,9 @@ function ScanStat({ at, total, folders }: { at: Date; total?: number; folders: F
         {at.getMonth() + 1}월 {at.getDate()}일 {time}에 고른 폴더
       </b>
       <span>
-        {total !== undefined && `파일 이름 ${total}개 · `}찾음 {found}가지
-        {partial > 0 && ` · 일부 빠짐 ${partial}가지`}
+        {total !== undefined && `파일 이름 ${total}개 · `}
+        {found}가지 찾음
+        {partial > 0 && ` · ${partial}가지는 일부 빠짐`}
       </span>
     </p>
   );
@@ -900,8 +901,9 @@ function FolderGuide({
           </li>
           <li>
             <span>
+              {/* 「개수만」은 틀렸다 — 상태 · 시각 · 기간 · 파일 수 · 빈 날 수를 남긴다(ADR-074 결정 5). */}
               쌤플은 파일 <strong>이름만</strong> 읽어요. 파일은 이 컴퓨터 밖으로 나가지 않고, 찾은{" "}
-              <strong>개수</strong>만 저장해요.
+              <strong>결과</strong>만 저장해요.
             </span>
           </li>
         </ol>
