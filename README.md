@@ -100,6 +100,7 @@ LLM 호출은 `shared/llm` 한 곳으로만 나가고, 성공한 호출마다 �
 ## 실행
 
 ```bash
+cp .env.example .env                              # 처음 한 번만
 sh scripts/local-cert.sh --i-am-not-the-server   # 처음 한 번만
 docker compose up -d --build
 curl -f http://localhost/health                  # {"status":"ok"}
@@ -108,11 +109,13 @@ curl -f http://localhost/health                  # {"status":"ok"}
 **브라우저는 `http://localhost` 로 연다** (3000 아님). nginx 를 거쳐야 `/api` 가
 FastAPI 로 간다 — 3000 으로 바로 열면 로그인부터 안 된다.
 
-첫 줄이 필요한 이유: `nginx.conf` 가 Let's Encrypt 인증서를 가리키는데 그 파일은
+`local-cert.sh` 가 필요한 이유: `nginx.conf` 가 Let's Encrypt 인증서를 가리키는데 그 파일은
 서버에만 있다. 없으면 nginx 가 뜨다 죽어서 통째로 안 올라온다. 자체 서명 인증서를
 한 번 만들어 두면 된다. **서버에서는 돌리지 않는다 — 진짜 인증서를 덮어쓴다.**
 
-`.env` 는 만들지 않아도 된다 — `docker-compose.yml` 이 `.env.example` 과 같은 기본값을 채운다.
+`.env` 는 꼭 만든다 — `docker-compose.yml` 이 `POSTGRES_PASSWORD` · `DATABASE_URL` · `SECRET_KEY` 에
+기본값을 두지 않아서, 없으면 기동 전에 멈춘다. 로컬은 `.env.example` 을 그대로 복사하면 뜬다.
+나머지 값(LLM 키 · `LLM_MODE` 등)은 비어 있으면 `docker-compose.yml` 의 기본값을 쓴다.
 
 ## 문서
 
