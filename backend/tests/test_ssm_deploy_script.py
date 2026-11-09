@@ -170,7 +170,8 @@ def test_InvocationDoesNotExist_재시도는_처음_한_번도_못_읽었을_때
 @pytest.mark.parametrize(
     ("code", "expected"),
     [
-        ("3", 3),  # deploy.sh: 교체 뒤 서버 안에서 안 살아났다 — 자동 롤백 신호
+        ("3", 3),  # deploy.sh: 교체 뒤 실패했고 직전 성공으로 되돌렸다
+        ("4", 4),  # deploy.sh: 교체 뒤 실패했고 못 되돌렸다
         ("1", 1),
         ("255", 255),
         ('"abc"', 1),  # 정수가 아니다
@@ -192,6 +193,14 @@ def test_취소되거나_시간_초과면_125다(ssm, status):
     proc = ssm(status, FAKE_CODE="-1")
 
     assert proc.returncode == 125, proc.stdout + proc.stderr
+
+
+def test_취소하는_중에는_끝날_때까지_더_기다린다(ssm):
+    # Cancelling 은 아직 끝난 것이 아니다. 끝난 것으로 치면 서버가 아직 도는데 125 로 손을 뗀다
+    proc = ssm("InProgress Cancelling Cancelled", FAKE_CODE="-1")
+
+    assert proc.returncode == 125, proc.stdout + proc.stderr
+    assert ssm.polls() == 3
 
 
 def test_기다린_시간_안에_안_끝나면_124다(ssm):
@@ -245,8 +254,29 @@ def test_보내는_명령의_첫_줄이_쉬뱅이고_deploy_sh_를_통째로_담
     # (scripts/deploy.sh 머리 주석)
     assert parameters["commands"][0] == "#!/usr/bin/env bash"
     assert parameters["commands"][1] == f"export DEPLOY_REF={SHA}"
-    assert parameters["commands"][2] == DEPLOY_SH.read_text()
-    assert parameters["executionTimeout"] == ["1800"]
+    assert parameters["commands"][2] == "export AUTO_ROLLBACK=0"  # 안 주면 꺼진다
+    assert parameters["commands"][3] == DEPLOY_SH.read_text()
+    # 잠금 300초 + 배포 + 되돌리기가 한 명령 안에 든다. 러너 대기(280번 × 10초)가 이보다 길다
+    assert parameters["executionTimeout"] == ["2700"]
+
+
+def test_AUTO_ROLLBACK_은_서버로_넘어간다(ssm):
+    proc = ssm("Success", FAKE_CODE="0", AUTO_ROLLBACK="1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    parameters = json.loads(ssm.sent()[ssm.sent().index("--parameters") + 1])
+    assert parameters["commands"][1:3] == [f"export DEPLOY_REF={SHA}", "export AUTO_ROLLBACK=1"]
+
+
+@pytest.mark.parametrize("value", ["2", "true", "1; rm -rf /", " 1", "01"])
+def test_AUTO_ROLLBACK_이_0_1_이_아니면_보내지_않는다(ssm, value):
+    # 이 값은 서버에서 도는 셸 줄(`export AUTO_ROLLBACK=…`)에 그대로 들어간다
+    proc = ssm("Success", FAKE_CODE="0", AUTO_ROLLBACK=value)
+
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "AUTO_ROLLBACK 은 0 이나 1 이다" in proc.stdout
+    with pytest.raises(FileNotFoundError):
+        ssm.sent()  # send-command 를 부르지 않았다
 
 
 def test_올릴_커밋을_안_주면_보내지_않는다():
