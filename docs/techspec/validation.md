@@ -46,7 +46,7 @@
 | 실패 시 저장 안 함 | `backend/tests/` (`test_create_document_saves_nothing_when_generation_fails` 등) | 생성이 실패하면 DB에 아무것도 남지 않는다 |
 | 놀이 연간 재개 | `p0-planning/tests/application/test_play_project_generation.py` | 실패 구간만 한 번 · 겹친 후보만 한 번 · 같은 `row_key` · 요청 반영 후보는 안 바꿈 · 멈추면 저장 안 함 |
 | 겹침 검사기의 한계 | `p0-planning/tests/planner/test_play_dup_pairs.py` | 사람이 라벨한 같은 놀이 24짝 · 다른 놀이 18짝. 지금 선이 못 잡는 짝은 xfail로 남겨, 검사기를 바꾸면 바로 보이게 했다 |
-| 주간 근거 뽑기 | `p0-planning/tests/retrieval/test_weekly_retrieval.py` | 앞 주 근거는 뒤로 · seed가 없으면 고정 상위 10 · 같은 seed는 같은 결과 · 정확한 연령 기록이 먼저 다 들어감 (PR 대기) |
+| 주간 근거 뽑기 | `p0-planning/tests/retrieval/test_weekly_retrieval.py` | 앞 주 근거는 뒤로 · seed가 없으면 고정 상위 10 · 같은 seed는 같은 결과 · 정확한 연령 기록이 먼저 다 들어감 · 혼합연령 반은 요청 연령마다 1건 (PR 대기) |
 | 주간 API | `backend/tests/test_weekly_plans_api.py` | 앞 주차만 넘김 (PR 대기) |
 | 호출 기록 | `test_llm_usage_log.py` | 호출마다 숫자만 남고 프롬프트 · 응답은 없다 |
 
