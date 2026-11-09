@@ -8,9 +8,9 @@
 #   0     서버 명령이 성공했다
 #   1~255 서버 명령이 이 코드로 실패했다. deploy.sh 는 3(교체 뒤 실패했고 직전 성공으로 되돌림) ·
 #         4(교체 뒤 실패했고 못 되돌림) · 1(교체 전에 멈춤)을 쓴다
-#   124   기다린 시간 안에 끝나지 않았다. 서버는 아직 돌 수 있다
+#   124   기다린 시간 안에 끝나지 않았거나, 상태를 한 번 읽은 뒤 조회 오류가 연속 네 번째다(세 번 다시 물어도 안 된다). 서버는 아직 돌 수 있다
 #   125   서버 명령이 취소됐거나 시간 초과로 끝났다
-#   1     그 밖 — 명령을 못 보냈거나, 상태를 못 읽었거나, 응답을 해석하지 못했다. 서버가 낸 1 과 구별하지 않는다
+#   1     그 밖 — 명령을 못 보냈거나, 상태를 처음 읽기도 전에 못 읽었거나, 응답을 해석하지 못했다. 서버가 낸 1 과 구별하지 않는다
 # **3 · 4 를 이 스크립트가 만들어 내는 일이 없어야 한다.** jq 도 컴파일 오류에 3 을 낸다. 아래 ERR 트랩이 예상 밖 실패를 1 로 바꾼다.
 set -Eeuo pipefail
 trap 'exit 1' ERR
@@ -50,22 +50,36 @@ echo "배포 명령 $command_id"
 # send-command 는 보내고 바로 끝난다. 끝날 때까지 안 기다리면 실패해도 초록불이 뜬다.
 # aws ssm wait 는 100초에서 포기해서 docker build 를 못 기다린다. 직접 돈다.
 # 상태 · 종료 코드 · 출력은 **마지막 응답 하나에서** 같이 읽는다. 따로 물으면 서로 다른 시점의 값이 된다.
-# 보낸 직후에는 명령이 아직 등록되지 않아 InvocationDoesNotExist 가 날 수 있다 — 그 오류만, 아직 한 번도 못 읽었을 때만
-# 다시 묻는다. 다른 오류(권한 · 네트워크 · 만료된 자격증명)는 오류 글을 찍고 바로 1 로 끝난다. 삼켜서 마지막에 본 상태를
-# 계속 쓰면 30분을 기다리고 124 로 끝난다.
+# **아직 한 번도 못 읽었을 때**: 보낸 직후에는 명령이 아직 등록되지 않아 InvocationDoesNotExist 가 날 수 있다 — 그 오류만
+# 다시 묻는다. 다른 오류(권한 · 만료된 자격증명)는 오류 글을 찍고 바로 1 로 끝난다. 삼켜서 마지막에 본 상태를 계속 쓰면
+# 30분을 기다리고 124 로 끝난다.
+# **한 번이라도 읽은 뒤**: 서버 명령은 이미 돌고 있다. 네트워크 끊김 · throttling 같은 일시 오류 한 번에 1 로 끝내면 서버는
+# 계속 도는데 run 이 실패로 보이고, 다음 run 이 서버 잠금과 부딪힌다. 그래서 다시 묻는다 — 읽기에 성공하면 세기를 0 으로
+# 되돌리고, 오류가 연속 네 번째면(세 번 다시 물어도 안 되면) 오류 글을 찍고 **124**(서버는 아직 돌 수 있다)로 끝낸다. 1 이 아니다.
 inv=""
 status=Pending
+errs=0
 errfile=$(mktemp)
 trap 'rm -f "$errfile"' EXIT
 for ((attempt = 1; attempt <= tries; attempt++)); do
   if out=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" --output json 2>"$errfile"); then
+    errs=0
     inv=$out
     status=$(jq -er .Status <<<"$inv") || { echo "응답에서 상태를 읽지 못했다"; exit 1; }
     is_pending "$status" || break
-  elif [ -n "$inv" ] || ! grep -q InvocationDoesNotExist "$errfile"; then
-    echo "상태를 읽지 못했다 (명령 $command_id):"
-    cat "$errfile"
-    exit 1
+  elif [ -z "$inv" ]; then
+    grep -q InvocationDoesNotExist "$errfile" || {
+      echo "상태를 읽지 못했다 (명령 $command_id):"
+      cat "$errfile"
+      exit 1
+    }
+  else
+    errs=$((errs + 1))
+    if [ "$errs" -ge 4 ]; then
+      echo "상태 조회가 연속 ${errs}번 실패했다 (명령 $command_id). 서버는 아직 돌 수 있다:"
+      cat "$errfile"
+      exit 124
+    fi
   fi
   sleep "$interval"
 done

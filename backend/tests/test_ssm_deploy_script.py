@@ -53,7 +53,11 @@ elif args[:2] == ["ssm", "get-command-invocation"]:
         # 보낸 직후에는 응답이 아직 없다. FAKE_FAIL_TEXT 로 다른 오류도 흉내 낸다
         print(os.environ.get("FAKE_FAIL_TEXT", "InvocationDoesNotExist"), file=sys.stderr)
         sys.exit(254)
-    if n - fail_first >= int(os.environ.get("FAKE_ERROR_AFTER", "999")):
+    # FAKE_CALL_PLAN("r e e r …") 은 호출마다 읽기(r) 아니면 오류(e)를 정한다.
+    # 끝나면 마지막 토큰을 따른다
+    plan = os.environ.get("FAKE_CALL_PLAN", "").split()
+    plan_error = bool(plan) and plan[min(n - fail_first, len(plan) - 1)] == "e"
+    if plan_error or n - fail_first >= int(os.environ.get("FAKE_ERROR_AFTER", "999")):
         text = os.environ.get("FAKE_ERROR_TEXT", "An error occurred (AccessDeniedException)")
         print(text, file=sys.stderr)
         sys.exit(254)  # 상태를 몇 번 읽은 뒤에 나는 오류
@@ -145,26 +149,43 @@ def test_다른_조회_오류는_다시_묻지_않고_오류_글을_찍고_1이�
     assert ssm.polls() == 1
 
 
-def test_상태를_읽은_뒤_조회가_오류로_바뀌면_기다리지_않고_1이다(ssm):
-    # 한 번 InProgress 를 본 뒤 오류만 나온다. 마지막에 본 상태를 계속 쓰면 124 가 된다
-    proc = ssm("InProgress", FAKE_ERROR_AFTER="1", SSM_WAIT_TRIES="50")
-
-    assert proc.returncode == 1, proc.stdout + proc.stderr
-    assert "AccessDeniedException" in proc.stdout
-    assert ssm.polls() == 2  # 50번 다 묻지 않았다
-
-
-def test_InvocationDoesNotExist_재시도는_처음_한_번도_못_읽었을_때만이다(ssm):
-    # 이미 상태를 읽은 명령이 갑자기 없다고 하면 이상한 것이다 — 기다리지 않고 1
+@pytest.mark.parametrize("errors", [1, 2, 3])
+def test_상태를_읽은_뒤_일시_오류_세_번까지는_다시_물어_본다(ssm, errors):
+    # 서버 명령은 이미 돌고 있다. 네트워크 끊김 · throttling 한 번에 run 을 1 로 끝내면 안 된다
+    plan = "r " + "e " * errors + "r"
     proc = ssm(
-        "InProgress",
-        FAKE_ERROR_AFTER="1",
-        FAKE_ERROR_TEXT="InvocationDoesNotExist",
+        "InProgress InProgress Success", FAKE_CODE="0", FAKE_CALL_PLAN=plan, SSM_WAIT_TRIES="50"
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert ssm.polls() == 2 + errors
+
+
+def test_일시_오류는_읽기에_성공할_때마다_세기를_다시_시작한다(ssm):
+    # 오류 3번 → 읽기 → 오류 3번 → 읽기. 합치면 6번이지만 연속은 3번뿐이다
+    proc = ssm(
+        "InProgress InProgress InProgress InProgress InProgress InProgress InProgress Success",
+        FAKE_CODE="0",
+        FAKE_CALL_PLAN="r e e e r e e e r",
         SSM_WAIT_TRIES="50",
     )
 
-    assert proc.returncode == 1, proc.stdout + proc.stderr
-    assert ssm.polls() == 2
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert ssm.polls() == 9
+
+
+@pytest.mark.parametrize(
+    "text", ["An error occurred (AccessDeniedException)", "InvocationDoesNotExist"]
+)
+def test_상태를_읽은_뒤_조회_오류가_연속_네_번째면_오류를_찍고_124다(ssm, text):
+    # 서버는 아직 돌 수 있다 — 1 이 아니라 124.
+    # 이미 읽은 명령에 InvocationDoesNotExist 가 나와도 보통 오류로 센다
+    proc = ssm("InProgress", FAKE_ERROR_AFTER="1", FAKE_ERROR_TEXT=text, SSM_WAIT_TRIES="50")
+
+    assert proc.returncode == 124, proc.stdout + proc.stderr
+    assert text in proc.stdout  # AWS 오류 글
+    assert "서버는 아직 돌 수 있다" in proc.stdout
+    assert ssm.polls() == 5  # 읽기 1번 + 오류 4번(세 번 다시 물었다). 50번 다 묻지 않았다
 
 
 @pytest.mark.parametrize(

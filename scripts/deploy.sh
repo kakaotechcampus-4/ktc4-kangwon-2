@@ -397,7 +397,11 @@ main() {
   # 그 상태에서 reset --hard 를 하면 옛 커밋으로 되감긴다(실제로 당했다).
   git remote set-url origin "$REPO_URL"
 
-  git fetch --prune origin
+  # fetch 는 가끔 백그라운드로 `git gc --auto` 를 띄운다. 그 프로세스는 표준 입출력만 닫고 fd 9(서버 잠금)는 그대로 쥐어서,
+  # swap_failed 가 `exec 9>&-` 로 잠금을 풀어도 gc 가 끝날 때까지 잠금이 남는다(자식 L 이나 다음 배포가 그만큼 기다린다).
+  # git 에게만 fd 9 를 닫아 넘긴다. 이 파일이 잠금을 쥔 채 부르는 git 중 gc 를 띄우는 것은 fetch 뿐이다
+  # (checkout · reset · rev-parse · log · show · grep · remote set-url 은 GIT_TRACE 로 확인했다).
+  git fetch --prune origin 9>&-
 
   # 올릴 커밋을 **checkout 하기 전에** 전체 SHA 로 정한다. 브랜치면 origin 쪽 끝이고, 아니면 그 커밋이다.
   if git rev-parse --verify --quiet "origin/$DEPLOY_REF" >/dev/null; then

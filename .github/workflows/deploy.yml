@@ -84,9 +84,12 @@ jobs:
           # 서버가 교체 뒤 실패를 되돌릴지('1' · '0'). push 배포는 늘 '1', 손 배포는 auto_rollback 입력대로.
           AUTO_ROLLBACK: ${{ (github.event_name == 'push' || inputs.auto_rollback) && '1' || '0' }}
         run: |
-          code=0
-          scripts/ssm-deploy.sh "$DEPLOY_SHA" > "$RUNNER_TEMP/deploy.out" 2>&1 || code=$?
-          cat "$RUNNER_TEMP/deploy.out"
+          # 출력은 화면에 바로 보이고(tee) 파일에도 남는다. 종료 코드는 파이프의 첫 명령 것을 PIPESTATUS 로 받는다 —
+          # pipefail 이 켜져 있든 아니든 같다. 그동안 `set +e` 로 이 스텝이 중간에 죽지 않게 한다.
+          set +e
+          scripts/ssm-deploy.sh "$DEPLOY_SHA" 2>&1 | tee "$RUNNER_TEMP/deploy.out"
+          code=${PIPESTATUS[0]}
+          set -e
           echo "배포 종료 코드: $code"
           echo "code=$code" >> "$GITHUB_OUTPUT"
           result=$(grep -E '^(되돌렸다 → |되돌리지 않는다 — |되돌리기도 실패 — )' "$RUNNER_TEMP/deploy.out" | tail -n 1 || true)

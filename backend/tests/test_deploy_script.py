@@ -1043,3 +1043,16 @@ def test_스크립트_맨_끝은_main_바로_뒤에_exit_다():
     last = DEPLOY_SH.read_text().rstrip().splitlines()[-1]
 
     assert re.fullmatch(r'if ! \(return 0 2>/dev/null\); then main "\$@"; exit; fi', last)
+
+
+def test_git_fetch_는_서버_잠금_fd_9_를_닫고_부른다():
+    # fetch 가 백그라운드로 띄우는 `git gc --auto` 는 fd 9 를 물려받아, 부모가 `exec 9>&-` 로
+    # 잠금을 풀어도 끝날 때까지 잠금을 쥔다. git 에게만 fd 9 를 닫아 넘긴다(하민 3차 리뷰 4번)
+    fetches = [
+        line.strip()
+        for line in DEPLOY_SH.read_text().splitlines()
+        if line.strip().startswith("git fetch")
+    ]
+
+    assert fetches
+    assert all(line.endswith(" 9>&-") for line in fetches), fetches
