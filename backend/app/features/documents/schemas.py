@@ -227,6 +227,9 @@ class DocumentCreateRequest(BaseModel):
     source_ids: list[int] = Field(max_length=MAX_SOURCES)
     # `weeklyLog` 에서만 쓴다. 안 보내면 예전처럼 확정된 일일 보육일지를 근거로 본다.
     source_kind: Literal["dailyLog", "routine"] = "dailyLog"
+    # 관찰일지 · 영유아 평가만 쓴다. 같은 아이 · 같은 기간 초안이 있으면 서버는 그것을 돌려준다(200).
+    # true 면 새로 만들고, **새 초안을 저장한 뒤에** 옛 초안을 지운다 — 「넣어서 다시」(ADR-082).
+    replace_draft: bool = False
 
 
 class EvidenceChecks(BaseModel):

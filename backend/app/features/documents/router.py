@@ -3,7 +3,7 @@
 from datetime import UTC, date, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.orm import Session
 
@@ -476,15 +476,52 @@ def _sources_changed(session: Session, copies: list[DocumentSource]) -> bool:
     return False
 
 
+def _same_draft(session: Session, body: DocumentCreateRequest) -> Document | None:
+    """같은 아이 · 같은 기간 · 같은 종류의 AI 초안 (ADR-082). 아이 단위 문서만 본다.
+
+    「반 전체 초안」을 두 번 누르거나 응답을 못 받고 다시 누르면 같은 초안이 둘 생긴다.
+    확정본은 보지 않는다 — 확정본을 두고 새 초안을 만드는 것은 교사가 고른 일이다.
+    """
+    if body.kind not in CHILD_SCOPED_KINDS:
+        return None
+    return session.scalar(
+        select(Document)
+        .where(
+            Document.kind == body.kind,
+            Document.class_id == body.class_id,
+            Document.child_id == body.child_id,
+            Document.start_date == body.start,
+            Document.end_date == body.end,
+            Document.status == "DRAFT",
+            Document.origin == "AI",
+        )
+        .order_by(Document.id)
+        .limit(1)
+    )
+
+
+def _remove_rows(session: Session, doc: Document) -> None:
+    """문서와 딸린 행을 지운다. 자식 행이 먼저다 - FK 에 CASCADE 가 없다 (ADR-010)."""
+    session.execute(delete(DocumentSection).where(DocumentSection.document_id == doc.id))
+    session.execute(delete(DocumentSource).where(DocumentSource.document_id == doc.id))
+    session.execute(
+        delete(DocumentReconfirmation).where(DocumentReconfirmation.document_id == doc.id)
+    )
+    session.execute(
+        delete(DocumentSourceResolution).where(DocumentSourceResolution.document_id == doc.id)
+    )
+    session.delete(doc)
+
+
 @router.post("", response_model=DocumentDetailResponse, status_code=status.HTTP_201_CREATED)
 def create_document(
-    body: DocumentCreateRequest, session: DbSession, user: CurrentUser
+    body: DocumentCreateRequest, session: DbSession, user: CurrentUser, response: Response
 ) -> DocumentDetailResponse:
-    return _create_document(body, session, user, retry=True)
+    return _create_document(body, session, user, response, retry=True)
 
 
 def _create_document(
-    body: DocumentCreateRequest, session: Session, user: User, *, retry: bool
+    body: DocumentCreateRequest, session: Session, user: User, response: Response, *, retry: bool
 ) -> DocumentDetailResponse:
     """교사가 고른 근거로 초안을 만든다 (docs/api-spec.md §11).
 
@@ -516,6 +553,10 @@ def _create_document(
         child = require_own_child(session, user, body.child_id)
         if child.class_id != body.class_id:
             raise _invalid(["child_id"])
+    if not body.replace_draft and (existing := _same_draft(session, body)) is not None:
+        # 모델을 부르기 전에 본다. 새로 만든 것이 아니라서 201 이 아니라 200 이다.
+        response.status_code = status.HTTP_200_OK
+        return _build_detail_response(session, existing)
 
     # 근거를 불러와 사본 행을 만든다. 순서는 교사가 고른 순서 그대로다.
     copies: list[DocumentSource] = []
@@ -739,7 +780,7 @@ def _create_document(
             # 잠근 채로 다시 모델을 부르면 그동안 교사의 기록 수정이 기다린다.
             assert not session.new and not session.dirty
             session.commit()
-            return _create_document(body, session, user, retry=False)
+            return _create_document(body, session, user, response, retry=False)
         raise _error(
             status.HTTP_409_CONFLICT,
             "STALE_WRITE",
@@ -752,6 +793,16 @@ def _create_document(
         # 반 행을 잠그고 다시 본다 — 저장 직전에만 잠가서 생성 시간 동안 반을 붙잡지 않는다.
         session.get(Class, body.class_id, with_for_update=True, populate_existing=True)
         _reject_second_daily_log(session, body.class_id, body.start)
+    elif body.kind in CHILD_SCOPED_KINDS:
+        # 일일과 같은 자리 — 생성 중에 같은 초안이 먼저 저장됐을 수 있다. 반 행을 잠그고 다시 본다.
+        session.get(Class, body.class_id, with_for_update=True, populate_existing=True)
+        existing = _same_draft(session, body)
+        if existing is not None and not body.replace_draft:
+            response.status_code = status.HTTP_200_OK
+            return _build_detail_response(session, existing)
+        if existing is not None:
+            # 「넣어서 다시」 — 새 초안을 쓰는 같은 트랜잭션에서 지운다. 생성이 실패했으면 여기 안 온다.
+            _remove_rows(session, existing)
 
     subject = child.name if child else classroom.name
     doc = Document(
@@ -1375,13 +1426,5 @@ def delete_document(document_id: int, session: DbSession, user: CurrentUser) -> 
         raise _error(
             status.HTTP_409_CONFLICT, "ALREADY_CONFIRMED", "확정된 문서는 삭제할 수 없습니다.", []
         )
-    session.execute(delete(DocumentSection).where(DocumentSection.document_id == doc.id))
-    session.execute(delete(DocumentSource).where(DocumentSource.document_id == doc.id))
-    session.execute(
-        delete(DocumentReconfirmation).where(DocumentReconfirmation.document_id == doc.id)
-    )
-    session.execute(
-        delete(DocumentSourceResolution).where(DocumentSourceResolution.document_id == doc.id)
-    )
-    session.delete(doc)
+    _remove_rows(session, doc)
     session.commit()
