@@ -1,6 +1,8 @@
 """서버에 있는 경로가 docs/api-spec.md 에 적혀 있는지 본다.
 
 **한쪽만 본다.** 서버에 있는데 문서에 없으면 실패한다. 문서에만 있는 것(아직 안 만든 제안)은 둔다.
+**같은 줄에 「메서드 경로」가 있으면 적힌 것으로 친다** — 산문 · 부정문(「…는 없다」) 속
+언급도 센다.
 """
 
 import re
@@ -11,8 +13,10 @@ from app.main import app
 SPEC = Path(__file__).resolve().parents[2] / "docs" / "api-spec.md"
 METHODS = "GET|POST|PUT|PATCH|DELETE"
 # `GET·PUT /api/x` · `GET · PUT /api/x` · 코드 블록의 `POST   /api/x`. 쿼리와 끝 구두점은 뗀다.
+# 메서드와 경로는 같은 줄이어야 한다 — `\s` 는 줄을 넘어 표 아랫줄 경로를 잘못 센다.
 MENTION = re.compile(
-    rf"(?<![A-Za-z])((?:{METHODS})(?:\s*[·/,]\s*(?:{METHODS}))*)\s+(/(?:api|health)[^\s`]*)"
+    rf"(?<![A-Za-z])((?:{METHODS})(?:[ \t]*[·/,][ \t]*(?:{METHODS}))*)"
+    r"[ \t]+(/(?:api|health)[^\s`]*)"
 )
 
 

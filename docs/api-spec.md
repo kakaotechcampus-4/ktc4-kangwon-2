@@ -1531,9 +1531,10 @@ POST /api/plans/weekly/{id}/unconfirm          { "expected_revision": 4 }
 DELETE /api/plans/annual/{id}/test-reset        본문 없음 → 204 (응답 본문 없음)
 ```
 
-- **서버 설정 `ALLOW_TEST_RESET`(기본 꺼짐)이 꺼져 있으면 404 다** — 없는 경로처럼 답한다. 없는 계획안과 같은 응답이라 구별되지 않는다: `NOT_FOUND` · 「계획안을 찾을 수 없습니다.」 · `["id"]`.
+- **서버 설정 `ALLOW_TEST_RESET`(기본 꺼짐)이 꺼져 있으면 404 다** — 없는 계획안처럼 답한다(경로 자체는 있고 `/openapi.json` 에도 실린다). 없는 계획안과 같은 응답이라 구별되지 않는다: `NOT_FOUND` · 「계획안을 찾을 수 없습니다.」 · `["id"]`.
 - 켜져 있으면 **확정 여부를 보지 않고** 그 연간과, 같은 원 · 같은 반 · 같은 학년도의 **월간 · 주간(놀이 중심 월간 포함)을 한 번에** 지운다. 2026-11-09 실측: 연간(확정) · 월간 · 주간 한 건씩인 반에서 호출하자 `204` 이고 셋 다 사라졌다. 놀이 중심 월간 행이 있던 반도 같다(월간 둘이 같이 사라졌다). 같은 호출을 다시 하면 404 다.
-- 켜져 있어도 없거나 남의 원 연간이면 404 `["id"]`, `{id}` 가 정수가 아니면 422 `["plan_id"]` 다.
+- 켜져 있어도 없거나 남의 원 연간이면 404 `["id"]`, 같은 원의 남의 반이면 403(`CLASS_ACCESS_REQUIRED` · `CLASS_READ_ONLY`, §2-2)이다.
+  `{id}` 가 정수가 아니면 설정과 상관없이 422 `["plan_id"]` 다.
 - 지운 연간 id · 상태 · 딸린 개수 · 누른 사람은 서버 기록에 남는다.
 - 화면 단추는 `NEXT_PUBLIC_ALLOW_TEST_RESET` 가 따로 켠다. 둘이 어긋나도 단추만 켜지면 404 를 받을 뿐이다.
 
@@ -2891,6 +2892,7 @@ DELETE /api/plans/monthly/play/{id}/cells/{item_id}/split?expected_revision= 나
 PUT    /api/plans/monthly/play/{id}/timetable/splits/{split_id}             나눈 경계의 비율
 PUT    /api/plans/monthly/play/{id}/timetable/size                          요일 열 폭 · 표 높이
 POST   /api/plans/monthly/play/{id}/confirm                                 확정
+POST   /api/plans/monthly/play/{id}/unconfirm                               확정 풀기 (§7-2, ADR-055)
 GET    /api/plans/monthly/play/{id}/export/hwp                              한글 내려받기 (확정본만)
 GET    /api/plans/monthly/play/{id}/audit                                   변경 이력
 ```
@@ -2998,7 +3000,7 @@ safety_candidates     candidates 의 주소는 cell.item_id 다 (경로의 {item
 kind                  STATUTORY (법정 여섯 영역, category_id 만) | SUPPLEMENTAL (생활안전, topic_group 만)
 habits[].label        한글 문서가 「[분류]」로 찍는 일상생활 항목 이름(entry_id 의 label, 계획안이 읽은 판에서).  문장이 비었거나 항목에서 고르지 않았거나 판이 없어졌으면 ""(하민 결정 2026-11-06).  화면은 「[분류]」 다음 줄에 문장을 쓴다
 safety_weeks          주마다 하나.  candidate_item_id 가 null 이면 아직 안 둔 주.  같은 후보를 여러 주에 둘 수 있다
-teacher_inputs[].key  fire_disaster_drill · specialized_timetable · special_activity_timetable · class_notice · class_birthdays · home_connection
+teacher_inputs[].key  fire_disaster_drill · class_notice · class_birthdays · home_connection
 notices[].code        SAFETY_UNPLACED · SAFETY_BLANK · HABIT_BLANK · HEALTH_BLANK · NUTRITION_BLANK.  응답마다 계산하고 저장하지 않는다.  확정을 막지 않는다
 ```
 
@@ -3068,7 +3070,7 @@ PUT    /api/plans/monthly/play/{id}/timetable/size                  { "column_wi
 ```
 
 ```
-specialized_timetable   10칸.  제목 5칸(월~금) 다음 내용 5칸 — 같은 열끼리 위아래.  `PUT .../cells/{item_id}` 로 쓴다.  나뉘지 않는다
+specialized_timetable   10칸.  제목 5칸(1~5열, 교사가 쓴다) 다음 내용 5칸 — 같은 열끼리 위아래.  `PUT .../cells/{item_id}` 로 쓴다.  나뉘지 않는다
 special_activity        월~금 다섯 요일의 나눔 트리.  늘 5개.  마디 하나 = { cell, split_id, axis, ratio, children }
                         칸(leaf)       cell 만 Cell 이다.  split_id · axis · ratio 는 null, children 은 []
                         경계(split)    cell 은 null.  split_id · axis · ratio 가 오고 children 은 둘(첫 갈래 · 둘째 갈래)
@@ -3088,7 +3090,11 @@ special_activity_size   column_widths 는 월~금 열 폭(표 폭의 %).  정수
 - `{item_id}` 는 **특별활동 시간표의 칸**이다. 없는 id · 주제 같은 다른 칸 · 특성화 시간표 칸은 404 다. 칸에 글을 쓰는 것은 위 `PUT .../cells/{item_id}` 다 — 시간표 칸도 같은 길이고 처음 쓰면 `MANUAL` 이다.
 - 한 요일은 **깊이 4 까지** 나눈다. 다섯 번째는 422 다.
 - 어느 칸이든 폭이 **표 폭의 3.5% 아래**가 되면 422 다. 나누기 · 비율 · 크기 모두 같다 — 열 폭 5% 인 요일을 좌우로 나누면 2.5% 가 된다.
-- 바뀔 때마다 계획안 단위 `TIMETABLE_CHANGED` 이벤트가 남는다(아래 「변경 이력」).
+- 바뀔 때마다 계획안 단위 `TIMETABLE_CHANGED` 이벤트가 남는다(아래 「변경 이력」). 나누기는 새 칸의 칸 단위 `CREATED` 도 하나 남기고,
+  크기 PUT 하나로 열 폭과 높이를 같이 바꾸면 `TIMETABLE_CHANGED` 가 둘이다(revision 은 +1).
+- 뺀 시간표 칸의 칸 이벤트는 이력 API 에도 싣지 않는다 — 이력 API 가 더하는 것은 지운 행(`removed_activities`) · 후보 칸뿐이다.
+- 검사 순서가 다르다. 비율 10~90 은 소유 · 확정 · revision · 경계 존재를 본 **뒤**에 본다 — 범위 밖 비율이라도 경계가 없으면 404, 확정본이면 409 가 먼저다.
+  크기 범위는 그 **앞**에 본다 — 남의 원 계획안 · 확정본에도 범위 밖이면 422 다.
 - 확정본은 `ALREADY_CONFIRMED`, 낡은 revision 은 `STALE_WRITE`, 기존 월간 id 는 409 `GATE_BLOCKED`, 없거나 남의 원 계획안은 404 `["id"]` 다 — 아래 오류 표 그대로.
 
 | code | status | 언제 (공개 문구) | `fields` |
@@ -3127,7 +3133,7 @@ together.<item_id>           그 행의 이름이 비었다 (free_play 도 같�
 together.<item_id>.content_ids   그 행의 누리과정이 1~3개가 아니다
 ```
 
-- 확정 뒤 모든 변경은 409 `ALREADY_CONFIRMED` 다. **확정 취소가 없다**(ADR-030 PM-03).
+- 확정 뒤 모든 변경은 409 `ALREADY_CONFIRMED` 다. 확정을 푸는 것은 §7-2 `POST .../unconfirm`(ADR-055 · ADR-064)이다.
 - 확정은 제출 · 발송을 하지 않는다. 한글 내려받기는 아래 「한글 내려받기」다.
 
 ### 한글 내려받기 — `GET /api/plans/monthly/play/{id}/export/hwp`
