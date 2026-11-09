@@ -40,6 +40,31 @@ timing_logger = logging.getLogger("app.server.timing")
 MODEL = "openai/gpt-6.1-sol"
 TIMEOUT_SECONDS = 30.0
 
+# **모델에 닿지 못한 요청만 한 번 더 보낸다** (2026-11-09 하민 결정, docs/evaluation/05).
+# 연결 거부 · 주소 조회 실패 · 게이트웨이 502/503/504 는 모델이 돌지 않았다는 뜻이라
+# 다시 보내도 비용이 두 번 나가지 않는다. 429(한도) · 401 · 403 · 시간 초과 · 계약 위반은
+# 다시 보내지 않는다 — 한도는 다시 눌러도 같고, 시간 초과는 모델이 이미 돌았을 수 있다.
+RETRY_STATUSES = frozenset({502, 503, 504})
+RETRY_DELAY_SECONDS = 1.5
+
+
+class _NotDelivered(LlmFailed):
+    """요청이 모델에 닿기 전에 끊겼다 — 한 번 더 보내도 되는 유일한 실패."""
+
+
+def _not_delivered(exc: BaseException) -> bool:
+    reason = getattr(exc, "reason", exc)
+    return isinstance(reason, (ConnectionRefusedError, socket.gaierror))
+
+
+def _once_more(send):
+    """`send` 가 모델에 닿지 못했으면 잠깐 쉬고 한 번만 더 부른다. 두 번째 실패는 그대로 올린다."""
+    try:
+        return send()
+    except _NotDelivered:
+        time.sleep(RETRY_DELAY_SECONDS)
+    return send()
+
 
 def is_mock() -> bool:
     """**기본이 mock 이다.** 키가 없는 채로 real 이 돌면 매번 401 을 받고 원인을 못 찾는다."""
@@ -177,6 +202,8 @@ def _log_usage(result: object, model: object) -> None:
 def _outcome(error: BaseException) -> str:
     if isinstance(error, LlmBudgetExceeded):
         return "budget"
+    if isinstance(error, _NotDelivered):
+        return "not_delivered"
     if "제한 시간" in str(error) or isinstance(error.__cause__, (TimeoutError, socket.timeout)):
         return "timeout"
     return "failed"
@@ -236,8 +263,12 @@ def post_json(
     if not settings.is_server:
         raise LlmUnavailable("로컬에서 real 모드 금지. 배포된 서버 엔드포인트를 호출한다")
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    return _once_more(lambda: _post_json(url, body, headers, payload.get("model"), timeout))
+
+
+def _post_json(url, body, headers, model, timeout):
     request = urllib_request.Request(url, data=body, headers=dict(headers), method="POST")
-    with _llm_call(payload.get("model")) as call:
+    with _llm_call(model) as call:
         try:
             with urllib_request.urlopen(request, timeout=timeout) as response:
                 result = json.loads(response.read().decode("utf-8"))
@@ -245,10 +276,14 @@ def post_json(
             # 401 은 키가 지워졌다는 뜻이고 429 는 한도다. 둘 다 재시도로 안 풀린다.
             if exc.code in (401, 403, 429):
                 raise LlmBudgetExceeded(f"엘리스가 {exc.code} 를 냈다") from exc
+            if exc.code in RETRY_STATUSES:
+                raise _NotDelivered(f"엘리스가 {exc.code} 를 냈다") from exc
             raise LlmFailed(f"엘리스가 {exc.code} 를 냈다") from exc
         except (urllib_error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            if _not_delivered(exc):
+                raise _NotDelivered("엘리스에 닿지 못했다") from exc
             raise LlmFailed("엘리스 호출이 실패했다") from exc
-        call["tokens"] = _log_usage(result, payload.get("model"))
+        call["tokens"] = _log_usage(result, model)
     return result
 
 
@@ -264,16 +299,20 @@ def post_stream(
     """SSE 를 읽어 조립하고 성공한 호출의 토큰 사용량을 남긴다."""
     if not settings.is_server:
         raise LlmUnavailable("로컬에서 real 모드 금지. 배포된 서버 엔드포인트를 호출한다")
-    with _llm_call(payload.get("model")) as call:
-        return _post_stream(
-            url,
-            headers=headers,
-            payload=payload,
-            timeout=timeout,
-            fold=fold,
-            deadline=deadline,
-            call=call,
-        )
+
+    def send():
+        with _llm_call(payload.get("model")) as call:
+            return _post_stream(
+                url,
+                headers=headers,
+                payload=payload,
+                timeout=timeout,
+                fold=fold,
+                deadline=deadline,
+                call=call,
+            )
+
+    return _once_more(send)
 
 
 def _post_stream(url, *, headers, payload, timeout, fold, deadline, call):
@@ -311,6 +350,8 @@ def _post_stream(url, *, headers, payload, timeout, fold, deadline, call):
         response = connection.getresponse()
         if response.status in (401, 403, 429):
             raise LlmBudgetExceeded(f"엘리스가 {response.status} 를 냈다")
+        if response.status in RETRY_STATUSES:
+            raise _NotDelivered(f"엘리스가 {response.status} 를 냈다")
         if not 200 <= response.status < 300:
             raise LlmFailed(f"엘리스가 {response.status} 를 냈다")
         while True:
@@ -331,6 +372,8 @@ def _post_stream(url, *, headers, payload, timeout, fold, deadline, call):
     ) as exc:
         if expired.is_set():
             raise LlmFailed("엘리스 스트림 제한 시간이 지났다") from exc
+        if _not_delivered(exc):
+            raise _NotDelivered("엘리스에 닿지 못했다") from exc
         raise LlmFailed("엘리스 스트림 호출이 실패했다") from exc
     finally:
         if watchdog is not None:

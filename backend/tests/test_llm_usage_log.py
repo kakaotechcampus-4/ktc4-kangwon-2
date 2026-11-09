@@ -197,3 +197,68 @@ def test_mock_이면_엘리스를_부르지_않는다(monkeypatch, usage_lines):
 
     assert isinstance(monthly_llm.monthly_llm_provider(), RequestAwareMonthlyLlm)
     assert usage_lines == []
+
+
+def _replies(monkeypatch, *replies):
+    """`urlopen` 이 차례로 답한다 — 예외면 던지고, dict 면 그 JSON 을 돌려준다."""
+    calls = []
+
+    def urlopen(*a, **k):
+        reply = replies[len(calls)]
+        calls.append(reply)
+        if isinstance(reply, BaseException):
+            raise reply
+        return io.BytesIO(json.dumps(reply).encode())
+
+    monkeypatch.setattr(llm.urllib_request, "urlopen", urlopen)
+    monkeypatch.setattr(llm, "RETRY_DELAY_SECONDS", 0)
+    return calls
+
+
+OK = {"choices": [{"message": {"content": "{}"}}], "usage": USAGE}
+
+
+@pytest.mark.parametrize(
+    "first",
+    [
+        urllib_error.HTTPError("u", 503, "busy", {}, None),
+        urllib_error.URLError(ConnectionRefusedError()),
+    ],
+)
+def test_모델에_닿지_못한_요청은_한_번_더_보낸다(monkeypatch, usage_lines, first):
+    timing_lines = []
+    monkeypatch.setattr(
+        llm.timing_logger, "info", lambda fmt, *args: timing_lines.append(fmt % args)
+    )
+    calls = _replies(monkeypatch, first, OK)
+
+    assert llm.post_json("https://x", headers={}, payload={"model": "m"}, timeout=1) == OK
+    assert len(calls) == 2
+    assert usage_lines == ["llm_usage model=m prompt=120 completion=30 total=150"]
+    assert "outcome=not_delivered" in timing_lines[0]
+    assert "outcome=ok" in timing_lines[1]
+
+
+@pytest.mark.parametrize(
+    ("first", "error"),
+    [
+        (urllib_error.HTTPError("u", 429, "limit", {}, None), LlmBudgetExceeded),
+        (urllib_error.HTTPError("u", 500, "boom", {}, None), LlmFailed),
+        (urllib_error.URLError(TimeoutError()), LlmFailed),
+    ],
+)
+def test_한도_서버오류_시간초과는_다시_보내지_않는다(monkeypatch, usage_lines, first, error):
+    calls = _replies(monkeypatch, first, OK)
+
+    with pytest.raises(error):
+        llm.post_json("https://x", headers={}, payload={"model": "m"}, timeout=1)
+    assert len(calls) == 1
+
+
+def test_다시_보낸_것도_닿지_못하면_실패로_끝난다(monkeypatch, usage_lines):
+    refused = urllib_error.URLError(ConnectionRefusedError())
+    calls = _replies(monkeypatch, refused, refused, OK)
+
+    with pytest.raises(LlmFailed):
+        llm.post_json("https://x", headers={}, payload={"model": "m"}, timeout=1)
+    assert len(calls) == 2
