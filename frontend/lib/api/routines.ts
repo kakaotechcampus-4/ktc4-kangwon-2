@@ -55,6 +55,40 @@ export interface RoutineInput {
 export type RoutineCreateInput = RoutineInput & { class_id: number };
 export type RoutineDraft = RoutineInput & { id?: number };
 
+/** 그날 하늘 (ADR-078). 교사가 고를 수 있는 값도 이 여섯이다. */
+export type Sky = "맑음" | "구름많음" | "흐림" | "비" | "눈" | "비나 눈";
+/** PM10 · PM2.5 등급 중 나쁜 쪽. 자동으로만 온다 — 종이에 안 나간다. */
+export type DustGrade = "좋음" | "보통" | "나쁨" | "매우나쁨";
+
+/**
+ * 그날 날씨 — `GET /api/routines?class_id=&from=D&to=D`(반 하나 · 하루 하나)의 `weather` ·
+ * `PUT /api/routines/weather` 응답 (api-spec §10-1 「그날 날씨」).
+ *
+ * 값이 없어도(키 없음 · 바깥 API 실패 · 지난 날짜) 오류가 아니라 `source: "none"` 으로 온다.
+ */
+export interface DayWeather {
+  date: string;
+  sky: Sky | null;
+  dust: DustGrade | null;
+  /** `sky` 의 출처. 교사가 고른 값이 이긴다. */
+  source: "auto" | "teacher" | "none";
+  /** 대체놀이 칩을 띄울 까닭. 비 · 눈이 미세먼지보다 먼저다. */
+  indoor_hint: "rain" | "dust" | null;
+}
+
+/** `GET /api/routines` 응답. 하루치가 아니면 `weather` 가 `null` 이다. */
+export interface RoutineListResponse {
+  items: ApiRoutine[];
+  weather: DayWeather | null;
+}
+
+/** `PUT /api/routines/weather` 의 body. `sky: null` 이면 고른 것을 지워 자동 값으로 돌린다. */
+export interface WeatherChoice {
+  class_id: number;
+  date: string;
+  sky: Sky | null;
+}
+
 /** 셋 다 선택이다 (§10-1). */
 export interface RoutineQuery {
   class_id?: number;
@@ -100,7 +134,7 @@ const json = (method: string, body: unknown) => ({
 
 /** 정렬은 서버가 날짜 · `position` · 시작 시간 · id 로 고정한다 — 종이의 행 순서다 (§10-1). */
 export const listRoutines = (params: RoutineQuery = {}) =>
-  apiRequest<{ items: ApiRoutine[] }>("/api/routines" + query(params)).then((body) => body.items);
+  apiRequest<RoutineListResponse>("/api/routines" + query(params)).then((body) => body.items);
 
 export const listRoutinesOfDay = (classId: number, date: string) =>
   listRoutines({ class_id: classId, from: date, to: date });
