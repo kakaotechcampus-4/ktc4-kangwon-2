@@ -191,12 +191,20 @@ def weekly_section_evidence(
             need = top_k - len(keep)
             members = [i for i, item in enumerate(pool) if item.trace.age_match is tier][:sample_pool]
             if len(members) > need:
+                shuffled = rng.sample(members, len(members))
+                chosen: list[int] = []
+                if len(ages) > 1:  # keep balance_by_age for mixed classes: one per requested age the tier has
+                    for age in sorted(ages):
+                        hit = next((i for i in shuffled if pool[i].record.single_age == age), None)
+                        if hit is not None and len(chosen) < need:
+                            chosen.append(hit)
                 by_kind: dict[str, list[int]] = {}
-                for i in rng.sample(members, len(members)):
-                    by_kind.setdefault(kind_of(pool[i].record), []).append(i)
-                members = []
-                while len(members) < need:
-                    members += [group.pop() for group in by_kind.values() if group][: need - len(members)]
+                for i in shuffled:
+                    if i not in chosen:
+                        by_kind.setdefault(kind_of(pool[i].record), []).append(i)
+                while len(chosen) < need:
+                    chosen += [group.pop() for group in by_kind.values() if group][: need - len(chosen)]
+                members = chosen
             keep.update(members)
         picked = tuple(item for i, item in enumerate(pool) if i in keep)
     if len(picked) < top_k:

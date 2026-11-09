@@ -182,6 +182,12 @@ def test_a_sample_seed_picks_top_k_from_the_top_pool_in_rank_order():
         found = _search(tiered, top_k=10, by_activity_type=True, sample_seed=seed)
         assert len(found) == 10 and {f"ev_{i:02}" for i in range(6)} <= set(found)
     assert len({tuple(_search(tiered, top_k=10, by_activity_type=True, sample_seed=s)) for s in range(5)}) > 1
+    # PR #469 review: a mixed class keeps every requested age the overflowing tier has (balance_by_age).
+    by_age = tuple(_record(f"ev_a{age}{i:02}", text=f"가을 열매 쌓기 {age}-{i}", institution=f"A{age}{i}",
+                           age_scope=(age,)) for age, n in ((3, 12), (4, 1), (5, 12)) for i in range(n))
+    for seed in range(30):
+        found = _search(by_age, top_k=10, by_activity_type=True, sample_seed=seed, ages=frozenset({3, 4, 5}))
+        assert len(found) == 10 and "ev_a400" in found
 
 
 def test_parent_citation_survives_top_k_without_bypassing_eligibility_or_source_cap():
