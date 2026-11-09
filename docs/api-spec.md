@@ -4054,7 +4054,6 @@ not_a_pass    등록이 평가 통과를 뜻하지 않는다는 것을 아는가
 (§12 · ADR-019 · ADR-022). 여기서 보는 것은 **집계에 들어갈 수 있는 모양인가**뿐이다.
 
 ```
-ASSESSMENT_NEEDS_CHILD   영유아 평가인데 아동을 안 골랐다 — 4-2 는 아이마다 센다
 OUT_OF_REVIEW_PERIOD     평가제가 보는 기간 밖이다
 BODY_TOO_SHORT           원문이 50자 미만이다 — 파일을 제대로 읽었는지
 ALREADY_REGISTERED       같은 아동 · 종류 · 겹치는 기간의 증빙이 이미 있다
