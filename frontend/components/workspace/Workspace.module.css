@@ -2199,6 +2199,82 @@ button.recordBlank:disabled {
   font-size: 12.5px;
   color: var(--pg-primary-ink);
 }
+/* 그날 일과 시간표 — 보육일지와 같은 모양(손글씨 시각 + 일과 이름). 고른 칸은 보라 밑줄. */
+.recordSlots {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.recordSlotRow {
+  display: flex;
+  overflow-x: auto;
+  border: 1.5px solid var(--pg-line);
+  background: var(--pg-paper);
+}
+.recordSlot {
+  display: grid;
+  flex: none;
+  align-content: center;
+  min-height: 44px;
+  padding: 4px 12px;
+  border: 0;
+  border-right: 1px solid var(--pg-line);
+  background: none;
+  color: var(--pg-ink-soft);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.recordSlot:last-child {
+  border-right: 0;
+}
+.recordSlot:hover {
+  background: var(--pg-ivory);
+}
+.recordSlot[aria-pressed="true"] {
+  background: var(--pg-primary-tint);
+  box-shadow: inset 0 -3px 0 var(--pg-primary);
+  color: var(--pg-primary-ink);
+  font-weight: 700;
+}
+.recordSlotTime {
+  font-family: var(--font-display), sans-serif;
+  font-size: 16px;
+  line-height: 1.05;
+}
+.recordPlaces {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.recordPlaces > span {
+  margin-right: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.recordPlaces button {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-ivory);
+  box-shadow: var(--pg-shadow-card);
+  color: var(--pg-ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.recordPlaces button:active {
+  translate: 2px 3px;
+  box-shadow: none;
+}
+.recordPlaces button[aria-pressed="true"] {
+  border-color: var(--pg-primary-line);
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
 /* 저장 뒤 빠진 것 쪽지 — 잠깐 붙여 둔 노란 쪽지 한 줄(ADR-082). */
 .recordGap {
   justify-self: start;

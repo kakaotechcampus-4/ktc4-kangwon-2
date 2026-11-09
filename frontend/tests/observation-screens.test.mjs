@@ -24,6 +24,7 @@ registerHooks({
 
 const documents = await import("../lib/api/documents.ts");
 const axis = await import("../lib/workspace/observation-axis.ts");
+const recordContext = await import("../lib/workspace/record-context.ts");
 const { ApiError, invalidFields } = await import("../lib/api/client.ts");
 
 const require = createRequire(import.meta.url);
@@ -214,7 +215,7 @@ function browser(t, search = "") {
 
 const NO_IMPACT = { affected: [], newlyStale: [] };
 
-function recordsPage(t, api = {}) {
+function recordsPage(t, api = {}, { now = "08:00" } = {}) {
   browser(t);
   const app = host();
   const warned = [];
@@ -229,8 +230,10 @@ function recordsPage(t, api = {}) {
       removeRecord: async () => NO_IMPACT,
       suggestRecordDomain: async () => null,
       missingInRecord: async () => [],
+      dayRoutines: async () => [],
       ...api,
     },
+    "@/lib/workspace/record-context": { ...recordContext, nowTime: () => now },
     "@/lib/api/documents": { documentLocalId: (id) => `document:${id}` },
     "@/lib/workspace/child-mark": { markFor: () => 0 },
     "./WorkspaceUI": {
@@ -444,6 +447,61 @@ test("A4 저장한 뒤 빠진 것이 있으면 쪽지 한 줄만 띄우고 막�
   assert.match(view.text(), /관찰 기록을 저장했어요/);
   assert.match(view.text(), /아이 반응이 안 보여요/);
   assert.doesNotMatch(view.text(), /어디서/);
+});
+
+const DAY = [
+  { name: "등원", start: "09:00", end: "" },
+  { name: "실내놀이", start: "10:00", end: "11:30" },
+  { name: "점심", start: "11:30", end: "" },
+  { name: "바깥놀이", start: "14:00", end: "" },
+];
+const slot = (view, name) =>
+  view.nodes().find((n) => n.type === "button" && textOf(n).endsWith(name) && n.props["data-slot"]);
+const context = (view) => view.nodes().find((n) => n.props.name === "context");
+
+test("A3 오늘이고 지금이 그 일과 시간이면 상황 칸을 미리 눌러 두고, 놀이면 「어디서」를 묻는다", async (t) => {
+  const asked = [];
+  const view = recordsPage(
+    t,
+    { dayRoutines: async (...args) => (asked.push(args), DAY) },
+    { now: "10:20" },
+  );
+  await view.flush();
+
+  assert.deepEqual(asked.at(-1), ["class-a", TODAY]);
+  assert.equal(context(view).props.value, "실내놀이");
+  assert.equal(slot(view, "실내놀이").props["aria-pressed"], true);
+  assert.equal(view.warned.at(-1), false, "미리 눌러 둔 상황만으로는 적던 글이 아니다");
+
+  await view.press("쌓기");
+  assert.equal(context(view).props.value, "실내놀이, 쌓기");
+  assert.equal(view.button("쌓기").props["aria-pressed"], true);
+
+  await slot(view, "바깥놀이").props.onClick();
+  view.render();
+  assert.equal(context(view).props.value, "바깥놀이");
+  assert.equal(view.button("쌓기"), undefined, "바깥놀이는 흥미 영역을 묻지 않는다");
+});
+
+test("A3 몰아서 적을 때(지난 날짜 · 일과 밖 시각)는 칩만 보이고 미리 누르지 않는다", async (t) => {
+  const view = recordsPage(t, { dayRoutines: async () => DAY }, { now: "16:00" });
+  await view.flush();
+  assert.equal(context(view).props.value, "");
+  assert.ok(slot(view, "점심"));
+
+  view.type(view.date(), "2026-11-05");
+  await view.flush();
+  assert.equal(context(view).props.value, "");
+});
+
+test("A3 그날 일과가 없으면 시간표 없이 지금처럼 적는다", async (t) => {
+  const view = recordsPage(t, {}, { now: "10:20" });
+  await view.flush();
+  assert.equal(
+    view.nodes().some((n) => n.props["data-slot"]),
+    false,
+  );
+  assert.equal(context(view).props.value, "");
 });
 
 // ── 관찰일지 만들기 (ObservationJournalPage) ──────────────────────────────

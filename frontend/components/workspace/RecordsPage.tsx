@@ -12,8 +12,19 @@ import {
   removeRecord,
   suggestRecordDomain,
   missingInRecord,
+  dayRoutines,
   type ReviewImpact,
 } from "@/lib/api/records";
+import {
+  CONTEXT_MAX,
+  PLACES,
+  contextFor,
+  isIndoorPlay,
+  nowTime,
+  pickedSlot,
+  slotAt,
+  type DaySlot,
+} from "@/lib/workspace/record-context";
 import { documentLocalId } from "@/lib/api/documents";
 import type { ServerObservation } from "@/lib/api/observations";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -32,9 +43,6 @@ import {
 } from "./WorkspaceViewState";
 
 const ENTRY_NONE = { classId: "", childId: "" };
-
-// 서버 observations.context 컬럼이 50자다. 더 받으면 저장할 때 422 다.
-const CONTEXT_MAX = 50;
 
 export type RecordsStatus = ViewStatus;
 
@@ -114,7 +122,15 @@ export default function RecordsPage() {
   const asking = useRef(0);
   /** 방금 저장한 기록에서 빠진 것 하나 — 쪽지 한 줄로 띄운다. */
   const [gap, setGap] = useState<{ record: ServerObservation; part: string } | null>(null);
-  const [context, setContext] = useState("");
+  /*
+    상황 칸. `auto` 는 화면이 미리 눌러 둔 값이다 — 「오늘 기록 + 지금이 그 일과 시간 안」일 때만
+    그 일과 이름이 들어간다. 교사가 손대지 않은 그 값은 적던 글로 치지 않는다.
+  */
+  const [contextBox, setContextBox] = useState({ text: "", auto: "" });
+  const context = contextBox.text;
+  const setContext = (text: string) => setContextBox({ text, auto: "" });
+  /** 그날 일과 — 상황 칸 위 시간표. `key` 는 「반|날짜」다. 늦게 온 다른 날 일과를 그리지 않는다. */
+  const [slots, setSlots] = useState<{ key: string; rows: DaySlot[] }>({ key: "", rows: [] });
   /** 아이 이름 칩을 펼쳤나. 아이를 고르면 접히고, 문장 속 이름을 누르면 다시 펼친다. */
   const [kidsOpen, setKidsOpen] = useState(false);
   const [fact, setFact] = useState("");
@@ -158,7 +174,7 @@ export default function RecordsPage() {
   /** 저장하지 않은 글이 있나. 고치는 중이면 그 기록과 달라졌는지 본다. */
   const unsaved = edited
     ? fact !== edited.fact || context !== edited.context
-    : !!(fact.trim() || context.trim());
+    : !!(fact.trim() || (context.trim() && context !== contextBox.auto));
   useUnsavedWarning(unsaved);
   const journalHref = child
     ? `/records/journal?child=${encodeURIComponent(child.id)}&class=${encodeURIComponent(classId)}`
@@ -181,6 +197,26 @@ export default function RecordsPage() {
     return () => clearTimeout(timer);
   }, [fact, context, picked, editId, classId]);
   const suggestion = !picked && !editId && fact.trim() ? suggested : null;
+
+  /** 지금 이 날 · 이 시각에 미리 눌러 둘 상황. 오늘이 아니거나 일과 밖이면 비운다. */
+  const autoContext = (rows: DaySlot[], on: string) =>
+    on === today() ? (slotAt(rows, nowTime())?.name ?? "") : "";
+  useEffect(() => {
+    if (!classId || !validDate(date)) return;
+    let live = true;
+    void dayRoutines(classId, date).then((rows) => {
+      if (!live) return;
+      setSlots({ key: `${classId}|${date}`, rows });
+      if (editId) return;
+      const auto = autoContext(rows, date);
+      // 교사가 적거나 고른 상황은 덮지 않는다. 미리 눌러 둔 값만 날짜를 따라 바뀐다.
+      setContextBox((prev) => (prev.text && prev.text !== prev.auto ? prev : { text: auto, auto }));
+    });
+    return () => {
+      live = false;
+    };
+  }, [classId, date, editId]);
+  const daySlots = slots.key === `${classId}|${date}` ? slots.rows : [];
 
   useEffect(() => {
     const mine = ++latest.current;
@@ -320,7 +356,8 @@ export default function RecordsPage() {
       lookForGap(saved);
       await reload();
       setFact("");
-      setContext("");
+      const auto = autoContext(daySlots, date);
+      setContextBox({ text: auto, auto });
       setEditId("");
       setDomain("");
       setInvalid([]);
@@ -438,6 +475,16 @@ export default function RecordsPage() {
                 >
                   {/* 이름표와 회색 네모가 다섯 개 늘어선 칸이 가입 양식처럼 보였다.
                       「오늘, 쌓기 영역에서 하늘이가 …」 로 읽히는 문장 속 빈칸으로 바꿨다. */}
+                  {daySlots.length > 0 && (
+                    <DayStrip
+                      slots={daySlots}
+                      context={context}
+                      onPick={(text) => {
+                        setContext(text);
+                        clearInvalid("context");
+                      }}
+                    />
+                  )}
                   <p className={ws.recordSentence}>
                     <span className={ws.recordDateBlank}>
                       <span className={ws.recordBlank} aria-hidden="true">
@@ -462,7 +509,7 @@ export default function RecordsPage() {
                     <span className={ws.recordNowrap}>
                       <input
                         name="context"
-                        aria-label="어디서 · 무슨 놀이"
+                        aria-label="어디서, 무슨 놀이"
                         className={ws.recordBlank}
                         maxLength={CONTEXT_MAX}
                         value={context}
@@ -471,7 +518,7 @@ export default function RecordsPage() {
                           setContext(e.target.value);
                           clearInvalid("context");
                         }}
-                        placeholder="자유놀이 · 쌓기 영역"
+                        placeholder="실내놀이, 쌓기"
                       />
                       에서
                     </span>{" "}
@@ -693,6 +740,56 @@ export default function RecordsPage() {
         </div>
       </dialog>
     </WorkspacePage>
+  );
+}
+
+/**
+ * 그날 일과 시간표 한 줄 — 보육일지와 같은 모양(손글씨 시각 + 일과 이름). 누르면 상황 칸에 들어가고,
+ * 실내 놀이 시간이면 그 아래 「어디서」 흥미 영역을 고른다. 고른 것은 상황 칸 글에서 읽는다.
+ */
+function DayStrip({
+  slots,
+  context,
+  onPick,
+}: {
+  slots: DaySlot[];
+  context: string;
+  onPick: (text: string) => void;
+}) {
+  const picked = pickedSlot(slots, context);
+  return (
+    <div className={ws.recordSlots}>
+      <div className={ws.recordSlotRow} role="group" aria-label="그날 일과">
+        {slots.map((slot, i) => (
+          <button
+            key={i}
+            type="button"
+            data-slot
+            className={ws.recordSlot}
+            aria-pressed={picked?.slot === slot}
+            onClick={() => onPick(contextFor(slot.name))}
+          >
+            <span className={ws.recordSlotTime}>{slot.start}</span>
+            {slot.name}
+          </button>
+        ))}
+      </div>
+      {picked && isIndoorPlay(picked.slot.name) && (
+        <div className={ws.recordPlaces} role="group" aria-labelledby="record-places-label">
+          <span id="record-places-label">어디서</span>
+          {PLACES.map((place) => (
+            <button
+              key={place}
+              type="button"
+              aria-pressed={picked.place === place}
+              onClick={() => onPick(contextFor(picked.slot.name, place))}
+            >
+              {place}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

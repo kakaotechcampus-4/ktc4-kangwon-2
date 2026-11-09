@@ -14,6 +14,8 @@ import { classServerId, childServerId } from "./onboarding";
 import { toLocalObservation } from "./observation-ids";
 import type { ObservationUpdate } from "./types";
 import { chosenClassFor, loadClassSettings } from "../onboarding/settings";
+import { listRoutinesOfDay, routineTime } from "./routines";
+import type { DaySlot } from "../workspace/record-context";
 
 /** 반·아동이 서버의 무엇인지 모르는 상태. 서버 id 를 지어내지 않고 여기서 멈춘다. */
 export const UNMAPPED =
@@ -105,6 +107,24 @@ export async function missingInRecord(localId: string): Promise<string[]> {
   if (id === null) return [];
   try {
     return (await checkMissing(id)).missing;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 그날 일과 — 상황 칸 위 시간표로만 쓴다. 못 읽으면 빈 줄이라 지금처럼 손으로 적는다.
+ * ponytail: 반 기본 일과표(묶음 C)가 생기면 그날 일과가 없을 때 그걸로 채운다.
+ */
+export async function dayRoutines(classId: string, date: string): Promise<DaySlot[]> {
+  const class_id = classServerId(classId);
+  if (class_id === null) return [];
+  try {
+    return (await listRoutinesOfDay(class_id, date)).map((row) => ({
+      name: row.name,
+      start: routineTime(row.start),
+      end: routineTime(row.end),
+    }));
   } catch {
     return [];
   }

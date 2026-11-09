@@ -350,6 +350,30 @@ test("영역 추천 · 빠진 것은 서버 id 로 묻고, 실패하면 조용�
   assert.equal(calls.length, 3, "모르는 반은 묻지 않는다");
 });
 
+test("그날 일과는 상황 칸 시간표로만 읽고, 못 읽으면 빈 줄이다", async () => {
+  browser();
+  const row = (name, start, end) => ({ id: 1, class_id: 3, date: "2026-11-10", name, start, end });
+  const { calls, restore } = serve((n) =>
+    n === 1
+      ? json({ items: [row("실내놀이", "10:00:00", "11:30:00"), row("자유", null, null)] })
+      : fail("GENERATION_FAILED", 500),
+  );
+  let day, broken;
+  try {
+    day = await records.dayRoutines("class-abc", "2026-11-10");
+    broken = await records.dayRoutines("class-abc", "2026-11-10");
+  } finally {
+    restore();
+  }
+
+  assert.equal(calls[0].url, "/api/routines?class_id=3&from=2026-11-10&to=2026-11-10");
+  assert.deepEqual(day, [
+    { name: "실내놀이", start: "10:00", end: "11:30" },
+    { name: "자유", start: "", end: "" },
+  ]);
+  assert.deepEqual(broken, []);
+});
+
 test("삭제는 204 를 본문 없이 처리한다", async () => {
   const writes = browser();
   const { calls, restore } = serve(() => new Response(null, { status: 204 }));

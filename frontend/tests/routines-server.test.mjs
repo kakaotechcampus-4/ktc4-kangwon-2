@@ -33,6 +33,7 @@ const routinesRoute = await import("../lib/workspace/routines-route.ts");
 const onboardingTypes = await import("../lib/onboarding/types.ts");
 const childMark = await import("../lib/workspace/child-mark.ts");
 const homeBlocks = await import("../lib/workspace/home-blocks.ts");
+const recordContext = await import("../lib/workspace/record-context.ts");
 const { EMPTY_CLASS_SETTINGS } = onboardingTypes;
 
 const require = createRequire(import.meta.url);
@@ -1562,8 +1563,10 @@ function recordsPage(
       addRecord: async () => ({}),
       editRecord: async () => ({}),
       removeRecord: async () => {},
+      dayRoutines: async () => [],
     },
     "@/lib/api/documents": { documentLocalId: (id) => `document:${id}` },
+    "@/lib/workspace/record-context": recordContext,
     "./WorkspaceUI": {
       WorkspacePage: "page",
       Empty: "empty",
