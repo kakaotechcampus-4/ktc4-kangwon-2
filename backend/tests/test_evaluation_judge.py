@@ -207,3 +207,19 @@ def test_4_2_filters_roster_and_dates():
     assert result.children == Ratio(0, 1)
     empty = judge_4_2(window, [], [AssessmentFact(4, 1, window.start)])
     assert (empty.verdict, empty.children, empty.count) == (NONE, Ratio(0, 0), 0)
+
+
+def test_4_1_은_보육일지_계획안_조건을_반마다_따로_센다():
+    # ADR-074 결정 2 — 화면이 서류마다 도장을 찍는다. 1반은 계획안만, 2반은 평일 일지만 다 있다.
+    window = Window(date(2026, 10, 1), date(2026, 10, 2))
+    plans = [PlanFact(plan_id=1, class_id=1, year=2026, month=10)]
+    logs = [
+        DailyLogFact(document_id=10 + i, class_id=2, day=day)
+        for i, day in enumerate(window.weekdays())
+    ]
+    result = judge_4_1(window, [1, 2], plans, logs)
+    assert result.classes == Ratio(0, 2)
+    assert result.plan_classes == Ratio(1, 2)
+    assert result.journal_classes == Ratio(1, 2)
+    # 4-2 에는 없다
+    assert judge_4_2(window, [], []).journal_classes is None

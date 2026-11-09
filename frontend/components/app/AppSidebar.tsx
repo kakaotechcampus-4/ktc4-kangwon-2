@@ -574,7 +574,7 @@ function Tape() {
   return (
     <span
       aria-hidden="true"
-      className="pointer-events-none absolute -top-3 right-3 h-[19px] w-16 rotate-[38deg] border-x border-white/60 bg-tape shadow-[0_1px_2px_rgba(106,96,80,.09)]"
+      className="pointer-events-none absolute -top-3 right-3 h-[19px] w-16 rotate-[38deg] border-x border-white/60 bg-tape shadow-[var(--pg-shadow-tape)]"
     />
   );
 }

@@ -36,7 +36,7 @@ export const TEACHER_DOCS: TeacherDoc[] = [
   },
   {
     id: "plan",
-    title: "보육계획안 (월간 · 주간 · 일일 중 하나)",
+    title: "보육계획안 (월간 · 주간 · 일일)",
     keywords: ["보육계획안", "월간계획안", "주간계획안", "일일계획안", "계획안"],
     exclude: ["연간", "개별화"],
     rule: { kind: "months" },
@@ -229,8 +229,7 @@ export function matchesDoc(doc: TeacherDoc, name: string) {
 }
 
 export function checkDoc(doc: TeacherDoc, names: string[], today: string): DocResult {
-  const windows = windowsFor(today);
-  const window = doc.rule.kind === "count" ? windows.year : windows.recent;
+  const window = windowOf(doc, today);
   const result: DocResult = {
     id: doc.id,
     status: "missing",
@@ -287,30 +286,89 @@ export function scanNames(names: string[], today: string): Scan {
   return { total: files.length, results: TEACHER_DOCS.map((doc) => checkDoc(doc, files, today)) };
 }
 
-/** 체크는 항목 id 만 이 브라우저에 남긴다(`doc:journal` · `director:annual-plan`). 파일 이름은 아동 실명을 담을 수 있어 남기지 않는다(ADR-013). */
-function checksKey(centerId: number, schoolYear: number) {
-  return `ssample:evaluation-files:${centerId}:${schoolYear}`;
+/**
+ * 도장이 찍힌 근거. 한 칸에 둘 이상일 수 있어 모두 돌려준다 — 화면이 도장 안에 줄을 쌓아 보인다.
+ * - `ssample` 쌤플에서 확정한 문서(예전 서류 올리기 포함)가 기준을 채움
+ * - `folder`  폴더에서 파일 이름으로 찾음(`found` 만. 「일부 빠짐」은 도장이 아니다)
+ * - `teacher` 선생님이 직접 누름 — 쌤플이 만들지 않는 서류만 누를 수 있다
+ *
+ * 폴더 결과는 체크 목록에 써 넣지 않는다. 써 넣으면 나중에 「폴더가 찍었는지, 선생님이 찍었는지」를 가를 수 없다.
+ * 쌤플이 만드는 서류의 체크(`doc:journal` 등)는 옛 화면이 폴더 결과를 써 넣은 것이라 근거로 보지 않는다.
+ */
+export type StampSource = "ssample" | "folder" | "teacher";
+
+export function stampSources(
+  made: { done: boolean } | null,
+  result: Pick<DocResult, "status"> | undefined,
+  checked: boolean,
+): StampSource[] {
+  const sources: StampSource[] = [];
+  if (made?.done) sources.push("ssample");
+  if (result?.status === "found") sources.push("folder");
+  if (!made && checked) sources.push("teacher");
+  return sources;
 }
 
-export function readChecks(centerId: number, schoolYear: number): string[] {
-  try {
-    const value = JSON.parse(window.localStorage.getItem(checksKey(centerId, schoolYear)) ?? "[]");
-    return Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
-  } catch {
-    return [];
+/** 「빈 평일 3일」 · 「빈 달 1개」. 「일부 빠짐」은 평일 · 달 규칙에만 나온다. */
+export function gapText(doc: TeacherDoc, gaps: number) {
+  return doc.rule.kind === "weekdays" ? `빈 평일 ${gaps}일` : `빈 달 ${gaps}개`;
+}
+
+/** 폴더 결과 요약 — 서버에 남기는 모양(ADR-074 결정 5). 이름 · 빈 날짜는 빼고 숫자만. */
+export interface FolderSummary {
+  status: Status;
+  files: number;
+  /** 빈 평일 · 빈 달 수. 「일부 빠짐」일 때만 센다 — 못 찾은 서류의 빈 날은 뜻이 없다 */
+  gaps: number;
+}
+
+export function summarize(result: DocResult): FolderSummary {
+  return {
+    status: result.status,
+    files: result.matched.length,
+    gaps: result.status === "partial" ? result.missing.length : 0,
+  };
+}
+
+/** 그 서류를 센 기간 — 보육일지 · 계획안은 최근, 나머지는 1년(checkDoc 과 같다). */
+export function windowOf(doc: TeacherDoc, today: string) {
+  const windows = windowsFor(today);
+  return doc.rule.kind === "count" ? windows.year : windows.recent;
+}
+
+/**
+ * 도장 근거 한 줄 — 도장 안 낱말과 같은 말로, 그 근거가 어디까지 왔는지(시안 ⑤, 2026-11-08).
+ * `on` 은 도장을 찍은 근거, `short` 는 있지만 모자람, `none` 은 아직 없음.
+ * 쌤플 숫자와 폴더 결과는 **줄을 나눠** 둔다. 세는 법이 달라 더하지 않는다(ADR-045).
+ */
+export interface SourceLine {
+  source: StampSource;
+  state: "on" | "short" | "none";
+  text: string;
+}
+
+export function sourceLines(
+  doc: TeacherDoc,
+  made: { done: boolean; some: boolean; text: string } | null,
+  folder: FolderSummary | undefined,
+  checked: boolean,
+): SourceLine[] {
+  const lines: SourceLine[] = [];
+  if (made) {
+    const state = made.done ? "on" : made.some ? "short" : "none";
+    lines.push({ source: "ssample", state, text: made.text });
   }
-}
-
-export function writeChecks(centerId: number, schoolYear: number, checks: string[]) {
-  try {
-    window.localStorage.setItem(checksKey(centerId, schoolYear), JSON.stringify(checks));
-  } catch {
-    // 저장이 막힌 브라우저에서도 화면의 체크는 유지한다.
-  }
-}
-
-/** 이름으로 찾은 서류를 체크에 더한다. 교사가 이미 한 체크는 지우지 않는다. */
-export function withFound(checks: string[], scan: Scan) {
-  const found = scan.results.filter((r) => r.status === "found").map((r) => `doc:${r.id}`);
-  return [...new Set([...checks, ...found])];
+  if (!folder)
+    lines.push({ source: "folder", state: "none", text: "폴더를 고르면 이름으로 찾아봐요" });
+  else if (folder.status === "found")
+    lines.push({ source: "folder", state: "on", text: `이름으로 찾음 · ${folder.files}건` });
+  else if (folder.status === "partial")
+    lines.push({
+      source: "folder",
+      state: "short",
+      text: `일부 빠짐 · ${gapText(doc, folder.gaps)}`,
+    });
+  else lines.push({ source: "folder", state: "none", text: "못 찾음" });
+  if (!made && checked) lines.push({ source: "teacher", state: "on", text: "도장판에서 눌렀어요" });
+  return lines;
 }

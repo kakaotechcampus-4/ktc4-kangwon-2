@@ -97,7 +97,7 @@ const TOURS: Record<string, Step[]> = {
       at: "records-order",
       title: "이 순서로 적으면 좋아요",
       steps: ["상황", "행동", "반응", "교사 지원"],
-      lines: ["순서대로 채우면 **관찰일지가 잘 나와요**."],
+      lines: ["순서대로 채우면 **관찰일지가 더 자세하게 작성돼요**."],
       tip: "다 안 채워도 저장돼요.",
       pad: 6,
     },
@@ -180,9 +180,12 @@ const TOURS: Record<string, Step[]> = {
   "/evaluation": [
     {
       at: "eval-today",
-      title: "오늘 평가를 받는다면",
-      lines: ["낼 서류가 **몇 가지 비었는지** 보여요."],
-      tip: "쌤플은 서류가 있는지만 세요. 내용은 선생님께서 확인해 주세요.",
+      title: "평가 서류 도장판",
+      lines: [
+        "낼 서류가 **몇 칸 비었는지** 보여요.",
+        "쌤플이 만들지 않는 서류는 **동그라미를 눌러** 찍어요.",
+      ],
+      tip: "쌤플은 서류의 개수만 세어요. 내용은 선생님께서 확인해 주세요.",
     },
     {
       at: "eval-folder",
@@ -191,10 +194,10 @@ const TOURS: Record<string, Step[]> = {
     },
     {
       at: "eval-sheet",
-      title: "평가 때 낼 서류",
+      title: "채울 서류부터",
       lines: [
-        "줄마다 **쌤플에서 만든 것**과 **내 컴퓨터**를 나란히 봐요.",
-        "챙긴 서류는 직접 체크해요.",
+        "**빈 칸**인 서류가 위에 크게 나와요.",
+        "도장 근거는 **쌤플확정 · 내컴퓨터 · 직접확인**으로 봐요.",
       ],
     },
   ],
@@ -637,7 +640,8 @@ export default function Tour() {
       : hole.top > 260
         ? { bottom: vh - hole.top + 18, left }
         : vw - (hole.left + hole.width) > CARD + 40
-          ? { top: Math.max(16, Math.min(hole.top, vh - 300)), left: hole.left + hole.width + 24 }
+          ? // 위 여백은 포스티(카드 위로 40px 튀어나옴)가 화면 위에 잘리지 않을 만큼 둔다.
+            { top: Math.max(52, Math.min(hole.top, vh - 300)), left: hole.left + hole.width + 24 }
           : undefined;
 
   return (

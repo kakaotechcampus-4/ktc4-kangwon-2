@@ -110,7 +110,6 @@ body {
     linear-gradient(#000 0 0) 0 0 / 100% calc(100% - 10px) no-repeat;
   -webkit-mask: var(--torn);
   mask: var(--torn);
-  filter: drop-shadow(0 8px 16px rgba(52, 49, 47, 0.16));
 }
 
 /* 쪽지 한 장이 넘어오는 모습. 아래에서 살짝 올라오며 기울기가 펴진다.
@@ -136,6 +135,17 @@ body {
 
 /* 화면 뒤 벽의 포스티 낙서(components/app/PostyDoodles.tsx). 연필로 옅게 끄적인 정도라 전체를 28% 로 흐린다.
  * 노랑(#c9a227) · 분홍(#c0697a)은 토큰에 맞는 값이 없어 시안 캔버스 「⑧ 포스티 낙서」 값을 그대로 둔다. */
+/* 계획안 · 평가 점검 화면(app/(app)/{plans,evaluation}/layout.tsx) — 크림 배경 위에서 칸 · 버튼 · 입력칸 경계가 묻혀
+ * 공용 선 색을 이 아래에서만 한 단계 진하게 한다. 관찰 기록 · 보육일지와 같은 값. 색 바꿈은 없다.
+ * 묶음 상자는 자리를 차지하지 않게 display: contents. 값을 직접 적은 연한 선 두 가지도 같이 맞춘다. */
+.lineScope {
+  display: contents;
+  --pg-line: var(--pg-line-strong);
+}
+.lineScope :is([class*="border-[#ddd6ca]"], [class*="border-[#d7d0c7]"]) {
+  border-color: var(--pg-line-strong);
+}
+
 .postyDoodles {
   opacity: 0.28;
 }
