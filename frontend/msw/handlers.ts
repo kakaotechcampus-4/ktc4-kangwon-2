@@ -13,7 +13,7 @@ import {
   putCenterSettings,
 } from "./data/centers";
 import type { Greetings } from "../lib/api/centers";
-import type { DayWeather, Sky } from "../lib/api/routines";
+import { journalHandlers } from "./journal";
 import { findClass, listClasses, addClass, classNameTaken, patchClass } from "./data/classes";
 import { hasChild, listChildren, addChild, removeChild, setCallName } from "./data/children";
 import {
@@ -158,22 +158,6 @@ const withMemo = <T extends { id: number }>(
 };
 const missing = () => failure("NOT_FOUND", "대상을 찾을 수 없습니다.");
 
-// 그날 날씨 목업 (ADR-089). 자동 값은 비 · 보통 — 대체놀이 칩이 뜨는 쪽을 보여 준다.
-// 교사가 고른 값은 이 탭이 열려 있는 동안만 남는다.
-const MOCK_SKIES = ["맑음", "구름많음", "흐림", "비", "눈", "비나 눈"];
-const mockWeatherChoice = new Map<string, string>();
-function mockWeather(date: string, chosen?: string): DayWeather {
-  const sky = (chosen ?? "비") as Sky;
-  const dust = "보통";
-  return {
-    date,
-    sky,
-    dust,
-    source: chosen ? "teacher" : "auto",
-    indoor_hint: ["비", "눈", "비나 눈"].includes(sky) ? "rain" : null,
-  };
-}
-
 async function body(request: Request): Promise<Record<string, unknown> | null> {
   try {
     const b = await request.json();
@@ -298,29 +282,8 @@ export const handlers = [
   // MSW interception 판정 전용 probe — 실제 백엔드 API가 아니다.
   // 이 응답이 오면 fetch가 정말 MSW handler를 통과했다는 뜻이다.
   http.get("*/api/__msw_health", () => HttpResponse.json({ msw: true })),
-  // 일과 기록은 목업 줄이 없다. 반 하나 · 하루 하나로 부르면 그날 날씨만 붙인다 (api-spec §10-1 「그날 날씨」).
-  http.get("*/api/routines", ({ request }) => {
-    const q = new URL(request.url).searchParams;
-    const day = q.get("from");
-    const oneDay = q.get("class_id") && day && day === q.get("to");
-    return HttpResponse.json({
-      items: [],
-      weather: oneDay
-        ? mockWeather(day, mockWeatherChoice.get(`${q.get("class_id")}|${day}`))
-        : null,
-    });
-  }),
-  http.put("*/api/routines/weather", async ({ request }) => {
-    const b = await body(request);
-    if (!b) return bad("body");
-    if (!Number.isInteger(b.class_id)) return bad("class_id");
-    if (typeof b.date !== "string") return bad("date");
-    if (b.sky !== null && !MOCK_SKIES.includes(b.sky as string)) return bad("sky");
-    const key = `${b.class_id}|${b.date}`;
-    if (b.sky === null) mockWeatherChoice.delete(key);
-    else mockWeatherChoice.set(key, b.sky as string);
-    return HttpResponse.json(mockWeather(b.date, mockWeatherChoice.get(key)));
-  }),
+  // 보육일지 하루 화면 — 일과 기록 · 날씨 · 임시본 · 반 기본 일과표 (msw/journal.ts).
+  ...journalHandlers,
   // 계획안 밖 화면(관찰 · 일지 · 반 공유 요청)은 목업 데이터가 없다 — 빈 목록으로 답해 404 이슈만 막는다.
   ...["observations", "documents", "access-requests/received"].map((path) =>
     http.get(`*/api/${path}`, () => HttpResponse.json({ items: [] })),
