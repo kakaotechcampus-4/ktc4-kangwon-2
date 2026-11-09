@@ -140,6 +140,18 @@ def test_한도_소진_본문이면_429_도_다시_부르지_않는다(monkeypat
     assert sleeps == []
 
 
+def test_긴_message_뒤에_온_한도_소진_표시도_찾는다(monkeypatch, sleeps):
+    body = json.dumps(
+        {"error": {"message": "가" * 3000, "code": "insufficient_quota"}}, ensure_ascii=False
+    ).encode()
+    assert body.index(b"insufficient_quota") > 4096
+    net = Net(monkeypatch, http_error(429, body=body))
+
+    with pytest.raises(LlmBudgetExceeded):
+        post()
+    assert net.calls == 1
+
+
 def test_Retry_After_가_5초를_넘으면_다시_부르지_않는다(monkeypatch, sleeps):
     net = Net(monkeypatch, http_error(429, retry_after="30"))
 

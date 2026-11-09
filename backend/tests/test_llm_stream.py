@@ -197,13 +197,17 @@ def test_valid_and_missing_usage_are_not_warned(
     assert warning_lines == []
 
 
-@pytest.mark.parametrize(("status", "error"), [(429, LlmBudgetExceeded), (500, LlmFailed)])
+@pytest.mark.parametrize(
+    ("status", "error"), [(429, LlmBudgetExceeded), (500, LlmFailed), (503, LlmFailed)]
+)
 def test_http_status_is_mapped(monkeypatch, usage_lines, status, error):
-    _connection(monkeypatch, status=status)
+    connections = _connection(monkeypatch, status=status)
 
     with pytest.raises(error):
         _post_stream()
     assert usage_lines == []
+    # 스트림은 다시 부르지 않는다 — 재시도는 `post_json` 에만 있다(ADR-076).
+    assert len(connections) == 1
 
 
 def test_local_real_is_blocked_before_open(monkeypatch, usage_lines):

@@ -50,8 +50,9 @@ MAX_LLM_CALLS_PER_RUN = 6
 RETRY_DELAY_SECONDS = 1.0
 # 429 의 `Retry-After` 가 이보다 길면 기다리지 않고 실패시킨다 — 화면이 그만큼 더 기다리게 된다.
 RETRY_AFTER_MAX_SECONDS = 5.0
-# 429 본문에서 `insufficient_quota` 만 찾는다. 몇 KB 면 되고, 본문은 어디에도 찍지 않는다.
-QUOTA_BODY_BYTES = 4096
+# 429 본문에서 `insufficient_quota` 만 찾는다. 긴 message 뒤에 code 가 와도 놓치지 않게
+# 넉넉히 읽는다. 본문은 어디에도 찍지 않는다.
+QUOTA_BODY_BYTES = 65536
 
 
 def is_mock() -> bool:
@@ -117,7 +118,9 @@ def complete_json(
 # 실측(판정 기준값)은 이 버전으로 했다. 올리면 다시 잰다.
 JEV_MODEL = "typesafe/jev-1.14"
 # 문장 6개(질문 40여 개)가 1초 안쪽이다. 화면이 기다리는 호출이라 생성보다 짧게 끊는다.
-# 한 문서가 많아야 6번 부른다(judge.MAX_SENTENCES 36 / CHUNK 6) — 최악에도 1분 안에 끝난다.
+# 한 문서가 많아야 6번 부른다(judge.MAX_SENTENCES 36 / CHUNK 6) — 보통은 1분 안에 끝난다.
+# 6묶음이 모두 시간 초과 뒤 재시도로 살아나면 최대 6 × (10 + 1 + 10) = 126초라 nginx `/api/` 120초에
+# 먼저 걸려 화면이 504 를 볼 수 있다(ADR-076). 재시도 전에는 같은 상황이 10초 만에 실패였다.
 JEV_TIMEOUT_SECONDS = 10.0
 
 
