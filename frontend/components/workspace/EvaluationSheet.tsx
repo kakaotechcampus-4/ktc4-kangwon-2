@@ -747,7 +747,8 @@ export default function EvaluationSheet({
             disabled={edge.start}
             onClick={() => slide(-1)}
           >
-            ‹
+            {/* 글자 ‹ › 는 글꼴 기준선에 붙어 원 가운데보다 아래로 처졌다 — 가운데가 맞는 아이콘을 쓴다(11-09). */}
+            <Icon name="chevronLeft" />
           </button>
           <button
             type="button"
@@ -755,7 +756,7 @@ export default function EvaluationSheet({
             disabled={edge.end}
             onClick={() => slide(1)}
           >
-            ›
+            <Icon name="chevron" />
           </button>
         </div>
       </div>
