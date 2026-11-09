@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import random
 from dataclasses import replace
 from datetime import UTC, datetime
 
@@ -36,6 +37,9 @@ from ssuksak.planning.planner.contracts import (
 )
 from ssuksak.planning.planner.play_project import (
     PLAY_PROJECT_PROMPT_VERSION,
+    SEED_EXCLUDED_PREFIXES,
+    PlaySeed,
+    overlapping_candidates,
     remaining_memo_notices,
 )
 
@@ -265,7 +269,8 @@ def test_exact_tool_names_are_stored_as_written_under_the_current_prompt_version
     materials = plan.periods[0].candidates[0].materials
     assert materials.value == "경사판, 홈통, 공, 자동차"
     assert materials.generation.rule_version == PLAY_PROJECT_PROMPT_VERSION
-    assert PLAY_PROJECT_PROMPT_VERSION == "play-project-planner-v6+teacher-venues-v2"
+    # ADR-077 contract change: play_seeds input + SEED_CONTENT_MISSING (not a changed output).
+    assert PLAY_PROJECT_PROMPT_VERSION == "play-project-planner-v7+teacher-venues-v2"
     assert provider.requests[0].prompt_version == PLAY_PROJECT_PROMPT_VERSION
 
 
@@ -326,3 +331,55 @@ def test_a_request_one_period_reflected_is_not_left_as_not_applied():
         ),
     )
     assert left == (dino, paraphrased)
+
+
+def test_play_seeds_are_distinct_over_the_year_skip_health_and_safety_and_spread_materials():
+    use_case, _, _ = _run(_FakeProvider(_proposal()))
+    seeds = use_case.draw_seeds(CATALOG_ID, VERSION, random.Random(0))
+
+    every = [s for period in seeds.values() for s in period]
+    assert [len(p) for p in seeds.values()] == [10, 10, 10, 10]
+    assert len({s.nuri_content_id for s in every}) == 40
+    assert not any(s.nuri_content_id.startswith(SEED_EXCLUDED_PREFIXES) for s in every)
+    for period in seeds.values():
+        kinds = {s.material_hint for s in period}
+        assert len(kinds) == 6
+        assert {sum(s.material_hint == m for s in period) for m in kinds} <= {1, 2}
+
+
+def test_play_seeds_set_the_row_count_reach_the_prompt_and_must_be_linked():
+    seeds = (PlaySeed("nuri2019.3.1.1", "…", "자연물"), PlaySeed("nuri2019.5.3.3", "…", "악기"))
+    linked = _FakeProvider(_proposal([_row(1), _row(2, ("nuri2019.5.3.3", "nuri2019.1.1.1"))]))
+    use_case, command, _ = _run(linked)
+
+    plan = use_case.execute(replace(command, play_seeds=seeds))
+
+    (request,) = linked.requests
+    assert request.row_count == 2 and len(plan.periods[0].candidates) == 2
+    assert json.loads(request.user_content)["play_seeds"][1] == {
+        "nuri_content_id": "nuri2019.5.3.3",
+        "nuri_content": "…",
+        "material_hint": "악기",
+    }
+    assert "play_seeds" in request.system_prompt and request.avoid_play_names == frozenset()
+
+    use_case, command, plans = _run(_FakeProvider(_proposal([_row(1), _row(2)])))
+    with pytest.raises(ProposalRejectedError) as rejected:
+        use_case.execute(replace(command, play_seeds=seeds))
+    assert "SEED_CONTENT_MISSING" in rejected.value.validation_codes
+    assert len(plans) == 0
+
+
+def test_overlap_redoes_the_later_period_unless_it_carries_the_teacher_request():
+    spring = [("봄 꽃잎 물감 놀이", "자연물", False), ("바람개비 만들기", "재활용품", True)]
+    summer = [("봄 꽃잎 물감놀이!", "자연물", False), ("바람개비 만들기", "재활용품", True)]
+    fall = [("낙엽 소리 듣기", "악기", True)]
+    winter = [("낙엽 소리 듣기", "그림책", False), ("눈사람 그림책", "그림책", False)]
+
+    # same after squeezing -> later one; both carry the request -> keep both;
+    # the later one carries it -> redo the earlier one
+    assert overlapping_candidates([spring, summer, fall, winter]) == [(1, 0), (3, 0)]
+    fall_first = [[("낙엽 소리 듣기", "악기", False)], [("낙엽 소리 듣기", "그림책", True)]]
+    assert overlapping_candidates(fall_first) == [(0, 0)]
+    # 0.43: the measured miss in dup-pairs.json stays a miss
+    assert overlapping_candidates([[("가을 물감 놀이", "", False)], [("빨간 물감 놀이", "", False)]]) == []
