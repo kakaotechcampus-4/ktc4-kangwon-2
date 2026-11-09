@@ -517,7 +517,7 @@ def _sources_changed(session: Session, copies: list[DocumentSource]) -> bool:
 
 
 def _same_draft(session: Session, body: DocumentCreateRequest) -> Document | None:
-    """같은 아이 · 같은 기간 · 같은 종류의 AI 초안 (ADR-083). 아이 단위 문서만 본다.
+    """같은 아이 · 같은 기간 · 같은 종류의 AI 초안 (ADR-085). 아이 단위 문서만 본다.
 
     「반 전체 초안」을 두 번 누르거나 응답을 못 받고 다시 누르면 같은 초안이 둘 생긴다.
     확정본은 보지 않는다 — 확정본을 두고 새 초안을 만드는 것은 교사가 고른 일이다.
@@ -883,7 +883,7 @@ def _create_document(
         )
     session.commit()
     if body.kind == "observation":
-        # 초안을 먼저 저장하고 검토를 붙인다 — 검토가 실패해도 초안은 남는다(ADR-083).
+        # 초안을 먼저 저장하고 검토를 붙인다 — 검토가 실패해도 초안은 남는다(ADR-085).
         doc.ai_review = review_draft(session, doc, sections, copies)
         session.commit()
     return _build_detail_response(session, doc)
@@ -1137,7 +1137,7 @@ def verify_document(
             "AI 검토를 하지 못했어요. 다시 시도해 주세요.",
             [],
         ) from exc
-    # 검토한 글에 묶어 둔다. 아직 저장 안 한 글이면 그 글이 저장될 때 보인다(ADR-083).
+    # 검토한 글에 묶어 둔다. 아직 저장 안 한 글이면 그 글이 저장될 때 보인다(ADR-085).
     doc.ai_review = review_record(sections, issues, judge_name)
     session.commit()
     texts = {s.source_id: s.text for s in sources}

@@ -1,4 +1,4 @@
-"""관찰일지 초안의 말투 예시 (AI ③, ADR-083).
+"""관찰일지 초안의 말투 예시 (AI ③, ADR-085).
 
 그 교사가 전에 확정한 관찰일지의 해석 · 지원에서 **아이가 안 나오는 짧은 문장** 몇 개를 골라
 「말투 참고」로 보낸다. 문장 끝 · 길이 · 연결어를 닮게 하려는 것이고, 내용은 가져오지 않는다.
@@ -26,7 +26,7 @@ from app.shared.auth.ownership import own_class_clause
 from app.shared.childCode import name_variants
 from app.shared.gates.judge import split_sentences
 
-# 예시 수. 셋이면 말투가 보이고, 문장당 수십 토큰이라 한 번에 100토큰 남짓 는다(ADR-083).
+# 예시 수. 셋이면 말투가 보이고, 문장당 수십 토큰이라 한 번에 100토큰 남짓 는다(ADR-085).
 LIMIT = 3
 # 짧은 발췌만 — 긴 문장일수록 장면(누가 · 무엇을)이 따라온다.
 MIN_CHARS, MAX_CHARS = 10, 60
