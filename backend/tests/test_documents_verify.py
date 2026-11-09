@@ -104,6 +104,8 @@ def _answers(questions, *, conflict_on="s1", conflict_rec="r1"):
             }
         elif name.endswith(".근거"):
             out[name] = {"type": "choice", "choice": conflict_rec if key == conflict_on else "없음"}
+        elif name.endswith((".때", ".기준")):
+            out[name] = {"type": "choice", "choice": "없음"}
         elif name == "지원.구체":
             out[name] = {"type": "noul", "noul": 0.95}
         else:
