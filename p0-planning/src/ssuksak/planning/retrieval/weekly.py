@@ -18,7 +18,7 @@ from ..evidence.weekly_classification import (
     WeeklyEvidenceClassification,
     WeeklySemanticClass,
 )
-from .models import AGE_TIER_ORDER, AGE_VERIFIABLE_TIERS, RetrievedEvidence
+from .models import AGE_VERIFIABLE_TIERS, RetrievedEvidence
 from .ranking import (
     DEFAULT_INSTITUTION_CAP,
     apply_source_diversity,
@@ -180,33 +180,27 @@ def weekly_section_evidence(
         picked = apply_source_diversity(fresh, top_k=top_k, institution_cap=institution_cap, fill=by_activity_type)
     else:
         # 2026-11-10 하민: pick top_k of the top sample_pool at random, kept in rank order (filters unchanged).
-        # 2026-11-10 하민 (b): fill from the best age tier first; sample among that tier's top sample_pool
-        # only when it overflows, so age fit never drops below the fixed cut (sim: weekly_tier_shuffle_sim).
-        # The overflowing tier is drawn one activity type at a time, keeping the ADR-054 type spread.
+        # No age-tier preference (하민 11-10: blind human judging showed no age gain and worse theme fit).
+        # Draw one activity type at a time (ADR-054 type spread); a mixed class keeps one per requested age.
         pool = apply_source_diversity(fresh, top_k=len(fresh), institution_cap=institution_cap, fill=by_activity_type)
-        rng = random.Random(f"{sample_seed}:{weekly_class.value}")
-        kind_of = indoor_play_type if weekly_class is WeeklySemanticClass.INDOOR_PLAY else activity_type
-        keep: set[int] = set()
-        for tier in AGE_TIER_ORDER:
-            need = top_k - len(keep)
-            members = [i for i, item in enumerate(pool) if item.trace.age_match is tier][:sample_pool]
-            if len(members) > need:
-                shuffled = rng.sample(members, len(members))
-                chosen: list[int] = []
-                if len(ages) > 1:  # keep balance_by_age for mixed classes: one per requested age the tier has
-                    for age in sorted(ages):
-                        hit = next((i for i in shuffled if pool[i].record.single_age == age), None)
-                        if hit is not None and len(chosen) < need:
-                            chosen.append(hit)
-                by_kind: dict[str, list[int]] = {}
-                for i in shuffled:
-                    if i not in chosen:
-                        by_kind.setdefault(kind_of(pool[i].record), []).append(i)
-                while len(chosen) < need:
-                    chosen += [group.pop() for group in by_kind.values() if group][: need - len(chosen)]
-                members = chosen
-            keep.update(members)
-        picked = tuple(item for i, item in enumerate(pool) if i in keep)
+        keep = list(range(min(len(pool), sample_pool)))
+        if len(keep) > top_k:
+            rng = random.Random(f"{sample_seed}:{weekly_class.value}")
+            kind_of = indoor_play_type if weekly_class is WeeklySemanticClass.INDOOR_PLAY else activity_type
+            shuffled = rng.sample(keep, len(keep))
+            keep = []
+            if len(ages) > 1:  # keep balance_by_age: one per requested age the pool has
+                for age in sorted(ages):
+                    hit = next((i for i in shuffled if pool[i].record.single_age == age), None)
+                    if hit is not None:
+                        keep.append(hit)
+            by_kind: dict[str, list[int]] = {}
+            for i in shuffled:
+                if i not in keep:
+                    by_kind.setdefault(kind_of(pool[i].record), []).append(i)
+            while len(keep) < top_k:
+                keep += [group.pop() for group in by_kind.values() if group][: top_k - len(keep)]
+        picked = tuple(item for i, item in enumerate(pool) if i in set(keep))
     if len(picked) < top_k:
         have = {item.record_id for item in picked}
         rest = sorted(
