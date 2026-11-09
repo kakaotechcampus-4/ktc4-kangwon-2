@@ -739,10 +739,7 @@ export default function EvaluationSheet({
   return (
     <section className={styles.sheet} aria-label="서류마다 자세히" data-tour="eval-sheet">
       <div className={styles.sheetHead}>
-        <h2 className={styles.secTitle}>
-          서류 {rows.length}가지
-          <span>빈 칸 먼저 · 옆으로 넘겨요</span>
-        </h2>
+        <h2 className={styles.secTitle}>서류 {rows.length}가지</h2>
         <div className={styles.sheetArrows}>
           <button
             type="button"
