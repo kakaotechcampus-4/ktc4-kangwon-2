@@ -280,6 +280,43 @@ def test_근거에_없는_날짜는_여전히_숫자_게이트에_걸린다(sun,
     assert res.json()["error"]["code"] == "GENERATION_FAILED"
 
 
+def test_근거_날짜의_숫자는_날짜_표현에만_쓸_수_있다(sun, llm_seen):
+    """날짜 4일의 「4」가 사실에 없는 개수 「4개」까지 통과시키면 안 된다."""
+    me = _child(sun)
+    obs = _obs(sun, me, 4, "블록을 쌓았다.", month=11)
+    llm_seen["interpretation"] = "11월 4일에 블록을 4개 쌓으며 높이에 관심을 보인다."
+
+    res = _create(sun, me, [obs], month=11)
+
+    assert res.status_code == 500
+    assert res.json()["error"]["code"] == "GENERATION_FAILED"
+
+
+def test_상황의_숫자는_사실처럼_친다(sun, llm_seen):
+    me = _child(sun)
+    obs = _obs(sun, me, 4, "블록을 쌓았다.", context="친구 3명과", month=11)
+    llm_seen["interpretation"] = "3명이 함께 블록을 쌓으며 서로의 생각을 나누는 모습을 보인다."
+
+    assert _create(sun, me, [obs], month=11).status_code == 201
+
+
+def test_근거가_60개를_넘으면_422(sun):
+    me = _child(sun)
+    res = client.post(
+        "/api/documents",
+        json={
+            "kind": "observation",
+            "class_id": sun.id,
+            "child_id": me["id"],
+            "start": "2026-09-01",
+            "end": "2026-09-30",
+            "source_ids": list(range(1, 62)),
+        },
+    )
+    assert res.status_code == 422
+    assert res.json()["error"]["fields"] == ["source_ids"]
+
+
 # ── 마이그레이션 채우기 규칙 ─────────────────────────────────────────────────
 
 _MIGRATION = (
@@ -395,3 +432,36 @@ def test_채우기는_다시_돌려도_채운_값을_덮지_않는다(sun, db_se
     backfill(db_session.connection())
 
     assert _snapshot_of(db_session, doc) == ("NURI_5", [("자연탐구", "바깥놀이")])
+
+
+# ── 되감았다가 다시 올라올 때의 재대조 (ADR-077 결과) ─────────────────────────
+
+_RECHECK = Path(__file__).resolve().parents[1] / "scripts/recheck_observation_snapshots.py"
+
+
+def _recheck():
+    spec = importlib.util.spec_from_file_location("recheck_snapshots", _RECHECK)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.recheck
+
+
+def test_되감은_동안_옛_코드가_놓친_영역_상황_변경을_stale_로_잡는다(sun, db_session):
+    """옛 코드는 사실 · 날짜만 비교한다. 그동안 바뀐 영역 · 상황은 사본과 다시 대조해야 잡힌다."""
+    me = _child(sun)
+    moved = _obs(sun, me, 5, "개미를 바라보았다.")
+    kept = _obs(sun, me, 6, "지렁이를 찾았다.")
+    moved_doc = _create(sun, me, [moved]).json()["id"]
+    kept_doc = _create(sun, me, [kept]).json()["id"]
+    # 옛 코드가 고친 것처럼 stale 전파 없이 원본만 바꾼다.
+    db_session.get(Observation, moved["id"]).domain = "의사소통"
+    db_session.get(Observation, kept["id"]).fact = "지렁이를 찾았다."  # 그대로
+    db_session.flush()
+
+    assert _recheck()(db_session) == [moved_doc]
+
+    db_session.expire_all()
+    assert db_session.get(Document, moved_doc).stale is True
+    assert db_session.get(Document, kept_doc).stale is False
+    # 다시 돌려도 새로 잡히는 문서가 없다.
+    assert _recheck()(db_session) == []

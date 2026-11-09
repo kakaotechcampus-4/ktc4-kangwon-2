@@ -154,7 +154,7 @@ me       GET /api/auth/me                                               → 200 
 | `TRENDS_DISABLED` | 403 | 그 원이 트렌드봇을 껐다 (§3-1 · FR-808) |
 | `CLASS_ACCESS_REQUIRED` | 403 | 같은 원 다른 반이다. 그 반 주인의 승인이 필요하다(§2-2) |
 | `CLASS_READ_ONLY` | 403 | 승인받아 보기만 된다. 고치기 · 확정 · 삭제는 주인만(§2-2) |
-| `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§9-3 월간 `expected_revision` · §6-1 · §7 놀이 프로젝트형 연간 `expected_revision` · §9-7 놀이 중심 월간 `expected_revision` · §9-4 포인터 `expected_profile_ref` · §11 문서 `updated_at`) |
+| `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§9-3 월간 `expected_revision` · §6-1 · §7 놀이 프로젝트형 연간 `expected_revision` · §9-7 놀이 중심 월간 `expected_revision` · §9-4 포인터 `expected_profile_ref` · §11 문서 `updated_at` · §11 문서 생성 중 근거가 거듭 바뀜) |
 
 **409 가 넷이다.** 상태 코드가 같아도 FE 가 띄울 문구가 다르므로 `code` 로 갈라 본다 —
 "연간부터 확정해주세요" / "이미 있습니다, 기존 것으로 이동" / "확정된 문서는 수정할 수 없어요".
@@ -3641,6 +3641,7 @@ observation · assessment 인데 child_id 가 없다     아동별 문서다
 dailyLog 인데 start != end                        하루짜리다
 source_ids 가 비었다                              교사 기록 없이 만들지 않는다
 source_ids 에 중복이 있다
+source_ids 가 60개를 넘는다                        입력 상한. 모델을 부르기 전에 막는다
 source 의 class_id 가 문서와 다르다
 child_id 가 있는데 source 의 child_id 가 다르다
 source 의 date 가 start ~ end 밖이다
@@ -3858,6 +3859,8 @@ ALREADY_REGISTERED       같은 아동 · 종류 · 겹치는 기간의 증빙�
 ```
 
 - `issues` 가 비고 `judge` 가 `jev` 면 통과다. 각 항목이 **이유와 수정 지시**를 담는다.
+- **jev 가 받는 근거는 초안 모델이 받은 사본 칸과 같다** — 사실 · 날짜 · 영역 · 상황(ADR-077). 상황에 적은 장소 ·
+  함께한 사람을 해석이 쓰면 그것도 기록이다. 가명 처리도 사실 · 상황 둘 다 하고, 이름 표는 사실 · 상황 · 해석 · 지원 글로 만든다.
 - `judge: "mock"` 은 판정하지 않았다는 뜻이다(`LLM_MODE=mock`). 화면은 통과로 보이면 안 된다.
 - **판정 못 하면 빈 목록이 아니라 오류다.** 1·2단에 걸리면 422 `VALIDATION_FAILED`(jev 를 부르지 않는다),
   가명 처리 실패 422 `VALUE_INVALID`, 주소 없음 503 `DEPENDENCY_UNAVAILABLE`, 한도 503 `LLM_BUDGET_EXCEEDED`,
@@ -3941,7 +3944,8 @@ GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?f
 고칠 수 없는 문서를 지울 수 있으면 확정이 의미가 없다.
 
 **해석에 사실에 없는 숫자가 있으면 `sections.해석` 으로 거절한다.**
-근거의 날짜(연 · 월 · 일)와 상황에 든 숫자는 사실과 같이 친다 — 「11월 4일」은 교사가 준 날짜다(ADR-077).
+상황에 든 숫자는 사실과 같이 친다. 근거 날짜(연 · 월 · 일)는 **날짜 표현 안의 숫자에만** 쓴다 —
+「11월 4일」 「11/4」의 4 는 교사가 준 날짜라 통과지만, 같은 문서의 「블록 4개」는 사실에 4 가 없으면 거절이다(ADR-077).
 지원은 앞으로의 계획이라 새 숫자가 나와도 된다.
 
 **`PUT` 이 `사실` 을 바꾸면 거절한다.** 원본과 일치해야 한다는 규칙이 그대로 적용된다.
@@ -3960,7 +3964,7 @@ GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?f
 | loading | 생성 중 — 수 초 걸린다. 진행 표시 필수 |
 | empty | "아직 만든 문서가 없어요" |
 | success | 편집 화면으로 이동 |
-| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `ALREADY_EXISTS` 409 (같은 날 일일 보육일지) · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 |
+| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `ALREADY_EXISTS` 409 (같은 날 일일 보육일지) · `STALE_WRITE` 409 (생성 중 근거가 바뀌어 최신 기록으로 한 번 더 만들었는데 또 바뀜 — 잠시 뒤 다시 만들기) · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 |
 
 ### 겹치는 문서를 찾아준다 — `/compare` 화면
 
