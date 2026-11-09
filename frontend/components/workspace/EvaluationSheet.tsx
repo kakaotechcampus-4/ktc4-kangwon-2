@@ -254,7 +254,7 @@ function StampSlot({
       : done
         ? "눌러서 직접확인도 찍어요"
         : doc.optional
-          ? "장애영유아 반이면 내요"
+          ? "장애영유아를 맡은 반만"
           : "눌러서 찍어요";
   const valueTone = made ? (made.done ? styles.madeDone : styles.madeShort) : styles.pressHint;
 
