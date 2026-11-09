@@ -55,7 +55,7 @@ export interface RoutineInput {
 export type RoutineCreateInput = RoutineInput & { class_id: number };
 export type RoutineDraft = RoutineInput & { id?: number };
 
-/** 그날 하늘 (ADR-078). 교사가 고를 수 있는 값도 이 여섯이다. */
+/** 그날 하늘 (ADR-081). 교사가 고를 수 있는 값도 이 여섯이다. */
 export type Sky = "맑음" | "구름많음" | "흐림" | "비" | "눈" | "비나 눈";
 /** PM10 · PM2.5 등급 중 나쁜 쪽. 자동으로만 온다 — 종이에 안 나간다. */
 export type DustGrade = "좋음" | "보통" | "나쁨" | "매우나쁨";

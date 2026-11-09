@@ -1,4 +1,4 @@
-"""기상청 격자 좌표 엑셀에서 시군구 → 단기예보 격자(nx, ny) 표를 만든다 (ADR-078).
+"""기상청 격자 좌표 엑셀에서 시군구 → 단기예보 격자(nx, ny) 표를 만든다 (ADR-081).
 
     cd backend && python scripts/build_weather_grid.py <받은 zip 또는 xlsx> <받은 날 YYYY-MM-DD>
 

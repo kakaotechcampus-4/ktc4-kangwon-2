@@ -58,7 +58,7 @@ class RoutineResponse(BaseModel):
 
 
 class DayWeatherResponse(BaseModel):
-    """그날 날씨 (ADR-078). `source` 는 `sky` 의 출처다 — 미세먼지는 늘 자동이거나 없다."""
+    """그날 날씨 (ADR-081). `source` 는 `sky` 의 출처다 — 미세먼지는 늘 자동이거나 없다."""
 
     date: datetime.date
     sky: str | None

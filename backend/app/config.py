@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     # 도서관 정보나루. 전국 도서관의 실제 대출 기록이라 광고로 순위가 안 바뀐다(ADR-016).
     library_auth_key: str | None = None
 
-    # 일지 날씨 (ADR-078). 공공데이터포털 인증키 하나로 기상청 단기예보 · 에어코리아를 같이 부른다.
+    # 일지 날씨 (ADR-081). 공공데이터포털 인증키 하나로 기상청 단기예보 · 에어코리아를 같이 부른다.
     # 없으면 날씨가 「값 없음」일 뿐이다 — 일과 기록 · 일지 · 내보내기는 그대로 돈다.
     data_go_kr_service_key: str | None = None
     # LLM_MODE 와 같은 규칙이다. real 은 서버(IS_SERVER)에서만 부른다. mock 은 서버 밖에서
