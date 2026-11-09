@@ -31,6 +31,8 @@ class FormResponse(ParseResponse):
     center_id: int
     name: str
     created_at: datetime
+    # 이 계정이 지울 수 있는지 — 올린 교사 · 원을 만든 교사만 참이다 (ADR-087). 저장된 값이 아니다.
+    can_delete: bool = False
 
 
 class FormListResponse(BaseModel):

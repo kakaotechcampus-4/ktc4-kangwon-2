@@ -75,6 +75,13 @@ class Center(Base):
             "같은 열쇠를 고른 교사는 이 원으로 든다. 직접 적은 원은 NULL"
         ),
     )
+    created_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        comment=(
+            "원을 만든 계정(ADR-087). 원 설정 · 성품인사를 바꾸고 남의 양식을 지울 수 있는 "
+            "유일한 교사다. NULL 은 교사가 없는 원"
+        ),
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

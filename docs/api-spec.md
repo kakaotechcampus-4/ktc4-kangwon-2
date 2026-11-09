@@ -154,6 +154,7 @@ me       GET /api/auth/me                                               → 200 
 | `TRENDS_DISABLED` | 403 | 그 원이 트렌드봇을 껐다 (§3-1 · FR-808) |
 | `CLASS_ACCESS_REQUIRED` | 403 | 같은 원 다른 반이다. 그 반 주인의 승인이 필요하다(§2-2) |
 | `CLASS_READ_ONLY` | 403 | 승인받아 보기만 된다. 고치기 · 확정 · 삭제는 주인만(§2-2) |
+| `CENTER_CREATOR_ONLY` | 403 | 원 전체에 걸리는 것(원 설정 · 성품인사 · 남이 올린 양식 지우기)이다. 원을 만든 교사만 한다(§3 · §3-1 · §8 · ADR-087) |
 | `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§9-3 월간 `expected_revision` · §6-1 · §7 놀이 프로젝트형 연간 `expected_revision` · §9-7 놀이 중심 월간 `expected_revision` · §9-4 포인터 `expected_profile_ref` · §11 문서 `updated_at` · §11 문서 생성 중 근거가 거듭 바뀜) |
 
 **409 가 넷이다.** 상태 코드가 같아도 FE 가 띄울 문구가 다르므로 `code` 로 갈라 본다 —
@@ -218,6 +219,10 @@ GET /health/ready    DB 까지 본다(SELECT 1).  배포 판정은 이쪽   200 
 - `kind` · `address` 는 목록에서 읽어 붙인다(직접 적은 원은 `null`). `teacher_count` 는 그 원에 가입한 교사 수다.
 
 **원 정보는 고치지 않는다.** `PATCH /api/centers/{center_id}` 는 없다(ADR-068) — 같은 원 교사가 여럿이다.
+
+**원을 만든 교사를 남긴다(`centers.created_by`, ADR-087).** 새로 만든 원(`201`)은 보낸 교사, 들어간 원(`200`)은
+그대로다. 원 설정 · 성품인사 바꾸기와 남이 올린 양식 지우기는 이 교사만 한다 — 같은 원 다른 교사는 읽기만
+한다(`403 CENTER_CREATOR_ONLY`). 응답에는 싣지 않는다 — 화면은 §3-1 `can_edit` · §8 `can_delete` 를 본다.
 
 ### 어린이집 찾기 — `GET /api/daycares?sido=&sigungu=&q=`
 
@@ -699,7 +704,8 @@ P0 에서는 아동 기록이 없는 온보딩 단계에서만 일어난다. 이
 **호출 지점은 온보딩이 아니라 설정 화면(7주차)이다.** 계약 자체는 안 바뀐다.
 **6주차에 FE 가 이 엔드포인트를 부르지 않는다.** (ADR-012 — 온보딩 S4 를 비웠다)
 
-**PUT Request** — 같은 형식. **전체 교체다.**
+**PUT Request** — 같은 형식. **전체 교체다.** **원을 만든 교사만 바꾼다**(ADR-087) — 같은 원 다른 교사는
+`403 CENTER_CREATOR_ONLY` (`fields: ["center_id"]`). 읽기(GET)는 같은 원 교사 누구나 한다.
 
 ```
 items 는 정확히 12개다.                          그 외는 VALIDATION_FAILED 422
@@ -729,10 +735,14 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 
 ```json
 { "trends_enabled": false, "weekly_saturday_enabled": false,
-  "observation_axis": "NURI_5", "reflect_mark": "(반영)" }
+  "observation_axis": "NURI_5", "reflect_mark": "(반영)", "can_edit": true }
 ```
 
 설정한 적 없으면 기본값을 채워 내려준다. 빈 객체를 주지 않는다.
+
+**`can_edit` — 이 계정이 바꿀 수 있는지(ADR-087).** 원을 만든 교사만 `true` 다. 저장된 값이 아니고
+PUT 으로 보내면 모르는 칸이라 422 다. 같은 원 다른 교사도 GET 은 된다 — 화면은 고르개를 잠그고
+「원을 처음 등록한 선생님만 바꿀 수 있다」를 띄운다. PUT 응답에도 같은 칸이 있다.
 
 **`trends_enabled` 기본값은 `false` 다.** 세 가지 이유다.
 
@@ -791,6 +801,7 @@ PM 결정(ADR-030 WQ-01): 주간계획안은 기본 5일이고, 토요일을 운
 | code | status | 언제 |
 |---|---|---|
 | `NOT_FOUND` | 404 | 없거나 남의 원이다 |
+| `CENTER_CREATOR_ONLY` | 403 | PUT 인데 원을 만든 교사가 아니다(ADR-087). `fields: ["center_id"]` |
 | `VALIDATION_FAILED` | 422 | 참/거짓이 아닌 값이다 |
 
 **UI states**
@@ -1640,10 +1651,16 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 **같은 파일을 다시 올리면 새 행이 생긴다.** 중복을 막지 않는다 — 잘못 올렸으면 지운다.
 
 **`GET /api/centers/{center_id}/forms`** → `{ "items": [...] }`. 항목은 위 등록 응답과 같다.
+같은 원 교사는 누구나 읽는다. 항목마다 `can_delete` 가 붙는다 — 이 계정이 지울 수 있는지다(아래 삭제, ADR-087).
+등록 응답의 `can_delete` 는 늘 `true` 다(올린 교사).
 정렬은 `created_at DESC, id DESC`. 상세 조회(`GET /api/forms/{id}`)는 두지 않는다 — 원당 양식이
 몇 개라 목록에 파싱 결과까지 싣는다. 양식이 늘어 목록이 무거워지면 목록을 요약으로 줄이고 상세를 붙인다.
 
 **`DELETE /api/forms/{id}`** → `204`.
+
+**지우는 사람은 올린 교사와 원을 만든 교사뿐이다(ADR-087).** 원 모든 반이 같이 쓰는 양식이다. 그 밖의 같은 원
+교사는 `403 CENTER_CREATOR_ONLY` (`fields: ["center_id"]`). 올린 교사를 모르는 옛 양식(`forms.uploaded_by` NULL,
+이 결정 전에 올린 것)은 원을 만든 교사만 지운다. 올리기는 같은 원 교사 누구나 한다.
 
 **파생 계획안이 남아 있으면 지우지 않고 숨긴다 — 그래도 `204` 다.** `plans.form_id` FK 가 삭제를 막으면
 `forms.hidden_at` 에 시각을 남긴다(ADR-026). 감춘 양식은 목록에 없고, 다시 지우면 `404 NOT_FOUND` 다.
@@ -1663,7 +1680,7 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 **§4 가 받은 `form_id` 는 forms 의 조회 함수로 검사한다** — 없거나 감췄거나 남의 원 것이면 `NOT_FOUND` 404
 (`fields: ["form_id"]`). plans 가 forms 를 직접 import 하지 않는다(`structure.md`).
 
-**에러** — parse 의 세 개에 둘이 더 붙는다
+**에러** — parse 의 세 개에 셋이 더 붙는다
 
 | code | status | 언제 | `fields` |
 |---|---|---|---|
@@ -1672,6 +1689,7 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 | `DEPENDENCY_UNAVAILABLE` | 503 | parse 와 같다 | `[]` |
 | `UNAUTHENTICATED` | 401 | 토큰이 없거나 못 믿는다(§0) | `[]` |
 | `NOT_FOUND` | 404 | 없는 원 · 없는 양식 · 감춘 양식. **남의 원 것도 404 다**(ADR-017) | 등록 · 목록 `["center_id"]` / 삭제 `["form_id"]` |
+| `CENTER_CREATOR_ONLY` | 403 | 삭제인데 올린 교사도 원을 만든 교사도 아니다(ADR-087) | `["center_id"]` |
 
 **앱에서 파일 크기를 제한하지 않는다** — parse 도 같다. nginx `client_max_body_size 10m` 이
 큰 요청을 먼저 거부하므로 nginx 를 거치는 원본은 최대 10MB 다(ADR-026).

@@ -273,6 +273,8 @@ class CenterSettings(BaseModel):
     observation_axis: ObservationAxis
     # 어제 지원을 반영한 일과 줄에 종이가 붙이는 글자 (ADR-086).
     reflect_mark: ReflectMark
+    # 이 계정이 바꿀 수 있는지 — 원을 만든 교사만 참이다 (ADR-087). 저장된 값이 아니다.
+    can_edit: bool
 
 
 class CenterSettingsUpdate(BaseModel):

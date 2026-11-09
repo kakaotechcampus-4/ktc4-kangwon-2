@@ -20,7 +20,11 @@ from app.features.forms.models import Form
 from app.features.forms.schemas import FormListResponse, FormResponse, ParseResponse, Table
 from app.features.forms.service import find_own_form
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_center
+from app.shared.auth.ownership import (
+    is_center_creator,
+    require_center_creator,
+    require_own_center,
+)
 
 router = APIRouter(prefix="/forms", tags=["forms"])
 center_router = APIRouter(tags=["forms"])
@@ -130,30 +134,45 @@ def register_form(
         labels=labels,
         label_map=mapping.map_labels(labels),
         content=file.file.read(),
+        uploaded_by=user.id,
     )
     session.add(form)
     session.commit()
     session.refresh(form)
-    return FormResponse.model_validate(form)
+    # 올린 교사는 자기 양식을 지울 수 있다 (ADR-087).
+    return FormResponse.model_validate(form).model_copy(update={"can_delete": True})
 
 
 @center_router.get("/centers/{center_id}/forms", response_model=FormListResponse)
 def list_forms(center_id: int, session: DbSession, user: CurrentUser) -> FormListResponse:
-    """최신순. 같은 시각이면 id 로 고정한다 — 새로고침마다 순서가 흔들리면 안 된다."""
+    """최신순. 같은 시각이면 id 로 고정한다 — 새로고침마다 순서가 흔들리면 안 된다.
+
+    같은 원 교사는 누구나 읽는다. `can_delete` 는 올린 교사이거나 원을 만든 교사인지다 (ADR-087).
+    """
     require_own_center(user, center_id)
+    creator = is_center_creator(session, user, center_id)
     query = (
         select(Form)
         .where(Form.center_id == center_id, Form.hidden_at.is_(None))
         .order_by(Form.created_at.desc(), Form.id.desc())
     )
     return FormListResponse(
-        items=[FormResponse.model_validate(form) for form in session.scalars(query)]
+        items=[
+            FormResponse.model_validate(form).model_copy(
+                update={"can_delete": creator or form.uploaded_by == user.id}
+            )
+            for form in session.scalars(query)
+        ]
     )
 
 
 @center_router.delete("/forms/{form_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_form(form_id: int, session: DbSession, user: CurrentUser) -> None:
-    """이 원의 양식을 지운다. 계획안이 걸렸으면 숨기고, 남의 것·감춘 것은 404 다."""
+    """이 원의 양식을 지운다. 계획안이 걸렸으면 숨기고, 남의 것·감춘 것은 404 다.
+
+    원 모든 반이 같이 쓰는 양식이다 — 올린 교사와 원을 만든 교사만 지운다(그 밖은 403, ADR-087).
+    올린 교사를 모르는 옛 양식(NULL)은 원을 만든 교사만 지운다.
+    """
     form = find_own_form(session, user.center_id, form_id)
     if form is None:
         raise HTTPException(
@@ -164,6 +183,8 @@ def delete_form(form_id: int, session: DbSession, user: CurrentUser) -> None:
                 "fields": ["form_id"],
             },
         )
+    if form.uploaded_by != user.id:
+        require_center_creator(session, user, form.center_id)
     session.delete(form)
     try:
         session.commit()
