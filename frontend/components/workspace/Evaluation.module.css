@@ -1,9 +1,5 @@
 /* 평가 준비 화면 전용. 공통 Workspace.module.css 는 다른 화면도 쓰므로 여기 둔다. */
 
-.sectionTitle {
-  font-size: 18px;
-  font-weight: 700;
-}
 .card {
   display: grid;
   gap: 14px;
@@ -1194,10 +1190,6 @@
   gap: 14px;
   align-content: start;
   padding: 18px 22px;
-}
-/* 서랍 제목이 이미 머리줄에 있다. 안쪽 컴포넌트의 큰 제목은 같은 말을 되풀이해서 감춘다. */
-.drawerBody .sectionTitle {
-  display: none;
 }
 /* 안쪽 컴포넌트의 간격(22px)과 빈 「저장됨」 줄이 힌트와 첫 카드 사이를 40px 넘게 벌렸다. 시안은 14px 이다. */
 .drawerBody > div {

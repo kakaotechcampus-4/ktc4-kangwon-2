@@ -190,9 +190,12 @@ export default function EvaluationChecklist() {
   const recount = () => setReload((n) => n + 1);
 
   const directorCount = `${directorDone(checklist.director)}/${DIRECTOR_ITEMS.length}`;
-  const needs = autos.filter((item) => item.verdict !== "SUPPORTED").length;
+  const short = autos.filter((item) => item.verdict === "INSUFFICIENT").length;
+  const none = autos.filter((item) => item.verdict === "NONE").length;
   const autoLabel = `평가항목 ${autos.map((item) => item.indicator).join(" · ")}`;
-  const autoNote = needs ? `보완 ${needs}` : "다 채움";
+  // 서랍 칩과 같은 말로 쓴다. 자동 판정은 옆 체크 단추의 x/y 와 꼴이 달라야 하고(api-spec §12 · ADR-022 결정 5),
+  // 파일럿에서 늘 보이는 NONE 은 정상 상태라 「보완」으로 그리지 않는다(ADR-019, 11-09 문구 토론).
+  const autoNote = short ? `보완 필요 ${short}` : none ? `아직 없음 ${none}` : "기준 건수 충족";
   const drawers = [
     {
       key: "director" as const,
@@ -212,8 +215,9 @@ export default function EvaluationChecklist() {
       // 도장 근거 「직접확인」과 이름이 겹쳐 「나머지 평가항목」으로 바꿨다(시안 ⑤, 11-08). 쌤플이 세지 않는 평가항목을 선생님이 체크한다.
       key: "self" as const,
       label: "나머지 평가항목",
-      note: `${checked}/${total}`,
-      title: `나머지 평가항목 · ${checked}/${total}`,
+      // 19 는 평가항목(7개)이 아니라 평가요소 수다 — 단위를 밝힌다. 하나씩 누를 때마다 숫자가 따라오게 평가요소로 센다.
+      note: `평가요소 ${checked}/${total}`,
+      title: `나머지 평가항목 · 평가요소 ${checked}/${total}`,
       body: (
         <EvaluationSelfCheck
           items={selfs}
