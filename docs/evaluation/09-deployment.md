@@ -30,7 +30,7 @@
 - `Base.metadata.create_all()` 금지 — 이미 있는 테이블의 컬럼 추가가 반영되지 않는다
 - 교체 뒤 서버 안에서 서비스가 안 살아나면 같은 run 이 마지막 성공 배포로 되돌린다 — `deploy.sh` 가 서버 안에서 `/health/ready` 와 화면을 묻고
   안 되면 종료 코드 3, `deploy.yml` 이 3 일 때만 롤백한다. 밖(도메인)에서 본 실패로는 되돌리지 않는다. 서버 잠금(`flock`)이 손 배포와 자동 배포의 겹침을 막는다 —
-  `scripts/deploy.sh` · `scripts/ssm-deploy.sh` · `.github/workflows/deploy.yml` · ADR-075
+  `scripts/deploy.sh` · `scripts/ssm-deploy.sh` · `.github/workflows/deploy.yml` · ADR-077
 - 백업 스크립트와 그 테스트 — `scripts/` · `test_backup_script.py`
 - nginx 설정을 바꾼 배포는 `nginx -t` 로 먼저 검사하고 reload 로 반영한다. 전에는 파일 하나씩 연결해 둔 탓에 손으로 다시 만들 때까지
   옛 설정이 돌았다(놀이 연간 120초 504) — `scripts/deploy.sh` · `docker-compose.yml`
@@ -92,7 +92,7 @@ run 기록의 커밋과 서버 로그의 「배포 … <sha>」 줄을 맞춰 �
 
 - 컨테이너는 살아 있는데 응답이 없는 경우를 **저장소 안에서 감시하지 않는다** — #185 「정해 주실 것」
 - **자동 롤백은 운영에서 돌려 본 적이 없다.** 판정 · 종료 코드 · 보내기는 pytest 가 보지만 롤백 스텝 · 알림 갈래는 워크플로 안이라 단위 테스트가 없다 — 대상 찾기만 실제 기록으로 손 시험했다.
-  응답 코드만 봐서 화면 내용이 깨진 경우 · 기능 버그는 못 잡고, 마이그레이션 판정(ADR-073)이 거절하는 롤백과 롤백 뒤에도 브랜치 끝이 그대로인 것은 사람이 한다 — ADR-075 「한계」
+  응답 코드만 봐서 화면 내용이 깨진 경우 · 기능 버그는 못 잡고, 마이그레이션 판정(ADR-073)이 거절하는 롤백과 롤백 뒤에도 브랜치 끝이 그대로인 것은 사람이 한다 — ADR-077 「한계」
 - 배포 브랜치에 머지하면 **CI 가 실패해도 배포된다.** `ci.yml` 과 `deploy.yml` 이 따로 돈다
 - **마이그레이션을 건너는 롤백은 PR 하나까지만 된다.** `deploy.sh` 가 올리기 전에 DB 리비전을 읽어, 그 리비전을 들여온 PR 의
   머지 직전 커밋으로는 `alembic upgrade` 를 건너뛰어 되감고 그 밖은 checkout 전에 멈춘다 — `scripts/deploy.sh` · ADR-073.
@@ -111,7 +111,7 @@ run 기록의 커밋과 서버 로그의 「배포 … <sha>」 줄을 맞춰 �
 - [x] 마이그레이션 PR 하나를 건너는 롤백 판정 — 올림 · 건너뜀 · 거절 판정표 전부와 실제 리비전을 선언한 파일로 찾는 것을 pytest 가 본다(CI 에서 돈다). 2026-11-08 실제 이력 손 시험: #424 직전 `de04e2c0` 는 건너뜀, 그보다 앞 #383 직전은 거절, 최신은 평소대로 — `backend/tests/test_deploy_script.py` · ADR-073
 - [ ] 운영에서 마이그레이션을 건너는 롤백 연습 — 머지 · 필수 검사를 켠 뒤 `89e84790` → `de04e2c0`(로그에 「마이그레이션을 건너뛴다」) → 최신, 셋 다 `health/ready 200`
 - [x] 자동 롤백의 서버 안 판정 · 종료 코드 · 보내기 — 안 살아나면 3, 그 밖의 실패는 1, root 로 시작해도 3 이 그대로 나오고 잠금이 겹침을 막는 것을 pytest 가 본다(CI 에서 돈다).
-  롤백 대상은 실제 run 기록으로 손 시험했다(2026-11-09, 마지막 성공 run 42505477177 → `cdb48cd5`; 손 배포 run 42264552753 은 run.sha 가 아니라 올린 `d59ceaf8`) — `backend/tests/test_deploy_script.py` · `backend/tests/test_ssm_deploy_script.py` · ADR-075
+  롤백 대상은 실제 run 기록으로 손 시험했다(2026-11-09, 마지막 성공 run 42505477177 → `cdb48cd5`; 손 배포 run 42264552753 은 run.sha 가 아니라 올린 `d59ceaf8`) — `backend/tests/test_deploy_script.py` · `backend/tests/test_ssm_deploy_script.py` · ADR-077
 - [ ] 운영에서 자동 롤백 연습 — 머지 배포가 성공해 마지막 성공 L 이 생긴 뒤, L 위에서 `/health/ready` 만 503 을 내는 커밋 F 를 `auto_rollback=true` 로 손 배포해
-  종료 코드 3 → 같은 run 안 롤백 → 서버 안 · 밖 `health/ready 200` → 🟠 알림까지. 해 보면 ADR-075 를 채택으로 바꾼다
+  종료 코드 3 → 같은 run 안 롤백 → 서버 안 · 밖 `health/ready 200` → 🟠 알림까지. 해 보면 ADR-077 를 채택으로 바꾼다
 - [x] SHA 고정 뒤 첫 배포 — 2026-11-07 00:07 KST `c8335b8` 자동 배포(run 42240152119): run 의 커밋 · 「올릴 커밋」 · 서버 로그 「배포 <SHA>」 가 모두 `c8335b8`, `health/ready 200 (1회째)`

@@ -14,7 +14,7 @@
 # 자동과 수동이 다른 명령을 돌면 「손으로는 되는데 CI 는 안 된다」가 생긴다.
 #
 # **종료 코드에 뜻이 있다.** 3 은 「컨테이너를 바꿨는데 서버 안에서 서비스가 안 살아났다」 하나뿐이다.
-# deploy.yml 이 3 을 보면 같은 run 안에서 직전 성공 커밋으로 되돌린다(ADR-075). 그 밖의 실패는 전부 1 이다 —
+# deploy.yml 이 3 을 보면 같은 run 안에서 직전 성공 커밋으로 되돌린다(ADR-077). 그 밖의 실패는 전부 1 이다 —
 # 아래 ERR 트랩이 `set -e` 로 죽은 명령의 코드를 1 로 바꾼다. docker 나 git 이 3 으로 죽어도 롤백이 돌면 안 된다.
 # 트랩은 `set +e` 로도 안 꺼진다. 명령의 코드를 직접 받아야 하면 `|| status=$?` 로 받는다(아래 root → ubuntu).
 set -Eeuo pipefail
@@ -122,7 +122,7 @@ probe() {
   curl -s -m 5 -o /dev/null -w '%{http_code}' "$1" || printf '(curl %s)' "$?"
 }
 
-# 교체가 끝난 서비스가 살아났는지 **서버 안에서** 본다(ADR-075). 러너가 인터넷을 건너 도메인으로 묻는
+# 교체가 끝난 서비스가 살아났는지 **서버 안에서** 본다(ADR-077). 러너가 인터넷을 건너 도메인으로 묻는
 # deploy.yml 의 확인과 달리 DNS · 인증서 · IP 가 끼지 않는다. 안 살아났으면 1 을 돌려준다.
 # `/health/ready`(backend · DB)와 `/`(frontend 화면)가 둘 다 200 이어야 한다. nginx 의 localhost 블록이 받는다 —
 # 출발지는 172.28.0.1 로 보인다. `localhost` 는 ::1 로 붙어서 127.0.0.1 로 고정한다.
@@ -267,7 +267,7 @@ main() {
   sudo docker compose exec -T nginx nginx -s reload || sudo docker compose restart nginx
 
   # 교체가 끝났다. 서버 안에서 살아났는지 본다. 안 살아났으면 **3 으로 끝낸다** — deploy.yml 이 이 코드를 보고
-  # 직전 성공 커밋으로 되돌린다(ADR-075). prune 은 그 뒤다: 실패한 판에서는 옛 이미지를 지우지 않는다.
+  # 직전 성공 커밋으로 되돌린다(ADR-077). prune 은 그 뒤다: 실패한 판에서는 옛 이미지를 지우지 않는다.
   wait_ready || { echo "교체한 서비스가 서버 안에서 살아나지 않았다. 종료 코드 3"; exit 3; }
 
   sudo docker image prune -f
