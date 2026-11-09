@@ -36,8 +36,8 @@ AI 가 없는 사실을 쓰면 문서 조작이다([ADR-007](docs/adr/007-spec-o
 <table>
 <tr>
 <td align="center"><img src="frontend/public/landing/v2/phone-records.webp" width="240" alt="관찰 기록"/><br/><sub>관찰 기록</sub></td>
-<td align="center"><img src="frontend/public/landing/v2/phone-routines.webp" width="240" alt="일과 기록"/><br/><sub>일과 기록</sub></td>
-<td align="center"><img src="frontend/public/landing/v2/phone-weekly.webp" width="240" alt="주간 기록"/><br/><sub>주간 기록</sub></td>
+<td align="center"><img src="frontend/public/landing/v2/phone-routines.webp" width="240" alt="보육일지 · 일일"/><br/><sub>보육일지 · 일일</sub></td>
+<td align="center"><img src="frontend/public/landing/v2/phone-weekly.webp" width="240" alt="보육일지 · 주간"/><br/><sub>보육일지 · 주간</sub></td>
 </tr>
 </table>
 
