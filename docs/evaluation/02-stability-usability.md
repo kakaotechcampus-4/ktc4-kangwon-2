@@ -11,7 +11,7 @@
 - 살았는지와 **쓸 수 있는지**를 가른다 — `/health`(프로세스) · `/health/ready`(DB까지).
   배포 판정은 `ready` 쪽이다 — [CLAUDE.md](../../CLAUDE.md) §명령어 · `.github/workflows/deploy.yml` Health check
 - **부가 기능이 죽어도 본 기능은 돈다.** 트렌드봇 · 외부 API 를 필수 의존으로 넣지 않았다 — [CLAUDE.md](../../CLAUDE.md) §생성
-- 선택 입력(트렌드 · 날씨)이 실패해 기본 자료로 만들었으면 생성 기록에 남는다 — 같은 곳
+- 선택 입력(트렌드 · 날씨)이 실패해 기본 자료로 만들었으면 그 사실이 남는다 — 같은 곳. 트렌드는 저장되는 생성 기록이 아니라 **서버 로그 한 줄**(상태 한 단어)이다(ADR-072 결정 8)
 - 두 사람이 같은 문서를 동시에 고칠 때 — ADR-035 `035-concurrent-writes-and-confirm-retry.md`
 - 확정이 중간에 끊기지 않게 — ADR-040 `040-atomic-document-reconfirmation.md`
 - 생성이 길어질 때 구간마다 120초 감시 타이머 · nginx 510초 — PR #229

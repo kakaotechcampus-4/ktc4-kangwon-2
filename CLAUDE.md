@@ -160,6 +160,9 @@ Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHE
   안다. 재생성하면 Generation 을 새 방식으로 바꾸고, 이전 값 · 방식은 `REGENERATED` 이벤트에 남는다(ADR-032).
 - **부가 의존을 빼고 만들었으면 그 사실이 남아야 한다.** 트렌드 · 날씨 같은 선택 입력이 실패해 기본 자료로 만들었으면
   생성 기록(Generation Run)에서 확인할 수 있어야 한다.
+  **계획안의 트렌드는 서버 로그 한 줄로 갈음한다.** 주간 · 놀이 중심 월간 생성이 트렌드 상태 한 단어(`AVAILABLE` · `UNAVAILABLE` · `ERROR`)를
+  서버 로그에 남긴다(`weekly trend=` · `plan_trend kind=monthly_play`). 계획안이나 저장되는 기록에는 없다 —
+  트렌드를 실제로 썼는지는 칸의 TREND 근거와 `rule_version` 의 `+trend-v1` 로 본다(ADR-072 결정 8).
 - **출처 표시는 화면에만.** hwp 내보내기에 마커가 섞이면 안 된다. 제출 문서다.
 - **Rule 이 범위를 정하고, LLM 이 그 안에서 정하고, Rule 이 검사한다** — 연간 · 월간 · 주간 공통(ADR-032).
   ```
