@@ -58,7 +58,7 @@ export default function EvaluationChecklist() {
     (async () => {
       try {
         const user = await getCurrentUser();
-        if (user.center_id === null) throw new Error("원 정보를 먼저 등록해주세요.");
+        if (user.center_id === null) throw new Error("원 정보를 먼저 등록해 주세요.");
         const result = await getEvaluationChecklist(user.center_id, controller.signal);
         if (controller.signal.aborted) return;
         setCenterId(user.center_id);
@@ -186,7 +186,8 @@ export default function EvaluationChecklist() {
   const rows = sheetRows(autos, scan, checklist.documents);
   // `date`(YYYY-MM-DD)는 시간대가 없어 잘라 써도 된다.
   const [, toMonth, toDay] = (autos[0]?.period.to ?? "").split("-").map(Number);
-  const basis = `${checklist.school_year}학년도${toDay ? ` · ${toMonth}월 ${toDay}일까지 확정한 문서 기준` : ""}`;
+  // 날짜는 쌤플확정 근거에만 걸린다 — 같은 판에 내컴퓨터 · 직접확인 도장도 찍혀서 판 전체 기준처럼 쓰지 않는다(11-09).
+  const basis = `${checklist.school_year}학년도${toDay ? ` · 쌤플 문서는 ${toMonth}월 ${toDay}일까지 확정한 것` : ""}`;
   const recount = () => setReload((n) => n + 1);
 
   const directorCount = `${directorDone(checklist.director)}/${DIRECTOR_ITEMS.length}`;

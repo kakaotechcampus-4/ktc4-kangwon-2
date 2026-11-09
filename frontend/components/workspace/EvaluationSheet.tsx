@@ -14,6 +14,7 @@ import type { AutoIndicator, DirectorCheck, DocumentMark } from "@/lib/api/evalu
 import {
   DIRECTOR_ITEMS,
   TEACHER_DOCS,
+  gapText,
   scanNames,
   sourceLines,
   stampSources,
@@ -76,7 +77,8 @@ function madeInSsample(docId: string, autos: AutoIndicator[]): Made | null {
     const classes = (journal ? item.journal_classes : item.plan_classes) ?? { met: 0, total: 0 };
     const done = classes.total > 0 && classes.met === classes.total;
     return {
-      text: `확정 ${count}건 · ${classes.met}/${classes.total}반`,
+      // 서버는 계획안 가운데 확정 월간계획안만 센다(auto.py · ADR-074 결정 2). 주간을 확정한 교사가 「확정 0건」에 헷갈렸다.
+      text: `${journal ? "확정" : "월간계획안"} ${count}건 · ${classes.met}/${classes.total}반`,
       done,
       some: count > 0,
       need: classes.total ? undefined : "올해 등록한 반이 없어요",
@@ -128,7 +130,7 @@ function basisOf(doc: TeacherDoc) {
 export function NameRule({ doc }: { doc: TeacherDoc }) {
   return (
     <>
-      이름에 날짜 + {doc.keywords.join(" / ")}
+      파일 이름에 날짜와 {doc.naming} 넣어 주세요.
       <br />
       예: {doc.example}
     </>
@@ -146,6 +148,9 @@ function FoundDetail({
   folder: FolderSummary | undefined;
 }) {
   const shown = result?.missing.slice(0, 12) ?? [];
+  // 빈 평일은 「일」, 빈 달은 「개」 — 카드 근거 줄(gapText)과 같은 단위(11-09 문구 토론).
+  const unit = doc.rule.kind === "weekdays" ? "일" : "개";
+  const dated = doc.rule.kind !== "count";
   return (
     <div className={styles.fileDetail}>
       <p>
@@ -153,19 +158,21 @@ function FoundDetail({
       </p>
       {result && result.missing.length > 0 && (
         <p>
-          빈 {doc.rule.kind === "weekdays" ? "평일" : "달"} {result.missing.length}개 —{" "}
-          {shown.map(shortDate).join(", ")}
-          {result.missing.length > shown.length && ` 외 ${result.missing.length - shown.length}개`}
+          {gapText(doc, result.missing.length)} — {shown.map(shortDate).join(", ")}
+          {result.missing.length > shown.length &&
+            ` 외 ${result.missing.length - shown.length}${unit}`}
         </p>
       )}
       {result && result.undated.length > 0 && (
         <p>날짜가 없어 세지 않은 파일 {result.undated.length}개 — 이름에 날짜를 넣어 주세요.</p>
       )}
       {result && result.outside > 0 && <p>검토 기간 밖이라 세지 않은 파일 {result.outside}개</p>}
-      {/* 이름 · 빈 날짜는 서버에 없다(ADR-074 결정 5). 다시 열면 결과 요약만 남는다. */}
-      {!result && folder && (
+      {/* 이름 · 빈 날짜는 서버에 없다(ADR-074 결정 5). 다시 열면 결과 요약만 남는다.
+          건수로 세는 서류에는 빈 날짜가 없고, 못 찾은 서류에는 다시 볼 이름이 없다(11-09 문구 토론). */}
+      {!result && folder && folder.status !== "missing" && (
         <p>
-          찾은 파일 이름과 빈 날짜는 폴더를 고른 그때만 보여요. 다시 보려면 폴더를 다시 골라 주세요.
+          {dated ? "찾은 파일 이름과 빈 날짜는" : "찾은 파일 이름은"} 폴더를 고른 그때만 보여요.
+          다시 보려면 폴더를 다시 골라 주세요.
         </p>
       )}
       {doc.caveat && <p>ⓘ {doc.caveat}</p>}
@@ -245,9 +252,9 @@ function StampSlot({
     : checked
       ? "다시 누르면 지워요"
       : done
-        ? "눌러서 직접확인 더하기"
+        ? "눌러서 직접확인도 찍어요"
         : doc.optional
-          ? "해당 반만 · 세지 않아요"
+          ? "장애영유아 반이면 내요"
           : "눌러서 찍어요";
   const valueTone = made ? (made.done ? styles.madeDone : styles.madeShort) : styles.pressHint;
 
@@ -320,7 +327,7 @@ export function StampBoard({
   onRecount,
 }: {
   rows: SheetRow[];
-  /** 「2026학년도 · 11월 7일까지 확정한 문서 기준」 */
+  /** 「2026학년도 · 쌤플 문서는 11월 7일까지 확정한 것」 */
   basis: string;
   onToggle: (id: string, on: boolean) => void;
   onRecount: () => void;
@@ -434,9 +441,12 @@ function Sources({ row, inline = false }: { row: SheetRow; inline?: boolean }) {
 
 const IMPORT_LABEL = { dailyLog: "예전 보육일지 올리기", assessment: "예전 평가 올리기" } as const;
 
-/** 찾은 파일 · 이름 규칙 단추 이름. 이름 목록은 이번에 고른 폴더에만 있다. */
+/**
+ * 찾은 파일 · 이름 규칙 단추 이름. 이름 목록은 이번에 고른 폴더에만 있다.
+ * 같은 쪽지를 여는데 카드마다 「자세히」·「이름 규칙」으로 달랐던 것을 하나로 맞췄다(11-09 문구 토론).
+ */
 function foundLabel(result: DocResult | undefined) {
-  return result?.matched.length ? `찾은 파일 ${result.matched.length}건` : "이름 규칙";
+  return result?.matched.length ? `찾은 파일 ${result.matched.length}개` : "이름 규칙";
 }
 
 /**
@@ -602,7 +612,7 @@ function DocCard({
           aria-controls={`${id}-note`}
           onClick={() => setOpen(open === "note" ? null : "note")}
         >
-          {todo ? foundLabel(result) : "자세히"} ▾
+          {foundLabel(result)} ▾
         </button>
         <div
           id={`${id}-note`}
@@ -616,16 +626,6 @@ function DocCard({
             ×
           </button>
           <FoundDetail doc={doc} result={result} folder={folder} />
-          {!todo && made?.importKind && (
-            <button
-              type="button"
-              className={ws.secondary}
-              aria-haspopup="dialog"
-              onClick={() => setOpen("import")}
-            >
-              {IMPORT_LABEL[made.importKind]}
-            </button>
-          )}
         </div>
       </div>
       {todo && !row.done && need && <p className={styles.need}>{need}</p>}
@@ -657,9 +657,23 @@ function DocCard({
               )}
             </>
           ) : (
-            <Link href={made.go.href} className={styles.linkButton}>
-              {made.go.label}
-            </Link>
+            // 찍힌 카드의 예전 서류 올리기는 쪽지 안에 숨어 있었다 — 쪽지 단추 이름이 「이름 규칙」이 되며 링크 줄로 옮겼다(11-09).
+            <>
+              <Link href={made.go.href} className={styles.linkButton}>
+                {made.go.label}
+              </Link>
+              {made.importKind && (
+                <button
+                  ref={importButton}
+                  type="button"
+                  className={styles.linkButton}
+                  aria-haspopup="dialog"
+                  onClick={() => setOpen("import")}
+                >
+                  {IMPORT_LABEL[made.importKind]}
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
@@ -669,7 +683,7 @@ function DocCard({
           onImported={onImported}
           onClose={() => {
             setOpen(null);
-            (todo ? importButton : noteButton).current?.focus();
+            importButton.current?.focus();
           }}
         />
       )}
