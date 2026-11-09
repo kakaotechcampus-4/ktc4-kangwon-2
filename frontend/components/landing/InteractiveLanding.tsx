@@ -715,7 +715,7 @@ export default function InteractiveLanding() {
                   src="/landing/v2/plan-annual.webp"
                   alt="쌤플에서 확정한 2026학년도 연간 보육계획안 실제 화면"
                   width={1600}
-                  height={750}
+                  height={897}
                   sizes="(max-width: 900px) 92vw, 640px"
                 />
                 <Image
