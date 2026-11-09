@@ -36,6 +36,8 @@
 
 **이 넷은 수정·삭제 금지** — 지우면 멘토 배정과 알림이 죽는다 ([CLAUDE.md](../../CLAUDE.md) §브랜치).
 
+- **API 문서는 서버 라우트와 CI 에서 대조한다** — backend 를 바꾸는 PR 에서 서버에 있는데 `docs/api-spec.md` 에 없는 경로가 있으면 pytest 가 실패한다 (`backend/tests/test_api_spec_routes.py`)
+
 ## 일하는 규칙
 
 - 브랜치 — 기능은 `feature/*`, 멘토 피드백 반영은 `refactor/*`, 둘 다 `develop` PR.

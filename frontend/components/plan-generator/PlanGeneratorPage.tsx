@@ -147,7 +147,7 @@ function AnnualGenerator({ format }: { format: Format }) {
     }
   }
 
-  /** [생성 멈추기]. 요청을 끊는다 — 놀이 중심형은 서버도 남은 구간을 부르지 않고 저장하지 않는다. */
+  /** [생성 멈추기]. 요청을 끊는다 — 놀이 중심형은 서버가 다음 단계를 부르지 않고 저장하지 않는다. */
   function stop() {
     controllerRef.current?.abort();
     setGenerating(false);
@@ -176,8 +176,9 @@ function AnnualGenerator({ format }: { format: Format }) {
       <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
           kind={`annual:${format}`}
-          // Sol 실측(2026-11-05): 놀이 중심형은 4구간을 차례로 불러 약 176초. 주제형은 아직 안 쟀다.
-          expect={format === "PLAY_PROJECT" ? 180 : 20}
+          // Sol 실측(2026-11-09, ⑦ 10회): 놀이 중심형은 4구간을 동시에 불러 평균 38초(ADR-077).
+          // 겹친 후보를 다시 만들면 몇십 초 더 걸린다. 주제형은 아직 안 쟀다.
+          expect={format === "PLAY_PROJECT" ? 45 : 20}
           steps={[...look.steps]}
           done={done}
           onCancel={stop}

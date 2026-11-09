@@ -1,0 +1,282 @@
+[
+ {
+  "n": 1,
+  "cond": "c7",
+  "period": "12월~2월",
+  "play_name": "딩동댕, 겨울 종은 몇 번 울릴까요?",
+  "mark": "bad"
+ },
+ {
+  "n": 2,
+  "cond": "c7",
+  "period": "12월~2월",
+  "play_name": "겨울 동물은 무얼 할까요? 책놀이",
+  "mark": "good"
+ },
+ {
+  "n": 3,
+  "cond": "c1",
+  "period": "3월~5월",
+  "play_name": "둥실둥실 비눗방울은 어디로 갈까요?",
+  "mark": "mid"
+ },
+ {
+  "n": 4,
+  "cond": "c7",
+  "period": "12월~2월",
+  "play_name": "포근한 쉼터, 어떻게 꾸밀까요?",
+  "mark": "bad"
+ },
+ {
+  "n": 5,
+  "cond": "c1",
+  "period": "6월~8월",
+  "play_name": "찰싹! 자석 낚싯대에 붙었어요",
+  "mark": "good"
+ },
+ {
+  "n": 6,
+  "cond": "c7",
+  "period": "9월~11월",
+  "play_name": "알록달록 가을 속 나를 꾸며요",
+  "mark": "good"
+ },
+ {
+  "n": 7,
+  "cond": "c1",
+  "period": "6월~8월",
+  "play_name": "찰칵 말고 꾹꾹, 바다를 찍어요",
+  "mark": "good"
+ },
+ {
+  "n": 8,
+  "cond": "c1",
+  "period": "6월~8월",
+  "play_name": "조개껍데기야, 무늬가 다르네!",
+  "mark": "good"
+ },
+ {
+  "n": 9,
+  "cond": "c7",
+  "period": "12월~2월",
+  "play_name": "꽁꽁 얼음이 어디로 사라질까요?",
+  "mark": "good"
+ },
+ {
+  "n": 10,
+  "cond": "c7",
+  "period": "9월~11월",
+  "play_name": "팔랑팔랑 가을 노래를 불러요",
+  "mark": "good"
+ },
+ {
+  "n": 11,
+  "cond": "c1",
+  "period": "12월~2월",
+  "play_name": "찌릿찌릿 종이가 빗에 붙을까요?",
+  "mark": "good"
+ },
+ {
+  "n": 12,
+  "cond": "c7",
+  "period": "6월~8월",
+  "play_name": "여름 음악 가게 간판을 읽어 볼까요?",
+  "mark": "mid"
+ },
+ {
+  "n": 13,
+  "cond": "c7",
+  "period": "3월~5월",
+  "play_name": "두근두근, 내 마음은 무슨 소리일까요?",
+  "mark": "mid"
+ },
+ {
+  "n": 14,
+  "cond": "c1",
+  "period": "9월~11월",
+  "play_name": "덩덕쿵 우리 장단을 들려줄까요?",
+  "mark": "good"
+ },
+ {
+  "n": 15,
+  "cond": "c1",
+  "period": "3월~5월",
+  "play_name": "작은 씨앗 안에는 누가 살까요?",
+  "mark": "good"
+ },
+ {
+  "n": 16,
+  "cond": "c1",
+  "period": "3월~5월",
+  "play_name": "포근한 봄 소풍집을 지어요",
+  "mark": "mid"
+ },
+ {
+  "n": 17,
+  "cond": "c1",
+  "period": "3월~5월",
+  "play_name": "짹짹 톡톡 봄 소리를 만들어요",
+  "mark": "mid"
+ },
+ {
+  "n": 18,
+  "cond": "c7",
+  "period": "3월~5월",
+  "play_name": "딩동 악기는 어떻게 소리가 날까요?",
+  "mark": "good"
+ },
+ {
+  "n": 19,
+  "cond": "c7",
+  "period": "12월~2월",
+  "play_name": "뚝딱뚝딱 겨울용품 수선집이에요!",
+  "mark": "mid"
+ },
+ {
+  "n": 20,
+  "cond": "c7",
+  "period": "6월~8월",
+  "play_name": "토독토독 서로 다른 빗소리를 들어요",
+  "mark": "mid"
+ },
+ {
+  "n": 21,
+  "cond": "c7",
+  "period": "3월~5월",
+  "play_name": "딸랑딸랑 봄비 소리를 만들어요",
+  "mark": "mid"
+ },
+ {
+  "n": 22,
+  "cond": "c1",
+  "period": "12월~2월",
+  "play_name": "포근포근 온기를 지켜 줄까요?",
+  "mark": "bad"
+ },
+ {
+  "n": 23,
+  "cond": "c1",
+  "period": "3월~5월",
+  "play_name": "작은 씨앗아, 잠에서 깼니?",
+  "mark": "mid"
+ },
+ {
+  "n": 24,
+  "cond": "c1",
+  "period": "6월~8월",
+  "play_name": "조개껍데기끼리 어떻게 모을까요?",
+  "mark": "mid"
+ },
+ {
+  "n": 25,
+  "cond": "c7",
+  "period": "3월~5월",
+  "play_name": "폴짝폴짝 봄 숲길을 건너요",
+  "mark": "good"
+ },
+ {
+  "n": 26,
+  "cond": "c7",
+  "period": "3월~5월",
+  "play_name": "딸랑딸랑 소리를 색으로 그려요",
+  "mark": "good"
+ },
+ {
+  "n": 27,
+  "cond": "c7",
+  "period": "9월~11월",
+  "play_name": "이 포근한 물건에 무슨 이야기가?",
+  "mark": "bad"
+ },
+ {
+  "n": 28,
+  "cond": "c1",
+  "period": "3월~5월",
+  "play_name": "우리 가족 봄 소풍을 떠나요",
+  "mark": "bad"
+ },
+ {
+  "n": 29,
+  "cond": "c1",
+  "period": "12월~2월",
+  "play_name": "씽씽, 담요 썰매를 타 볼까요?",
+  "mark": "mid"
+ },
+ {
+  "n": 30,
+  "cond": "c7",
+  "period": "12월~2월",
+  "play_name": "반짝반짝, 겨울빛 무늬를 찾아요!",
+  "mark": "good"
+ },
+ {
+  "n": 31,
+  "cond": "c1",
+  "period": "9월~11월",
+  "play_name": "쌀과 콩, 어느 쪽이 더 무거울까요?",
+  "mark": "mid"
+ },
+ {
+  "n": 32,
+  "cond": "c7",
+  "period": "12월~2월",
+  "play_name": "딸랑딸랑, 겨울잠 몸을 깨워요!",
+  "mark": "bad"
+ },
+ {
+  "n": 33,
+  "cond": "c1",
+  "period": "3월~5월",
+  "play_name": "두근두근 친구에게 마음을 전해요",
+  "mark": "mid"
+ },
+ {
+  "n": 34,
+  "cond": "c7",
+  "period": "12월~2월",
+  "play_name": "데굴데굴 겨울 언덕을 굴러요",
+  "mark": "good"
+ },
+ {
+  "n": 35,
+  "cond": "c7",
+  "period": "9월~11월",
+  "play_name": "낙엽 아래에는 누가 살고 있을까요?",
+  "mark": "good"
+ },
+ {
+  "n": 36,
+  "cond": "c1",
+  "period": "12월~2월",
+  "play_name": "찌릿찌릿, 풍선에 왜 붙을까요?",
+  "mark": "good"
+ },
+ {
+  "n": 37,
+  "cond": "c7",
+  "period": "6월~8월",
+  "play_name": "알록달록 여름 바다는 무슨 색일까요?",
+  "mark": "good"
+ },
+ {
+  "n": 38,
+  "cond": "c1",
+  "period": "12월~2월",
+  "play_name": "사각사각 나만의 눈송이를 펼쳐요",
+  "mark": "mid"
+ },
+ {
+  "n": 39,
+  "cond": "c1",
+  "period": "9월~11월",
+  "play_name": "오돌토돌 솔방울이 변신해요!",
+  "mark": "good"
+ },
+ {
+  "n": 40,
+  "cond": "c1",
+  "period": "3월~5월",
+  "play_name": "봄꽃 색깔을 톡톡 찍어 볼까요?",
+  "mark": "mid"
+ }
+]
