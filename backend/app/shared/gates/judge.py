@@ -307,7 +307,7 @@ def build_questions(
     }
     rec_choices = {**dict(records), "없음": "해당하는 기록이 없다"}
     questions: dict[str, dict] = {}
-    for i, (_heading, text) in enumerate(sentences, 1):
+    for i, (heading, text) in enumerate(sentences, 1):
         key = f"s{i}"
         questions[f"{key}.대조"] = {
             "type": "choice",
@@ -351,6 +351,23 @@ def build_questions(
             " 부딪히는 기록이 없으면 없음",
             "criteria": rec_choices,
         }
+        if heading == "해석":
+            # v4 — 대조는 하나만 고르는 질문이라 「어긋남」을 고르면 「새 사실」 확률이 낮다.
+            # 기록과 다르게 말하면서 기록에 없는 일도 덧붙인 문장(기준서 4절 「둘 다 예」)은
+            # 새 사실이 묻혔다.
+            # 어긋남이 뜬 문장에서만 이 답으로 새 사실을 본다(`read_issues`).
+            questions[f"{key}.덧붙임"] = {
+                "type": "noul",
+                "instructions": f"문장 {key} 「{text}」에서 기록과 다르게 말한 부분은 빼고"
+                " 보았을 때, 기록에 없는 아이의 행동 · 말 · 표정, 결과 · 횟수, 함께한 사람 ·"
+                " 장소 · 물건을 이미 일어난 일로 덧붙였는가?",
+                "criteria": {
+                    "true": "기록은 「컵을 쌓았다」인데 「컵을 쌓고 친구에게 자랑했다」처럼"
+                    " 기록에 없는 일을 더했다",
+                    "false": "기록에 있는 일만 말하거나(다르게 말했더라도), 느낌 · 마음 짐작 ·"
+                    " 평가 · 계획만 말한다",
+                },
+            }
         claim = claims[i - 1] if i - 1 < len(claims) else None
         if claim is not None:
             questions[f"{key}.때"] = {
@@ -468,7 +485,14 @@ def read_issues(
                     "기록에 적힌 대로 고치거나, 기록이 틀렸다면 기록을 먼저 고쳐 주세요.",
                 )
             )
-        elif heading == "해석" and probs[NEW_FACT] >= P_NEW_FACT.get(kind, 0.5):
+        # 어긋남이 떴으면 대조의 「새 사실」 확률은 믿을 수 없다 — 따로 물은 덧붙임으로 본다(v4).
+        # 지원 칸은 새 사실을 묻지 않는다 — 덧붙임 질문도 해석 문장에만 있다.
+        added = heading == "해석" and (
+            _noul(answers, f"{key}.덧붙임") >= P_FLAG
+            if conflict
+            else probs[NEW_FACT] >= P_NEW_FACT.get(kind, 0.5)
+        )
+        if added:
             issues.append(
                 Issue(
                     heading,

@@ -118,3 +118,45 @@ def test_change_needs_a_higher_bar_than_other_flags():
     assert [i.code for i in J.read_issues(sentences, answers, {"r1": 1}, None)] == [
         "UNSUPPORTED_CHANGE"
     ]
+
+
+def _conflicting(questions):
+    answers = _clear(questions)
+    for name in answers:
+        if name.endswith(".대조"):
+            answers[name] = {
+                "choice": J.CONFLICT,
+                "probabilities": {
+                    J.CONFLICT: 0.9,
+                    J.SAME: 0.05,
+                    J.NEW_FACT: 0.03,
+                    J.INTERPRETATION: 0.02,
+                },
+            }
+    return answers
+
+
+def test_new_fact_is_still_read_when_the_sentence_also_conflicts():
+    """v4 — 대조가 「어긋남」을 고르면 「새 사실」 확률은 낮다. 덧붙임 답으로 따로 본다."""
+    sentences = [("해석", "공 다섯 개를 넣고 손뼉을 쳤다.")]
+    _state, questions = J.build_questions("관찰일지", sentences, {"r1": "공 두 개를 넣었다"})
+    answers = _conflicting(questions)
+    answers["s1.덧붙임"]["noul"] = 0.8
+    codes = [i.code for i in J.read_issues(sentences, answers, {"r1": 1}, None)]
+    assert codes == ["CONTRADICTS_SOURCE", "UNSUPPORTED_FACT"]
+    answers["s1.덧붙임"]["noul"] = 0.2
+    assert [i.code for i in J.read_issues(sentences, answers, {"r1": 1}, None)] == [
+        "CONTRADICTS_SOURCE"
+    ]
+
+
+def test_added_fact_question_is_only_for_interpretation_and_support_conflict_reads_fine():
+    sentences = [("해석", "공을 넣었다."), ("지원", "다음에는 공 세 개를 넣어 보겠다.")]
+    _state, questions = J.build_questions("관찰일지", sentences, {"r1": "공을 넣었다"})
+    assert "s1.덧붙임" in questions and "s2.덧붙임" not in questions
+    # 지원 문장에 어긋남이 떠도 없는 덧붙임 답을 찾다가 깨지면 안 된다(500 이 된다).
+    codes = [
+        (i.heading, i.code)
+        for i in J.read_issues(sentences, _conflicting(questions), {"r1": 1}, None)
+    ]
+    assert ("지원", "CONTRADICTS_SOURCE") in codes and ("지원", "UNSUPPORTED_FACT") not in codes
