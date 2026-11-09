@@ -239,7 +239,7 @@ button.draftName {
   display: grid;
   gap: 6px;
   padding: 8px 10px;
-  border: 1.5px dashed var(--pg-plum-line);
+  border: 1.5px dashed var(--pg-primary-deep);
   border-radius: 4px;
   background: var(--pg-paper);
 }

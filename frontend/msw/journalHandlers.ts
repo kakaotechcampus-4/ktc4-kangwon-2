@@ -6,7 +6,7 @@ import { listChildren } from "./data/children";
 /**
  * 관찰일지 화면 목업 (§10 관찰 기록 읽기 · §11 문서 · ADR-085). 화면 작업 · 캡처용이라 새로고침하면 사라진다.
  *
- * 관찰 기록은 반을 처음 읽을 때 그 반 아이 순서대로 지어낸다 — 첫 아이 3개, 둘째 2개, 셋째 1개, 넷째부터 없음.
+ * 관찰 기록은 반을 처음 읽을 때 그 반 아이 순서대로 지어낸다(`COUNTS`).
  * 초안의 해석 첫 문장에 「매일」을 넣고 검토가 그 문장을 짚는다. 셋째 아이 초안은 검토를 못 한 것으로 둔다.
  * 판정 · 고쳐 쓰기는 진짜 모델이 아니다 — 서버 계약의 모양만 따른다.
  */
@@ -37,6 +37,8 @@ const FACTS = [
   ["모래로 길을 만들고 친구에게 물을 부어 달라고 했다.", "바깥놀이"],
 ];
 const DOMAINS = ["사회관계", "의사소통", "자연탐구"];
+/** 반 아이 순서대로 기록 수 — 3 · 2 · 2 · 1, 다섯째부터 없음(기록 1개는 반 전체에서 체크가 꺼진다). */
+const COUNTS = [3, 2, 2, 1];
 const observations = new Map<number, Json[]>();
 const documents: Doc[] = [];
 let next = 9000;
@@ -51,7 +53,7 @@ function recordsFor(classId: number): Json[] {
   if (observations.has(classId)) return observations.get(classId)!;
   const room = findClass(classId);
   const rows = listChildren(classId).flatMap((child, i) =>
-    Array.from({ length: Math.max(0, 3 - i) }, (_, k) => ({
+    Array.from({ length: COUNTS[i] ?? 0 }, (_, k) => ({
       id: next++,
       class_id: classId,
       class_name: room?.name ?? "",
