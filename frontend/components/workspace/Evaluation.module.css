@@ -678,15 +678,17 @@
 .rail[data-end] {
   mask-image: none;
 }
-/* 카드 폭은 고정 — 1440 에서 둘 하고 셋째가 조금 보인다. 좁은 화면(390)에서는 칸의 85%. */
+/* 카드 폭은 고정 — 1440 에서 둘 하고 셋째가 조금 보인다. 좁은 화면(390)에서는 칸의 85%.
+   안쪽 여백 · 줄 간격은 글이 빽빽해 보여 늘렸다(11-09). 왼쪽 칸이 오른쪽 칸(폴더 쪽지 · 단추)보다 길어지지 않는 만큼만 —
+   1440×900 에서 세로 스크롤이 생기지 않는다. */
 .docCard {
   position: relative;
   display: flex;
   flex: 0 0 min(310px, 85%);
   flex-direction: column;
-  gap: 5px;
+  gap: 10px;
   min-width: 0;
-  padding: 10px 14px;
+  padding: 16px;
   border: 1px solid var(--pg-line);
   border-radius: 10px;
   background: var(--pg-paper);
@@ -931,7 +933,7 @@
    보라 실선은 도장을 찍은 근거, 노란 점선은 있지만 모자람, 회색 점선은 아직 없음. */
 .srcs {
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 .srcs[data-inline] {
   display: flex;
