@@ -19,8 +19,8 @@ from ssuksak.planning.domain.provenance import EvidenceSourceType
 from ssuksak.planning.evidence.models import ExtractionQuality, ReusePolicy
 from ssuksak.planning.evidence.ports import InstitutionEvidenceRepository
 
-EXPECTED_FILE_SHA = "7c051742a4e74628b8c4e2497c58e61dfa4e8399e72847a77539bfe92eeb7c98"
-EXPECTED_CONTENT_SHA = "99260c65df0ba0d1c5d010c93a17762c3aa134ea93836e6b8e04348afe27b3ce"
+EXPECTED_FILE_SHA = "3bbe06f8d7c6ae317d3cb7bc1649a4b6b3585d359716cbd8aff0beb66dccf569"
+EXPECTED_CONTENT_SHA = "4e01195eea06f28c71548b7c091ad8223b322b155e54f2bcbab957132f9cd7cd"
 
 
 @pytest.fixture(scope="module")
@@ -35,14 +35,14 @@ def store():
 
 def test_approved_artifact_bytes_and_lf_are_frozen():
     raw = DEFAULT_EVIDENCE_STORE_PATH.read_bytes()
-    assert len(raw) == 12_507_559
+    assert len(raw) == 12_506_326
     assert b"\r" not in raw
     assert hashlib.sha256(raw).hexdigest() == EXPECTED_FILE_SHA
 
 
 def test_real_store_contract_and_counts(store, payload):
     assert isinstance(JsonInstitutionEvidenceRepository(), InstitutionEvidenceRepository)
-    assert len(store) == payload["record_count"] == 12_325
+    assert len(store) == payload["record_count"] == 12_324
     assert payload["source_count"] == len(payload["source_hash_manifest"]) == 349
     assert payload["source_text_layer_count"] == 326
     assert payload["source_image_only_count"] == 23
@@ -58,7 +58,7 @@ def test_new_repositories_share_one_loaded_store(store):
 def test_privacy_derivative_keeps_none_of_the_removed_records(payload):
     # The v0.1.0 original was deleted; the derivation was checked against it when v0.2.0 was approved.
     removed = set(payload["build"]["removed_record_ids"])
-    assert len(removed) == 42
+    assert len(removed) == 43
     assert not removed & {r["record_id"] for r in payload["records"]}
 
 

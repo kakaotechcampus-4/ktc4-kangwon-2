@@ -9,13 +9,13 @@
     "schema_version": "institution-evidence.schema.v0",
     "ingestion_version": "institution-evidence-ingestion-v0.2.0",
     "normative_status": "CORPUS_OBSERVATION_NON_NORMATIVE",
-    "content_sha256": "99260c65df0ba0d1c5d010c93a17762c3aa134ea93836e6b8e04348afe27b3ce"
+    "content_sha256": "4e01195eea06f28c71548b7c091ad8223b322b155e54f2bcbab957132f9cd7cd"
   },
   "review": {
     "domain_owner_approval": "HUMAN_APPROVED",
     "approved_by": "reviewer_ai_lead_001",
     "approved_at": "2026-11-02T00:25:59+09:00",
-    "review_scope_note": "Privacy-reviewed derivative: 42 whole-record exclusions, 12325 records retained. Previous version: weekly-evidence-semantic-classification-v0.1.0. Entry decisions unchanged; previous approval is not inherited. Final artifact approval and monthly classification additions remain pending.",
+    "review_scope_note": "Privacy-reviewed derivative: 43 whole-record exclusions, 12324 records retained. Previous version: weekly-evidence-semantic-classification-v0.1.0. Entry decisions unchanged; previous approval is not inherited. Final artifact approval and monthly classification additions remain pending.",
     "reviewer_identity_rule": "reviewer_<role>_<sequence> 규칙을 따른다(월간 분류와 같음).",
     "review_record": "docs/weekly-evidence-classification-review.md"
   },
