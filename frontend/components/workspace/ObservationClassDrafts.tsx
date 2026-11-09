@@ -87,6 +87,7 @@ export default function ObservationClassDrafts({
   classId,
   onOpen,
   onChanged,
+  onBusy,
 }: {
   kids: Kid[];
   records: ServerObservation[];
@@ -96,12 +97,18 @@ export default function ObservationClassDrafts({
   classId: string;
   onOpen: (docId: string) => void;
   onChanged: () => void;
+  /** 도는 동안 화면이 아이 · 기간 고르기를 잠근다. */
+  onBusy?: (on: boolean) => void;
 }) {
   const [runs, setRuns] = useState<Record<string, Run>>({});
   const [picks, setPicks] = useState<Record<string, boolean>>({});
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState("");
   useUnsavedWarning(running);
+  function hold(on: boolean) {
+    setRunning(on);
+    onBusy?.(on);
+  }
 
   const rows = rowsFor(kids, records, docs, start, end);
   const picked = (row: DraftRow) => picks[row.kid.id] ?? pickedByDefault(row);
@@ -150,21 +157,21 @@ export default function ObservationClassDrafts({
 
   async function makeAll() {
     if (running || !queue.length) return;
-    setRunning(true);
+    hold(true);
     setMessage("");
     let stop = "";
     for (const row of queue) {
       if (stop) mark(row.kid.id, { state: "failed", note: stop });
       else stop = await make(row);
     }
-    setRunning(false);
+    hold(false);
   }
 
   async function remake(row: DraftRow) {
     if (running) return;
-    setRunning(true);
+    hold(true);
     await make(row, true);
-    setRunning(false);
+    hold(false);
   }
 
   async function bundle() {
@@ -256,7 +263,12 @@ function ClassDraftRow({
         />
       </label>
       {doc ? (
-        <button type="button" className={oj.draftName} onClick={() => onOpen(doc.id)}>
+        <button
+          type="button"
+          className={oj.draftName}
+          disabled={busy}
+          onClick={() => onOpen(doc.id)}
+        >
           {row.kid.name}
         </button>
       ) : (
@@ -267,7 +279,7 @@ function ClassDraftRow({
       {doc && row.fresh > 0 && (
         <div className={oj.draftAsk}>
           <span>새 기록 {row.fresh}개</span>
-          <button type="button" className={ws.link} onClick={() => onOpen(doc.id)}>
+          <button type="button" className={ws.link} disabled={busy} onClick={() => onOpen(doc.id)}>
             그대로 열기
           </button>
           <button type="button" className={ws.link} disabled={busy} onClick={onRemake}>

@@ -1175,3 +1175,72 @@ test("FR 종이 미리보기의 빈 영역 줄은 화면에만 「이 영역 관
   const draft = editor(t);
   assert.match(draft.text(), /이 영역 관찰이 없어요: 신체운동·건강, 의사소통, 사회관계, 예술경험/);
 });
+
+// ── F4 (하민 교차 검토) — 만드는 동안 다른 일지를 열 수 없다 ─────────────────
+
+test("F4 한 아이 초안을 만드는 동안 목록의 다른 일지를 열 수 없다", async (t) => {
+  const view = journalPage(t, {
+    search: "?child=kid-1",
+    docs: [SUMMARY],
+    records: [{ ...RECORD, childId: "kid-1", date: TODAY }],
+  });
+  await view.flush();
+  const opener = () =>
+    view.nodes().find((n) => n.type === "button" && textOf(n).startsWith("김하늘 관찰일지"));
+  assert.equal(opener().props.disabled, false);
+  view.button("초안 만들기").props.onClick();
+  view.render();
+  // 열 수 있으면 늦게 온 생성 응답이 교사가 연 일지를 덮는다.
+  assert.equal(opener().props.disabled, true);
+});
+
+test("F4 반 전체 초안이 도는 동안 아이 · 기간 고르기를 잠근다", async (t) => {
+  const view = journalPage(t, { records: [RECORD] });
+  await view.flush();
+  const pickers = () =>
+    view
+      .nodes()
+      .filter(
+        (n) => (n.type === "button" && n.props["aria-pressed"] !== undefined) || n.type === "input",
+      );
+  assert.ok(pickers().every((n) => !n.props.disabled));
+  view.drafts.at(-1).onBusy(true);
+  view.render();
+  assert.ok(pickers().every((n) => n.props.disabled));
+  view.drafts.at(-1).onBusy(false);
+  view.render();
+  assert.ok(pickers().every((n) => !n.props.disabled));
+});
+
+test("F4 반 전체 초안이 도는 동안 아이 일지 열기를 잠그고 화면에 알린다", async (t) => {
+  const busy = [];
+  browser(t);
+  const app = host();
+  const Drafts = compile("../components/workspace/ObservationClassDrafts.tsx", {
+    ...common(app.react),
+    "@/lib/api/documents": {
+      createDocument: () => new Promise(() => {}),
+      downloadDocumentBundle: async () => {},
+    },
+    "@/lib/api/client": { errorCode: documentsErrorCode },
+    "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
+    "./WorkspaceUI": { Message: "message", ws: {} },
+  });
+  const view = app.mount(Drafts.default, {
+    kids: KIDS,
+    records: [rec(1, "kid-1"), rec(2, "kid-1"), rec(3, "kid-2"), rec(4, "kid-2")],
+    docs: [draftOf("kid-2"), draftOf("kid-3", { status: "confirmed" })],
+    start: "2026-11-01",
+    end: "2026-11-10",
+    classId: "class-a",
+    onOpen: () => {},
+    onChanged: () => {},
+    onBusy: (on) => busy.push(on),
+  });
+  assert.equal(view.button("나래").props.disabled, false);
+  view.button("반 전체 초안 만들기").props.onClick();
+  view.render();
+  assert.deepEqual(busy, [true]);
+  assert.equal(view.button("나래").props.disabled, true);
+  assert.equal(view.button("다온").props.disabled, true);
+});

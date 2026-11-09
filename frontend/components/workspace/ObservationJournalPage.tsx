@@ -79,6 +79,10 @@ export default function ObservationJournalPage() {
   /** 근거에서 뺀 기록. 기본은 기간 안 그 아이 기록 전부다. */
   const [left, setLeft] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  /** 반 전체 초안이 도는 중. 그동안 아이 · 기간을 바꾸면 반 전체 목록이 바뀐 채 도는 일이 된다. */
+  const [classBusy, setClassBusy] = useState(false);
+  // 만드는 동안 고르기를 잠근다 — 늦게 온 응답이 바뀐 선택을 덮지 않게 (하민 교차 검토 F4).
+  const locked = busy || classBusy;
   const [openId, setOpenId] = useState("");
 
   useEffect(() => {
@@ -257,7 +261,7 @@ export default function ObservationJournalPage() {
                             type="button"
                             className={`${ws.recordKid} ${none ? oj.kidNone : ""}`}
                             aria-pressed={c.id === childId}
-                            disabled={busy}
+                            disabled={locked}
                             onClick={() => {
                               setChildId(childId === c.id ? "" : c.id);
                               setLeft([]);
@@ -283,7 +287,7 @@ export default function ObservationJournalPage() {
                             type="button"
                             className={oj.chip}
                             aria-pressed={from === start && to === end}
-                            disabled={busy}
+                            disabled={locked}
                             onClick={() => pickPeriod([from, to])}
                           >
                             {label}
@@ -295,7 +299,7 @@ export default function ObservationJournalPage() {
                       <input
                         type="date"
                         aria-label="시작일"
-                        disabled={busy}
+                        disabled={locked}
                         onClick={(e) => openPicker(e.currentTarget)}
                         value={start}
                         max={end || today()}
@@ -308,7 +312,7 @@ export default function ObservationJournalPage() {
                       <input
                         type="date"
                         aria-label="종료일"
-                        disabled={busy}
+                        disabled={locked}
                         onClick={(e) => openPicker(e.currentTarget)}
                         value={end}
                         min={start}
@@ -340,7 +344,7 @@ export default function ObservationJournalPage() {
                               <input
                                 type="checkbox"
                                 checked={!left.includes(r.id)}
-                                disabled={busy}
+                                disabled={locked}
                                 onChange={(e) =>
                                   setLeft((prev) =>
                                     e.target.checked
@@ -388,6 +392,7 @@ export default function ObservationJournalPage() {
                 end={end}
                 classId={classId}
                 onOpen={setOpenId}
+                onBusy={setClassBusy}
                 onChanged={() => setReload((n) => n + 1)}
               />
             ) : (
@@ -407,7 +412,7 @@ export default function ObservationJournalPage() {
                   <ul className={ws.jrDocs}>
                     {mine.map((d) => (
                       <li key={d.id}>
-                        <button type="button" onClick={() => setOpenId(d.id)}>
+                        <button type="button" disabled={busy} onClick={() => setOpenId(d.id)}>
                           <b>{d.title}</b>
                           <small>
                             {d.start === d.end ? d.start : `${d.start} ~ ${d.end}`} ·{" "}
