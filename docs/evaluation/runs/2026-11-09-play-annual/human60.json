@@ -1,0 +1,422 @@
+[
+ {
+  "n": 1,
+  "cond": "c5",
+  "period": "3월~5월",
+  "play_name": "봄 그림 속으로 상상 여행해요",
+  "mark": "good"
+ },
+ {
+  "n": 2,
+  "cond": "c5",
+  "period": "9월~11월",
+  "play_name": "다람쥐의 솔방울은 어디 있나요?",
+  "mark": "mid"
+ },
+ {
+  "n": 3,
+  "cond": "c6",
+  "period": "3월~5월",
+  "play_name": "멈춰요! 상자 자동차가 지나가요",
+  "mark": "mid"
+ },
+ {
+  "n": 4,
+  "cond": "c1",
+  "period": "12월~2월",
+  "play_name": "호호 거울이 왜 뿌예질까요?",
+  "mark": "mid"
+ },
+ {
+  "n": 5,
+  "cond": "c1",
+  "period": "12월~2월",
+  "play_name": "겨울 그림 속으로 쏙 들어가요",
+  "mark": "bad"
+ },
+ {
+  "n": 6,
+  "cond": "c5",
+  "period": "6월~8월",
+  "play_name": "찰랑찰랑, 물을 옮겨 볼까요?",
+  "mark": "mid"
+ },
+ {
+  "n": 7,
+  "cond": "c6",
+  "period": "3월~5월",
+  "play_name": "작은 봄눈 속에는 무엇이 있을까요?",
+  "mark": "good"
+ },
+ {
+  "n": 8,
+  "cond": "c6",
+  "period": "9월~11월",
+  "play_name": "쏙쏙, 가을 열매는 무엇으로 옮길까요?",
+  "mark": "bad"
+ },
+ {
+  "n": 9,
+  "cond": "c5",
+  "period": "3월~5월",
+  "play_name": "우리 놀이길 약속을 만들어요",
+  "mark": "bad"
+ },
+ {
+  "n": 10,
+  "cond": "c6",
+  "period": "12월~2월",
+  "play_name": "오도독 솔방울은 무슨 말을 할까요?",
+  "mark": "bad"
+ },
+ {
+  "n": 11,
+  "cond": "c5",
+  "period": "6월~8월",
+  "play_name": "시원한 쉼터에 어서 오세요",
+  "mark": "good"
+ },
+ {
+  "n": 12,
+  "cond": "c5",
+  "period": "9월~11월",
+  "play_name": "살랑살랑 가을 바람을 그려요",
+  "mark": "good"
+ },
+ {
+  "n": 13,
+  "cond": "c6",
+  "period": "3월~5월",
+  "play_name": "살랑살랑 잎사귀 곁에서 쉬어요",
+  "mark": "bad"
+ },
+ {
+  "n": 14,
+  "cond": "c1",
+  "period": "9월~11월",
+  "play_name": "쏙쏙! 투호 화살을 던져 볼까요?",
+  "mark": "good"
+ },
+ {
+  "n": 15,
+  "cond": "c5",
+  "period": "12월~2월",
+  "play_name": "쌩쌩 겨울바람 소리가 달라요",
+  "mark": "mid"
+ },
+ {
+  "n": 16,
+  "cond": "c1",
+  "period": "9월~11월",
+  "play_name": "바스락 낙엽의 무늬가 궁금해요",
+  "mark": "good"
+ },
+ {
+  "n": 17,
+  "cond": "c1",
+  "period": "12월~2월",
+  "play_name": "파직파직 풍선에 왜 붙을까요?",
+  "mark": "good"
+ },
+ {
+  "n": 18,
+  "cond": "c6",
+  "period": "6월~8월",
+  "play_name": "주룩주룩 빗소리 노래 불러요",
+  "mark": "mid"
+ },
+ {
+  "n": 19,
+  "cond": "c6",
+  "period": "3월~5월",
+  "play_name": "토닥토닥, 장갑 인형에게 말해요!",
+  "mark": "mid"
+ },
+ {
+  "n": 20,
+  "cond": "c5",
+  "period": "12월~2월",
+  "play_name": "꽁꽁 얼음이 어떻게 달라질까요?",
+  "mark": "mid"
+ },
+ {
+  "n": 21,
+  "cond": "c5",
+  "period": "3월~5월",
+  "play_name": "알록달록, 우리 수집함을 열어요",
+  "mark": "bad"
+ },
+ {
+  "n": 22,
+  "cond": "c1",
+  "period": "6월~8월",
+  "play_name": "달콤한 여름 과일 가게 열까요?",
+  "mark": "good"
+ },
+ {
+  "n": 23,
+  "cond": "c5",
+  "period": "12월~2월",
+  "play_name": "태엽 자동차는 어떻게 달릴까요?",
+  "mark": "mid"
+ },
+ {
+  "n": 24,
+  "cond": "c5",
+  "period": "9월~11월",
+  "play_name": "포근포근 가을 쉼터에서 쉬어요",
+  "mark": "good"
+ },
+ {
+  "n": 25,
+  "cond": "c6",
+  "period": "6월~8월",
+  "play_name": "살랑살랑, 여름 잎처럼 춤춰요!",
+  "mark": "good"
+ },
+ {
+  "n": 26,
+  "cond": "c5",
+  "period": "6월~8월",
+  "play_name": "여름 안부를 끼적끼적 전해요",
+  "mark": "mid"
+ },
+ {
+  "n": 27,
+  "cond": "c6",
+  "period": "12월~2월",
+  "play_name": "포근한 말 한마디, 들려줄까요?",
+  "mark": "good"
+ },
+ {
+  "n": 28,
+  "cond": "c5",
+  "period": "3월~5월",
+  "play_name": "콩콩 꽃무늬가 또 나타났어요!",
+  "mark": "mid"
+ },
+ {
+  "n": 29,
+  "cond": "c1",
+  "period": "3월~5월",
+  "play_name": "친구랑 어떤 길을 이어 볼까요?",
+  "mark": "mid"
+ },
+ {
+  "n": 30,
+  "cond": "c1",
+  "period": "12월~2월",
+  "play_name": "겨울 그림에서 어떤 느낌이 나나요?",
+  "mark": "bad"
+ },
+ {
+  "n": 31,
+  "cond": "c1",
+  "period": "3월~5월",
+  "play_name": "친구야, 내 편지가 도착했어요",
+  "mark": "mid"
+ },
+ {
+  "n": 32,
+  "cond": "c1",
+  "period": "3월~5월",
+  "play_name": "우리 가족 인형은 무슨 말을 할까요?",
+  "mark": "good"
+ },
+ {
+  "n": 33,
+  "cond": "c1",
+  "period": "6월~8월",
+  "play_name": "찰칵 집게로 바다를 지켜 볼까요?",
+  "mark": "good"
+ },
+ {
+  "n": 34,
+  "cond": "c6",
+  "period": "9월~11월",
+  "play_name": "바스락 낙엽 속엔 무엇이 보일까요?",
+  "mark": "good"
+ },
+ {
+  "n": 35,
+  "cond": "c5",
+  "period": "6월~8월",
+  "play_name": "여름 그림책 다음 장엔 누가 올까요?",
+  "mark": "good"
+ },
+ {
+  "n": 36,
+  "cond": "c6",
+  "period": "12월~2월",
+  "play_name": "거울아 내가 좋아하는 나를 봐요",
+  "mark": "good"
+ },
+ {
+  "n": 37,
+  "cond": "c6",
+  "period": "9월~11월",
+  "play_name": "바스락 가을 보물 이야기를 들어요",
+  "mark": "mid"
+ },
+ {
+  "n": 38,
+  "cond": "c5",
+  "period": "12월~2월",
+  "play_name": "여보세요, 겨울 이야기를 들려줘요",
+  "mark": "bad"
+ },
+ {
+  "n": 39,
+  "cond": "c1",
+  "period": "12월~2월",
+  "play_name": "짹짹, 겨울 새는 무엇을 먹나요?",
+  "mark": "bad"
+ },
+ {
+  "n": 40,
+  "cond": "c6",
+  "period": "12월~2월",
+  "play_name": "콜록! 그림책 친구를 어떻게 도울까요?",
+  "mark": "bad"
+ },
+ {
+  "n": 41,
+  "cond": "c1",
+  "period": "3월~5월",
+  "play_name": "내 마음은 어떤 표정을 지을까요?",
+  "mark": "bad"
+ },
+ {
+  "n": 42,
+  "cond": "c1",
+  "period": "12월~2월",
+  "play_name": "팔랑팔랑, 어떤 눈송이가 될까요?",
+  "mark": "bad"
+ },
+ {
+  "n": 43,
+  "cond": "c6",
+  "period": "6월~8월",
+  "play_name": "둥둥 찰찰, 어느 나라 소리죠?",
+  "mark": "mid"
+ },
+ {
+  "n": 44,
+  "cond": "c6",
+  "period": "3월~5월",
+  "play_name": "쓱쓱 그림 뒤엔 뽀득뽀득해요",
+  "mark": "mid"
+ },
+ {
+  "n": 45,
+  "cond": "c5",
+  "period": "12월~2월",
+  "play_name": "오늘 겨울옷은 무엇을 입을까요?",
+  "mark": "bad"
+ },
+ {
+  "n": 46,
+  "cond": "c6",
+  "period": "3월~5월",
+  "play_name": "우리 놀이에 어떤 간판을 달까요?",
+  "mark": "bad"
+ },
+ {
+  "n": 47,
+  "cond": "c6",
+  "period": "9월~11월",
+  "play_name": "바스락 낙엽아, 무슨 말을 하니?",
+  "mark": "bad"
+ },
+ {
+  "n": 48,
+  "cond": "c5",
+  "period": "6월~8월",
+  "play_name": "초록 잎 친구, 목이 마른가요?",
+  "mark": "bad"
+ },
+ {
+  "n": 49,
+  "cond": "c1",
+  "period": "6월~8월",
+  "play_name": "여름밤에는 어떤 이야기가 숨어요?",
+  "mark": "mid"
+ },
+ {
+  "n": 50,
+  "cond": "c6",
+  "period": "12월~2월",
+  "play_name": "우리 겨울집, 함께 의논해요",
+  "mark": "bad"
+ },
+ {
+  "n": 51,
+  "cond": "c5",
+  "period": "6월~8월",
+  "play_name": "반짝반짝 여름빛을 찾아요",
+  "mark": "good"
+ },
+ {
+  "n": 52,
+  "cond": "c1",
+  "period": "9월~11월",
+  "play_name": "바스락 낙엽은 무엇이 다를까요?",
+  "mark": "mid"
+ },
+ {
+  "n": 53,
+  "cond": "c1",
+  "period": "3월~5월",
+  "play_name": "친구와 머물 곳을 지어볼까요?",
+  "mark": "mid"
+ },
+ {
+  "n": 54,
+  "cond": "c1",
+  "period": "12월~2월",
+  "play_name": "꾸벅꾸벅 새해 인사를 나눠요",
+  "mark": "good"
+ },
+ {
+  "n": 55,
+  "cond": "c5",
+  "period": "12월~2월",
+  "play_name": "쫑긋쫑긋, 겨울 손님이 왔어요",
+  "mark": "good"
+ },
+ {
+  "n": 56,
+  "cond": "c1",
+  "period": "9월~11월",
+  "play_name": "울긋불긋 가을길 지도를 펼쳐요",
+  "mark": "mid"
+ },
+ {
+  "n": 57,
+  "cond": "c6",
+  "period": "3월~5월",
+  "play_name": "바스락 사각사각 종이가 노래해요!",
+  "mark": "bad"
+ },
+ {
+  "n": 58,
+  "cond": "c5",
+  "period": "3월~5월",
+  "play_name": "톡톡 졸졸 봄비 소리를 만들어요",
+  "mark": "bad"
+ },
+ {
+  "n": 59,
+  "cond": "c1",
+  "period": "12월~2월",
+  "play_name": "짹짹 겨울 새에게 무엇이 필요할까요?",
+  "mark": "bad"
+ },
+ {
+  "n": 60,
+  "cond": "c6",
+  "period": "9월~11월",
+  "play_name": "바스락 낙엽 길에서 움직여요",
+  "mark": "mid"
+ }
+]
