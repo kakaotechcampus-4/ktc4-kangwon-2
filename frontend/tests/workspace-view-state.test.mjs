@@ -259,10 +259,6 @@ const serverDocument = {
   sections: [],
   reviewNote: "기존 검토 메모",
 };
-const localDocuments = [
-  { ...serverDocument, id: "import-uuid", title: "로컬 증빙", origin: "import" },
-  { ...serverDocument, id: "plan-uuid", title: "로컬 계획안", kind: "annual", origin: "template" },
-];
 const LIST_FAILURE = "문서 목록을 다시 불러오지 못했어요.";
 const PLAN_FAILURE = "계획안 서버 오류";
 const annualPlan = {
@@ -278,7 +274,6 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 function documentsHarness({
   items = [],
-  local = [],
   fail = false,
   plans = [],
   planFail = false,
@@ -322,17 +317,8 @@ function documentsHarness({
     "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
     "next/link": { default: "link", __esModule: true },
     "@/lib/workspace/model": workspaceModel,
-    "@/lib/workspace/store": {
-      useWorkspace: () => ({
-        data: {
-          documents: local,
-          observations: [],
-          templates: [],
-          criteria: [],
-        },
-        error: "",
-      }),
-    },
+    // 보관함은 브라우저 저장소를 읽지 않는다. 옮기지 못한 예전 증빙 건수의 열쇠만 쓴다.
+    "@/lib/workspace/store": { DROPPED_IMPORTS: "saessak.legacyImportsDropped" },
     "@/lib/api/client": { isUnauthenticated: () => false, invalidFields },
     "@/lib/api/records": { listRecords: async () => [] },
     "@/lib/api/documents": {
@@ -462,11 +448,9 @@ function documentsHarness({
   };
 }
 
-test("문서 목록 재조회 실패는 기존 목록·선택 문서·로컬 문서를 유지하고 재시도할 수 있다", async () => {
-  const page = documentsHarness({ items: [serverDocument], local: localDocuments });
-  // 로컬 증빙은 바로 있으니 일지를 기다리지 않고 먼저 그린다.
-  assert.match(page.text(), /일지를 불러오고 있어요/);
-  assert.ok(page.text().includes(localDocuments[0].title));
+test("문서 목록 재조회 실패는 기존 목록·선택 문서를 유지하고 재시도할 수 있다", async () => {
+  const page = documentsHarness({ items: [serverDocument] });
+  assert.match(page.text(), /문서 목록을 불러오고 있어요/);
   await page.mount();
   page.button(serverDocument.title).props.onClick();
   await settle();
@@ -477,7 +461,7 @@ test("문서 목록 재조회 실패는 기존 목록·선택 문서·로컬 문
   await before.props.server.save([], "기존 검토 메모");
   await settle();
   page.render();
-  for (const doc of [serverDocument, localDocuments[0]]) assert.ok(page.text().includes(doc.title));
+  assert.ok(page.text().includes(serverDocument.title));
   assert.equal(page.editor().key, before.key);
   assert.strictEqual(page.editor().props.initial, before.props.initial);
   assert.equal(page.selection().get().active, serverDocument.id);
@@ -487,21 +471,6 @@ test("문서 목록 재조회 실패는 기존 목록·선택 문서·로컬 문
   await page.button("다시 시도").props.onClick();
   page.render();
   assert.equal(page.errors().length, 0);
-  assert.equal(page.editor().key, before.key);
-});
-
-test("서버 목록이 없어도 로컬 증빙은 오류와 함께 표시하고 선택할 수 있다", async () => {
-  const page = documentsHarness({ local: localDocuments, fail: true });
-  await page.mount();
-  assert.ok(page.text().includes(localDocuments[0].title));
-  // 브라우저에 남은 옛 계획안은 읽지 않는다 — 계획안은 서버 목록에서 온다.
-  assert.equal(page.text().includes(localDocuments[1].title), false);
-  page.button(localDocuments[0].title).props.onClick();
-  page.render();
-  const before = page.editor();
-  assert.strictEqual(before.props.initial, localDocuments[0]);
-  await page.button("다시 시도").props.onClick();
-  page.render();
   assert.equal(page.editor().key, before.key);
 });
 
