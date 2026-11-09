@@ -1,6 +1,6 @@
 """일과 임시본 — 쓰는 대로 서버에 두고, 떠날 때 · 일지 만들 때 근거로 올린다.
 
-ADR-082 · api-spec §10-1.
+ADR-084 · api-spec §10-1.
 """
 
 import datetime

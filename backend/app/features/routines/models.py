@@ -160,7 +160,7 @@ class RoutineWeather(Base):
 
 
 class RoutineDraft(Base):
-    """일과 기록 화면의 **임시본** — 반 × 날짜 하나 (ADR-082).
+    """일과 기록 화면의 **임시본** — 반 × 날짜 하나 (ADR-084).
 
     교사가 쓰는 대로 화면 줄 전체를 여기에 둔다. **일과 기록(`routine_records`)이 아니다** —
     근거로 올리는 것은 화면을 떠날 때와 「오늘 일지 만들기」 때다. 쓰는 대로 일과 기록에 쓰면
@@ -197,7 +197,7 @@ class RoutineDraft(Base):
 
 
 class ClassRoutineTemplate(Base):
-    """반 기본 일과표 — 반마다 하나 (ADR-084).
+    """반 기본 일과표 — 반마다 하나 (ADR-085).
 
     새 날을 열면 이 표로 줄을 깐다. 고정 줄(`weekday` 없음)과, 그 요일에만 더하는 줄
     (특별활동 — `weekday` 0=월 … 5=토)이 함께 들어 있다. 순서 · 시간 · 이름만 둔다.

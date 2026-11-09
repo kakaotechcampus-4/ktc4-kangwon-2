@@ -148,7 +148,7 @@ def list_routines(
     )
     items = [_response(row) for row in session.execute(query)]
     # 보육일지 화면은 반 하나 · 하루 하나로 부른다. 그때만 그날 날씨 · 임시본을 붙인다
-    # (ADR-081 · ADR-082).
+    # (ADR-081 · ADR-084).
     one_day = class_id is not None and date_from is not None and date_from == date_to
     if not one_day:
         return RoutineListResponse(items=items)
@@ -167,7 +167,7 @@ def _draft(draft: RoutineDraft) -> DraftResponse:
 
 @router.get("/template", response_model=TemplateResponse | None)
 def get_template(class_id: int, session: DbSession, user: CurrentUser) -> TemplateResponse | None:
-    """반 기본 일과표. 없으면 null (ADR-084)."""
+    """반 기본 일과표. 없으면 null (ADR-085)."""
     require_own_class(session, user, class_id, read_only=True)
     template = session.scalar(
         select(ClassRoutineTemplate).where(ClassRoutineTemplate.class_id == class_id)
@@ -193,7 +193,7 @@ def put_template(body: TemplateSave, session: DbSession, user: CurrentUser) -> T
 
 @router.put("/draft", response_model=DraftSaveResponse)
 def put_draft(body: DraftSave, session: DbSession, user: CurrentUser) -> DraftSaveResponse:
-    """하루치 임시본을 둔다. `promote` 면 같은 요청에서 그날 일과 기록으로 올린다 (ADR-082).
+    """하루치 임시본을 둔다. `promote` 면 같은 요청에서 그날 일과 기록으로 올린다 (ADR-084).
 
     `/{record_id}` 보다 먼저 둔다 — 뒤에 두면 「draft」를 기록 id 로 읽고 422 를 낸다.
     """

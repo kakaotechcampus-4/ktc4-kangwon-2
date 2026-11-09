@@ -70,7 +70,7 @@ class DayWeatherResponse(BaseModel):
 
 
 class DraftRow(BaseModel):
-    """임시본 한 줄 — 화면 줄 그대로다 (ADR-082).
+    """임시본 한 줄 — 화면 줄 그대로다 (ADR-084).
 
     이름이 비어도 받는다. 쓰다 만 줄이 있어도 임시본은 남아야 한다 — 올릴 때만 막는다.
     """
