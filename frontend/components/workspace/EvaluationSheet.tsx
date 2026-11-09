@@ -446,7 +446,7 @@ const IMPORT_LABEL = { dailyLog: "예전 보육일지 올리기", assessment: "�
  * 같은 쪽지를 여는데 카드마다 「자세히」·「이름 규칙」으로 달랐던 것을 하나로 맞췄다(11-09 문구 토론).
  */
 function foundLabel(result: DocResult | undefined) {
-  return result?.matched.length ? `찾은 파일 ${result.matched.length}개` : "이름 규칙";
+  return result?.matched.length ? `찾은 파일 ${result.matched.length}개` : "파일 이름 규칙";
 }
 
 /**
@@ -657,7 +657,7 @@ function DocCard({
               )}
             </>
           ) : (
-            // 찍힌 카드의 예전 서류 올리기는 쪽지 안에 숨어 있었다 — 쪽지 단추 이름이 「이름 규칙」이 되며 링크 줄로 옮겼다(11-09).
+            // 찍힌 카드의 예전 서류 올리기는 쪽지 안에 숨어 있었다 — 쪽지 단추 이름이 「파일 이름 규칙」이 되며 링크 줄로 옮겼다(11-09).
             <>
               <Link href={made.go.href} className={styles.linkButton}>
                 {made.go.label}
