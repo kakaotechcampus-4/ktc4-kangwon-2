@@ -3537,6 +3537,76 @@ indoor_hint   rain   sky 가 비 · 눈 · 비나 눈
 - 그날 일과 기록이 없어도 고를 수 있다 — 화면이 일과보다 날씨를 먼저 고를 수 있다
 - **미세먼지는 고르지 않는다.** 종이에 안 나간다
 
+### 임시본 — 쓰는 대로 두고, 떠날 때 근거로 올린다 (ADR-082)
+
+일과 기록 화면은 저장 단추가 없다. 교사가 쓰는 대로 **하루치 화면 줄 전체**를 임시본으로 둔다.
+임시본은 일과 기록이 아니다 — 일지의 근거가 되지 않는다. 화면을 떠날 때(날짜 · 반을 옮기거나 다른 화면으로 갈 때 ·
+창을 닫을 때)와 「오늘 일지 만들기」를 누를 때 `promote: true` 로 같은 요청이 그날 일과 기록으로 올린다.
+
+**`GET /api/routines?class_id=&from=D&to=D`** (반 하나 · 하루 하나)에 `draft` 가 붙는다. 없으면 `null` 이다.
+그 밖의 조회는 늘 `null` 이다.
+
+**`PUT /api/routines/draft`**
+
+```json
+{ "class_id": 1, "date": "2026-11-10", "expected_revision": 3,
+  "rows": [ { "id": 31, "start": "09:20", "end": "10:40", "name": "오전 실내놀이",
+              "plan": "", "execution": "블록 3개로 길을 만들었다.", "touched": true },
+            { "id": null, "start": "12:20", "end": "13:20", "name": "점심식사",
+              "plan": "", "execution": "", "touched": false } ],
+  "removed": [35], "promote": false }
+```
+
+```
+expected_revision  마지막으로 받은 draft.revision.  처음이면 0.  다르면 409 STALE_WRITE — 다른 기기 · 옛 탭이 덮지 않는다
+rows               화면 줄 그대로 40줄까지.  id 는 이미 올라간 일과 기록 번호(없으면 null)
+                   name 은 비어도 된다(쓰다 만 줄).  plan · execution 5,000자.  touched 는 교사가 손댄 줄
+removed            지우기로 표시한 일과 기록 번호.  올릴 때 지운다
+promote            true 면 같은 트랜잭션에서 그날 일과 기록으로 올린다
+```
+
+- **응답 `200`** — `{ "draft": { class_id, date, revision, rows, removed, promoted, updated_at },
+  "items": null, "review_impact": null }`. 저장할 때마다 `revision` 이 1 오르고 `promoted` 는 `false` 다
+- **올리면(`promote: true`)** `items` 에 그날 일과 기록 전부(목록 조회와 같은 순서), `review_impact` 에
+  위 「저장 뒤 재검토 안내」와 같은 모양이 온다. `draft.rows` 의 새 줄에는 만든 일과 기록 번호가 붙고 `removed` 는 빈다
+  - 올리는 줄은 **손댔거나(`touched`) 이미 올라간 줄 중 한 칸이라도 적힌 줄**이다. 깔아 두기만 한 줄 · 통째로 빈 줄은 안 올린다
+  - 새 줄은 만들고, 바뀐 줄은 바꾸고, `removed` 는 지운다. `position` 은 올리는 줄의 화면 순서(0부터)다.
+    분이 같으면 서버에 있던 초는 그대로 둔다. 번호가 이 반 · 이 날 기록이 아니면 새로 만든다
+  - 이름이 빈 줄 · 끝이 시작보다 빠른 줄이 있으면 **아무것도 바꾸지 않고** 422 `fields: ["rows.{i}.name" | "rows.{i}.end"]`
+  - 일과 기록을 바꾼 것과 같으므로 그 기록을 쓴 확정 일지는 `stale` 이다(위와 같은 규칙)
+- 남의 원 반은 404 · 승인받아 보기만 하는 반은 403(§2-2)
+- **정리.** 올라간 뒤 30일 지난 임시본만 지운다(`backend/scripts/prune_routine_drafts.py`). 올라가지 않은 임시본은 지우지 않는다
+
+### 새 날에 깔 줄 · 반 기본 일과표 (ADR-084)
+
+하루치 조회(반 하나 · 하루 하나)에서 **그날 일과 기록이 없으면** `preset` 이 붙는다. 화면이 이 줄을 깔아 둔다 —
+순서 · 시간 · 이름만 온다. 적은 글은 옮기지 않는다. 깔 것이 없거나 그날 줄이 있으면 `null` 이다(화면은 표준 10행을 깐다).
+
+```json
+"preset": { "source": "template", "from_date": null,
+            "rows": [ { "name": "등원 및 통합보육", "start": "07:30:00", "end": "09:00:00" } ] }
+```
+
+```
+source     template    반 기본 일과표 — 고정 줄 + 그 요일에 더할 줄, 시작 시간 순(시간 없는 줄은 뒤)
+           last_week   기본 일과표가 없고 지난주 같은 요일(7일 전)에 일과 기록이 있다
+           recent      둘 다 없고 그 앞 가장 최근 기록일이 있다
+from_date  last_week · recent 일 때 가져온 날.  template 이면 null
+```
+
+**`GET /api/routines/template?class_id=`** — 반 기본 일과표. 없으면 `null`.
+**`PUT /api/routines/template`** — 통째로 바꾼다. 이미 적은 날은 그대로다.
+
+```json
+{ "class_id": 1,
+  "rows": [ { "name": "등원 및 통합보육", "start": "07:30", "end": "09:00" },
+            { "name": "특별활동(체육)", "start": "10:40", "end": "11:00", "weekday": 0 } ] }
+```
+
+- `weekday` 가 없으면 날마다 까는 고정 줄, 있으면 그 요일에만 더하는 줄이다(0=월 … 5=토)
+- `name` 필수 · 50자. 둘 다 있으면 `start < end`. 40줄까지. 어기면 422
+- 응답 `200` — `{ class_id, rows, updated_at }`. 남의 원 반 404 · 보기만 하는 반 403
+
 ### 일일 보육일지를 만들 때 (§11)
 
 ```json
