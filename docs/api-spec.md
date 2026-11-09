@@ -4093,6 +4093,7 @@ GET    /api/documents/{id}/source-comparison                     일과 근거 �
 POST   /api/documents/{id}/reconfirm                              확정된 stale 일일 일지의 원자적 재확정
 DELETE /api/documents/{id}                                       204
 GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?format=hwp 면 .hwp · pdf 면 PDF).  확정본만.  아래 「내보내기」
+GET    /api/documents/export/bundle?ids=1&ids=2                  확정본 여러 장을 zip 하나로.  아래 「내보내기」 (ADR-083)
 ```
 
 **확정된 문서는 `PUT` · `DELETE` 둘 다 `ALREADY_CONFIRMED` 409 다.**
@@ -4201,6 +4202,12 @@ assessment    observation · dailyLog
 | `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` · `weeklyLog` 가 아니다.  `fields: ["kind"]` · `format` 이 `hwpx` · `hwp` · `pdf` 가 아니다.  `fields: ["format"]` · 사본이 없는 옛 관찰일지에 원의 지금 축에 없는 영역이 있다.  `fields` 에 `sources.{id}` |
 | `NOT_FOUND` | 404 | 없거나 남의 원 문서다 |
 | `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` · PDF 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
+
+**묶음 받기 — `GET /api/documents/export/bundle?ids=1&ids=2`** (ADR-083, 2026-11-10). 확정본 여러 장을 zip 하나로 준다.
+안의 파일은 한 장씩 받을 때와 같은 hwpx 이고 이름은 문서 제목이다(같으면 ` (2)`). **한 장이라도 내보낼 수 없으면
+(초안 · 근거가 바뀜 · 올린 원문 · 판정 밖 종류) 통째로 `GATE_BLOCKED` 409, `fields: ["ids.{id}"]`** — 몇 장이 빠졌는지
+모르는 묶음을 내면 안 된다. 화면이 내보낼 수 있는 것만 골라 보내고 빠진 수를 따로 알린다. 내 원 문서가 아니면 404 다.
+hwpx 여러 장을 한 파일로 잇지 않는다 — 양식을 다시 짜야 한다.
 
 ### 개인정보
 

@@ -12,11 +12,15 @@
 옛 문서만 예전처럼 원본 영역과 원의 지금 축을 읽는다.
 """
 
+import io
 import re
+import zipfile
 from datetime import date
 from pathlib import Path
+from typing import Annotated
+from urllib.parse import quote
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -53,13 +57,10 @@ WEEKDAYS = "월화수목금토일"
 _ROUTINE_HEAD = re.compile(r"^\[(.+?)(?:\s\d{1,2}:\d{2}~\d{1,2}:\d{2})?\]")
 
 
-@router.get("/{document_id}/export/hwp")
-def export_document(
-    document_id: int, session: DbSession, user: CurrentUser, format: Format = "hwpx"
-) -> Response:
-    doc = _own_document(session, user, document_id, read_only=True)
+def _blocked(doc: Document) -> HTTPException | None:
+    """내보낼 수 없는 문서면 그 이유. 한 장 받기와 묶음 받기가 같은 규칙을 쓴다."""
     if doc.kind not in ("observation", "dailyLog", "weeklyLog"):
-        raise _error(
+        return _error(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "VALIDATION_FAILED",
             "관찰일지와 보육일지만 내보낼 수 있습니다.",
@@ -67,33 +68,82 @@ def export_document(
         )
     if doc.origin == "IMPORT":
         # 올린 원문에는 해석 · 지원 칸이 없어 양식을 채울 수 없다. 원래 파일이 교사에게 있다.
-        raise _error(
+        return _error(
             status.HTTP_409_CONFLICT,
             "GATE_BLOCKED",
             "올린 원문은 한글 파일로 다시 만들지 않습니다. 원래 파일을 써 주세요.",
             ["origin"],
         )
     if doc.status != "CONFIRMED":
-        raise _error(
+        return _error(
             status.HTTP_409_CONFLICT, "GATE_BLOCKED", "확정된 문서만 내보낼 수 있습니다.", []
         )
     if doc.stale:
-        raise _error(
+        return _error(
             status.HTTP_409_CONFLICT,
             "GATE_BLOCKED",
             "근거 기록이 바뀌었습니다. 확정을 취소하고 다시 불러와 주세요.",
             ["stale"],
         )
+    return None
 
+
+def _content(session: Session, doc: Document) -> bytes:
     sources = _sources(session, doc.id)
     evaluation = _evaluation(session, doc)
     if doc.kind == "observation":
-        content = _observation(session, doc, sources, evaluation)
-    elif doc.kind == "weeklyLog":
-        content = _weekly_log(session, doc, sources, evaluation)
-    else:
-        content = _daily_log(session, doc, sources, evaluation)
-    return download(content, f"document-{doc.id}", doc.title, format)
+        return _observation(session, doc, sources, evaluation)
+    if doc.kind == "weeklyLog":
+        return _weekly_log(session, doc, sources, evaluation)
+    return _daily_log(session, doc, sources, evaluation)
+
+
+@router.get("/{document_id}/export/hwp")
+def export_document(
+    document_id: int, session: DbSession, user: CurrentUser, format: Format = "hwpx"
+) -> Response:
+    doc = _own_document(session, user, document_id, read_only=True)
+    if (error := _blocked(doc)) is not None:
+        raise error
+    return download(_content(session, doc), f"document-{doc.id}", doc.title, format)
+
+
+@router.get("/export/bundle")
+def export_bundle(
+    session: DbSession, user: CurrentUser, ids: Annotated[list[int], Query(min_length=1)]
+) -> Response:
+    """확정본 여러 장을 zip 하나로 (ADR-083). 안의 파일은 한 장씩 받을 때와 같은 hwpx 다.
+
+    **한 장이라도 못 내보내면 통째로 거절한다.** 몇 장이 빠졌는지 모르는 묶음을 내면 안 된다.
+    화면이 확정 · 근거 그대로인 문서만 골라 보내고 「n명은 빠졌어요」를 따로 알린다.
+    hwpx 여러 장을 한 파일로 잇지 않는다 — 양식을 다시 짜야 해서 성진님 몫이다.
+    """
+    docs = [_own_document(session, user, i, read_only=True) for i in dict.fromkeys(ids)]
+    if blocked := [f"ids.{d.id}" for d in docs if _blocked(d) is not None]:
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "GATE_BLOCKED",
+            "확정했고 근거가 그대로인 문서만 묶어 받을 수 있어요.",
+            blocked,
+        )
+    buffer = io.BytesIO()
+    used: set[str] = set()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as bundle:
+        for doc in docs:
+            name, n = f"{doc.title}.hwpx", 1
+            while name in used:
+                n += 1
+                name = f"{doc.title} ({n}).hwpx"
+            used.add(name)
+            bundle.writestr(name, _content(session, doc))
+    disposition = (
+        f"attachment; filename=\"documents.zip\"; filename*=UTF-8''{quote('일지 묶음.zip')}"
+    )
+    return Response(
+        buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": disposition},
+    )
 
 
 # 꼬리 칸 하나에 해석 + 지원이 함께 들어간다. 종이에서 둘을 가르는 머리말은

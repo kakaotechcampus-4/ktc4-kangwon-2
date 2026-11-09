@@ -1028,3 +1028,50 @@ def test_일일_보육일지_꼬리에_반_운영_특이사항_줄이_있다(db_
     db_session.flush()
     _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
     assert rows[-1] == ["반 운영 특이사항", ""]
+
+
+# ── 확정본 묶음 받기 (ADR-083) ───────────────────────────────────────────────
+
+
+def test_확정본_여러_장을_zip_하나로_받는다(db_session, mine):
+    klass, child = mine
+    friend = Child(class_id=klass.id, name="박친구", code="누리")
+    db_session.add(friend)
+    db_session.flush()
+    first = _document(
+        db_session, klass, child, [_observation(db_session, klass, child, 5, "자연탐구", "개미.")]
+    )
+    second = _document(
+        db_session, klass, friend, [_observation(db_session, klass, friend, 6, "의사소통", "말.")]
+    )
+    second.title = "박친구 관찰일지 (9월)"
+    db_session.flush()
+
+    response = client.get(
+        "/api/documents/export/bundle", params=[("ids", first.id), ("ids", second.id)]
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/zip"
+    names = _archive(response.content).namelist()
+    assert names == ["이가명 관찰일지 (9월).hwpx", "박친구 관찰일지 (9월).hwpx"]
+    # 한 장씩 받을 때와 같은 종이다.
+    single = client.get(f"/api/documents/{first.id}/export/hwp").content
+    assert _table(_archive(response.content).read(names[0])) == _table(single)
+
+
+def test_묶음에_초안이나_근거가_바뀐_문서가_있으면_통째로_거절한다(db_session, mine):
+    klass, child = mine
+    record = _observation(db_session, klass, child, 5, "자연탐구", "개미.")
+    done = _document(db_session, klass, child, [record])
+    stale = _document(db_session, klass, child, [record])
+    stale.stale = True
+    db_session.flush()
+
+    response = client.get(
+        "/api/documents/export/bundle", params=[("ids", done.id), ("ids", stale.id)]
+    )
+
+    # 몇 장이 빠졌는지 모른 채 받지 않게 한다 — 화면이 미리 빼고 「n명은 빠졌어요」를 알린다.
+    assert response.status_code == 409
+    assert response.json()["error"]["fields"] == [f"ids.{stale.id}"]
