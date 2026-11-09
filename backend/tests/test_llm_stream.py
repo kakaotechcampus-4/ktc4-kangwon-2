@@ -264,3 +264,21 @@ def test_close_delimited_response_keeps_socket_and_logs_usage(monkeypatch, usage
 
     assert result["choices"][0]["message"]["content"] == content
     assert usage_lines == ["llm_usage model=test-model prompt=120 completion=30 total=150"]
+
+
+def test_gateway_503_is_sent_once_more(monkeypatch, usage_lines):
+    """모델에 닿지 못한 503 만 한 번 더 — 두 번째 연결의 답을 쓴다."""
+    monkeypatch.setattr(llm, "RETRY_DELAY_SECONDS", 0)
+    statuses = iter((503, 200))
+    connections = _connection(monkeypatch, [*_sse("{}"), b"data: [DONE]\n\n"])
+    fake = llm.http.client.HTTPSConnection
+    real_init = fake.__init__
+
+    def init(self, host, port, timeout):
+        real_init(self, host, port, timeout)
+        self.response.status = next(statuses)
+
+    monkeypatch.setattr(fake, "__init__", init)
+
+    assert _post_stream()["lines"]
+    assert len(connections) == 2
