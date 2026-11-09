@@ -350,7 +350,7 @@ GET /health/ready    DB 까지 본다(SELECT 1).  배포 판정은 이쪽   200 
 | `my_access` | 뜻 |
 |---|---|
 | `OWNER` | 내가 만든 반 |
-| `OPEN` | 주인 없는 옛 반 |
+| `OPEN` | 주인 없는 반 — 교사가 없는 원의 반뿐이다. 옛 반은 그 원 첫 교사로 주인을 채웠다(ADR-068 §6) |
 | `APPROVED` | 주인이 열람을 승인함 |
 | `PENDING` | 요청을 기다리는 중 |
 | `REJECTED` | 요청이 거절됨 |

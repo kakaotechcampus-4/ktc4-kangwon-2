@@ -129,7 +129,10 @@ class Class(Base):
     teacher_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"),
         index=True,
-        comment="반 주인 — 반을 만든 계정(ADR-059). NULL 은 이 결정 전에 만든 옛 반이다",
+        comment=(
+            "반 주인 — 반을 만든 계정(ADR-059). 옛 반은 그 원 첫 교사로 채웠다(ADR-068 §6). "
+            "NULL 은 교사가 없는 원의 반이다"
+        ),
     )
     consent_confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
