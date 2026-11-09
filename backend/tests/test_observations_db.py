@@ -296,18 +296,54 @@ def test_날짜만_고쳐도_stale(db_session, chain):
     assert _stale(db_session, chain["docs"]) == [True, True, False]
 
 
-def test_영역_상황만_고치면_사실이_그대로라_stale_이_아니다(db_session, chain):
-    record = chain["record"]
-    update = {
-        "date": record["date"],
-        "domain": "의사소통",
-        "context": "실내",
-        "fact": record["fact"],
-    }
+def _snapshot(db_session, doc, record):
+    """만들 때 영역 · 상황을 찍은 사본으로 만든다 — 지금 생성 API 가 남기는 모양 (ADR-077)."""
+    for copy in db_session.query(DocumentSource).filter_by(document_id=doc.id):
+        copy.domain, copy.context = record["domain"], record["context"]
+    db_session.flush()
 
-    client.put(f"/api/observations/{record['id']}", json=update)
+
+def _keep(record, **changes):
+    return {k: record[k] for k in ("date", "domain", "context", "fact")} | changes
+
+
+# ADR-077 전에는 「영역 · 상황만 고치면 사실이 그대로라 stale 이 아니다」였다. 그런데 종이의 영역
+# 행이 원본을 따라 바뀌어, 옛 영역의 누리과정으로 쓴 배움 칸이 다른 행 아래로 나갔다.
+@pytest.mark.parametrize(
+    "changes", [{"domain": "의사소통"}, {"context": "실내"}], ids=["domain", "context"]
+)
+def test_영역이나_상황만_고쳐도_stale(db_session, chain, changes):
+    record = chain["record"]
+    _snapshot(db_session, chain["docs"][0], record)
+
+    assert client.put(f"/api/observations/{record['id']}", json=_keep(record, **changes)).is_success
+
+    assert _stale(db_session, chain["docs"]) == [True, True, False]
+
+
+def test_사본_그대로_다시_저장하면_stale_이_아니다(db_session, chain):
+    record = chain["record"]
+    _snapshot(db_session, chain["docs"][0], record)
+
+    assert client.put(f"/api/observations/{record['id']}", json=_keep(record)).is_success
 
     assert _stale(db_session, chain["docs"]) == [False, False, False]
+
+
+def test_영역_사본이_없는_옛_문서는_원본_영역이_바뀔_때만_stale(db_session, chain):
+    """채우기 규칙이 못 채운 사본(「다시 확인」)은 종이가 지금 원본 영역을 따른다.
+
+    상황은 옛 종이에 쓰이지 않았다.
+    그대로 다시 저장해도 stale 이 되면 교사가 손대지 않은 문서가 걸린다.
+    """
+    record = chain["record"]
+    url = f"/api/observations/{record['id']}"
+
+    assert client.put(url, json=_keep(record, context="실내")).is_success
+    assert _stale(db_session, chain["docs"]) == [False, False, False]
+
+    assert client.put(url, json=_keep(record, domain="의사소통")).is_success
+    assert _stale(db_session, chain["docs"]) == [True, True, False]
 
 
 def test_지우면_원본_없음이라_stale(db_session, chain):

@@ -60,13 +60,13 @@ def mine(db_session, teacher):
     return klass, child
 
 
-def _observation(session, klass, child, day, domain, fact):
+def _observation(session, klass, child, day, domain, fact, context=""):
     observation = Observation(
         class_id=klass.id,
         child_id=child.id,
         date=date(2026, 9, day),
         domain=domain,
-        context="",
+        context=context,
         fact=fact,
     )
     session.add(observation)
@@ -74,8 +74,22 @@ def _observation(session, klass, child, day, domain, fact):
     return observation
 
 
-def _document(session, klass, child, observations, *, kind="observation", status="CONFIRMED"):
-    """근거 사본과 사실 · 해석 · 지원을 갖춘 문서. `observations` 순서가 교사가 고른 순서다."""
+def _document(
+    session,
+    klass,
+    child,
+    observations,
+    *,
+    kind="observation",
+    status="CONFIRMED",
+    snapshot=True,
+):
+    """근거 사본과 사실 · 해석 · 지원을 갖춘 문서. `observations` 순서가 교사가 고른 순서다.
+
+    `snapshot` 이면 생성 API 처럼 영역 · 상황 · 원의 지금 축을 사본으로 찍는다(ADR-077).
+    끄면 그 칸이 생기기 전의 옛 문서(「다시 확인」)다.
+    """
+    axis = session.get(Center, klass.center_id).observation_axis if snapshot else None
     doc = Document(
         kind=kind,
         title="이가명 관찰일지 (9월)",
@@ -90,6 +104,7 @@ def _document(session, klass, child, observations, *, kind="observation", status
         generation_rule_id="observation-draft",
         generation_rule_version="v1",
         review_note="",
+        observation_axis=axis,
     )
     session.add(doc)
     session.flush()
@@ -102,6 +117,8 @@ def _document(session, klass, child, observations, *, kind="observation", status
                 class_id=klass.id,
                 child_id=child.id,
                 date=o.date,
+                domain=o.domain if snapshot else None,
+                context=o.context if snapshot else None,
                 text=o.fact,
             )
         )
@@ -174,11 +191,30 @@ def test_2축_원은_두_줄짜리_양식으로_나간다(db_session, mine):
     assert table["총평"] == [f"▸ 배움) {INTERPRETATION}", "", f"▸ 지원) {SUPPORT}"]
 
 
-def test_축을_바꾼_뒤_옛_축_기록을_내보내면_이유를_말한다(db_session, mine):
-    """조용히 버리면 교사가 고른 근거가 종이에서 사라진다."""
+def test_원이_축을_바꿔도_확정본은_만들_때의_축으로_나간다(db_session, mine):
+    """ADR-077 전에는 422 였다 — 종이가 원의 지금 축을 따라서 옛 확정본을 못 내보냈다."""
     klass, child = mine
     old = _observation(db_session, klass, child, 5, "자연탐구", "지렁이를 찾았다.")
     doc = _document(db_session, klass, child, [old])
+    db_session.get(Center, klass.center_id).observation_axis = "DAILY_PLAY_2"
+    db_session.flush()
+
+    response = client.get(f"/api/documents/{doc.id}/export/hwp")
+
+    assert response.status_code == 200, response.text
+    table = _table(response.content)
+    assert list(table)[-1] == "종합해석"
+    assert table["자연탐구"] == ["(9/5) 지렁이를 찾았다."]
+
+
+def test_축_사본이_없는_옛_문서는_원의_지금_축이라_옛_축_기록이면_이유를_말한다(db_session, mine):
+    """채우기 규칙이 못 채운 옛 문서는 예전 동작 그대로다.
+
+    조용히 버리면 교사가 고른 근거가 종이에서 사라진다.
+    """
+    klass, child = mine
+    old = _observation(db_session, klass, child, 5, "자연탐구", "지렁이를 찾았다.")
+    doc = _document(db_session, klass, child, [old], snapshot=False)
     db_session.get(Center, klass.center_id).observation_axis = "DAILY_PLAY_2"
     db_session.flush()
 
@@ -189,6 +225,19 @@ def test_축을_바꾼_뒤_옛_축_기록을_내보내면_이유를_말한다(db
     assert body["code"] == "VALIDATION_FAILED"
     assert "자연탐구" in body["message"]
     assert body["fields"] == [f"sources.{old.id}"]
+
+
+def test_상황이_있으면_관찰_칸에_괄호로_붙는다(db_session, mine):
+    klass, child = mine
+    record = _observation(
+        db_session, klass, child, 5, "자연탐구", "지렁이를 찾았다.", context="바깥놀이"
+    )
+    plain = _observation(db_session, klass, child, 9, "자연탐구", "개미를 보았다.")
+    doc = _document(db_session, klass, child, [record, plain])
+
+    table = _table(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+
+    assert table["자연탐구"] == ["(9/5) (바깥놀이) 지렁이를 찾았다.", "(9/9) 개미를 보았다."]
 
 
 def _hwp_rows(content: bytes, tmp_path) -> list[list[str]]:
@@ -246,11 +295,28 @@ def test_영역_행은_누리과정_순서로_고정이다(db_session, mine):
     ]
 
 
-def test_만든_뒤_고친_영역이_종이에_나간다(db_session, mine):
-    """영역만 고치면 사실은 그대로라 stale 이 아니다. 고친 영역 행에 들어가야 한다."""
+def test_종이의_영역_행은_만들_때의_사본이다(db_session, mine):
+    """ADR-077 전에는 고친 원본 영역을 따라 행이 옮겨 갔다. 배움 칸은 옛 영역으로 쓴 글이다.
+
+    API 로 고치면 문서가 stale 이 되어 내보내지 않는다.
+    여기는 DB 를 직접 바꿔 종이가 무엇을 읽는지만 본다.
+    """
     klass, child = mine
     record = _observation(db_session, klass, child, 5, "자연탐구", "블록으로 탑을 쌓았다.")
     doc = _document(db_session, klass, child, [record])
+    record.domain = "신체운동·건강"
+    db_session.flush()
+
+    table = _table(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+
+    assert table["자연탐구"] == ["(9/5) 블록으로 탑을 쌓았다."]
+    assert table["신체운동·건강"] == [""]
+
+
+def test_영역_사본이_없는_옛_문서는_원본_영역을_따른다(db_session, mine):
+    klass, child = mine
+    record = _observation(db_session, klass, child, 5, "자연탐구", "블록으로 탑을 쌓았다.")
+    doc = _document(db_session, klass, child, [record], snapshot=False)
     record.domain = "신체운동·건강"
     db_session.flush()
 
@@ -351,11 +417,13 @@ def test_관찰일지_일일_보육일지가_아니면_422(db_session, mine):
     assert response.json()["error"]["fields"] == ["kind"]
 
 
-def test_근거_관찰_기록이_사라졌으면_빼고_내보내지_않는다(db_session, mine):
+def test_영역_사본이_없는_옛_문서는_근거_기록이_사라졌으면_빼고_내보내지_않는다(db_session, mine):
+    """영역을 원본에서 읽어야 하는 옛 문서만이다. 사본이 있으면 원본 없이도 행을 안다 —
+    API 로 지우면 문서가 stale 이 되어 거기서 막힌다."""
     klass, child = mine
     kept = _observation(db_session, klass, child, 5, "자연탐구", "개미를 바라보았다.")
     gone = _observation(db_session, klass, child, 6, "의사소통", "개미 이야기를 했다.")
-    doc = _document(db_session, klass, child, [kept, gone])
+    doc = _document(db_session, klass, child, [kept, gone], snapshot=False)
     db_session.delete(gone)
     db_session.flush()
 

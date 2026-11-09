@@ -110,6 +110,121 @@ def llm_seen(monkeypatch):
     return seen
 
 
+# ── 만들 때 사본을 찍는다 ─────────────────────────────────────────────────────
+
+
+def test_만들_때_영역_상황_축을_사본으로_찍고_상세가_준다(sun):
+    me = _child(sun)
+    obs = _obs(sun, me, 5, "개미를 바라보았다.", context="모래놀이터")
+    plain = _obs(sun, me, 6, "지렁이를 찾았다.", domain="의사소통", context="")
+
+    res = _create(sun, me, [obs, plain])
+
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body["observation_axis"] == "NURI_5"
+    assert [(s["domain"], s["context"]) for s in body["sources"]] == [
+        ("자연탐구", "모래놀이터"),
+        ("의사소통", ""),
+    ]
+
+
+def test_원의_지금_축이_아닌_기록으로는_만들지_않는다(sun):
+    """양식에 그 영역 줄이 없다. 만들어 두면 확정한 뒤 내보낼 때야 막힌다."""
+    me = _child(sun)
+    old = _obs(sun, me, 5, "개미를 바라보았다.")
+    _set_axis(sun, "DAILY_PLAY_2")
+
+    res = _create(sun, me, [old])
+
+    assert res.status_code == 422
+    assert res.json()["error"]["fields"] == [f"sources.{old['id']}"]
+
+
+# ── S1 · S7 (재현 테스트를 뒤집은 것) ────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "changes", [{"domain": "신체운동·건강"}, {"context": "실내"}], ids=["domain", "context"]
+)
+def test_S1_확정본_근거의_영역이나_상황만_고쳐도_stale_이라_내보내지_않는다(sun, changes):
+    me = _child(sun)
+    obs = _obs(sun, me, 5, "개미를 바라보았다.")
+    doc_id = _create(sun, me, [obs]).json()["id"]
+    assert client.post(f"/api/documents/{doc_id}/confirm", json=ALL_CHECKED).status_code == 200
+
+    assert _put_obs(obs, **changes).status_code == 200
+
+    assert client.get(f"/api/documents/{doc_id}").json()["stale"] is True
+    res = client.get(f"/api/documents/{doc_id}/export/hwp")
+    assert res.status_code == 409
+    assert res.json()["error"]["fields"] == ["stale"]
+
+
+def test_S7_원이_축을_바꿔도_확정본은_만들_때의_양식으로_나간다(sun):
+    me = _child(sun)
+    obs = _obs(sun, me, 5, "개미를 바라보았다.")
+    doc_id = _create(sun, me, [obs]).json()["id"]
+    assert client.post(f"/api/documents/{doc_id}/confirm", json=ALL_CHECKED).status_code == 200
+
+    _set_axis(sun, "DAILY_PLAY_2")
+
+    assert client.get(f"/api/documents/{doc_id}/export/hwp").status_code == 200
+    assert client.get(f"/api/documents/{doc_id}").json()["observation_axis"] == "NURI_5"
+
+
+# ── refresh ─────────────────────────────────────────────────────────────────
+
+
+def test_refresh_는_영역_상황_사본도_새로_뜬다(sun):
+    me = _child(sun)
+    obs = _obs(sun, me, 5, "개미를 바라보았다.")
+    doc_id = _create(sun, me, [obs]).json()["id"]
+    assert _put_obs(obs, domain="신체운동·건강", context="실내").status_code == 200
+
+    res = client.post(f"/api/documents/{doc_id}/refresh")
+
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["stale"] is False
+    assert (body["sources"][0]["domain"], body["sources"][0]["context"]) == (
+        "신체운동·건강",
+        "실내",
+    )
+
+
+def test_refresh_는_축이_다른_원본이면_거절한다(sun):
+    """원이 축을 바꾼 뒤 옛 기록을 새 축 영역으로 고쳤다. 이 문서의 양식(5영역)에 그 줄이 없다."""
+    me = _child(sun)
+    obs = _obs(sun, me, 5, "개미를 바라보았다.")
+    doc_id = _create(sun, me, [obs]).json()["id"]
+    _set_axis(sun, "DAILY_PLAY_2")
+    assert _put_obs(obs, domain="놀이활동").status_code == 200
+
+    res = client.post(f"/api/documents/{doc_id}/refresh")
+
+    assert res.status_code == 409
+    assert res.json()["error"]["code"] == "GATE_BLOCKED"
+    assert res.json()["error"]["fields"] == [f"sources.{obs['id']}"]
+    assert client.get(f"/api/documents/{doc_id}").json()["stale"] is True
+
+
+def test_refresh_는_사본이_없는_옛_문서를_채운다(sun, db_session):
+    """「다시 확인」 문서는 refresh 로 지금 원본의 영역 · 상황과 원의 지금 축을 찍는다."""
+    me = _child(sun)
+    obs = _obs(sun, me, 5, "개미를 바라보았다.")
+    doc_id = _create(sun, me, [obs]).json()["id"]
+    copy = db_session.query(DocumentSource).filter_by(document_id=doc_id).one()
+    copy.domain = copy.context = None
+    db_session.get(Document, doc_id).observation_axis = None
+    db_session.flush()
+
+    body = client.post(f"/api/documents/{doc_id}/refresh").json()
+
+    assert body["observation_axis"] == "NURI_5"
+    assert (body["sources"][0]["domain"], body["sources"][0]["context"]) == ("자연탐구", "바깥놀이")
+
+
 # ── 마이그레이션 채우기 규칙 ─────────────────────────────────────────────────
 
 _MIGRATION = (
