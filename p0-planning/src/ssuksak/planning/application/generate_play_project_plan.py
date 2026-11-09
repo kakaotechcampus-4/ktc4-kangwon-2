@@ -6,6 +6,8 @@ approved yet), no repair, no select / edit / regenerate / confirm. A rejected pr
 
 from __future__ import annotations
 
+import random
+
 from ... import timing
 from dataclasses import dataclass
 from typing import Protocol
@@ -32,7 +34,9 @@ from ..domain.provenance import (
 from ..planner.contracts import ProposalRejectedError
 from ..planner.play_project import (
     PlayProjectProvider,
+    PlaySeed,
     build_play_project_request,
+    draw_play_seeds,
     parse_play_project_proposal,
     split_memo_reflected,
     validate_play_project,
@@ -82,6 +86,8 @@ class GeneratePlayProjectPlanCommand:
     avoid_play_names: tuple[str, ...] = ()  # other periods' plays in the same year
     # ADR-060: the teacher's request note, applied only inside the Rule range.
     teacher_memo: str = ""
+    # ADR-077: the Rule's per-candidate hints; when given, the period gets len(play_seeds) rows.
+    play_seeds: tuple[PlaySeed, ...] = ()
 
     def __post_init__(self) -> None:
         if normalize_teacher_memo(self.teacher_memo) != self.teacher_memo:
@@ -107,6 +113,29 @@ class GeneratePlayProjectPlan:
     def execute(self, command: GeneratePlayProjectPlanCommand) -> PlayProjectYearlyPlan:
         return self.generate_period(command)[0]
 
+    def draw_seeds(
+        self,
+        catalog_id: str,
+        catalog_version: str,
+        rng: random.Random,
+        layout: PlayProjectLayout = PLAY_PROJECT_LAYOUT_V0_2,
+    ) -> dict[str, tuple[PlaySeed, ...]]:
+        """The whole year's hints at once, so no two candidates share a central content (ADR-077)."""
+        return draw_play_seeds(
+            self._active_catalog(catalog_id, catalog_version),
+            [p.key for p in layout.periods],
+            layout.candidates_per_period,
+            rng,
+        )
+
+    def _active_catalog(self, catalog_id: str, catalog_version: str) -> CurriculumCatalog:
+        catalog = self._curriculum.get_catalog(catalog_id, catalog_version)
+        if catalog is None:
+            raise PlayProjectGenerationError("CURRICULUM_REFERENCE_NOT_FOUND")
+        if not catalog.is_active:
+            raise PlayProjectGenerationError("CURRICULUM_REFERENCE_NOT_ACTIVE")
+        return catalog
+
     def generate_period(
         self, command: GeneratePlayProjectPlanCommand
     ) -> tuple[PlayProjectYearlyPlan, tuple[str, ...]]:
@@ -116,13 +145,9 @@ class GeneratePlayProjectPlan:
         period = command.layout.period(command.period_key)
         if period is None:
             raise PlayProjectGenerationError("UNKNOWN_PERIOD")
-        catalog = self._curriculum.get_catalog(
+        catalog = self._active_catalog(
             command.curriculum_catalog_id, command.curriculum_catalog_version
         )
-        if catalog is None:
-            raise PlayProjectGenerationError("CURRICULUM_REFERENCE_NOT_FOUND")
-        if not catalog.is_active:
-            raise PlayProjectGenerationError("CURRICULUM_REFERENCE_NOT_ACTIVE")
 
         timing.phase("prompt")
         request = build_play_project_request(
@@ -132,6 +157,7 @@ class GeneratePlayProjectPlan:
             catalog=catalog,
             avoid_play_names=command.avoid_play_names,
             teacher_memo=command.teacher_memo,
+            play_seeds=command.play_seeds,
         )
         response = self._provider.generate_play_project(request)
         timing.phase("validate")
