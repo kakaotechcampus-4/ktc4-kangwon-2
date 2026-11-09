@@ -1,0 +1,227 @@
+"""문서는 만들 때의 입력을 사본으로 갖는다 — 영역 · 상황 · 영역 축 (ADR-077).
+
+종이 · 미리보기 · stale 판단이 원본 대신 사본을 본다. 실제 LLM 은 부르지 않는다 —
+`complete_json` 을 가짜로 바꿔 무엇이 나가는지만 잡는다.
+"""
+
+import importlib.util
+import json
+from datetime import UTC, date, datetime
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.features.centers.models import Center, Class
+from app.features.documents import draft as draft_module
+from app.features.documents.models import Document, DocumentSource
+from app.features.observations.models import Observation
+from app.main import app
+
+client = TestClient(app)
+ALL_CHECKED = {"checks": {"fact": True, "interpretation": True, "support": True}}
+SUPPORT = "다음에는 돋보기를 두고 함께 관찰해 보면 좋을 것 같다."
+
+
+@pytest.fixture(autouse=True)
+def _logged_in(db_session, teacher):
+    db_session.info["teacher"] = teacher
+
+
+@pytest.fixture
+def sun(db_session, teacher):
+    center = Center(
+        name="테스트어린이집", director_name="김원장", region_sido="강원", region_sigungu="춘천"
+    )
+    db_session.add(center)
+    db_session.flush()
+    teacher.center_id = center.id
+    klass = Class(
+        center_id=center.id,
+        name="햇살반",
+        school_year=2026,
+        age_min=4,
+        age_max=4,
+        teacher_name="김선생",
+        consent_confirmed_at=datetime(2026, 3, 2, tzinfo=UTC),
+    )
+    db_session.add(klass)
+    db_session.flush()
+    return klass
+
+
+def _child(klass, name="이서윤"):
+    res = client.post(f"/api/classes/{klass.id}/children", json={"name": name})
+    assert res.status_code == 201, res.text
+    return res.json()
+
+
+def _obs(klass, child, day, fact, domain="자연탐구", context="바깥놀이", month=9):
+    res = client.post(
+        "/api/observations",
+        json={
+            "class_id": klass.id,
+            "child_id": child["id"],
+            "date": f"2026-{month:02d}-{day:02d}",
+            "domain": domain,
+            "context": context,
+            "fact": fact,
+        },
+    )
+    assert res.status_code == 201, res.text
+    return res.json()
+
+
+def _create(klass, child, observations, month=9):
+    return client.post(
+        "/api/documents",
+        json={
+            "kind": "observation",
+            "class_id": klass.id,
+            "child_id": child["id"],
+            "start": f"2026-{month:02d}-01",
+            "end": f"2026-{month:02d}-30",
+            "source_ids": [o["id"] for o in observations],
+        },
+    )
+
+
+def _put_obs(obs, **changes):
+    body = {k: obs[k] for k in ("date", "domain", "context", "fact")} | changes
+    return client.put(f"/api/observations/{obs['id']}", json=body)
+
+
+def _set_axis(klass, axis):
+    res = client.put(f"/api/centers/{klass.center_id}/settings", json={"observation_axis": axis})
+    assert res.status_code == 200, res.text
+
+
+@pytest.fixture
+def llm_seen(monkeypatch):
+    """draft 가 LLM 에 넘기는 user 글을 잡는다. 해석은 `interpretation` 으로 바꿀 수 있다."""
+    seen = {"payloads": [], "interpretation": "작은 생물을 오래 지켜보며 자연에 관심을 보인다."}
+
+    def fake_complete_json(system_prompt, user_content, **_):
+        seen["payloads"].append(user_content)
+        return json.dumps({"해석": seen["interpretation"], "지원": SUPPORT}, ensure_ascii=False)
+
+    monkeypatch.setattr(draft_module, "is_mock", lambda: False)
+    monkeypatch.setattr(draft_module, "complete_json", fake_complete_json)
+    return seen
+
+
+# ── 마이그레이션 채우기 규칙 ─────────────────────────────────────────────────
+
+_MIGRATION = (
+    Path(__file__).resolve().parents[1]
+    / "alembic/versions/20261109_1200_6aca7868e15a_document_input_snapshot.py"
+)
+
+
+def _backfill():
+    spec = importlib.util.spec_from_file_location("snapshot_migration", _MIGRATION)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.backfill
+
+
+def _legacy(db_session, klass, child_id, rows, created=datetime(2026, 9, 10, tzinfo=UTC)):
+    """사본 칸이 생기기 전의 문서. `rows` 는 (영역, 원본 마지막 수정 시각, 사본 글) 목록이다."""
+    doc = Document(
+        kind="observation",
+        title="t",
+        class_id=klass.id,
+        child_id=child_id,
+        start_date=date(2026, 9, 1),
+        end_date=date(2026, 9, 30),
+        status="CONFIRMED",
+        origin="AI",
+        created_at=created,
+    )
+    db_session.add(doc)
+    db_session.flush()
+    for domain, updated, text in rows:
+        obs = Observation(
+            class_id=klass.id,
+            child_id=child_id,
+            date=date(2026, 9, 5),
+            domain=domain,
+            context="바깥놀이",
+            fact="개미를 바라보았다.",
+            updated_at=updated,
+        )
+        db_session.add(obs)
+        db_session.flush()
+        db_session.add(
+            DocumentSource(
+                document_id=doc.id,
+                source_kind="observation",
+                source_id=obs.id,
+                class_id=klass.id,
+                child_id=child_id,
+                date=obs.date,
+                text=text,
+            )
+        )
+    db_session.flush()
+    return doc
+
+
+def _snapshot_of(db_session, doc):
+    db_session.expire_all()
+    copies = db_session.query(DocumentSource).filter_by(document_id=doc.id).order_by("id")
+    return db_session.get(Document, doc.id).observation_axis, [
+        (c.domain, c.context) for c in copies
+    ]
+
+
+def test_채우기_규칙(sun, db_session):
+    child_id = _child(sun)["id"]
+    before = datetime(2026, 9, 9, 23, 58, tzinfo=UTC)  # 문서보다 2분 먼저
+    edge = datetime(2026, 9, 9, 23, 59, 30, tzinfo=UTC)  # 30초 먼저 — 1분 안이라 확실하지 않다
+    after = datetime(2026, 9, 11, tzinfo=UTC)
+    same = "개미를 바라보았다."
+
+    filled = _legacy(db_session, sun, child_id, [("자연탐구", before, same)])
+    play = _legacy(db_session, sun, child_id, [("놀이활동", before, same)])
+    mixed = _legacy(
+        db_session, sun, child_id, [("자연탐구", before, same), ("놀이활동", before, same)]
+    )
+    edited = _legacy(
+        db_session, sun, child_id, [("자연탐구", before, same), ("자연탐구", after, same)]
+    )
+    near = _legacy(db_session, sun, child_id, [("자연탐구", edge, same)])
+    differs = _legacy(db_session, sun, child_id, [("자연탐구", before, "옛 글")])
+
+    _backfill()(db_session.connection())
+
+    assert _snapshot_of(db_session, filled) == ("NURI_5", [("자연탐구", "바깥놀이")])
+    assert _snapshot_of(db_session, play) == ("DAILY_PLAY_2", [("놀이활동", "바깥놀이")])
+    # 영역이 두 축에 걸치면 축을 정하지 않는다.
+    assert _snapshot_of(db_session, mixed) == (
+        None,
+        [("자연탐구", "바깥놀이"), ("놀이활동", "바깥놀이")],
+    )
+    # 문서 뒤에 고친 원본은 만들 때 값을 모른다. 하나라도 모르면 축도 정하지 않는다.
+    assert _snapshot_of(db_session, edited) == (None, [("자연탐구", "바깥놀이"), (None, None)])
+    assert _snapshot_of(db_session, near) == (None, [(None, None)])
+    # 사본 글이 원본과 다르면(그 뒤 고쳤다가 되돌렸을 수도 있다) 채우지 않는다.
+    assert _snapshot_of(db_session, differs) == (None, [(None, None)])
+
+
+def test_채우기는_다시_돌려도_채운_값을_덮지_않는다(sun, db_session):
+    child_id = _child(sun)["id"]
+    doc = _legacy(
+        db_session,
+        sun,
+        child_id,
+        [("자연탐구", datetime(2026, 9, 1, tzinfo=UTC), "개미를 바라보았다.")],
+    )
+    backfill = _backfill()
+    backfill(db_session.connection())
+    db_session.query(Observation).update({"context": "실내"})
+    db_session.flush()
+
+    backfill(db_session.connection())
+
+    assert _snapshot_of(db_session, doc) == ("NURI_5", [("자연탐구", "바깥놀이")])
