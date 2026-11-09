@@ -115,7 +115,7 @@ export default function DocumentsPage() {
       docId: "",
     },
   );
-  // 로그인할 때 서버로 옮기지 못하고 지운 예전 증빙 건수(`moveLegacyImports`). 한 번만 알린다.
+  // 서버로 옮기지 못하고 지운 예전 증빙 건수(`moveLegacyImports`). 한 번만 알린다.
   const [dropped] = useClientState(() => {
     try {
       return Number(window.sessionStorage.getItem(DROPPED_IMPORTS)) || 0;
@@ -364,7 +364,7 @@ export default function DocumentsPage() {
       : candidates.filter((s) => selected.includes(s.id));
 
   // 보관함은 서버 목록만 그린다. 올린 서류(§11 「증빙 등록」)도 서버 목록에 섞여 온다 —
-  // 브라우저에 남았던 예전 증빙은 로그인할 때 서버로 옮기고 지운다(`moveLegacyImports`).
+  // 브라우저에 남았던 예전 증빙은 로그인 · 서비스 화면 진입 때 서버로 옮기고 지운다(`moveLegacyImports`).
   // 목록에는 sections · sources 가 없다 — 제목 · 종류 · 날짜 · 상태만 그린다 (§11).
   const entries = [
     ...serverDocs.map((d) => ({

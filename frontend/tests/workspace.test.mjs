@@ -338,6 +338,10 @@ test("브라우저 저장소에는 본문을 다시 쓰지 않는다 — 계획�
       },
     ],
   });
+  // 예전 증빙(IMPORT)은 서버로 옮기기 전까지 저장소에 그대로 둔다(`moveLegacyImports`). 화면에는 주지 않는다.
+  const stored = () =>
+    JSON.parse(box.value).documents.map((d) => [d.id, d.sections.length, d.title]);
+  const waiting = ["import", 1, "한별찬 관찰.hwp"];
   try {
     const data = readWorkspace();
     assert.deepEqual(data.observations, []);
@@ -347,7 +351,10 @@ test("브라우저 저장소에는 본문을 다시 쓰지 않는다 — 계획�
       data.documents.map((d) => [d.id, d.annualPlanId, d.sections.length, d.sources.length]),
       [["plan", 7, 0, 0]],
     );
-    assert.equal(box.value.includes("한별찬"), false);
+    assert.deepEqual(stored(), [waiting, ["plan", 0, "2026학년도 연간 보육계획안"]]);
+    const bodies = JSON.parse(box.value);
+    assert.deepEqual(bodies.observations, []);
+    assert.deepEqual(bodies.templates, []);
     // 다시 저장하는 길도 본문을 버린다.
     updateWorkspace((prev) => ({
       ...prev,
@@ -361,6 +368,11 @@ test("브라우저 저장소에는 본문을 다시 쓰지 않는다 — 계획�
     assert.deepEqual(
       readWorkspace().documents.map((d) => d.id),
       ["plan"],
+    );
+    // 다시 저장해도 옮기기를 기다리는 증빙은 지우지 않는다.
+    assert.deepEqual(
+      stored().find((d) => d[0] === "import"),
+      waiting,
     );
   } finally {
     delete globalThis.window;
@@ -451,7 +463,12 @@ test("예전 브라우저 증빙은 한 건씩 서버로 올리고, 못 올린 �
     delete globalThis.window;
     delete globalThis.localStorage;
   });
-  await moveLegacyImports();
+  window.dispatchEvent = () => {};
+  // 로그인한 채 새 버전을 열면 화면이 저장소를 먼저 읽는다. 읽기 · 저장이 증빙을 지우면 안 된다.
+  readWorkspace();
+  updateWorkspace((prev) => prev);
+  // 로그인 · 화면 진입이 겹쳐 두 번 불러도 한 건은 한 번만 올린다.
+  await Promise.all([moveLegacyImports(), moveLegacyImports()]);
   assert.deepEqual(sent, [
     ["ok.hwp", 3, 11, "한별찬이 웃었다.", ["ok", "daily", "lost"]],
     // 반 단위 문서는 아동 없이 보낸다.
@@ -463,6 +480,77 @@ test("예전 브라우저 증빙은 한 건씩 서버로 올리고, 못 올린 �
 });
 
 const ROSTER = [{ id: "c1", children: [{ id: "child1", name: "한별찬" }] }];
+
+test("망이 끊기거나 서버가 잠깐 못 받으면 예전 증빙을 지우지 않고 다음에 다시 옮긴다", async (t) => {
+  const workspaceKey = "saessak.workspace.v1:" + encodeURIComponent(fixtureEmail);
+  const linksKey =
+    "saessak.apiLinks.v1:" + API_STORAGE_CONTEXT + ":" + encodeURIComponent(fixtureEmail);
+  const legacy = (id) => ({
+    ...document(),
+    id,
+    title: id + ".hwp",
+    className: "햇살반",
+    childName: "",
+    origin: "import",
+    sources: [],
+    sections: [{ heading: "첨부 원문", body: "한별찬이 웃었다.", sourceIds: [] }],
+    createdAt: "2026-09-11T00:00:00.000Z",
+    updatedAt: "2026-09-11T00:00:00.000Z",
+    reviewNote: "",
+  });
+  const values = new Map([
+    [fixtureKey, fixtureAccount],
+    [linksKey, JSON.stringify({ classes: { c1: { id: 3 } }, children: { child1: 11 } })],
+    [
+      workspaceKey,
+      JSON.stringify({
+        version: 1,
+        observations: [],
+        templates: [],
+        criteria: [],
+        documents: [legacy("a"), legacy("b")],
+      }),
+    ],
+  ]);
+  const session = fixtureSession();
+  globalThis.window = {
+    sessionStorage: session,
+    localStorage: {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+      removeItem: (key) => values.delete(key),
+    },
+  };
+  globalThis.localStorage = window.localStorage;
+  const fetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = fetch;
+    delete globalThis.window;
+    delete globalThis.localStorage;
+  });
+  const left = () => JSON.parse(values.get(workspaceKey)).documents.map((d) => d.id);
+  for (const fail of [
+    async () => {
+      throw new TypeError("Failed to fetch");
+    },
+    async () => Response.json({ error: { code: "INTERNAL", message: "" } }, { status: 503 }),
+  ]) {
+    globalThis.fetch = fail;
+    await moveLegacyImports();
+    assert.deepEqual(left(), ["a", "b"]);
+    assert.equal(session.getItem(DROPPED_IMPORTS), null);
+  }
+});
+
+test("이미 로그인한 교사도 서비스 화면에 들어오면 예전 증빙을 옮긴다", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const gate = await readFile(
+    new URL("../components/auth/DemoSessionGate.tsx", import.meta.url),
+    "utf8",
+  );
+  // 반 · 아동 서버 번호가 있어야 올릴 수 있다 — 원 · 반이 준비된 뒤에만 부른다.
+  assert.match(gate, /roomReady\(\)\)\s*void moveLegacyImports\(\)/);
+});
 
 test("저장된 childName이 비어 있어도 서버 명단에서 화면용 이름을 찾는다", () => {
   const stored = { ...document(), childName: "" };

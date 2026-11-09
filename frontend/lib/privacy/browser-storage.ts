@@ -33,8 +33,8 @@ const PLAN_KINDS = new Set(["annual", "monthly", "weekly", "daily"]);
  * 브라우저 workspace 에서 본문을 뺀다 (ADR-013). 필드 이름만 지우면 제목 · 사실 · 본문 · 근거에 적힌
  * 실명이 그대로 남는다. 남기는 것은 계획안의 서버 ID 와 종류 · 반 · 기간 같은 설정뿐이다.
  *
- * `keepImports` 면 예전에 올린 서류(IMPORT)를 그대로 둔다 — 로그인할 때 서버로 옮기기 전까지만이다
- * (`moveLegacyImports`). 옮기고 나면 지운다.
+ * `keepImports` 면 예전에 올린 서류(IMPORT)를 그대로 둔다 — 서버로 옮기기 전까지만이다
+ * (`moveLegacyImports`). 옮기거나 못 옮긴 뒤 지우는 일은 그 함수가 한다.
  */
 export function withoutDocumentBodies(value: unknown, keepImports = false): Workspace {
   const data = (value && typeof value === "object" ? value : {}) as Partial<Workspace>;

@@ -142,9 +142,11 @@ function rememberSignIn(result: AuthResult): number | null {
   return result.user.center_id;
 }
 function finishSignIn(account: Account) {
+  // 옛 단일 계정 자료를 먼저 그 계정 키로 옮긴다. 정리가 먼저 돌면 계정을 모르는 공통 키의
+  // 예전 증빙이 서버로 옮겨 보기도 전에 지워진다.
+  migrateLegacyData(account);
   sanitizeClassSettingsStorage(account.email);
   sanitizeBrowserChildMetadata();
-  migrateLegacyData(account);
   window.sessionStorage.setItem("saessak.accountEmail", account.email);
 }
 function migrateLegacyData(account: Account) {

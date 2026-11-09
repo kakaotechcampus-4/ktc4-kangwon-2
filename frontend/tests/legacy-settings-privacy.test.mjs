@@ -267,6 +267,12 @@ test("legacy privacy: workspace bodies are dropped; account imports wait for the
     [["i1", "", name + "이 웃었다."]],
   );
   assert.deepEqual(JSON.parse(values.get("saessak.workspace.v1")).documents, []);
+  // 옛 단일 계정의 증빙은 그 계정으로 먼저 옮겨 두고 공통 키만 비운다 — 로그인 직후 서버로 올린다.
+  const mine = JSON.parse(values.get("saessak.workspace.v1:" + encodeURIComponent(EMAIL)));
+  assert.deepEqual(
+    mine.documents.map((d) => [d.id, d.childName, d.sections[0].body]),
+    [["i0", "", name + "이 웃었다."]],
+  );
   assert.equal(values.has("saessak.workspace.v1:broken"), false);
   assert.deepEqual(JSON.parse(tab.get("saessak.workspace.v1:tab")).documents, []);
 });

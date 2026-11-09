@@ -7,6 +7,7 @@ import {
   type SavedDocument,
   type Workspace,
 } from "./model";
+import { ApiError, MswTransportError } from "../api/client";
 import { importDocument, isRecordKind } from "../api/documents";
 import { accountStorageKey } from "../auth/demo-session";
 import { withoutDocumentBodies } from "../privacy/browser-storage";
@@ -67,22 +68,33 @@ export function parseWorkspace(raw: string | null): Workspace {
   return data as unknown as Workspace;
 }
 /**
- * 읽을 때도 쓸 때도 본문을 뺀다 (ADR-013). 예전에는 아동 칸 이름만 지우고 제목 · 사실 · 본문 ·
- * 근거를 그대로 다시 저장했다. 남는 것은 계획안 서버 ID 와 설정뿐이다.
+ * 저장소를 읽고, 본문을 뺀 모양으로 다시 저장한다 (ADR-013). 예전 증빙(IMPORT)은 남긴다 —
+ * 지우는 곳은 서버로 옮기는 `moveLegacyImports` 한 곳뿐이다. 여기서 지우면 한 번도 옮겨 보지
+ * 못한 증빙이 화면을 여는 것만으로 사라진다.
  */
-export function readWorkspace() {
-  const key = accountStorageKey(KEY);
+function readStored(key: string) {
   const raw = window.localStorage.getItem(key);
-  const data = withoutDocumentBodies(parseWorkspace(raw));
+  const data = withoutDocumentBodies(parseWorkspace(raw), true);
   if (raw !== null && raw !== JSON.stringify(data))
     window.localStorage.setItem(key, JSON.stringify(data));
   return data;
 }
+/**
+ * 읽을 때도 쓸 때도 본문을 뺀다 (ADR-013). 예전에는 아동 칸 이름만 지우고 제목 · 사실 · 본문 ·
+ * 근거를 그대로 다시 저장했다. 화면에 주는 것은 계획안 서버 ID 와 설정뿐이다.
+ */
+export function readWorkspace() {
+  return withoutDocumentBodies(readStored(accountStorageKey(KEY)));
+}
 export function updateWorkspace(update: (data: Workspace) => Workspace) {
-  const next = withoutDocumentBodies(update(readWorkspace()));
+  const key = accountStorageKey(KEY);
+  const stored = readStored(key);
+  const next = withoutDocumentBodies(update(withoutDocumentBodies(stored)));
+  // 옮기기를 기다리는 증빙은 화면이 고칠 수 없는 몫이라 그대로 붙여 둔다.
+  next.documents.push(...stored.documents.filter((d) => d.origin === "import"));
   const serialized = JSON.stringify(next);
   parseWorkspace(serialized);
-  window.localStorage.setItem(accountStorageKey(KEY), serialized);
+  window.localStorage.setItem(key, serialized);
   window.dispatchEvent(new Event(EVENT));
 }
 /** 옮기지 못하고 지운 예전 증빙 건수. 숫자만 둔다 — 사람을 식별하지 않는다. 보관함이 한 번 알린다. */
@@ -103,14 +115,38 @@ function importLegacy(doc: SavedDocument) {
   });
 }
 
+let moving: Promise<void> | null = null;
+
 /**
  * 예전에 이 브라우저에만 저장했던 증빙(IMPORT)을 서버로 옮긴다 (ADR-013).
  *
- * 로그인 · 원 복구 뒤에 한 번 부른다 — 반 · 아동 서버 번호가 그때 있다. 한 건씩 올리고 그때마다
- * 지운다. 중간에 끊겨도 다음 로그인에 같은 문서를 두 번 올리지 않는다. 못 올린 것도 지우고
- * 건수만 남긴다 — 실명이 든 본문을 브라우저에 계속 둘 수는 없다. 교사는 원본 파일로 다시 올린다.
+ * 로그인 · 원 복구 뒤에, 그리고 이미 로그인한 채 서비스 화면에 들어올 때(`DemoSessionGate`) 부른다 —
+ * 반 · 아동 서버 번호가 그때 있다. 한 건씩 올리고 그때마다 지운다. 중간에 끊겨도 다음에 같은 문서를
+ * 두 번 올리지 않는다. 못 올린 것도 지우고 건수만 남긴다 — 실명이 든 본문을 브라우저에 계속 둘 수는
+ * 없다. 교사는 원본 파일로 다시 올린다. 증빙을 지우는 곳(옮김 · 실패)은 여기 한 곳뿐이다.
+ *
+ * 겹쳐 불러도 한 번만 돈다. 같은 브라우저의 다른 탭과는 Web Locks 로 차례를 지킨다.
  */
-export async function moveLegacyImports() {
+export function moveLegacyImports(): Promise<void> {
+  if (moving) return moving;
+  const run: Promise<void> =
+    typeof navigator !== "undefined" && navigator.locks
+      ? navigator.locks.request<void>("saessak.moveLegacyImports", () => moveAll())
+      : moveAll();
+  const current = run.finally(() => {
+    moving = null;
+  });
+  moving = current;
+  return current;
+}
+function retryLater(e: unknown) {
+  return (
+    e instanceof TypeError ||
+    e instanceof MswTransportError ||
+    (e instanceof ApiError && (e.status >= 500 || e.status === 401 || e.status === 429))
+  );
+}
+async function moveAll() {
   const key = accountStorageKey(KEY);
   let pending: SavedDocument[] = [];
   try {
@@ -122,7 +158,9 @@ export async function moveLegacyImports() {
   for (const doc of pending) {
     try {
       await importLegacy(doc);
-    } catch {
+    } catch (e) {
+      // 망 끊김 · 서버 일시 장애 · 로그인 만료는 문서 탓이 아니다 — 지우지 않고 다음에 다시 옮긴다.
+      if (retryLater(e)) break;
       dropped += 1;
     }
     const data = JSON.parse(window.localStorage.getItem(key) ?? "{}");
