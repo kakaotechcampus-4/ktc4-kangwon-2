@@ -161,8 +161,12 @@ class GenerateWeeklyPlanCommand:
 
     # ADR-060: the teacher's request note, applied only inside the Rule range.
     teacher_memo: str = ""
+    # 2026-11-09 하민: candidate evidence ids earlier weeks of this month cited (repeats count).
+    prior_week_evidence: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        if type(self.prior_week_evidence) is not tuple or not all(type(ref) is str for ref in self.prior_week_evidence):
+            raise InvalidDomainValueError("prior_week_evidence must be a tuple of evidence ids")
         if type(self.activity_candidates) is not bool or type(self.indoor_play_candidates) is not bool or (self.indoor_play_candidates and not self.activity_candidates):
             raise InvalidDomainValueError("Indoor candidates require the activity candidate layout")
         if normalize_teacher_memo(self.teacher_memo) != self.teacher_memo:
@@ -292,6 +296,7 @@ class GenerateWeeklyPlan:
                 indoor_play_candidates=command.indoor_play_candidates,
                 teacher_memo=command.teacher_memo,
                 trends=usable_trends(optional_context),
+                prior_week_evidence=command.prior_week_evidence,
             )
             fingerprint = context.fingerprint
             try:
@@ -522,6 +527,7 @@ def llm_context(
     indoor_play_candidates: bool = False,
     teacher_memo: str = "",
     trends: tuple[TrendItem, ...] = (),  # ADR-072: generation only; regeneration passes none
+    prior_week_evidence: tuple[str, ...] = (),  # generation only; regeneration passes none
 ) -> WeeklyLlmContext:
     theme_cell = _only_cell(parent, THEME_KEY)
     linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)
@@ -547,6 +553,7 @@ def llm_context(
             store, classification_repository.get_classification(), parent, period.week_id, keys,
             focus_aware=linked, activity_candidates=activity_candidates, indoor_play_candidates=indoor_play_candidates,
             exclude_venue_bound=packet.curriculum is not None or linked,
+            prior_week_evidence=prior_week_evidence,
         )
     if linked and any(s.section_key == "indoor_alternative" for s in snapshot.sections) and not classified.get("indoor_alternative"):
         raise WeeklyApplicationError("weekly_reference_context_unavailable", "Eligible indoor method evidence is unavailable")
@@ -677,7 +684,7 @@ def _parent_cell(parent: MonthlyPlan, key: str, week_id: WeekId) -> MonthlyCell 
     return section.cell_for_week(week_id) or section.cell_for_week(None)
 
 
-def _classified_evidence(store, classification, parent, week_id, keys, *, focus_aware=False, activity_candidates=False, indoor_play_candidates=False, exclude_venue_bound=False) -> dict[str, tuple[RetrievedEvidence, ...]]:
+def _classified_evidence(store, classification, parent, week_id, keys, *, focus_aware=False, activity_candidates=False, indoor_play_candidates=False, exclude_venue_bound=False, prior_week_evidence=()) -> dict[str, tuple[RetrievedEvidence, ...]]:
     """W3c: evidence per classified Section; a Section with none is left out (not a target)."""
     focus = _parent_cell(parent, "focus", week_id)
     query = " ".join((_only_cell(parent, THEME_KEY).value, focus.value if focus is not None else ""))
@@ -690,6 +697,7 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
             ref.source_id for ref in parent_cell.evidence
             if ref.source_type is EvidenceSourceType.INSTITUTION_SAMPLE
         ) if parent_cell is not None and parent_cell.value.strip() else ()
+        candidates = activity_candidates and key == "group_activity" or indoor_play_candidates and key == "indoor_play"
         items = tuple(
             item for item in weekly_section_evidence(
                 store, classification, weekly_class=weekly_class,
@@ -697,7 +705,8 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
                 query_text=_only_cell(parent, THEME_KEY).value if activity_candidates and key == "group_activity" else query,
                 focus_text=focus.value if focus_aware and focus is not None and not (activity_candidates and key == "group_activity") else "",
                 sibling_focuses=tuple(c.value for c in _section_cells(parent, "focus") if c.value.strip()) if focus_aware else (),
-                by_activity_type=activity_candidates and key == "group_activity" or indoor_play_candidates and key == "indoor_play",
+                by_activity_type=candidates,
+                prior_week_refs=prior_week_evidence if candidates else (),
                 preferred_refs=preferred,
                 explicit_indoor_methods=focus_aware and key == "indoor_alternative",
                 exclude_venue_bound=exclude_venue_bound,

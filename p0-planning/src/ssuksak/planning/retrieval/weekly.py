@@ -113,8 +113,13 @@ def weekly_section_evidence(
     preferred_refs: tuple[str, ...] = (),
     explicit_indoor_methods: bool = False,
     exclude_venue_bound: bool = False,
+    prior_week_refs: tuple[str, ...] = (),
 ) -> tuple[RetrievedEvidence, ...]:
-    """query_text: the parent theme and this week's focus, for the Korean 2-gram score."""
+    """query_text: the parent theme and this week's focus, for the Korean 2-gram score.
+
+    prior_week_refs: evidence ids earlier weeks of the same month cited (repeats count).
+    They go last and fill only a shortfall, least-used first; none keeps today's result.
+    """
     classification.require_bound_to(store.content_sha256)
     records = [
         record for record in store.by_month(calendar_month)
@@ -148,8 +153,8 @@ def weekly_section_evidence(
             if title in seen:
                 continue
             seen.add(title)
-            if re.match(r"^\s*[【\[<][^】\]>]*$", item.record.text):
-                continue  # an incomplete extracted tag is not an activity title
+            if re.match(r"^\s*[【\[<][^】\]>]*[】\]>]?\s*$", item.record.text):
+                continue  # an incomplete or tag-only extracted text (「[절기놀이]」) is not an activity title
             kind = indoor_play_type(item.record) if weekly_class is WeeklySemanticClass.INDOOR_PLAY else activity_type(item.record)
             groups.setdefault(kind, []).append(item)
         ordered = []
@@ -158,4 +163,21 @@ def weekly_section_evidence(
                 if group:
                     ordered.append(group.pop(0))
     # Human Decision 2026-11-05(하민): for candidate pools the source cap orders, it does not cut (ADR-054).
-    return apply_source_diversity(ordered, top_k=top_k, institution_cap=institution_cap, fill=by_activity_type)
+    if not prior_week_refs:
+        return apply_source_diversity(ordered, top_k=top_k, institution_cap=institution_cap, fill=by_activity_type)
+    # 2026-11-09 하민: skip what earlier weeks used before the cap; fill a shortfall least-used first.
+    used = collections.Counter(prior_week_refs)
+    picked = apply_source_diversity(
+        [item for item in ordered if item.record_id not in used],
+        top_k=top_k, institution_cap=institution_cap, fill=by_activity_type,
+    )
+    if len(picked) < top_k:
+        have = {item.record_id for item in picked}
+        rest = sorted(
+            (item for item in apply_source_diversity(
+                ordered, top_k=len(ordered), institution_cap=institution_cap, fill=by_activity_type
+            ) if item.record_id not in have),
+            key=lambda item: used[item.record_id],
+        )
+        picked += tuple(rest[: top_k - len(picked)])
+    return picked

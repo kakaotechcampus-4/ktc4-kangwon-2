@@ -144,6 +144,23 @@ def test_candidate_pools_fill_leftover_slots_with_capped_sources_after_distinct_
     assert len(_search(records, top_k=20, by_activity_type=True)) == 8
 
 
+def test_earlier_weeks_evidence_goes_last_and_fills_a_shortfall_least_used_first():
+    # 2026-11-09 하민: skip what earlier weeks of the month used; fill only a shortfall.
+    records = tuple(_record(f"ev_{i}", text=f"가을 열매 쌓기 {i}", institution=f"I{i}") for i in range(1, 7))
+    today = _search(records, top_k=3, by_activity_type=True)
+    assert _search(records, top_k=3, by_activity_type=True, prior_week_refs=()) == today
+    assert _search(records, top_k=3, by_activity_type=True, prior_week_refs=tuple(today)) == [
+        r for r in _search(records, top_k=6, by_activity_type=True) if r not in today
+    ]
+    used = ("ev_1", "ev_1", "ev_2", "ev_3", "ev_4", "ev_5")  # ev_6 unused; ev_1 used twice
+    found = _search(records, top_k=4, by_activity_type=True, prior_week_refs=used)
+    assert found[0] == "ev_6" and "ev_1" not in found and len(found) == 4
+    # A tag-only title surfaced in the 11-09 live run once earlier weeks took the top of the pool.
+    tagged = records + (_record("ev_7", text="[절기놀이]", institution="I7"),
+                        _record("ev_8", text="【동시", institution="I8"))
+    assert {"ev_7", "ev_8"}.isdisjoint(_search(tagged, top_k=8, by_activity_type=True, prior_week_refs=used))
+
+
 def test_parent_citation_survives_top_k_without_bypassing_eligibility_or_source_cap():
     records = tuple(_record(f"ev_{i:02}", institution=f"I{i}") for i in range(12)) + (
         _record("ev_99", text="놀이터 약속", institution="parent"),

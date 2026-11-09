@@ -189,6 +189,41 @@ def _existing(session: Session, center_id: int, class_id: int, week: WeekId):
     )
 
 
+_CANDIDATE_SECTIONS = frozenset({"group_activity", "indoor_play"})
+
+
+def _prior_week_evidence(
+    session: Session, center_id: int, class_id: int, week: WeekId
+) -> tuple[str, ...]:
+    """같은 반 · 같은 달 앞 주차 주간계획안이 후보 칸에 쓴 기관 근거.
+
+    여러 주가 쓴 만큼 센다(2026-11-09 하민)."""
+    rows = session.execute(
+        select(Plan.plan_ref, Plan.week_id).where(
+            Plan.center_id == center_id,
+            Plan.kind == "weekly",
+            Plan.classroom_ref == str(class_id),
+            Plan.week_id.startswith(f"{week.target_month.value}-W"),
+        )
+    ).all()
+    repo = _weekly_repo(session, center_id)
+    refs: list[str] = []
+    for plan_ref, week_value in rows:
+        if WeekId(week_value).ordinal >= week.ordinal:
+            continue
+        plan = repo.get(PlanId(plan_ref))
+        if plan is None:
+            continue
+        refs.extend(
+            source.source_id
+            for cell in plan.cells + tuple(c.cell for c in plan.activity_candidates)
+            if cell.section_key in _CANDIDATE_SECTIONS
+            for source in cell.evidence
+            if source.source_type is EvidenceSourceType.INSTITUTION_SAMPLE
+        )
+    return tuple(refs)
+
+
 def _generation_error(error: MonthlyApplicationError):
     """원인은 `__cause__` 에 있다 — Core 가 provider 오류를 자기 것으로 감싼다(월간과 같다)."""
     cause = error.__cause__
@@ -241,6 +276,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     ).get(PlanId(parent_row.plan_ref))
     if parent.status.value != "CONFIRMED":
         raise _gate("월간계획안을 먼저 확정해주세요.")
+    prior_week_evidence = _prior_week_evidence(session, center_id, class_id, week)
     # 만들 때의 원 설정을 계획안에 복사한다 — 뒤에 설정을 바꿔도 이 계획안은 그대로다(§3-5).
     center = session.get(Center, center_id)
     saturday = center.weekly_saturday_enabled
@@ -280,6 +316,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
                 indoor_play_candidates=body.indoor_play_candidates,
                 teacher_memo=body.memo,
                 optional_context_names=(TREND_CONTEXT,),
+                prior_week_evidence=prior_week_evidence,
             )
         )
     except MonthlyApplicationError as error:
