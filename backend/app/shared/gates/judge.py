@@ -513,6 +513,11 @@ def read_issues(
         # 보기가 넷이라 「어긋남」을 골랐어도 확률이 0.5 아래일 수 있다. 고른 답이면 알린다.
         conflict = probs[CONFLICT] >= P_CONFLICT or verdict["choice"] == CONFLICT
         conflict = conflict or _noul(answers, f"{key}.반대") >= P_FLAG
+        # v5 — 부딪히는 기록을 jev 가 하나도 못 고르면 「기록과 다름」이라 말하지 않는다.
+        # 어느 기록과 다른지 교사에게 보여 줄 수 없고,
+        # 개발 세트(D · D2 · F)에서 이런 알림은 모두 틀렸다.
+        # 때 셈(아래)은 기록을 스스로 고르므로 따로 간다.
+        conflict = conflict and rec is not None
         claim = claims[i - 1] if i - 1 < len(claims) else None
         if claim is not None and sources:
             target = sources.get(answers[f"{key}.때"]["choice"])

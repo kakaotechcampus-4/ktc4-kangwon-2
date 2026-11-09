@@ -121,7 +121,7 @@ def test_change_needs_a_higher_bar_than_other_flags():
 
 
 def _conflicting(questions):
-    answers = _clear(questions)
+    answers = _clear(questions, {"근거": "r1"})
     for name in answers:
         if name.endswith(".대조"):
             answers[name] = {
@@ -176,3 +176,15 @@ def test_compared_or_several_weekdays_are_only_checked_to_exist():
     assert J.time_conflict(wrong, WEEK[1], None, WEEK) is WEEK[1]  # 화요일 기록이 없다
     days = J.time_claim("11월 2일과 4일에 공을 굴렸다.", WEEK)
     assert days.day is None and J.time_conflict(days, WEEK[2], None, WEEK) is None
+
+
+def test_conflict_without_a_record_is_not_flagged():
+    """v5 — 부딪히는 기록을 못 고른 「어긋남」은 띄우지 않는다(어느 기록인지 보여 줄 수 없다)."""
+    sentences = [("해석", "공을 굴렸다.")]
+    _state, questions = J.build_questions("관찰일지", sentences, {"r1": "공을 굴렸다"})
+    answers = _conflicting(questions)
+    assert [i.code for i in J.read_issues(sentences, answers, {"r1": 1}, None)] == [
+        "CONTRADICTS_SOURCE"
+    ]
+    answers["s1.근거"]["choice"] = "없음"
+    assert J.read_issues(sentences, answers, {"r1": 1}, None) == []

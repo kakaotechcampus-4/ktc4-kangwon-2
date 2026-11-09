@@ -351,6 +351,7 @@ def test_chosen_conflict_is_reported_even_below_half():
         "choice": J.CONFLICT,
         "probabilities": {J.CONFLICT: 0.4, J.SAME: 0.2, J.NEW_FACT: 0.2, J.INTERPRETATION: 0.2},
     }
+    answers["s1.근거"]["choice"] = "r1"
     assert [i.code for i in J.read_issues(sentences, answers, {"r1": 1}, None)] == [
         "CONTRADICTS_SOURCE"
     ]
