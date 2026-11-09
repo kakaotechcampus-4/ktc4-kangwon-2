@@ -196,6 +196,15 @@ def test_unsaved_sections_are_judged_but_not_saved(db_session, real):
     assert stored.body == INTERPRETATION
 
 
+def test_class_age_in_interpretation_passes_gate_two(db_session, real):
+    """#85 — 「만 4세」는 사실에 없어도 반 연령이면 2단에 걸리지 않는다. 반은 만 4세다."""
+    doc = _document(db_session)
+    edited = "만 4세답게 이가명은 블록 대신 퍼즐 놀이만 했다. 이가명은 끈기 있게 놀이에 머물렀다."
+    res = client.post(f"/api/documents/{doc.id}/verify", json={"sections": _sections(edited)})
+    assert res.status_code == 200, res.text
+    assert real  # 2단을 지나 3단까지 갔다
+
+
 def test_gate_one_and_two_run_first(db_session, real):
     doc = _document(db_session)
     res = client.post(f"/api/documents/{doc.id}/verify", json={"sections": _sections("짧다.")})
