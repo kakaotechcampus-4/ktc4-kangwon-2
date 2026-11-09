@@ -394,7 +394,12 @@ export const handlers = [
     if (!findCenter(id) || id !== currentCenterId()) return missing();
     const b = await body(request);
     if (!b) return bad("body");
-    const SETTING_KEYS = ["trends_enabled", "weekly_saturday_enabled", "observation_axis"];
+    const SETTING_KEYS = [
+      "trends_enabled",
+      "weekly_saturday_enabled",
+      "observation_axis",
+      "reflect_mark",
+    ];
     if (Object.keys(b).some((key) => !SETTING_KEYS.includes(key))) return bad("body");
     // **보낸 칸만 바꾼다.** 빈 요청은 아무것도 바꾸지 않는다.
     const patch: Parameters<typeof putCenterSettings>[1] = {};
@@ -407,6 +412,11 @@ export const handlers = [
       if (b.observation_axis !== "NURI_5" && b.observation_axis !== "DAILY_PLAY_2")
         return bad("observation_axis");
       patch.observation_axis = b.observation_axis;
+    }
+    if (b.reflect_mark !== undefined) {
+      if (b.reflect_mark !== "(반영)" && b.reflect_mark !== "(놀이반영)" && b.reflect_mark !== "")
+        return bad("reflect_mark");
+      patch.reflect_mark = b.reflect_mark;
     }
     if (!Object.keys(patch).length) return HttpResponse.json(findCenterSettings(id));
     return HttpResponse.json(putCenterSettings(id, patch));
