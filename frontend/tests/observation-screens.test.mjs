@@ -22,7 +22,8 @@ registerHooks({
   },
 });
 
-const { invalidFields } = await import("../lib/api/client.ts");
+const documents = await import("../lib/api/documents.ts");
+const { ApiError, invalidFields } = await import("../lib/api/client.ts");
 
 const require = createRequire(import.meta.url);
 const jsx = (type, props, key) => ({ type, props, key });
@@ -318,4 +319,203 @@ test("F11 관찰일지로 가는 길이 반을 들고 간다", async (t) => {
   view.open();
   const card = view.links().find((n) => textOf(n) === "이 기록으로 일지 만들기");
   assert.equal(card.props.href, "/records/journal?record=observation%3A1&class=class-a");
+});
+
+// ── 관찰일지 만들기 (ObservationJournalPage) ──────────────────────────────
+
+const SUMMARY = {
+  id: "document:1",
+  childId: "kid-1",
+  title: "김하늘 관찰일지",
+  start: "2026-11-02",
+  end: "2026-11-06",
+  status: "draft",
+  origin: "ai",
+  stale: false,
+};
+
+function journalPage(t, { search = "", docs = [], records = [] } = {}) {
+  browser(t, search);
+  const app = host();
+  const asked = [];
+  const Page = compile("../components/workspace/ObservationJournalPage.tsx", {
+    ...common(app.react),
+    "@/lib/api/records": {
+      listRecords: async (classId) => {
+        asked.push(classId);
+        return records;
+      },
+    },
+    // 만드는 중에 멈춰 둔다 — 그동안 화면이 무엇을 잠그는지 본다.
+    "@/lib/api/documents": {
+      createDocument: () => new Promise(() => {}),
+      listDocuments: async () => docs,
+    },
+    "@/lib/api/onboarding": { classServerId: () => 3 },
+    "@/lib/workspace/child-mark": { markFor: () => 0, weekStart: () => "2026-11-09" },
+    "./WorkspaceUI": {
+      WorkspacePage: "page",
+      Empty: "empty",
+      Message: "message",
+      useClasses: () => ROOMS,
+      ws: {},
+    },
+    "./ObservationJournalEditor": { default: "journal-editor" },
+    "./use-server-document": { useServerDocument: () => ({ status: "loading" }) },
+    "./RecordsPage": { openPicker: () => {} },
+  }).default;
+  return { ...app.mount(Page), asked };
+}
+
+test("F7 초안을 만드는 동안 아이 · 기간 · 근거를 고를 수 없다", async (t) => {
+  const view = journalPage(t, {
+    search: "?child=kid-1",
+    records: [{ ...RECORD, childId: "kid-1", date: TODAY }],
+  });
+  await view.flush();
+  const controls = () =>
+    view
+      .nodes()
+      .filter(
+        (n) => (n.type === "button" && n.props["aria-pressed"] !== undefined) || n.type === "input",
+      );
+  assert.ok(controls().length >= 5, "아이 둘 · 날짜 둘 · 근거 하나");
+  assert.ok(controls().every((n) => !n.props.disabled));
+  // 만들기 요청은 끝나지 않는다 — 기다리지 않고 그 사이 화면을 본다.
+  view.button("초안 만들기").props.onClick();
+  view.render();
+  assert.ok(controls().every((n) => n.props.disabled));
+});
+
+test("F10 올린 서류(IMPORT)는 관찰일지 목록에 두지 않는다", async (t) => {
+  const view = journalPage(t, {
+    search: "?child=kid-1",
+    docs: [SUMMARY, { ...SUMMARY, id: "document:2", title: "올린 관찰기록", origin: "import" }],
+  });
+  await view.flush();
+  assert.match(view.text(), /김하늘 관찰일지/);
+  assert.doesNotMatch(view.text(), /올린 관찰기록/);
+});
+
+test("F11 주소의 class 로 그 반을 연다", async (t) => {
+  const view = journalPage(t, { search: "?class=class-b&child=kid-9" });
+  await view.flush();
+  assert.deepEqual(view.asked, ["class-b"]);
+  assert.ok(view.button("이달"), "그 반 아이가 나온다");
+});
+
+test("F15 확정본이 stale 이면 목록에 둘 다 보인다", async (t) => {
+  const view = journalPage(t, {
+    search: "?child=kid-1",
+    docs: [{ ...SUMMARY, status: "confirmed", stale: true }],
+  });
+  await view.flush();
+  assert.match(view.text(), /확정 · 다시 확인 필요/);
+});
+
+// ── 관찰일지 편집기 (ObservationJournalEditor) ─────────────────────────────
+
+const DOC = {
+  id: "document:1",
+  kind: "observation",
+  title: "김하늘 관찰일지",
+  className: "햇살반",
+  childName: "김하늘",
+  start: "2026-11-02",
+  end: "2026-11-02",
+  status: "draft",
+  origin: "ai",
+  sections: [
+    { heading: "사실", body: "개미를 오래 보았다.", sourceIds: ["observation:1"] },
+    { heading: "해석", body: "작은 생물에 관심이 많다.", sourceIds: ["observation:1"] },
+    { heading: "지원", body: "돋보기를 놀이터에 둔다.", sourceIds: ["observation:1"] },
+  ],
+  sources: [
+    { id: "observation:1", date: "2026-11-02", text: "개미를 오래 보았다.", domain: "자연탐구" },
+  ],
+};
+
+function editor(t, { initial = DOC, save, refresh } = {}) {
+  browser(t);
+  const app = host();
+  const calls = [];
+  const modules = { ...common(app.react), "./WorkspaceUI": { Message: "message", ws: {} } };
+  const Editor = compile("../components/workspace/ObservationJournalEditor.tsx", {
+    ...modules,
+    "@/lib/api/documents": documents,
+    "@/lib/api/client": { invalidFields },
+    "@/components/plan-generator/AnnualFrame": { EXPORTS: {}, FileLogo: "file-logo" },
+    "@/lib/hooks/use-hwpx-download": {
+      useHwpxDownload: () => ({ exporting: false, download: async () => {} }),
+    },
+    "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
+    "./document-selection": { serverIssues: () => [] },
+    "./WorkspaceViewState": compile("../components/workspace/WorkspaceViewState.tsx", modules),
+  }).default;
+  const server = {
+    stale: true,
+    pending: false,
+    save: async (sections) => {
+      calls.push("save");
+      return save ? save(sections) : { ...initial, sections };
+    },
+    refresh: async () => {
+      calls.push("refresh");
+      return refresh ?? initial;
+    },
+  };
+  const view = app.mount(Editor, { initial, server, domains: DOMAINS });
+  const pad = (heading) => view.nodes().find((n) => n.props["aria-label"] === `${heading} 내용`);
+  return { ...view, calls, pad };
+}
+
+test("F9 저장 안 한 해석이 있으면 반영 전에 묻는다 — 저장하고 반영", async (t) => {
+  const view = editor(t);
+  view.type(view.pad("해석"), "고치던 해석");
+  await view.press("바뀐 근거 반영하기");
+  assert.deepEqual(view.calls, [], "묻기 전에는 아무것도 보내지 않는다");
+  await view.press("저장하고 반영");
+  assert.deepEqual(view.calls, ["save", "refresh"]);
+});
+
+test("F9 편집 버리고 반영 · 고친 게 없으면 바로 반영", async (t) => {
+  const view = editor(t);
+  view.type(view.pad("해석"), "고치던 해석");
+  await view.press("바뀐 근거 반영하기");
+  await view.press("편집 버리고 반영");
+  assert.deepEqual(view.calls, ["refresh"]);
+  assert.equal(view.pad("해석").props.value, "작은 생물에 관심이 많다.");
+
+  await view.press("바뀐 근거 반영하기");
+  assert.deepEqual(view.calls, ["refresh", "refresh"]);
+});
+
+test("F12 근거 쪽지와 출력 미리보기가 서버가 준 영역을 쓴다", async (t) => {
+  const draft = editor(t);
+  assert.match(draft.text(), /11\/2\(월\) · 자연탐구/);
+  const done = editor(t, { initial: { ...DOC, status: "confirmed" } });
+  const row = done.nodes().find((n) => n.type === "tr" && textOf(n).startsWith("자연탐구"));
+  assert.match(textOf(row), /\(11\/2\) 개미를 오래 보았다\./);
+});
+
+test("F13 서버가 짚은 공책(sections.해석)을 표시한다", async (t) => {
+  const view = editor(t, {
+    save: () => {
+      throw new ApiError(422, {
+        error: {
+          code: "VALIDATION_FAILED",
+          message: "해석에 기록에 없는 숫자가 있어요.",
+          fields: ["sections.해석"],
+        },
+      });
+    },
+  });
+  view.type(view.pad("해석"), "개미를 열 번 보았다.");
+  await view.press("초안 저장");
+  assert.equal(view.pad("해석").props["aria-invalid"], true);
+  assert.equal(view.pad("지원").props["aria-invalid"], undefined);
+  assert.match(view.text(), /해석에 기록에 없는 숫자가 있어요/);
+  // 고치면 표시가 풀린다.
+  view.type(view.pad("해석"), "개미를 오래 보았다.");
+  assert.equal(view.pad("해석").props["aria-invalid"], undefined);
 });
