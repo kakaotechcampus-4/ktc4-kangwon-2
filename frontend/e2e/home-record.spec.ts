@@ -124,6 +124,12 @@ async function confirmHome(page: Page, expectedClassId: number) {
   // 아이 칸은 아무것도 눌리지 않은 채로 열린다 — 고르기 전에는 저장이 막힌다.
   await expect(saveButton(page)).toBeDisabled();
   await pickChild(page);
+  // 영역도 기본값이 없다 — 고르기 전에는 막힌다(ADR-082).
+  await expect(saveButton(page)).toBeDisabled();
+  await page
+    .getByRole("radiogroup", { name: "영역" })
+    .getByRole("radio", { name: "사회관계", exact: true })
+    .click();
   await saveButton(page).click();
   const response = await posted;
   expect(response.status()).toBe(201);

@@ -2126,7 +2126,7 @@ test("기록 모아보기 — 일과 기록만 실패하면 관찰 기록은 그
  * 관찰 기록 서버 하나. **반 없이 묻는 조회는 바로 실패시킨다** — 홈이 기관 전체를
  * 조회하거나 빈 배열로 떨어지는 회귀를 테스트가 조용히 통과시키지 않게 한다 (FR-405).
  */
-function recordsServer({ rows = [] } = {}) {
+function recordsServer({ rows = [], suggest = null } = {}) {
   const calls = [];
   let store = rows.map((r) => ({ ...r }));
   return {
@@ -2138,6 +2138,11 @@ function recordsServer({ rows = [] } = {}) {
         calls.push({ op: "list", classId });
         if (!classId) throw new Error("홈이 반을 짚지 않고 조회했다 (FR-405)");
         return store.filter((r) => r.classId === classId);
+      },
+      // 영역 추천(ADR-082). 기본은 서버 mock 처럼 제안이 없다.
+      suggestRecordDomain: async (classId, fact, context) => {
+        calls.push({ op: "suggest", classId, fact, context });
+        return suggest;
       },
       addRecord: async (record) => {
         calls.push({ op: "add", classId: record.classId });
@@ -2255,6 +2260,13 @@ function homePage(
       find("button").find((node) => "aria-pressed" in node.props && deepText(node).includes(name)),
     /** 「여럿 고르기」 칸. 켜야 둘 이상 고를 수 있다. */
     multiToggle: () => find("input").find((node) => node.props.type === "checkbox"),
+    /** 영역 칩. 하나만 고르는 칸이라 `role="radio"` 다 — 아이 타일(`aria-pressed`)과 섞이지 않는다. */
+    domainChip: (name) =>
+      find("button").find((node) => node.props.role === "radio" && deepText(node) === name),
+    checkedDomains: () =>
+      find("button")
+        .filter((node) => node.props.role === "radio" && node.props["aria-checked"] === true)
+        .map(deepText),
     check: (node, checked) => node.props.onChange({ target: { checked } }),
     factInput: () => find("textarea")[0] ?? find("input").find((n) => n.props?.["aria-label"]),
     button: (label) => find("button").find((n) => labelled(n).includes(label) && !n.props.disabled),
@@ -2280,7 +2292,16 @@ async function homeSave(view, fact) {
   view.button("누구 기록인지 고르기").props.onClick();
   await view.flush();
   await pickFirstChild(view);
+  await pickDomain(view);
   view.saveButton().props.onClick();
+  await view.flush();
+}
+
+/** 영역 칩을 누른다. 기본값이 없어서 고르지 않으면 남기기가 막힌다(ADR-082). */
+async function pickDomain(view, name = "사회관계") {
+  const chip = view.domainChip(name);
+  assert.ok(chip, `영역 칩을 못 찾았다: ${name}`);
+  chip.props.onClick();
   await view.flush();
 }
 
@@ -2300,6 +2321,7 @@ test("아이를 고르기 전에는 기록을 남길 수 없다", async (t) => {
   assert.equal(view.saveButton(), undefined, "고르기 전에는 눌리지 않는다");
 
   await pickFirstChild(view);
+  await pickDomain(view);
   assert.ok(view.saveButton(), "고르면 눌린다");
   view.saveButton().props.onClick();
   await view.flush();
@@ -2347,6 +2369,7 @@ test("아이를 여럿 고르면 기록이 사람 수만큼 남는다", async (t
   await pickChild(view, "정민재");
   assert.equal(view.chosenChildren().length, 2, "둘 다 눌린 상태로 남는다");
 
+  await pickDomain(view);
   view.saveButton().props.onClick();
   await view.flush();
 
@@ -2379,6 +2402,7 @@ test("기록이 한 건도 없는 반에서는 빈 칸을 칠하지 않는다", 
   assert.ok(view.text().includes("한 줄씩 쌓이면"), view.text());
 
   await pickChild(view, "김하늘");
+  await pickDomain(view);
   view.saveButton().props.onClick();
   await view.flush();
   view.type(view.factInput(), "블록으로 길을 만들었다");
@@ -2411,9 +2435,57 @@ test("여럿 고르기를 끄면 한 명만 남는다", async (t) => {
   await view.flush();
 
   assert.equal(view.chosenChildren().length, 1, "한 명만 남는다");
+  await pickDomain(view);
   view.saveButton().props.onClick();
   await view.flush();
   assert.equal(records.rows().length, 1);
+});
+
+test("홈 빠른 기록 — 영역은 아무것도 안 고른 채 열리고, 고르기 전에는 남길 수 없다", async (t) => {
+  // 첫 영역(신체운동·건강)이 고른 채 저장되면 블록 놀이가 종이의 신체 줄에 들어간다(ADR-082).
+  const records = recordsServer();
+  const view = homePage(t, { rooms: [CLASS_A], primaryClassId: "", classes: [ROOM_A], records });
+  await view.flush();
+  view.type(view.factInput(), "블록으로 길을 만들었다");
+  await view.flush();
+  view.button("누구 기록인지 고르기").props.onClick();
+  await view.flush();
+  await pickFirstChild(view);
+
+  assert.deepEqual(view.checkedDomains(), [], "영역 칸은 비어 있는 채로 열린다");
+  assert.equal(view.saveButton(), undefined, "영역을 고르기 전에는 눌리지 않는다");
+  assert.ok(view.text().includes("영역을 골라야 남길 수 있어요"), view.text());
+
+  await pickDomain(view, "사회관계");
+  assert.deepEqual(view.checkedDomains(), ["사회관계"]);
+  view.saveButton().props.onClick();
+  await view.flush();
+  assert.equal(records.rows()[0].domain, "사회관계");
+});
+
+test("홈 빠른 기록 — AI 제안 영역은 보라 점선일 뿐, 눌러야 고른 것이다", async (t) => {
+  const records = recordsServer({ suggest: "자연탐구" });
+  const view = homePage(t, { rooms: [CLASS_A], primaryClassId: "", classes: [ROOM_A], records });
+  await view.flush();
+  view.type(view.factInput(), "  개미가 줄지어 가는 것을 오래 보았다 ");
+  await view.flush();
+  view.button("누구 기록인지 고르기").props.onClick();
+  await view.flush();
+
+  const asked = records.only("suggest");
+  assert.equal(asked.length, 1, "적은 글을 들고 한 번 묻는다");
+  assert.equal(asked[0].fact, "개미가 줄지어 가는 것을 오래 보았다");
+  assert.equal(asked[0].context, "");
+  const chip = view.domainChip("자연탐구");
+  assert.equal(chip.props["data-suggested"], true);
+  assert.equal(chip.props["aria-checked"], false);
+  assert.ok(view.text().includes("점선은 AI 제안이에요"));
+
+  await pickFirstChild(view);
+  assert.equal(view.saveButton(), undefined, "제안만으로는 남기지 않는다");
+  await pickDomain(view, "자연탐구");
+  assert.equal(view.domainChip("자연탐구").props["data-suggested"], undefined);
+  assert.ok(view.saveButton());
 });
 
 /** 아이 격자에서 첫 아이를 고른다. 반을 바꾸면 비워지므로 바꾼 **뒤에** 부른다. */
