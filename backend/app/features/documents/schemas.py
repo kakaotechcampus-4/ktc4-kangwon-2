@@ -78,6 +78,9 @@ class DocumentSourceItem(BaseModel):
     """
 
     id: int
+    # `id` 가 가리키는 곳. 주간은 일일 문서(document)도 일과 기록(routine)도 근거로 쓴다 —
+    # 번호만으로는 화면이 「원본 보기」를 어디로 열지 모른다.
+    source_kind: Literal["observation", "document", "routine"]
     date: date | None
     # 관찰 기록 근거일 때만 있다. 관찰일지 종이의 영역 행을 가른다 (§11 「종이 한 장」).
     # 만들 때 찍은 사본이다. 사본이 없는 옛 문서만 지금 원본 영역을 준다 (ADR-077).

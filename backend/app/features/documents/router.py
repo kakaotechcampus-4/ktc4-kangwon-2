@@ -245,6 +245,7 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
         sources=[
             DocumentSourceItem(
                 id=s.source_id,
+                source_kind=s.source_kind,
                 date=s.date,
                 domain=domains.get(s.source_id) if s.source_kind == "observation" else None,
                 context=s.context,

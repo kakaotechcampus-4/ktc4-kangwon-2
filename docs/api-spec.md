@@ -3497,8 +3497,8 @@ source_kind   값                받는 kind      근거
     { "heading": "지원", "body": "...", "source_ids": [15] }
   ],
   "sources": [
-    { "id": 12, "date": "2026-09-22", "domain": "자연탐구", "context": "바깥놀이",
-      "text": "...", "class_id": 1, "child_id": 5 }
+    { "id": 12, "source_kind": "observation", "date": "2026-09-22", "domain": "자연탐구",
+      "context": "바깥놀이", "text": "...", "class_id": 1, "child_id": 5 }
   ],
   "observation_axis": "NURI_5",
   "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v4" },
@@ -3514,6 +3514,10 @@ source_kind   값                받는 kind      근거
 해석   관찰에서 가능한 의미.  LLM
 지원   앞으로의 제안.  LLM
 ```
+
+**`sources[].source_kind` 는 `id` 가 가리키는 곳이다** — `observation`(관찰 기록) · `document`(일일 보육일지) ·
+`routine`(일과 기록). 주간은 `document` 도 `routine` 도 될 수 있어 번호만으로는 가를 수 없다. 만들 때 요청의 `source_kind: "dailyLog"` 는 응답에서 `document` 다.
+화면의 「원본 보기」는 이 값으로 문서 · 일과 · 관찰 화면을 고른다.
 
 **`사실` 은 `sources` 의 `text` 를 `\n\n` 으로 이은 것과 **정확히 같아야 한다**.**
 한 글자라도 다르면 `VALIDATION_FAILED` 422. **문자열 비교이고 모델이 판정하지 않는다.**
