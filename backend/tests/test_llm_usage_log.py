@@ -167,7 +167,8 @@ def test_호출마다_시간_줄을_남기고_실패한_호출도_남긴다(monk
     llm.post_json("https://x", headers={}, payload={"model": "m"}, timeout=1)
 
     def fail(*a, **k):
-        raise urllib_error.HTTPError("u", 429, "limit", {}, None)
+        # 429 는 한 번 더 부르므로(ADR-076) 줄이 둘이 된다. 한 번만 부르는 401 로 본다.
+        raise urllib_error.HTTPError("u", 401, "key deleted", {}, None)
 
     monkeypatch.setattr(llm.urllib_request, "urlopen", fail)
     with pytest.raises(LlmBudgetExceeded):

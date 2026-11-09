@@ -40,6 +40,19 @@ timing_logger = logging.getLogger("app.server.timing")
 MODEL = "openai/gpt-6.1-sol"
 TIMEOUT_SECONDS = 30.0
 
+# 생성 요청 하나(`ssuksak.timing` 실행 하나)가 부를 수 있는 LLM 횟수. **재시도도 센다**(ADR-076).
+# 경로별 설계상 최대는 4회다 — 연간 주제형 2회 × 재시도, 주간 2회 × 재시도, 놀이형 연간은 구간 4개
+# (스트림이라 재시도 없음). 여기를 넘으면 어딘가 반복문이 샌 것이라 더 부르지 않고 멈춘다.
+# 실행 밖 호출(문서 초안 · jev 검증)에는 걸지 않는다 — 센 실행이 없다.
+MAX_LLM_CALLS_PER_RUN = 6
+
+# 일시 오류 재시도(ADR-076). 한 번만 더 부른다.
+RETRY_DELAY_SECONDS = 1.0
+# 429 의 `Retry-After` 가 이보다 길면 기다리지 않고 실패시킨다 — 화면이 그만큼 더 기다리게 된다.
+RETRY_AFTER_MAX_SECONDS = 5.0
+# 429 본문에서 `insufficient_quota` 만 찾는다. 몇 KB 면 되고, 본문은 어디에도 찍지 않는다.
+QUOTA_BODY_BYTES = 4096
+
 
 def is_mock() -> bool:
     """**기본이 mock 이다.** 키가 없는 채로 real 이 돌면 매번 401 을 받고 원인을 못 찾는다."""
@@ -189,11 +202,15 @@ def _llm_call(model: object):
     숫자와 이름만 적는다 — 내용은 없다. `run` 은 생성 요청 하나(`ssuksak.timing`)를 가리키고,
     `phase` 는 이 호출이 불린 구간이다(수리 호출이면 `repair`). 생성 요청 밖이면 `-` 다.
     """
+    run = timing.current()
+    if run is not None and run.llm_calls >= MAX_LLM_CALLS_PER_RUN:
+        # 부르지 않고 멈춘다 — 센 것도 `llm_call` 줄도 남기지 않는다. 원인 오류가 없어서
+        # `post_json` 이 재시도 대상으로 읽지도 않는다.
+        raise LlmFailed(f"생성 요청 하나의 LLM 호출 상한({MAX_LLM_CALLS_PER_RUN}회)을 넘었다")
     call = {"first_byte_ms": "-", "tokens": ("-", "-")}
     started = time.perf_counter()
     outcome = "ok"
     with timing.span("llm") as phase:
-        run = timing.current()
         if run is not None:
             run.llm_calls += 1
         try:
@@ -216,6 +233,37 @@ def _llm_call(model: object):
             )
 
 
+def _rate_limit_delay(error: urllib_error.HTTPError) -> float | None:
+    """429 는 잠깐 몰린 속도 제한일 때만 기다릴 값을 주고, 기다려도 안 풀릴 것 같으면 None 이다."""
+    try:
+        # 본문은 `insufficient_quota` 가 있는지만 본다. 찍지도 저장하지도 않는다.
+        if b"insufficient_quota" in error.read(QUOTA_BODY_BYTES):
+            return None
+    except (OSError, ValueError, http.client.HTTPException):
+        pass  # 본문을 못 읽으면 한도 소진인지 모른다 — 속도 제한으로 보고 한 번 더 부른다
+    try:
+        seconds = float((error.headers or {}).get("Retry-After"))
+    except (TypeError, ValueError):
+        return RETRY_DELAY_SECONDS  # 없거나 날짜 모양이면 읽지 않는다
+    if seconds > RETRY_AFTER_MAX_SECONDS:
+        return None
+    return seconds if seconds >= 0 else RETRY_DELAY_SECONDS
+
+
+def _retry_delay(cause: BaseException | None) -> float | None:
+    """한 번 더 부를 오류면 기다릴 초를, 아니면 None 을 준다. 대상은 여기서만 정한다(ADR-076).
+
+    `HTTPError` 는 `URLError` 의 자식이라 먼저 가른다 — 401 · 500 이 연결 오류로 읽히면 안 된다.
+    """
+    if isinstance(cause, urllib_error.HTTPError):
+        if cause.code in (502, 503, 504):
+            return RETRY_DELAY_SECONDS
+        return _rate_limit_delay(cause) if cause.code == 429 else None
+    if isinstance(cause, urllib_error.URLError | TimeoutError):
+        return RETRY_DELAY_SECONDS
+    return None  # 응답 해독 실패 · 상한 초과는 다시 불러도 같다
+
+
 def post_json(
     url: str, *, headers: Mapping[str, str], payload: Mapping[str, object], timeout: float
 ):
@@ -224,6 +272,14 @@ def post_json(
     오류 3종 분류와 사용량 기록은 여기 하나다 — 월간 Core 어댑터도 이 함수를 전송으로
     쓴다. 그래서 `llm_usage` 는 연간 · 문서 · 월간 모두 호출당 한 줄이고, 모델 이름은
     실제로 보낸 `payload["model"]` 을 적는다.
+
+    **일시 오류는 한 번만 더 부른다**(ADR-076). 망 오류 · 읽기 시간 초과 · 502 · 503 · 504 ·
+    429 는 1초 뒤(429 에 5초 이하 `Retry-After` 가 오면 그 값) 같은 요청을 다시 보낸다.
+    401 · 403 · 그 밖의 4xx · 500 · 응답 해독 실패는 다시 불러도 같아서 바로 실패시킨다.
+    **시도마다 `llm_call` 한 줄이고 `run.llm_calls` 도 시도마다 올라간다.** `post_stream` 은
+    다시 부르지 않는다. 시간 초과는 엘리스가 이미 처리 중이었을 수 있어 한 호출이 두 번
+    청구될 수 있다 — 크레딧이 넉넉하고 `MAX_LLM_CALLS_PER_RUN` 이 한도를 막아 주니 받아들인다.
+    마지막 시도가 실패하면 분류와 문구는 재시도가 없던 때와 같다.
 
     **로컬에서 real 은 여기서 막는다** (AGENTS.md). 키가 팀 공유라 6명이 각자 로컬에서
     부르면 예산이 어디로 새는지 아무도 모르고, 초과하면 키가 지워진다. 서버와 주간
@@ -237,18 +293,32 @@ def post_json(
         raise LlmUnavailable("로컬에서 real 모드 금지. 배포된 서버 엔드포인트를 호출한다")
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib_request.Request(url, data=body, headers=dict(headers), method="POST")
-    with _llm_call(payload.get("model")) as call:
+    try:
+        return _post_json_once(request, payload.get("model"), timeout)
+    except (LlmBudgetExceeded, LlmFailed) as error:
+        delay = _retry_delay(error.__cause__)
+        if delay is None:
+            raise
+    # 기다리는 시간은 `llm` 구간 밖이다 — 호출 시간(`llm_call ms`)에 섞이지 않는다.
+    time.sleep(delay)
+    return _post_json_once(request, payload.get("model"), timeout)
+
+
+def _post_json_once(request: urllib_request.Request, model: object, timeout: float):
+    with _llm_call(model) as call:
         try:
             with urllib_request.urlopen(request, timeout=timeout) as response:
                 result = json.loads(response.read().decode("utf-8"))
         except urllib_error.HTTPError as exc:
-            # 401 은 키가 지워졌다는 뜻이고 429 는 한도다. 둘 다 재시도로 안 풀린다.
+            # 예산을 넘으면 키가 지워져 401 · 403 이 온다 — 재시도로 안 풀린다. 429 는 그때가
+            # 아니라 잠깐 몰린 속도 제한일 수 있어 `_retry_delay` 가 한 번 더 부를지 정한다
+            # (ADR-076). 마지막까지 실패하면 셋 다 예산으로 분류한다(`LLM_BUDGET_EXCEEDED`).
             if exc.code in (401, 403, 429):
                 raise LlmBudgetExceeded(f"엘리스가 {exc.code} 를 냈다") from exc
             raise LlmFailed(f"엘리스가 {exc.code} 를 냈다") from exc
         except (urllib_error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise LlmFailed("엘리스 호출이 실패했다") from exc
-        call["tokens"] = _log_usage(result, payload.get("model"))
+        call["tokens"] = _log_usage(result, model)
     return result
 
 

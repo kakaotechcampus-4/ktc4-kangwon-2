@@ -172,9 +172,16 @@ def test_설정이_틀리면_부르기_전에_막는다(monkeypatch):
         EliceThemeTextGenerator()
 
 
-def test_한도에_걸리면_재시도로_안_풀린다고_알린다():
-    """401 은 키가 지워졌다는 뜻이고 429 는 한도다. 재시도 버튼을 띄우면 안 된다."""
+def test_한도에_걸리면_재시도로_안_풀린다고_알린다(monkeypatch):
+    """401 은 키가 지워졌다는 뜻이고 429 는 한도다. 재시도 버튼을 띄우면 안 된다.
+
+    429 는 서버가 한 번 더 부른 뒤에도 실패해야 이 오류가 된다(ADR-076). 기다리는 시간은 건너뛴다.
+    """
     from urllib import error as urllib_error
+
+    from app.shared.llm import client as llm
+
+    monkeypatch.setattr(llm.time, "sleep", lambda seconds: None)
 
     def transport(url, *, headers, payload, timeout):
         raise urllib_error.HTTPError(url, 429, "Too Many Requests", {}, None)
