@@ -77,10 +77,10 @@ export default function EvidenceImport({
   // 확인 칸은 판에 보이는 반 · 날짜 · 아이를 그대로 말한다. 체크 하나가 원문 · 메타 · 「통과 아님」 확인 셋을 함께
   // 보내므로(documents.ts) 셋을 다 적는다(§11 · FR-804, 11-09 문구 토론). 전에는 판에 없는 「아동 · 반 · 기간」을 물었다.
   const roomName = classroom?.className ?? "고른 반";
-  const childName = classroom?.children.find((c) => c.id === childId)?.name ?? "고른 아이";
+  const pickedChild = classroom?.children.find((c) => c.id === childId)?.name ?? "고른 아이";
   const subject = daily
     ? `${roomName} ${shortDay(start)} 일지`
-    : `${roomName} ${childName} ${shortDay(start)}~${shortDay(end)} 평가`;
+    : `${roomName} ${pickedChild} ${shortDay(start)}~${shortDay(end)} 평가`;
 
   async function pick(file?: File) {
     if (!file) return;
