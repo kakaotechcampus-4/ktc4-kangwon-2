@@ -1035,7 +1035,7 @@ def test_일과_기록을_근거로_쓴_주간은_날짜별_해석_지원_칸을
 def test_어제_지원을_반영한_줄은_원_설정_표기를_활동실행_앞에_붙인다(
     db_session, mine, mark, expected
 ):
-    """표시는 일과 기록의 칸이고 사실 글에 섞지 않는다 — 종이에서만 붙인다 (ADR-085)."""
+    """표시는 일과 기록의 칸이고 사실 글에 섞지 않는다 — 종이에서만 붙인다 (ADR-086)."""
     klass, _ = mine
     klass_center = db_session.get(Center, klass.center_id)
     klass_center.reflect_mark = mark

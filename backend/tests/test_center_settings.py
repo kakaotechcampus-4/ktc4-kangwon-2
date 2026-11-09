@@ -43,7 +43,7 @@ OFF = {
 
 @pytest.mark.parametrize("mark", ["(놀이반영)", "", "(반영)"])
 def test_반영_표기를_고를_수_있다(own_center, mark):
-    """어제 지원을 반영한 줄에 종이가 붙이는 글자 (ADR-085). 빈 문자열은 「붙이지 않음」이다."""
+    """어제 지원을 반영한 줄에 종이가 붙이는 글자 (ADR-086). 빈 문자열은 「붙이지 않음」이다."""
     url = f"/api/centers/{own_center}/settings"
     assert client.put(url, json={"reflect_mark": mark}).json() == {**OFF, "reflect_mark": mark}
 

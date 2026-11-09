@@ -271,7 +271,7 @@ class CenterSettings(BaseModel):
     weekly_saturday_enabled: Annotated[bool, Field(strict=True)]
     # 관찰 기록의 영역 축. 화면이 영역 고르는 칸을 이 값으로 그린다 (observations AXES).
     observation_axis: ObservationAxis
-    # 어제 지원을 반영한 일과 줄에 종이가 붙이는 글자 (ADR-085).
+    # 어제 지원을 반영한 일과 줄에 종이가 붙이는 글자 (ADR-086).
     reflect_mark: ReflectMark
 
 

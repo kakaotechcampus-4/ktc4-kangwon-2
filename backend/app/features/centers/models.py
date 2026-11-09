@@ -60,7 +60,7 @@ class Center(Base):
         server_default="(반영)",
         nullable=False,
         comment=(
-            "어제 지원을 반영한 일과 줄에 종이가 붙이는 글자 (ADR-085). "
+            "어제 지원을 반영한 일과 줄에 종이가 붙이는 글자 (ADR-086). "
             "「(반영)」 · 「(놀이반영)」 · 빈 문자열(붙이지 않음)"
         ),
     )

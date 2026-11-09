@@ -271,7 +271,7 @@ def _daily_log(
     found = {r.id for r in routines}
     _missing([f"sources.{i}" for i in ids if i not in found])
 
-    # 어제 지원을 반영한 줄은 원이 고른 표기를 앞에 붙인다. 표시는 사실 글에 없다 (ADR-085).
+    # 어제 지원을 반영한 줄은 원이 고른 표기를 앞에 붙인다. 표시는 사실 글에 없다 (ADR-086).
     mark = session.scalar(
         select(Center.reflect_mark)
         .where(Center.id == Class.center_id)
@@ -409,7 +409,7 @@ def _weekly_log_from_routines(
 
 
 def _activities(session: Session, routine_ids: list[int]) -> dict[int, list[str]]:
-    """일과 기록마다 교사가 계획안에서 맞다고 한 활동 이름 (ADR-085)."""
+    """일과 기록마다 교사가 계획안에서 맞다고 한 활동 이름 (ADR-086)."""
     if not routine_ids:
         return {}
     return dict(

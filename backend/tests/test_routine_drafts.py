@@ -330,7 +330,7 @@ def test_기본_일과표는_이름이_비거나_시간이_거꾸로면_422(sun)
 
 
 def test_반영과_맞다고_한_활동은_올릴_때_일과_기록에_따라간다(db_session, sun):
-    """둘 다 사실 칸이 아니다 — 종이에서만 쓰는 표시다 (ADR-085)."""
+    """둘 다 사실 칸이 아니다 — 종이에서만 쓰는 표시다 (ADR-086)."""
     row = _row(reflected=True, activities=["낙엽 모자이크"])
     items = _save(sun, [row], promote=True).json()["items"]
     assert items[0]["reflected"] is True

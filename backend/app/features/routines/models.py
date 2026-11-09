@@ -59,7 +59,7 @@ class RoutineRecord(Base):
     execution: Mapped[str] = mapped_column(
         Text, server_default="", comment="활동실행 — 사실 층이다. 교사가 쓰고 AI 가 쓰지 않는다"
     )
-    # 아래 둘은 사실 칸이 아니다 — 근거 사본(`fact_text`)에 넣지 않고 종이에서만 쓴다 (ADR-085).
+    # 아래 둘은 사실 칸이 아니다 — 근거 사본(`fact_text`)에 넣지 않고 종이에서만 쓴다 (ADR-086).
     reflected: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
