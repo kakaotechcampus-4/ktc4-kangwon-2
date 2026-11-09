@@ -188,3 +188,16 @@ def test_conflict_without_a_record_is_not_flagged():
     ]
     answers["s1.근거"]["choice"] = "없음"
     assert J.read_issues(sentences, answers, {"r1": 1}, None) == []
+
+
+def test_several_weekdays_point_at_the_record_jev_found_conflicting():
+    text = "화요일에는 공을 굴렸고 수요일에는 공을 던졌다."
+    claim = J.time_claim(text, WEEK)
+    sentences = [("해석", text)]
+    records = {"r1": "가", "r2": "나", "r3": "다"}
+    _state, questions = J.build_questions("주간 보육일지", sentences, records, [claim])
+    answers = _clear(questions, {"때": "r1", "근거": "r2"})
+    sources = dict(zip(records, WEEK, strict=True))
+    ids = {key: src.source_id for key, src in sources.items()}
+    issues = J.read_issues(sentences, answers, ids, None, "weeklyLog", [claim], sources)
+    assert [(i.code, i.source_id) for i in issues] == [("CONTRADICTS_SOURCE", 11)]

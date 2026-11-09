@@ -524,7 +524,11 @@ def read_issues(
             anchor = sources.get(answers[f"{key}.기준"]["choice"]) if claim.needs_anchor else None
             wrong = time_conflict(claim, target, anchor, list(sources.values()))
             if wrong is not None:
-                conflict, rec = True, record_ids.get(by_id.get(wrong.source_id, ""))
+                # 여러 날을 말한 문장은 코드가 어느 일이 틀렸는지 모른다 — jev 가 고른
+                # 「부딪히는 기록」이 있으면 그것을 보여 준다(v5).
+                if not ((claim.any_weekdays or claim.any_days) and rec is not None):
+                    rec = record_ids.get(by_id.get(wrong.source_id, ""))
+                conflict = True
         if conflict:
             issues.append(
                 Issue(
