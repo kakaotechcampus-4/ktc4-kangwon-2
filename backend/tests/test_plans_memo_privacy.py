@@ -12,6 +12,7 @@ import pytest
 import test_weekly_plans_api as weekly_api
 from ssuksak.adapters.request_aware_monthly_llm import RequestAwareMonthlyLlm
 from ssuksak.adapters.request_aware_weekly_llm import RequestAwareWeeklyLlm
+from test_child_code import BARE_MESSAGES
 from test_monthly_lifecycle_api import _approved, _seed, client  # noqa: F401
 
 from app.config import settings
@@ -176,7 +177,7 @@ def test_외자_글자가_홀로_서면_요청_사항을_LLM_에_보내지_않�
     assert response.status_code == 422
     error = response.json()["error"]
     assert error["fields"] == ["memo"]
-    assert error["message"].startswith("『민』이 아이 이름이면 아이 명단에서 부르는 이름을")
+    assert error["message"] == BARE_MESSAGES[call_name]
 
 
 def test_칸_재생성에서_이름을_못_가리면_그_칸을_직접_고치라고_알린다(db_session, teacher):

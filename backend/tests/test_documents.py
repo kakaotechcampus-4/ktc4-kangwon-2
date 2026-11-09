@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
+from test_child_code import BARE_MESSAGES
 
 from app.features.centers.models import Center, Child, Class
 from app.features.documents.models import Document, DocumentSection, DocumentSource
@@ -832,7 +833,7 @@ def test_create_document_refuses_bare_one_syllable(db_session, monkeypatch, call
     assert response.status_code == 422
     error = response.json()["error"]
     assert error["code"] == "VALUE_INVALID"
-    assert error["message"].startswith("『민』이 아이 이름이면 아이 명단에서 부르는 이름을")
+    assert error["message"] == BARE_MESSAGES[call_name]
 
 
 @pytest.mark.parametrize("fact", ["가명이가 민속놀이를 했다.", "가명이가 고민 끝에 골랐다."])

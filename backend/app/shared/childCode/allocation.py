@@ -54,19 +54,31 @@ def allocate_for_class(
     return code
 
 
-def _refuse_bare_syllables(found: list[str]) -> None:
+def _refuse_bare_syllables(found: dict[str, str | None]) -> None:
     """외자 글자가 조사 없이 홀로 서 있으면 LLM 을 부르지 않는다.
 
-    「민」 하나를 치환 대상에 넣으면 「고민」 · 「민속놀이」 까지 바뀌고, 되돌릴 꼴도 없다.
-    그래서 가리지 않고 막는다(ADR-004 보완).
+    `found` 는 {외자 글자: 그 아이의 부르는 이름}. 「민」 하나를 치환 대상에 넣으면 「고민」 ·
+    「민속놀이」 까지 바뀌고, 되돌릴 꼴도 없다. 그래서 가리지 않고 막는다(ADR-004 보완).
+    부르는 이름이 없으면 그것을 적게 하고, 있으면 그 꼴로 붙여 적게 한다 -- 이미 적은 아이에게
+    「부르는 이름을 적어 주세요」는 풀리지 않는 안내다. 둘이 섞이면 없는 쪽부터 알린다.
     """
-    if found:
-        quoted = " · ".join(f"『{s}』" for s in found)
-        josa = "이" if has_final(found[-1]) else "가"
-        raise CallNameNeeded(
-            f"{quoted}{josa} 아이 이름이면 아이 명단에서 부르는 이름을 적어 주세요. "
-            "이름이 아니면 그 말을 바꿔 적어 주세요."
+    missing = sorted(s for s, call in found.items() if not call)
+    named = sorted(s for s, call in found.items() if call)
+    shown = missing or named
+    if not shown:
+        return
+    quoted = " · ".join(f"『{s}』" for s in shown)
+    josa = "이" if has_final(shown[-1]) else "가"
+    if missing:
+        how = "아이 명단에서 부르는 이름을 적어 주세요"
+    else:
+        forms = " · ".join(
+            f"「{call}{'이' if has_final(call) else '가'}」" for call in (found[s] for s in named)
         )
+        how = f"{forms}처럼 붙여 적어 주세요"
+    raise CallNameNeeded(
+        f"{quoted}{josa} 아이 이름이면 {how}. 이름이 아니면 그 말을 바꿔 적어 주세요."
+    )
 
 
 def table_for_text(
@@ -132,7 +144,7 @@ def table_for_text(
     # 등록 표기로 가려지는 낱말(부르는 이름 「민이」 -> 「민이가」)은 그대로 두고 남은 것만 본다.
     covered = NameTable(names, calls).masking
     left_words = [w for w in words if not any(w.startswith(k) for k in covered)]
-    _refuse_bare_syllables(sorted({w for w in left_words if len(w) == 1}))
+    _refuse_bare_syllables({w: owner[w][2] for w in left_words if len(w) == 1})
     for word in left_words:
         real = next((n for n in names if one_syllable(n) == word[0]), None)
         if real is None:

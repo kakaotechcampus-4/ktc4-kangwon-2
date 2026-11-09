@@ -5,6 +5,7 @@ from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
+from test_child_code import BARE_MESSAGES
 
 from app.config import settings
 from app.features.centers.models import Center, Child, Class
@@ -331,7 +332,7 @@ def test_bare_one_syllable_never_calls_jev(db_session, real, call_name):
     res = client.post(f"/api/documents/{doc.id}/verify")
     assert res.status_code == 422
     assert res.json()["error"]["code"] == "VALUE_INVALID"
-    assert "부르는 이름" in res.json()["error"]["message"]
+    assert res.json()["error"]["message"] == BARE_MESSAGES[call_name]
     assert real == []
 
 

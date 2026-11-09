@@ -122,11 +122,21 @@ def test_외자에_조사나_부르는_꼴이_붙으면_부르는_이름과_상�
     assert unmask(masked, table) == text  # 교사가 쓴 꼴 그대로 돌아온다
 
 
+# 부르는 이름이 없으면 그것을 적게 하고, 있으면 그 꼴로 붙여 적게 한다.
+BARE_MESSAGES = {
+    None: "『민』이 아이 이름이면 아이 명단에서 부르는 이름을 적어 주세요. "
+    "이름이 아니면 그 말을 바꿔 적어 주세요.",
+    "민이": "『민』이 아이 이름이면 「민이가」처럼 붙여 적어 주세요. "
+    "이름이 아니면 그 말을 바꿔 적어 주세요.",
+}
+
+
 @pytest.mark.parametrize("call_name", [None, "민이"])
 @pytest.mark.parametrize("text", ["(민) 블록", "민 옆에서 쌓았다", "민, 이리 와"])
 def test_외자_글자가_홀로_서면_가릴_수_없어_LLM_전에_막는다(text, call_name):
-    with pytest.raises(CallNameNeeded, match="『민』이 아이 이름이면 아이 명단에서 부르는 이름"):
+    with pytest.raises(CallNameNeeded) as error:
         table_for_text(load_pool(), [("김민", "가람", call_name)], [], text)
+    assert str(error.value) == BARE_MESSAGES[call_name]
 
 
 @pytest.mark.parametrize("text", ["민속놀이를 했다", "고민 끝에 골랐다", "김민이가 블록을 쌓았다"])
