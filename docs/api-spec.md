@@ -3863,6 +3863,7 @@ assessment    observation · dailyLog
 ### 개인정보
 
 - **LLM 호출 직전에 `shared/childCode` 로 치환한다.** 프롬프트 · 응답 · 로그에 실명이 남지 않는다.
+  치환 대상은 그 원 아이(다른 반 포함) 가운데 근거 사실에 나온 아이다 — 교사는 옆 반 아이 이름도 적는다(§9 · 검증과 같은 범위).
 - **응답을 교사에게 주기 전에 복원한다.**
 - **치환 실패 시 호출하지 않고 에러를 낸다** (ADR-004).
 - 가명은 `backend/resources/pseudonyms.yaml` 에서 뽑는다.
@@ -4245,7 +4246,7 @@ item    operation-plan · annual-plan · interaction-record · duty-training · 
    → backend/resources/pseudonyms.yaml.  받침 있음 30 · 없음 30
    → 원본 이름의 받침과 같은 쪽에서 뽑는다. 다른 쪽에서 뽑으면 복원 후 조사가 틀어진다
 □  LLM 호출 위치                                   하민 (7주차)
-   → 지금은 frontend/app/api/assistant/route.ts 가 OpenAI 를 직접 부른다. 백엔드로 옮긴다
+   → 백엔드로 옮긴다. 화면 서버(frontend/app/api/assistant/route.ts)가 OpenAI 를 직접 부르던 길은 지웠다 — 남은 GET 은 연결 상태(false)만 준다
    → 예산 카운터는 만들지 않는다. 사용량은 담당자가 알려준다 (2026-09-21)
 □  재생성 횟수 상한                                 하민 · 성진 (7주차 논의)
    → 검사(ADR-014)가 위반을 내면 몇 번까지 다시 만드나. 예산과 같이 정한다

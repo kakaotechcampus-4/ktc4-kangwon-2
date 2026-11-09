@@ -1424,11 +1424,6 @@ function editorHarness(selection) {
     "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
     "next/link": { __esModule: true, default: "link" },
     "@/lib/workspace/model": workspaceModel,
-    "@/lib/workspace/ai-client": {
-      requestAI: () => {
-        throw new Error("Unexpected AI call");
-      },
-    },
     "./WorkspaceUI": { ws: {}, Message: "message", AIHint: "ai-hint", useAIStatus: () => false },
     "./document-selection": { serverIssues },
     // 실제 invalidFields 를 쓴다 — 서버가 짚은 칸을 화면 이름으로 바꾸는 길이
