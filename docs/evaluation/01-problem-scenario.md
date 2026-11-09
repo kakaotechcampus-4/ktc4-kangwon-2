@@ -33,7 +33,7 @@
 
 - 화면 단위 흐름 — [docs/screen-spec.md](../screen-spec.md) (일지 S-J1~7 · 계획안 S1~11)
 - 멘토 파일럿용 클릭 경로 — [docs/mentor-pilot-guide-2026-10-21.md](../mentor-pilot-guide-2026-10-21.md)
-- 교사가 쓰는 재료는 셋뿐이다 — 빠른 기록 · 관찰 기록(`observations`) · 일과 기록(`routines`).
+- 교사가 쓰는 재료는 둘이다 — 관찰 기록(`observations`) · 일과 기록(`routines`). 홈의 빠른 기록도 관찰 기록으로 저장된다.
   거기서 문서 4종이 나온다 — [docs/api-spec.md](../api-spec.md) §11
 
 ## 아직 아닌 것

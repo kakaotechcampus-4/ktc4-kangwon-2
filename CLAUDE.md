@@ -107,7 +107,7 @@
 ③ 지원   다음에 어떻게 지원할지
 ```
 
-- **②가 ①에 없는 사실을 쓰면 반려.**
+- **②가 ①에 없는 숫자를 쓰면 반려.** 그 밖의 ①에 없는 내용은 3단 AI 판정이 문장마다 짚고 교사가 고친다(확정 조건은 아니다, ADR-071).
 - **③이 비면 반려.**
 - 검사는 `shared/gates`에서만. 기능별로 따로 만들지 않는다.
 
@@ -187,7 +187,7 @@ Audit        나중에 무슨 일이 있었나  CREATED · REGENERATED · TEACHE
 - **LLM 호출 직전에 아동 코드로 치환한다.** 프롬프트·응답·로그에 실명이 남으면 안 된다.
 - 치환은 `shared/childCode` 한 곳에서만.
 - **치환 실패 시 호출하지 않고 에러를 낸다.**
-- 치환 토큰은 **받침 있는 더미 한글 이름.** 영문 토큰이면 조사가 복원 후 틀어진다.
+- 치환 토큰은 **원래 이름과 받침 유무가 같은 더미 한글 이름.** 영문 토큰이나 받침이 다른 이름이면 조사가 복원 후 틀어진다.
 - 아동 명단 입력칸은 **확인 문구 체크박스 뒤에서만** 활성화한다.
 - **아동에게서 이름만 받는다.** 생년월일·성별·건강정보를 받지 않는다.
 - **개발 DB에 실제 아동 실명을 넣지 않는다.** 테스트는 가명으로.
@@ -318,7 +318,7 @@ cp .env.example .env               # 비밀번호를 바꾼다. .env 는 커밋�
 
 # 로컬 실행
 docker compose up -d --build
-docker compose ps                  # 세 개 다 Up, db 는 healthy
+docker compose ps                  # 다섯 개(db · backend · frontend · nginx · certbot) 다 Up, db 는 healthy
 docker compose logs -f backend
 curl -f http://localhost:8000/health          # 프로세스만
 curl -f http://localhost:8000/health/ready    # DB 까지. 배포 판정은 이쪽
