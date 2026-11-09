@@ -1,0 +1,346 @@
+/* 보육일지 하루 화면에 더한 것 — 날씨 · 저장 상태 · 계획 후보 · 관찰 끌어오기 · 반영 도장.
+   색은 전부 토큰이다(docs/design/종이와-판.md). 누르는 것은 44px 이상. */
+
+/* ── 머리: 날짜 옆 날씨 · 미세먼지 ─────────────────────────── */
+.weather {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-left: 14px;
+  vertical-align: middle;
+}
+.weatherButton {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--pg-ink-soft);
+  cursor: pointer;
+}
+.weatherButton:hover,
+.weatherButton:focus-visible {
+  background: var(--pg-shell);
+}
+.weatherButton svg {
+  width: 30px;
+  height: 30px;
+}
+/* 값이 없을 때 — 점선 빈 동그라미. 누르면 고르는 칸이 펼쳐진다. */
+.weatherNone {
+  display: block;
+  width: 26px;
+  height: 26px;
+  border: 2px dashed var(--pg-line-strong);
+  border-radius: 50%;
+}
+.dust {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 44px;
+  padding-top: 4px;
+  color: var(--pg-air-normal);
+}
+.dust[data-grade="좋음"] {
+  color: var(--pg-air-good);
+}
+.dust[data-grade="나쁨"] {
+  color: var(--pg-air-bad);
+}
+.dust[data-grade="매우나쁨"] {
+  color: var(--pg-air-worst);
+}
+.dust svg {
+  width: 26px;
+  height: 26px;
+}
+/* 등급 글자는 손글씨로 아주 작게. 얼굴만으로 모르는 사람을 위한 자리다. */
+.dustWord {
+  margin-top: 1px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+.weatherPicker {
+  position: absolute;
+  top: 48px;
+  left: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--pg-line);
+  background: var(--pg-paper);
+  box-shadow: var(--pg-shadow-card);
+  font-family: inherit;
+}
+.weatherPicker button[aria-pressed="true"] {
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+.weatherAuto {
+  min-height: 44px;
+  margin-left: 4px;
+  padding: 0 10px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-ivory);
+  color: var(--pg-ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* ── 머리줄: 저장됨 · 저장 못 했어요 ───────────────────────── */
+.saveState {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.saveState[data-state="failed"],
+.saveState[data-state="conflict"] {
+  color: var(--pg-alert-ink);
+}
+.iconButton {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  box-shadow: var(--pg-shadow-card);
+  cursor: pointer;
+}
+.iconButton:active {
+  transform: translate(2px, 3px);
+  box-shadow: none;
+}
+.iconButton svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ── 칠판 위: 깐 줄 안내 · 어제 지원 쪽지 ───────────────────── */
+.presetNote {
+  margin: 0 0 8px 4px;
+  font-size: 13px;
+  color: var(--pg-board-ink-soft);
+}
+.yesterday {
+  position: relative;
+  margin: 6px 4px 16px;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--pg-plum-line);
+  background: var(--pg-plum);
+  color: var(--pg-ink);
+  box-shadow: var(--pg-shadow-card);
+  transform: rotate(-1deg);
+}
+.yesterday b {
+  display: block;
+  margin-bottom: 4px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 18px;
+}
+.yesterday p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.yesterday small {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--pg-ink-soft);
+}
+.tape {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  width: 72px;
+  height: 22px;
+  border-inline: 1px solid rgba(255, 255, 255, 0.6);
+  background: var(--pg-tape);
+  transform: translateX(-50%) rotate(-3deg);
+  pointer-events: none;
+}
+
+/* ── 줄 안: 후보 · 계획 보기 · 관찰 · 반영 ───────────────────── */
+.extras {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+/* 회색 후보 — 아직 교사가 안 받은 것. 누르면 실제로 한 것 칸에 들어간다. */
+.candidate {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px dashed var(--pg-line-strong);
+  border-radius: 6px;
+  background: var(--pg-shell);
+  color: var(--pg-ink-soft);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.candidate:hover,
+.candidate:focus-visible {
+  border-style: solid;
+  color: var(--pg-ink);
+}
+.candidateLead {
+  font-size: 12px;
+  color: var(--pg-ink-hint);
+}
+.planView summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  list-style: none;
+}
+.planView summary::-webkit-details-marker {
+  display: none;
+}
+.planGroup {
+  margin: 4px 0 8px;
+}
+.planGroup h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pg-ink-hint);
+}
+/* 그 시간 관찰 — 칠판에 한 줄씩. 이름은 이미 「○○」로 뺐다. */
+.observed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px dashed var(--pg-line);
+  background: var(--pg-ivory);
+}
+.observed p {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.observed mark {
+  background: var(--pg-note);
+  color: var(--pg-ink);
+}
+.paperButton {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-ivory);
+  color: var(--pg-ink);
+  box-shadow: var(--pg-shadow-card);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.paperButton:active {
+  transform: translate(2px, 3px);
+  box-shadow: none;
+}
+/* 「반영」 도장 — 보라. 누른 줄 이름 앞에 찍힌다. */
+.stamp {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+.stamp span {
+  padding: 2px 6px;
+  border: 2px solid var(--pg-primary-tint-line);
+  border-radius: 6px;
+  color: var(--pg-ink-hint);
+  font-family: var(--font-display), sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  transform: rotate(-4deg);
+}
+.stamp[aria-pressed="true"] span {
+  border-color: var(--pg-primary);
+  color: var(--pg-primary);
+}
+
+/* ── 기본 일과표 ──────────────────────────────────────────── */
+.template {
+  margin: 8px 4px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--pg-line);
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+}
+.template p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.template ul {
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+.template li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  border-bottom: 1px dashed var(--pg-line);
+  font-size: 14px;
+}
+.template label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-size: 13px;
+}
+.template input {
+  width: 18px;
+  height: 18px;
+}
+
+/* 날짜 머리글과 날씨를 한 줄에. */
+.dayHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.dayHead h2 {
+  margin-bottom: 0;
+}

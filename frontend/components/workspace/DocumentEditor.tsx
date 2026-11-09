@@ -117,12 +117,15 @@ export default function DocumentEditor({
   onSave,
   server,
   onDirty,
+  noteChips = [],
 }: {
   initial: SavedDocument;
   onSave: (doc: SavedDocument, expected: SavedDocument) => boolean;
   server?: ServerDocumentActions;
   /** 서버 문서에 저장 안 한 글이 생기고 사라질 때 알린다. 날짜 · 주를 옮기는 화면이 먼저 묻는다. */
   onDirty?: (dirty: boolean) => void;
+  /** 반 운영 특이사항 아래 띄울 칩. 누르면 그 글이 칸에 들어간다 — 그날 날씨 대체놀이 (ADR-081 화면). */
+  noteChips?: string[];
 }) {
   const [baseline, setBaseline] = useState(initial);
   const [doc, setDoc] = useState(initial);
@@ -672,6 +675,30 @@ export default function DocumentEditor({
             </label>
           ) : (
             <p>{doc.classNote || "적지 않았어요."}</p>
+          )}
+          {editable && noteChips.length > 0 && (
+            <div className={ws.actions}>
+              {noteChips
+                .filter((chip) => !(doc.classNote ?? "").includes(chip))
+                .map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    className={ws.secondary}
+                    disabled={working || stale}
+                    onClick={() =>
+                      setDoc((prev) => ({
+                        ...prev,
+                        classNote: prev.classNote?.trim()
+                          ? `${prev.classNote.trimEnd()}\n${chip}`
+                          : chip,
+                      }))
+                    }
+                  >
+                    {chip}
+                  </button>
+                ))}
+            </div>
           )}
         </section>
       )}
