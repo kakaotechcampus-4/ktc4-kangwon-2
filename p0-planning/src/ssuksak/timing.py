@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextvars
 import functools
 import json
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -46,6 +47,43 @@ class Run:
             f"plan_timing run={self.id} kind={self.kind} outcome={outcome} total_ms={total:.0f} "
             f"{parts} llm_calls={self.llm_calls}"
         )
+
+
+class _Worker:
+    """다른 스레드에서 본 실행 — 같은 run id · kind 로 `llm_call` 줄을 남기되 시간 구간은 나누지 않는다.
+
+    여러 스레드가 한 `Run` 의 구간을 번갈아 바꾸면 구간 이름이 섞인다. 그래서 구간은 요청 스레드만 나누고,
+    여기서는 이름만 따라가며(`llm_call` 의 phase) 부른 수는 따로 세어 끝날 때 더한다.
+    """
+
+    def __init__(self, run: Run) -> None:
+        self.id, self.kind, self.phase, self.llm_calls = run.id, run.kind, run.phase, 0
+
+    def switch(self, name: str) -> str:
+        previous, self.phase = self.phase, name
+        return previous
+
+
+_merge = threading.Lock()
+
+
+def in_thread(fn: Callable) -> Callable:
+    """`fn` 을 다른 스레드(ThreadPoolExecutor)에서 부를 수 있게 감싼다 — 지금 실행이 그 스레드에도 보인다."""
+    run = _current.get()
+    if run is None:
+        return fn
+
+    def call(*args, **kwargs):
+        worker = _Worker(run)
+        token = _current.set(worker)
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _current.reset(token)
+            with _merge:
+                run.llm_calls += worker.llm_calls
+
+    return call
 
 
 def current() -> Run | None:

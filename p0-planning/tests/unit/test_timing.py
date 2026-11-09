@@ -60,3 +60,33 @@ def test_실패해도_요약_한_줄을_남기고_오류는_그대로_난다():
     fields = _fields(lines[0])
     assert fields["kind"] == "annual_play" and fields["outcome"] == "http_409"
     assert timing.current() is None
+
+
+def test_작업_스레드의_호출은_같은_실행으로_세고_구간은_요청_스레드만_나눈다():
+    from concurrent.futures import ThreadPoolExecutor
+
+    lines, seen = [], []
+
+    def call():
+        with timing.span("llm") as previous:
+            run = timing.current()
+            run.llm_calls += 1
+            seen.append((run.id, run.kind, previous))
+        timing.phase("parse")  # 작업 스레드 안의 구간 이름은 요청 실행에 닿지 않는다
+
+    @timing.timed("annual_play", lines.append)
+    def handler():
+        timing.phase("llm")
+        with ThreadPoolExecutor(4) as pool:
+            jobs = [pool.submit(timing.in_thread(call)) for _ in range(4)]
+            [job.result() for job in jobs]
+        timing.phase("save")
+        return timing.current().id
+
+    run_id = handler()
+    fields = _fields(lines[0])
+    assert fields["llm_calls"] == "4"
+    assert seen == [(run_id, "annual_play", "llm")] * 4
+    phases = {k for k in fields if k.endswith("_ms") and k != "total_ms"}
+    assert phases == {"db_read_ms", "llm_ms", "save_ms"}
+    assert timing.in_thread(call) is call  # 실행이 없으면 감싸지 않는다

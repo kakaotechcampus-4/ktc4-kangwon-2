@@ -384,7 +384,7 @@ def _play_project_plan(session: Session, user: User, klass, memo: str, names, st
             stopped,
         )
     except play_project.GenerationStopped as stop:
-        # 받는 쪽이 없다. 남은 구간의 Sol 을 부르지 않고 저장하지 않는다(다시 만들어도 409 가 없다).
+        # 받는 쪽이 없다. 다음 단계의 Sol 을 부르지 않고 저장하지 않는다(다시 만들어도 409 가 없다).
         _log.info("annual play-project generation stopped before=%s", stop)
         raise HTTPException(499, detail=_STOPPED) from None
     except Exception as error:
