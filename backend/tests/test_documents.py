@@ -779,6 +779,37 @@ def _capture_generation(monkeypatch, interpretation=DEFAULT_INTERPRETATION):
     return seen
 
 
+def test_create_document_redraws_pseudonym_that_equals_other_class_real_name(
+    db_session, monkeypatch
+):
+    # 가명은 반 안에서만 유일하다. 우리 반 가명이 옆 반 아이 실명과 같으면
+    # 그 호출에서만 새로 뽑는다(allocation.table_for_text).
+    # 그대로 두면 LLM 은 두 아이를 구분 못 하고, 되돌릴 때 옆 반 아이가 우리 아이 이름이 된다.
+    _, klass, child = _make_center_class_child(db_session)
+    moon = Class(
+        center_id=klass.center_id,
+        name="달님반",
+        school_year=2026,
+        age_min=4,
+        age_max=4,
+        teacher_name="박선생",
+    )
+    db_session.add(moon)
+    db_session.flush()
+    db_session.add(Child(class_id=moon.id, name="김도담", code="하람"))
+    db_session.flush()
+    record = _observation(db_session, klass, child, 5, "가명이가 도담이와 블록을 쌓았다.")
+    seen = _capture_generation(monkeypatch, "가명이 해석입니다. 도담이와 함께 놀았습니다.")
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201
+    masked = seen["facts"][0]
+    assert "가명" not in masked and "도담" not in masked
+    pseudonyms = [w[:-2] for w in masked.split() if w.endswith(("이가", "이와"))]
+    assert len(set(pseudonyms)) == 2  # 두 아이가 서로 다른 가명으로 갔다
+
+
 def _one_syllable_child(session, klass, call_name):
     """외자 아이 김민. 교사는 「민이」라고 쓴다 — 등록 이름(김민)으로는 안 걸린다."""
     session.add(Child(class_id=klass.id, name="김민", code="가람", call_name=call_name))
