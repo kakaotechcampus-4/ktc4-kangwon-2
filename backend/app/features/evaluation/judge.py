@@ -126,9 +126,9 @@ def judge_4_1(
     plans: Iterable[PlanFact],
     daily_logs: Iterable[DailyLogFact],
     *,
-    min_plans_per_class: int = 1,
+    min_plans_per_month: int = 1,
 ) -> AutoResult:
-    """반마다 계획안과 기간 안 모든 평일의 일지가 있는지 센다."""
+    """반마다 기간 안의 달마다 계획안이, 기간 안 모든 평일에 일지가 있는지 센다."""
     roster = set(class_ids)
     months = set(window.months())
     # 입력 유일성을 계약이 보장하지 않는다 — 같은 문서를 두 번 세면 거짓 충족. id 로 하나만 남긴다.
@@ -139,12 +139,18 @@ def judge_4_1(
         if log.class_id in roster and window.contains(log.day)
     }
     plans, daily_logs = list(plans.values()), list(daily_logs.values())
-    plan_counts = Counter(plan.class_id for plan in plans)
+    plan_counts = Counter((plan.class_id, plan.year, plan.month) for plan in plans)
     log_days: dict[int, set[date]] = defaultdict(set)
     for log in daily_logs:
         log_days[log.class_id].add(log.day)
     weekdays = set(window.weekdays())
-    plan_ok = {c for c in roster if plan_counts[c] >= min_plans_per_class}
+    # 기간에 걸친 달마다 따로 센다 — 두 달 중 한 달만 있으면 못 채운다(ADR-080).
+    # 폴더 검사(ADR-045 결정 3)와 같은 규칙이다.
+    plan_ok = {
+        c
+        for c in roster
+        if all(plan_counts[(c, year, month)] >= min_plans_per_month for year, month in months)
+    }
     journal_ok = {c for c in roster if weekdays <= log_days[c]}
     ratio = Ratio(len(plan_ok & journal_ok), len(roster))
     plan_ids = tuple(sorted(plan.plan_id for plan in plans))

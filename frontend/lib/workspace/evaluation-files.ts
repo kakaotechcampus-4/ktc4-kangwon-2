@@ -47,7 +47,7 @@ export const TEACHER_DOCS: TeacherDoc[] = [
     naming: "「계획안」을",
     exclude: ["연간", "개별화"],
     rule: { kind: "months" },
-    basis: "4-1 · 지난달과 이번 달에 1건 이상",
+    basis: "4-1 · 지난달 1일부터 어제까지 달마다 1건씩",
     example: "2026-10_월간계획안.hwp",
   },
   {
