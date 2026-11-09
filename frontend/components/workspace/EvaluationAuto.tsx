@@ -19,10 +19,11 @@ const QUESTION: Record<string, string> = {
   "4-2": "아이마다 1년에 2번 이상 발달 평가를 했나요?",
 };
 
-/** `date`(YYYY-MM-DD)는 시간대가 없어 잘라 써도 된다. */
-function longDate(value: string) {
-  const [y, m, d] = value.split("-").map(Number);
-  return `${y}년 ${m}월 ${d}일`;
+/** `date`(YYYY-MM-DD)는 시간대가 없어 잘라 써도 된다. 끝 날짜는 해가 같으면 해를 뺀다. */
+function periodText(from: string, to: string) {
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  return `검토 기간 ${fy}년 ${fm}월 ${fd}일 ~ ${ty === fy ? "" : `${ty}년 `}${tm}월 ${td}일`;
 }
 
 function percent(met: number, total: number) {
@@ -72,32 +73,36 @@ function Requirement({
 }
 
 /**
- * 4-1 — 서버는 「두 조건을 다 채운 반」 수 하나만 준다(judge_4_1).
- * 계획안 · 일지를 따로 채운 반 수는 모르므로 줄마다 건수만 보이고 「채움」이라 하지 않는다.
+ * 4-1 — 서버가 두 조건을 다 채운 반(`classes`)과 조건마다 채운 반(`plan_classes` · `journal_classes`, ADR-074 결정 2)을 준다.
+ * ✓ 는 조건마다 모든 반이 채웠을 때만 — 건수가 1 이상이라고 찍으면 빈 반 · 빈 평일이 있어도 ✓ 가 됐다(11-10 Codex 검토).
  */
 function ClassRequirements({ item }: { item: AutoIndicator }) {
   const classes = item.classes ?? { met: 0, total: 0 };
+  const planClasses = item.plan_classes ?? { met: 0, total: 0 };
+  const journalClasses = item.journal_classes ?? { met: 0, total: 0 };
+  const full = (r: { met: number; total: number }) => r.total > 0 && r.met === r.total;
   const plans = item.plan_ids.length;
   const logs = item.document_ids.length;
   return (
     <div className={styles.requirements}>
       <p className={styles.ratio}>
-        두 조건을 다 채운 반 · {classes.total}개 반 중 {classes.met}개 반
+        월간계획안 · 보육일지를 다 채운 반 · {classes.total}개 반 중 {classes.met}개 반
         <Bar value={percent(classes.met, classes.total)} />
       </p>
       <Requirement
-        done={plans > 0}
-        need="반마다 확정된 월간계획안 1건 이상"
-        have={`확정 월간계획안 ${plans}건`}
+        done={full(planClasses)}
+        need="반마다 확정한 월간계획안 1건 이상"
+        have={`확정 월간계획안 ${plans}건 · ${planClasses.met}/${planClasses.total}반`}
         href="/plans/monthly"
         action="월간계획안 만들기"
       />
+      {/* 서버는 일일 보육일지만 센다(ADR-057 결과). 「집계에 들어간 문서」 펼침을 지우며 「일일」을 여기로 옮겼다(11-09). */}
       <Requirement
-        done={logs > 0}
-        need="검토 기간 평일마다 확정된 보육일지"
-        have={`확정 보육일지 ${logs}건`}
+        done={full(journalClasses)}
+        need="검토 기간 평일마다 확정한 일일 보육일지"
+        have={`확정 보육일지 ${logs}건 · ${journalClasses.met}/${journalClasses.total}반`}
         href="/routines"
-        action="보육일지 쓰러 가기"
+        action="보육일지 쓰기"
         primary
       />
     </div>
@@ -110,27 +115,33 @@ function ChildRequirement({ item }: { item: AutoIndicator }) {
     <div className={styles.requirements}>
       <Requirement
         done={children.total > 0 && children.met === children.total}
-        need="아동마다 확정된 영유아 평가 2건"
-        have={`${children.total}명 중 ${children.met}명 채움 · 관찰일지 수로 대신 세지 않아요`}
+        need="아이마다 확정한 영유아 평가 2건 이상"
+        have={`${children.total}명 중 ${children.met}명 채움 · 관찰일지는 평가로 치지 않아요`}
         bar={percent(children.met, children.total)}
         href="/documents?kind=assessment"
-        action="영유아 평가 작성하기"
+        action="영유아 평가 쓰기"
         primary
       />
     </div>
   );
 }
 
+/**
+ * api-spec §12 가 요구하는 뜻(공휴일 · 방학 · 학년도 경계 / 입소 6개월 · 연 1회 · 2회로 셈 · 재등록)은 다 남기고
+ * 이어 붙인 문장만 나눴다(11-09 문구 토론). 개별화교육계획은 이제 자기 카드가 있어 4-1 안내에서 뺐다.
+ */
 function notesFor(item: AutoIndicator) {
-  const period = `검토 기간 ${longDate(item.period.from)} ~ ${longDate(item.period.to)}`;
+  const period = periodText(item.period.from, item.period.to);
   if (item.indicator === "4-1")
     return [
-      `${period} · 공휴일·방학은 빼지 않고, 학년도가 바뀌면 지난 학년도 반이 빠져서 실제보다 부족하게 보일 수 있어요. 오늘 쓴 일지는 내일부터 세요.`,
-      "4-1의 「5세 초등학교 전이 활동」과 「장애영유아 개별화교육계획」은 세지 않아요. 해당하면 따로 챙겨 주세요.",
+      `${period}. 오늘 쓴 일지는 내일 숫자에 들어가요.`,
+      "공휴일 · 방학도 빈 날로 세어요. 3월에는 지난 학년도 반이 빠져 실제보다 부족하게 보일 수 있어요.",
+      "4-1의 「5세 초등학교 전이 활동」은 세지 않아요. 해당하면 따로 챙겨 주세요.",
     ];
   return [
-    `${period} · 입소 6개월 미만은 공식 평가 대상이 아니고, 6~12개월은 연 1회면 돼요. 입소일을 몰라 모두 2회로 세서 실제보다 부족하게 보일 수 있어요.`,
-    "새 학년도에 아동을 다시 등록했다면 지난 학년도 평가가 빠질 수 있어요.",
+    `${period}. 입소 6개월이 안 된 아이는 평가 대상이 아니고, 6~12개월은 1번이면 돼요.`,
+    "쌤플은 입소일을 몰라 모두 2번으로 세서 실제보다 부족하게 보일 수 있어요.",
+    "새 학년도에 아이를 다시 등록했다면 지난 학년도 평가는 안 세어질 수 있어요.",
   ];
 }
 
@@ -141,9 +152,7 @@ const IMPORT = {
 } as const;
 
 function AutoCard({ item, onImported }: { item: AutoIndicator; onImported: () => void }) {
-  const [counted, setCounted] = useState(false);
   const [importing, setImporting] = useState(false);
-  const countedId = `eval-counted-${item.indicator}`;
   const importId = `eval-import-${item.indicator}`;
   const upload = IMPORT[item.indicator as keyof typeof IMPORT];
   return (
@@ -166,17 +175,6 @@ function AutoCard({ item, onImported }: { item: AutoIndicator; onImported: () =>
               {upload.label} ▾
             </button>
           )}
-          {item.indicator === "4-1" && (
-            <button
-              type="button"
-              className={styles.linkButton}
-              aria-expanded={counted}
-              aria-controls={countedId}
-              onClick={() => setCounted(!counted)}
-            >
-              집계에 들어간 문서 {item.count}건 ▾
-            </button>
-          )}
         </div>
       </div>
       {/* 펼친 내용은 누른 버튼 바로 밑에 둔다. 아래에 열리면 무엇이 열렸는지 찾아야 한다. */}
@@ -185,10 +183,7 @@ function AutoCard({ item, onImported }: { item: AutoIndicator; onImported: () =>
           <EvidenceImport kind={upload.kind} onImported={onImported} />
         </div>
       )}
-      <div id={countedId} className={styles.counted} hidden={!counted}>
-        반마다 검토 기간의 확정 월간계획안과, 평일마다 확정한 일일 보육일지를 세요. 월간계획안{" "}
-        {item.plan_ids.length}건 · 보육일지 {item.document_ids.length}건
-      </div>
+      {/* 「집계에 들어간 문서」 펼침은 지웠다 — 아래 두 줄 숫자의 합일 뿐이었다(11-09 문구 토론). */}
       {item.indicator === "4-1" ? (
         <ClassRequirements item={item} />
       ) : (
@@ -214,12 +209,8 @@ export default function EvaluationAuto({
 }) {
   return (
     <div className={ws.stack}>
-      <div>
-        <h2 className={styles.sectionTitle}>확정 문서로 확인하는 평가항목</h2>
-        <p className={ws.hint}>
-          쌤플에서 확정했거나 올린 문서를 세어 봐요. 충족했는지는 선생님께서 한 번 더 확인해 주세요.
-        </p>
-      </div>
+      {/* 「세기만」 — 센 것이지 충족을 확인한 것이 아니라는 api-spec §12 의 뜻을 한 절로 둔다. 제목은 서랍 머리줄이 맡는다. */}
+      <p className={ws.hint}>쌤플에서 확정했거나 올린 문서를 세기만 해요.</p>
       {items.map((item) => (
         <AutoCard key={item.indicator} item={item} onImported={onImported} />
       ))}
