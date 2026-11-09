@@ -956,7 +956,7 @@ safety_education 값           traffic_safety · missing_and_abduction_preventio
           "play_name": { "item_id": "item_1", "value": "살랑살랑 봄바람을 느껴요",
                          "evidence": [],
                          "generation": { "method": "RULE_LLM", "rule_id": "play_project.generate",
-                                         "rule_version": "play-project-planner-v6" } },
+                                         "rule_version": "play-project-planner-v7" } },
           "materials": { "item_id": "item_2", "value": "…", "evidence": [], "generation": { "…": "위와 같다" } },
           "support_direction": { "item_id": "item_3", "value": "…", "evidence": [], "generation": { "…": "위와 같다" } },
           "learning": { "item_id": "item_4", "value": "자연탐구 - 자연과 더불어 살기 - 자연을 탐구하며 …\n신체운동·건강 - … - …",
@@ -1003,14 +1003,20 @@ generation                     §4 의 generation 과 같은 객체
 - **`learning.value` 는 서버가 그린 공식 문구**다 — 「영역 - 내용범주 - 내용」 줄을 줄바꿈으로 잇는다. LLM 이 영역 · 범주 이름을 쓰지 않는다.
 - **`learning.evidence` 는 2~3개**, `source_type` 은 `CURRICULUM`, `source_id` 는 누리과정 내용 ID(`nuri2019.1.1.1`), `source_version` 은 카탈로그 판(`nuri-curriculum-content-v0.1.0`)이다.
 - **`play_name` · `materials` · `support_direction` 의 `evidence` 는 `[]` 다.** 쓴 기관 자료가 없고, 쓰지 않은 출처를 달지 않는다(ADR-042 §3).
-- **모든 칸의 `generation` 은** `{ method: "RULE_LLM", rule_id: "play_project.generate", rule_version: "play-project-planner-v6" }` 다.
+- **모든 칸의 `generation` 은** `{ method: "RULE_LLM", rule_id: "play_project.generate", rule_version: "play-project-planner-v7" }` 다.
 - `audit` 은 싣지 않는다. §7-1 이 별도로 준다. 배움도 `item_id` 는 있지만 글자 편집은 받지 않는다.
 
-**호출 단위** (ADR-043) — 한 요청이다. 서버가 Core 를 구간마다 한 번 `m03_m05` → `m06_m08` → `m09_m11` → `m12_m02` 순으로 부르고,
-앞 구간의 놀이명을 `avoid_play_names` 로 넘긴다. 네 구간이 모두 통과해야 한 번 저장한다. **하나라도 실패하면 아무것도 저장하지 않는다.**
-구간당 마감은 120초이고 서버 자체의 전체 마감은 없다. 120초는 구간 하나의 호출 전체에 거는 벽시계 한도이며(읽기 한 번 상한이 아니다) 이 형식에만 적용한다 — 문서 · 연간 월별 주제형의 기존 30초 타임아웃은 그대로다(월간 생성은 2026-10-31 부터 같은 120초 스트리밍이다, §9-1).
-nginx `proxy_read_timeout` 은 upstream 에서 두 번 읽는 사이의 무응답 간격 한도다 — 이 경로만 510초(= 4 × 120 + 30), 나머지는 120초다. 이 요청은 네 구간이 모두 끝날 때까지 브라우저에 아무것도 보내지 않으므로 그 간격이 전체 실행 시간과 같아, 실제로는 510초가 요청 전체의 상한이 된다. **최악의 대기가 약 8.5분이다.**
-호출마다 `llm_usage` 한 줄이 남아 계획안 하나에 4줄이다(ADR-036). `stop` 으로 끝나지 않은 스트림은 토큰을 쓰고도 줄이 남지 않는다.
+**호출 단위** (ADR-077, ADR-043 §5 를 대체) — 한 요청이다. 서버가 Core 를 네 구간 동시에 한 번씩 부른다. 첫 호출에는 다른 구간의 놀이명(`avoid_play_names`)이 없고,
+대신 Rule 이 후보마다 중심 누리과정 내용 하나와 중심 자료 하나(`play_seeds`)를 정해 넘긴다 — 중심 내용은 한 해 40개가 모두 다르고 1.2 건강 · 1.3 안전 내용은 고르지 않는다.
+그 뒤 서버가 두 번까지 더 부를 수 있다.
+1. **실패한 구간만 한 번 더** — 호출이 깨졌거나 · 시간 초과 · 계약 위반인 구간만 같은 입력으로 다시 부른다. 한도(401 · 403 · 429) · 키 없음 · 설정 · Reference 미승인 · 메모 가명 실패는 다시 부르지 않는다. 다시 불러도 실패하면 **아무것도 저장하지 않는다.**
+2. **겹친 후보만 한 번 다시** — 다른 구간끼리 놀이명(또는 놀이명 + 지원매체)이 비슷한(글자 두 개 묶음 Jaccard ≥ 0.6) 후보만, 나중 구간 쪽을 그 자리에서 다시 만든다. 이때는 나머지 39개 놀이명을 `avoid_play_names` 로 넘기고 요청 사항은 넣지 않는다. 요청을 반영한 후보는 바꾸지 않는다(짝의 다른 쪽을 바꾸고, 둘 다면 둘 다 둔다). `row_key` 는 그대로다.
+   다시 만든 뒤에도 비슷한 겹침이 남으면 원래 후보를 둔다. **이름이 똑같은 후보가 남으면 500** 이다.
+
+네 구간이 모두 통과해야 한 번 저장한다. 호출 하나의 마감은 120초다. 120초는 호출 하나 전체에 거는 벽시계 한도이며(읽기 한 번 상한이 아니다) 이 형식에만 적용한다 — 문서 · 연간 월별 주제형의 기존 30초 타임아웃은 그대로다(월간 생성은 2026-10-31 부터 같은 120초 스트리밍이다, §9-1).
+nginx `proxy_read_timeout` 은 upstream 에서 두 번 읽는 사이의 무응답 간격 한도다 — 이 경로만 510초, 나머지는 120초다. 단계가 셋(동시 호출 · 실패 구간 · 겹친 후보)이라 최악은 3 × 120초 = 6분이고 510초 안이다. Sol 실측 평균은 38초다(2026-11-09, `docs/evaluation/runs/2026-11-09-play-annual/`).
+호출마다 `llm_usage` 한 줄이 남아 계획안 하나에 4~12줄이다(ADR-036). `stop` 으로 끝나지 않은 스트림은 토큰을 쓰고도 줄이 남지 않는다.
+서버 로그에는 숫자만 남는다: `annual play-project parallel recalled=… replaced=… overlaps_left=…`.
 
 ```
 DEPENDENCY_UNAVAILABLE  503   누리과정 Reference 가 없다 · 승인 전이다.  재시도 무의미
@@ -1020,8 +1026,8 @@ ALREADY_EXISTS          409   같은 반 두 번째 생성 — 형식과 관계�
 GENERATION_STOPPED      499   브라우저가 요청을 끊었다(「생성 멈추기」).  받는 쪽이 없어 화면에 나오지 않는다 — 기록용
 ```
 
-**「생성 멈추기」**(하민 결정 2026-11-06) — 서버는 구간을 부르기 전마다, 그리고 마지막 구간 뒤에 한 번 더 브라우저가 연결을 끊었는지 본다.
-끊겼으면 남은 구간을 부르지 않고 **아무것도 저장하지 않는다** — 다시 만들어도 `409 ALREADY_EXISTS` 가 나지 않는다. 이미 부른 구간의 비용은 그대로 남는다.
+**「생성 멈추기」**(하민 결정 2026-11-06, ADR-077 로 뜻이 바뀜) — 서버는 동시 호출 전, 다시 부르기(실패 구간 · 겹친 후보) 전, 저장 전에 브라우저가 연결을 끊었는지 본다.
+끊겼으면 다음 단계를 부르지 않고 **아무것도 저장하지 않는다** — 다시 만들어도 `409 ALREADY_EXISTS` 가 나지 않는다. 네 구간은 이미 동시에 불렀으므로 **멈춰도 그 비용은 그대로 남는다**(순차일 때처럼 남은 구간을 아끼지 못한다).
 Next 프록시는 브라우저가 끊으면 백엔드 연결도 끊는다. 499 는 nginx 의 「Client Closed Request」 관례를 따른 기록용 숫자다.
 월별 주제형 연간 · 월간 · 주간 생성은 끊김을 보지 않는다 — 화면만 멈추고 서버는 끝까지 처리할 수 있다.
 

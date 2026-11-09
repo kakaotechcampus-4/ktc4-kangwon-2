@@ -8,7 +8,11 @@ renders the official learning wording from the Reference — the LLM never write
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
+import random
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -28,7 +32,9 @@ from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 from .weekly import unsupported_facts
 from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG, venue_memo
 
-PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v6" + VENUE_POLICY_TAG
+# v7 (ADR-077, 2026-11-09): per-candidate Rule hints (play_seeds); periods run in parallel, so
+# the first call carries no other period's plays.
+PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v7" + VENUE_POLICY_TAG
 LEARNING_MIN, LEARNING_MAX = 2, 3  # 2026-10-24 decision
 TEXT_FIELDS = ("play_name", "materials", "support_direction")
 
@@ -71,6 +77,83 @@ SYSTEM_PROMPT = (
     "어린이날 · 추석처럼 누구나 아는 공휴일 · 기념일은 쓸 수 있다. "
     "그 원만의 행사, 입력에 없는 날짜 · 사람 이름 · 기관 정보는 지어내지 않는다."
 )
+# v7: the sentence measured as condition ⑦, sent right after VENUE_GUIDANCE as measured
+# (docs/evaluation/runs/2026-11-09-play-annual/).
+SEED_PROMPT = (
+    " play_seeds 는 Rule 이 정한 후보별 중심 누리과정 내용(nuri_content_id, nuri_content)과 중심 자료(material_hint)"
+    "이다 — rows 의 n 번째 후보는 play_seeds 의 n 번째를 쓴다. "
+    "놀이는 유아가 중심 누리과정 내용을 실제로 경험하는 놀이로 짓고, learning_content_ids 에 nuri_content_id 를 넣는다."
+    " 중심 자료를 놀이에 자연스럽게 쓰되, 어색하면 비슷한 자료로 바꿔도 된다."
+)
+
+# ADR-077 (하민 결정 2026-11-09): the central hint skips 1.2 건강하게 생활하기 · 1.3 안전하게 생활하기
+# (condition ⑦, 59 -> 51 contents). learning_content_ids still choose from all 59 contents.
+SEED_EXCLUDED_PREFIXES = ("nuri2019.1.2.", "nuri2019.1.3.")
+# [출처] 2019 개정 누리과정 해설서 p.48-49 「풍부한 놀이자료 제공」이 예로 든 자료 종류
+# (PDF · 인쇄 쪽 구분 미확인). Category names only, no quoted sentence.
+MATERIAL_HINTS = ("일상의 평범한 사물", "자연물", "악기", "미술 재료", "그림책", "재활용품")
+NEAR_PLAY_NAME = 0.6  # bigram Jaccard; catches 6 of the 24 'same play' pairs (ADR-077)
+
+
+@dataclass(frozen=True, slots=True)
+class PlaySeed:
+    nuri_content_id: str
+    nuri_content: str
+    material_hint: str
+
+
+def draw_play_seeds(
+    catalog: CurriculumCatalog, period_keys: Sequence[str], rows: int, rng: random.Random
+) -> dict[str, tuple[PlaySeed, ...]]:
+    """One central 누리과정 content per candidate, all different across the year, and the six
+    material kinds spread evenly (1~2 times) inside each period."""
+    contents = [c for c in catalog.contents if not c.content_id.startswith(SEED_EXCLUDED_PREFIXES)]
+    picks = iter(rng.sample(contents, len(period_keys) * rows))
+    seeds = {}
+    for key in period_keys:
+        materials = [MATERIAL_HINTS[n % len(MATERIAL_HINTS)] for n in range(rows)]
+        rng.shuffle(materials)
+        seeds[key] = tuple(
+            PlaySeed(c.content_id, c.text, material)
+            for c, material in zip(itertools.islice(picks, rows), materials, strict=True)
+        )
+    return seeds
+
+
+def _squeeze(text: str) -> str:
+    return re.sub(r"[\s\W_]+", "", text)
+
+
+def similar_play_names(a: str, b: str, line: float = NEAR_PLAY_NAME) -> bool:
+    """Same after dropping spaces and punctuation, or bigram Jaccard >= line."""
+    ga, gb = (
+        {t[i : i + 2] for i in range(len(t) - 1)} or {t} for t in (_squeeze(a), _squeeze(b))
+    )
+    return _squeeze(a) == _squeeze(b) or len(ga & gb) / len(ga | gb) >= line
+
+
+def overlapping_candidates(
+    periods: Sequence[Sequence[tuple[str, str, bool]]],
+) -> list[tuple[int, int]]:
+    """(period index, candidate index) to make again, for (play_name, materials, memo_applied) rows.
+
+    Two candidates of different periods overlap when their names, or names + materials, are
+    similar. The later period's one is redone; if it carries the teacher's request, the earlier
+    one; if both do, neither (ADR-077).
+    """
+    found = set()
+    for i, j in itertools.combinations(range(len(periods)), 2):
+        for (a, (na, ma, memo_a)), (b, (nb, mb, memo_b)) in itertools.product(
+            enumerate(periods[i]), enumerate(periods[j])
+        ):
+            if not (similar_play_names(na, nb) or similar_play_names(f"{na} {ma}", f"{nb} {mb}")):
+                continue
+            if not memo_b:
+                found.add((j, b))
+            elif not memo_a:
+                found.add((i, a))
+    return sorted(found)
+
 
 # Human Decision 2026-11-05(하민): the memo goes to all four periods, so each period answers only
 # its own season's requests and quotes them verbatim — the Application matches them across periods.
@@ -117,6 +200,8 @@ class PlayProjectRequest:
     packet_fingerprint: str
     # ADR-060: row keys memo_applied may name; None = no teacher memo.
     memo_addresses: tuple[str, ...] | None = None
+    # ADR-077: row n uses seed n; () = no hints (the validator then checks nothing about them).
+    play_seeds: tuple[PlaySeed, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,7 +242,9 @@ def build_play_project_request(
     catalog: CurriculumCatalog,
     avoid_play_names: tuple[str, ...] = (),
     teacher_memo: str = "",
+    play_seeds: tuple[PlaySeed, ...] = (),
 ) -> PlayProjectRequest:
+    row_count = len(play_seeds) or row_count
     payload = {
         "period_key": period.key,
         "period_label": period.label,
@@ -168,9 +255,18 @@ def build_play_project_request(
         "curriculum_contents": [
             {"content_id": c.content_id, "text": c.display} for c in catalog.contents
         ],
+        "play_seeds": [
+            {
+                "nuri_content_id": s.nuri_content_id,
+                "nuri_content": s.nuri_content,
+                "material_hint": s.material_hint,
+            }
+            for s in play_seeds
+        ],
     }
     memo = tuple(f"cand{i}" for i in range(1, row_count + 1)) if teacher_memo else None
-    prompt_version, system_prompt = PLAY_PROJECT_PROMPT_VERSION, SYSTEM_PROMPT + VENUE_GUIDANCE
+    prompt_version = PLAY_PROJECT_PROMPT_VERSION
+    system_prompt = SYSTEM_PROMPT + VENUE_GUIDANCE + SEED_PROMPT
     if memo is not None:  # rows answer in order, so row i is cand{i}
         payload["teacher_memo"] = {"text": teacher_memo, "addresses": list(memo)}
         prompt_version += TEACHER_MEMO_PROMPT_TAG + PERIOD_MEMO_PROMPT_TAG + CANDIDATE_MEMO_PROMPT_TAG
@@ -188,6 +284,7 @@ def build_play_project_request(
             (prompt_version + catalog.catalog_version + user_content).encode()
         ).hexdigest(),
         memo_addresses=memo,
+        play_seeds=tuple(play_seeds),
     )
 
 
@@ -295,6 +392,12 @@ def validate_play_project(
             codes.append("DUPLICATE_CONTENT_ID")
         if not set(ids) <= request.allowed_content_ids:
             codes.append("UNKNOWN_CONTENT_ID")
+    # ADR-077: the Rule fixed each candidate's central content, so the Rule checks it is linked.
+    if any(
+        seed.nuri_content_id not in row.learning_content_ids
+        for seed, row in zip(request.play_seeds, proposal.rows)
+    ):
+        codes.append("SEED_CONTENT_MISSING")
     return tuple(dict.fromkeys(codes))
 
 
