@@ -344,3 +344,31 @@
 .dayHead h2 {
   margin-bottom: 0;
 }
+
+/* 주간 총평 옆 — 그 주 확정한 일일 평가. 보여만 준다(AI 에 안 보냄). 아이보리 = 이미 쌓인 것. */
+.evaluations {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--pg-line);
+  background: var(--pg-ivory);
+  color: var(--pg-ink);
+}
+.evaluations h3 {
+  margin: 0 0 2px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 18px;
+}
+.evaluations ul {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.evaluations b {
+  margin-right: 6px;
+  color: var(--pg-ink-soft);
+  font-size: 13px;
+}

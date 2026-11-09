@@ -2618,6 +2618,7 @@ function journalCard(
     "next/link": { default: "link" },
     "next/navigation": { useRouter: () => ({ push: (href) => calls.push({ op: "push", href }) }) },
     "./WorkspaceUI": { Message: "message", ws: {} },
+    "./RoutineDay.module.css": { __esModule: true, default: {} },
     "@/components/app/Posty": { Posty: "posty" },
     "./DailyJournalCard": {
       journalMood: () => ({ pose: "stand", face: "base", tone: "note" }),
@@ -2646,6 +2647,10 @@ function journalCard(
       createDocument: async (input) => {
         calls.push({ op: "create", ...input });
         return create ? create(input) : { id: "doc-99" };
+      },
+      getDocument: async (id) => {
+        calls.push({ op: "get", id });
+        return { id, sections: [{ heading: "해석", body: `${id} 의 해석` }] };
       },
     },
   });
@@ -2779,10 +2784,42 @@ test("확정한 일일 일지가 없고 초안만 있으면 초안이라고 말�
   assert.equal(makeButton(card.view).props.disabled, true);
   assert.ok(card.text().includes("근거로 쓸 수 없어요"), card.text());
   assert.ok(card.text().includes("초안"), card.text());
-  const links = all(card.view.tree())
-    .filter((n) => n?.props?.href)
-    .map((n) => n.props.href);
-  assert.ok(links.includes("/routines?date=2026-11-04"), links.join(" , "));
+  // 그날로 옮기지 않고 이 화면 편집기에서 바로 확정한다.
+  const confirmHere = all(card.view.tree()).find(
+    (n) => n?.type === "button" && deepText(n).includes("여기서 확정"),
+  );
+  confirmHere.props.onClick();
+  await card.view.flush();
+  assert.ok(
+    card.calls.some((c) => c.op === "edit" && c.id === "doc-2"),
+    JSON.stringify(card.calls),
+  );
+  assert.ok(all(card.view.tree()).some((n) => n?.type === "document-editor"));
+});
+
+test("주간 일지를 펴면 총평 옆에 그 주 확정한 일일 평가를 보여만 준다", async (t) => {
+  const card = journalCard(t, {
+    weeklies: [draftWeekly],
+    dailies: [
+      { id: "doc-1", start: "2026-11-03", status: "confirmed" },
+      { id: "doc-2", start: "2026-11-04", status: "draft" },
+    ],
+  });
+  await card.view.flush();
+  const open = all(card.view.tree()).find(
+    (n) => n?.type === "button" && deepText(n).includes("이어서 쓰기"),
+  );
+  open.props.onClick();
+  await card.view.flush();
+  const text = card.text();
+  assert.ok(text.includes("이 주 일일 평가"), text);
+  assert.ok(text.includes("doc-1 의 해석"), text);
+  assert.equal(text.includes("doc-2 의 해석"), false, "초안 평가는 보여 주지 않는다");
+  // 보여 주기만 한다 — 만들기 · 검토로 보내는 요청이 없다.
+  assert.deepEqual(
+    card.calls.filter((c) => c.op === "get").map((c) => c.id),
+    ["doc-1"],
+  );
 });
 
 // ── 3차 점검 4 · 7 — 주간 · 일일 일지 칸 ─────────────────────────────

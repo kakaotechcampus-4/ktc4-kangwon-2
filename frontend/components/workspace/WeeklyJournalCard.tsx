@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createDocument, listDocuments, type DocumentSummary } from "@/lib/api/documents";
+import {
+  createDocument,
+  getDocument,
+  listDocuments,
+  type DocumentSummary,
+} from "@/lib/api/documents";
 import { routineLocalId, type ApiRoutine } from "@/lib/api/routines";
 import { classServerId } from "@/lib/api/onboarding";
 import { routinesPath } from "@/lib/workspace/routines-route";
@@ -11,6 +16,7 @@ import { Message, ws } from "./WorkspaceUI";
 import { LEAVE_JOURNAL, journalMood } from "./DailyJournalCard";
 import DocumentEditor from "./DocumentEditor";
 import { useServerDocument } from "./use-server-document";
+import css from "./RoutineDay.module.css";
 
 type From = "dailyLog" | "routine";
 
@@ -176,6 +182,48 @@ export function useWeeklyJournal({
 
 export type WeeklyJournal = ReturnType<typeof useWeeklyJournal>;
 
+/**
+ * 그 주 확정한 일일 보육일지의 평가(해석) — 주간 총평 옆에 **보여만** 준다.
+ *
+ * 주간 생성에는 보내지 않는다. 일일 해석을 근거로 쓰면 「해석 위에 해석을 쌓지 않는다」
+ * (api-spec 「문서를 근거로 쓸 때」)와 부딪힌다. 어긋남은 교사가 보고 맞춘다 (3차 점검 1-4).
+ */
+interface Evaluation {
+  id: string;
+  start: string;
+  text: string;
+}
+
+function useDailyEvaluations(dailies: DocumentSummary[]) {
+  const ids = dailies.map((d) => d.id).join(",");
+  const [loaded, setLoaded] = useState<{ ids: string; items: Evaluation[] } | null>(null);
+  useEffect(() => {
+    if (!ids) return;
+    let live = true;
+    const days = new Map(dailies.map((d) => [d.id, d.start]));
+    Promise.all(
+      [...days.keys()].map((id) =>
+        getDocument(id).then(
+          (doc) => ({
+            id,
+            start: days.get(id) ?? "",
+            text: doc.sections.find((s) => s.heading === "해석")?.body.trim() ?? "",
+          }),
+          () => null,
+        ),
+      ),
+    ).then((items) => {
+      if (live) setLoaded({ ids, items: items.filter((i): i is Evaluation => !!i?.text) });
+    });
+    return () => {
+      live = false;
+    };
+    // `ids` 가 같으면 같은 일지들이다 — 배열이 새로 만들어졌다고 다시 읽지 않는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ids]);
+  return loaded?.ids === ids && ids ? loaded.items : [];
+}
+
 const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 /** `2026-11-03` → `11/3 화` */
 function dayLabel(iso: string) {
@@ -254,18 +302,29 @@ export default function WeeklyJournalCard({
         </div>
       </div>
 
-      {/* 그 주 일일 일지를 날마다 한 줄로. 근거로 못 쓰는 줄은 까닭을 달고 그날 일과 기록으로
-          보낸다 — 일일 일지는 그 화면에서 쓰고 확정한다. */}
+      {/* 그 주 일일 일지를 날마다 한 줄로. AI 초안은 그 자리 편집기에서 확정한다 — 그날 화면으로
+          옮겨 가면 주간을 쓰던 흐름이 끊긴다. 그 밖에 근거로 못 쓰는 줄은 까닭을 달고 그날 일과
+          기록으로 보낸다. */}
       {journal === null && from === "dailyLog" && weekDailies.length > 0 && (
         <ul className={ws.journalDays} aria-label="이 주 일일 보육일지">
           {weekDailies.map((d) => {
             const block = dailyBlock(d);
-            const href = block && routinesPath(state.classId, d.start);
+            const draft = d.origin === "ai" && d.status !== "confirmed";
+            const href = block && !draft && routinesPath(state.classId, d.start);
             return (
               // 칠하는 색은 「쓸 수 있나」로 가른다. 확정했어도 근거로 못 쓰면 주황이다.
               <li key={d.id} data-state={block ? "draft" : "confirmed"}>
                 <span>{dayLabel(d.start)}</span>
                 <b>{block ? block.why : "확정"}</b>
+                {draft && (
+                  <button
+                    type="button"
+                    className={css.paperButton}
+                    onClick={() => state.open(d.id)}
+                  >
+                    여기서 확정
+                  </button>
+                )}
                 {href && (
                   <Link href={href} className={ws.link}>
                     {block.fix}
@@ -320,10 +379,29 @@ export function WeeklyJournalEditor({ state }: { state: WeeklyJournal }) {
     // 지운 문서를 편집기에 남겨 두면 저장할 수 없는 칸만 보인다.
     onRemoved: state.close,
   });
+  // 펴 놓은 것이 주간이면 총평 옆에 그 주 일일 평가를 둔다. 일일 초안을 확정하러 편 때는 안 둔다.
+  const weekly = !!state.doc && state.doc.id === state.openId;
+  const evaluations = useDailyEvaluations(weekly ? state.dailyLogs : []);
   if (state.off || !state.openId) return null;
 
   return (
-    <section className={`${ws.card} ${ws.journalCard}`} aria-label="이번 주 주간 보육일지">
+    <section
+      className={`${ws.card} ${ws.journalCard}`}
+      aria-label={weekly ? "이번 주 주간 보육일지" : "일일 보육일지 확정"}
+    >
+      {evaluations.length > 0 && (
+        <aside className={css.evaluations} aria-label="이 주 일일 평가">
+          <h3>이 주 일일 평가</h3>
+          <p className={ws.hint}>총평과 흐름을 맞출 때 보세요. AI 에는 보내지 않아요.</p>
+          <ul>
+            {evaluations.map((e) => (
+              <li key={e.id}>
+                <b>{dayLabel(e.start)}</b> {e.text}
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )}
       {edit.status === "loading" && <p className={ws.hint}>일지를 불러오는 중…</p>}
       {edit.status === "error" && <Message error>{edit.error}</Message>}
       {edit.doc && (
