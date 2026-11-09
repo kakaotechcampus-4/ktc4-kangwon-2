@@ -47,6 +47,12 @@ TIMEOUT_SECONDS = 30.0
 RETRY_STATUSES = frozenset({502, 503, 504})
 RETRY_DELAY_SECONDS = 1.5
 
+# 생성 요청 하나(`ssuksak.timing` 실행 하나)가 부를 수 있는 LLM 횟수. **재시도도 센다**(ADR-079).
+# 설계상 최대는 놀이형 연간이다 — 구간 4개를 스트림으로 부르고 구간마다 위 재시도가 한 번 붙어 8.
+# 넘으면 어딘가 반복문이 샌 것이라 더 부르지 않고 멈춘다. 월 예산 차단(2026-09-21 무효)이 아니다.
+# 실행 밖 호출(문서 초안 · 칸 재생성 · jev 판정)에는 걸지 않는다 — 센 실행이 없다.
+MAX_LLM_CALLS_PER_RUN = 8
+
 
 class _NotDelivered(LlmFailed):
     """요청이 모델에 닿기 전에 끊겼다 — 한 번 더 보내도 되는 유일한 실패."""
@@ -216,11 +222,15 @@ def _llm_call(model: object):
     숫자와 이름만 적는다 — 내용은 없다. `run` 은 생성 요청 하나(`ssuksak.timing`)를 가리키고,
     `phase` 는 이 호출이 불린 구간이다(수리 호출이면 `repair`). 생성 요청 밖이면 `-` 다.
     """
+    run = timing.current()
+    if run is not None and run.llm_calls >= MAX_LLM_CALLS_PER_RUN:
+        # 부르지 않고 멈춘다 — 세지도 `llm_call` 줄을 남기지도 않는다. `_NotDelivered` 가
+        # 아니라서 `_once_more` 가 다시 부르지도 않는다.
+        raise LlmFailed(f"생성 요청 하나의 LLM 호출 상한({MAX_LLM_CALLS_PER_RUN}회)을 넘었다")
     call = {"first_byte_ms": "-", "tokens": ("-", "-")}
     started = time.perf_counter()
     outcome = "ok"
     with timing.span("llm") as phase:
-        run = timing.current()
         if run is not None:
             run.llm_calls += 1
         try:
