@@ -25,10 +25,16 @@ const WHY: Record<string, string> = {
 /** DB 칸이 200자다. 파일 이름이 더 길면 앞부분만 제목으로 쓴다. */
 const TITLE_MAX = 200;
 
+/** `date`(YYYY-MM-DD)는 시간대가 없어 잘라 써도 된다. 「11월 9일」 */
+function shortDay(value: string) {
+  const [, m, d] = value.split("-").map(Number);
+  return `${m}월 ${d}일`;
+}
+
 /** 한글 파일은 서버(§8 parse)가, 나머지는 화면 서버(/api/templates/extract)가 글자를 뽑는다. */
 async function readText(file: File) {
   // 화면 서버는 5MB 를 넘으면 거절하지만 §8 parse 는 크기를 보지 않는다. 안내한 한도를 여기서 같이 지킨다.
-  if (file.size > 5 * 1024 * 1024) throw new Error("5MB 이하 파일을 업로드해주세요.");
+  if (file.size > 5 * 1024 * 1024) throw new Error("5MB 이하 파일을 올려 주세요.");
   const hwp = FORM_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext));
   if (hwp) return tableText((await parseForm(file)).tables);
   const form = new FormData();
@@ -68,6 +74,13 @@ export default function EvidenceImport({
   // 일일 보육일지는 하루 · 반 전체 문서, 영유아 평가는 아이 한 명의 문서다(§11). 칸도 그대로 맞춘다.
   const daily = kind === "dailyLog";
   const periodEnd = daily ? start : end;
+  // 확인 칸은 판에 보이는 반 · 날짜 · 아이를 그대로 말한다. 체크 하나가 원문 · 메타 · 「통과 아님」 확인 셋을 함께
+  // 보내므로(documents.ts) 셋을 다 적는다(§11 · FR-804, 11-09 문구 토론). 전에는 판에 없는 「아동 · 반 · 기간」을 물었다.
+  const roomName = classroom?.className ?? "고른 반";
+  const pickedChild = classroom?.children.find((c) => c.id === childId)?.name ?? "고른 아이";
+  const subject = daily
+    ? `${roomName} ${shortDay(start)} 일지`
+    : `${roomName} ${pickedChild} ${shortDay(start)}~${shortDay(end)} 평가`;
 
   async function pick(file?: File) {
     if (!file) return;
@@ -86,8 +99,13 @@ export default function EvidenceImport({
   }
 
   async function register() {
-    if (!classroom || !text || !validPeriod(start, periodEnd) || !reviewed) {
-      setMessage("반 · 작성 기간과 원문 확인 여부를 확인해주세요.");
+    // 원문이 없거나 체크하지 않으면 단추가 이미 꺼져 있다. 여기 오는 건 주로 반이 없거나 날짜가 틀린 때다.
+    if (!classroom) {
+      setMessage("반을 먼저 골라 주세요.");
+      return;
+    }
+    if (!text || !validPeriod(start, periodEnd) || !reviewed) {
+      setMessage("날짜를 다시 봐 주세요.");
       return;
     }
     if (!daily && !childId) {
@@ -112,15 +130,15 @@ export default function EvidenceImport({
       setReviewed(false);
       setMessage(
         notices.length
-          ? "등록했어요. 아래 확인할 점을 봐주세요."
-          : "등록했어요. 문서 보관함에서 볼 수 있고 위 숫자에 반영돼요.",
+          ? "등록했어요. 아래 확인할 점을 봐 주세요."
+          : "등록했어요. 문서 보관함에 들어갔고 평가 점검 숫자에도 세어져요.",
       );
       onImported();
     } catch (e) {
       const why = invalidFields(e, WHY);
       setMessage(
         isUnauthenticated(e)
-          ? "로그인이 필요해요. 다시 로그인한 뒤 이용해주세요."
+          ? "로그인이 필요해요. 다시 로그인한 뒤 이용해 주세요."
           : why.length
             ? why.join(" ")
             : e instanceof Error
@@ -134,9 +152,14 @@ export default function EvidenceImport({
 
   return (
     <div className={styles.evidence}>
+      {/* 「통과 아님」은 확인 칸으로 옮겼다 — 체크로 확인하는 문구라서(§11). 표 안 글만 읽는다는 것은 ADR-057 이 적으라고 했다. */}
       <p className={ws.hint}>
-        원에서 쓰던 {DOCUMENT_KINDS[kind]}를 올리면 글자만 읽어 보관함에 등록해요. 파일은 저장하지
-        않아요. 한글 파일은 표 안의 글만 읽어요. 등록했다고 평가 기준을 채운 것은 아니에요.
+        원에서 쓰던 {DOCUMENT_KINDS[kind]}를 올리면 글자만 읽어 보관함에 넣어요. 파일은 저장하지
+        않아요. 한글 파일은 표 안의 글만 읽어요.
+      </p>
+      {/* 반은 설정에서 고른 반으로 정해진다. 판에 보여야 확인 칸이 「반이 맞는지」를 물을 수 있다. */}
+      <p className={ws.hint}>
+        반 · <strong>{classroom?.className ?? "아직 고른 반이 없어요"}</strong>
       </p>
       <div className={ws.row}>
         {!daily && (
@@ -184,7 +207,7 @@ export default function EvidenceImport({
         )}
       </div>
       <label className={ws.field}>
-        파일 · 한글(HWP · HWPX) / PDF / DOCX / TXT / MD / CSV · 5MB
+        파일 (한글 · PDF · 워드 · 텍스트, 5MB까지)
         <input
           type="file"
           disabled={busy}
@@ -198,7 +221,7 @@ export default function EvidenceImport({
       {text && <div className={ws.preview}>{text}</div>}
       <label className={ws.check}>
         <input type="checkbox" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} />
-        원문과 등록할 아동 · 반 · 기간이 일치하는지 확인했어요.
+        원문이 {subject}와 맞아요. 올렸다고 평가 기준을 채운 것은 아니에요.
       </label>
       <button
         type="button"

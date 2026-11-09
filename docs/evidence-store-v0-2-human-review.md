@@ -2,20 +2,22 @@
 
 - 승인일: 2026-11-02
 - 승인자: `reviewer_ai_lead_001`
-- 범위: 기존 처리 JSON에서 사람이 REMOVE로 판정한 기록 42개를 통째 제외. 남은 기록 12,325개와 출처 manifest는 그대로다. PDF 재추출은 없다.
+- 범위: 기존 처리 JSON에서 사람이 REMOVE로 판정한 기록 42개를 통째 제외. 남은 기록 12,325개와 출처 manifest는 그대로다. PDF 재추출은 없다. 2026-11-10 하민 결정으로 아동 이름이 든 행사 기록 1건을 더 뺐다(43개 제외 · 남은 기록 12,324개, ADR-079 10번).
 - 제외 사유: `PII_BIRTHDAY_LIST` 3개, `PII_PERSON_NAME` 39개. 일반 활동 `GENERAL_ACTIVITY` 32개는 KEEP이다. 새 기록·연간 주제·주간 추출 자료는 추가하지 않는다.
 
 ## 승인한 파일
 
 | 파일 (`p0-planning/data/evidence/`) | 기록 또는 판정 수 | 파일 SHA-256 |
 |---|---:|---|
-| institution_evidence_v0_2_0.json | 12,325 | `5bf84e5a59fd74880b040ea1e545b00f4ddbe8cd1cc07da11a416161dedc8bb4` |
-| monthly_evidence_semantic_classification_v0_2_0.json | 16 | `464d8bcba8dd554264bc628b1a89e7b30c15183c31488836977dab530bd2dcda` |
-| weekly_evidence_semantic_classification_v0_2_0.json | 179 | `3e9688120c14f07fe9d7ee55d8f1196bad53c32621975bcc174ab32786db6234` |
-| safety_evidence_classification_v0_3_0.json | 103 | `9b14e38a9943a02d1bfdb4deb9c13e0e1376e9d693628b6f58dec1cd5a14b973` |
-| safety_reference_quality_v0_2_0.json | 32 | `bc69551897b4940597e43f0e77a2b5cdac438a9eb6345c7825a15f6d5d68a3c4` |
+| institution_evidence_v0_2_0.json | 12,324 | `3bbe06f8d7c6ae317d3cb7bc1649a4b6b3585d359716cbd8aff0beb66dccf569` |
+| monthly_evidence_semantic_classification_v0_2_0.json | 16 | `3e95638b0603873e41592317d8849d273e99bd324575f3884a1a6d986ad7216b` |
+| weekly_evidence_semantic_classification_v0_2_0.json | 179 | `2262793049e456a012075acb72a8cea623c6624abf97196718a5c6688d91c4d5` |
+| safety_evidence_classification_v0_3_0.json | 103 | `9ec4ed7af719bcb5c7764b1ee36f0a9f754bc2da1792b9c6a854729b54c25f8b` |
+| safety_reference_quality_v0_2_0.json | 32 | `5f74f8b2b29ac7a3f80b8463f477627e9fba1a2faa8641e0169598eae3e5abf0` |
 
-새 자료 content SHA는 `7d6d9bdb29dc5e84c024acc418a092c6e01d72134cf51043ab5dfd38a1332463`이다. 분류 4종의 판정 항목은 이전 판과 완전히 같고, 자료 결합과 판·검토 메타데이터만 새로 기록했다. 기존 승인을 승계하지 않고 이 파일별 승인을 반영했다. 승인 칸은 이번 승인 시점에 갱신했고, 나머지 초안 검토 메모는 보존했다.
+새 자료 content SHA는 `4e01195eea06f28c71548b7c091ad8223b322b155e54f2bcbab957132f9cd7cd`이다. 분류 4종의 판정 항목은 이전 판과 완전히 같고, 자료 결합과 판·검토 메타데이터만 새로 기록했다. 기존 승인을 승계하지 않고 이 파일별 승인을 반영했다. 승인 칸은 이번 승인 시점에 갱신했고, 나머지 초안 검토 메모는 보존했다.
+
+> 2026-11-08 기관 가명화(ADR-079): 기관명 → `inst_NNN`, 기관 유형 칸 삭제, 원본 경로 → `references/samples/<kind>/<sha12>.pdf`, 다른 원 이름 3곳 → `○○어린이집`. 위 SHA는 가명화 뒤 값이다. record_id · 원문 · 연령 · 월 · 분류 판정은 그대로라 승인을 승계한다.
 
 자료에는 승인 필드를 새로 만들지 않는다. corpus 관찰 자료의 비규범적 역할은 그대로이며, 사람의 개인정보 검토·제외 ID·사유·원본 SHA·파생 재현 정보는 `build`에 기록한다. 분류 4종의 승인은 각 `review` 필드에 기록하고, 기본 로더 경로와 놀이 월간 조립부의 판 상수를 함께 전환한다.
 

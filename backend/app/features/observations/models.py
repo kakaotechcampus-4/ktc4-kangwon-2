@@ -84,6 +84,8 @@ class Observation(Base):
         server_default="",
         comment="상황. 선택이라 빈 문자열을 허용한다 — NULL 을 쓰지 않아 FE 가 분기하지 않는다",
     )
+    # 상한 5,000자는 schemas.py 의 Fact 가 본다. 아래 comment 는 DB 컬럼 주석이라 그대로 둔다
+    # (바꾸면 마이그레이션이 필요하다).
     fact: Mapped[str] = mapped_column(
         Text, comment="교사가 입력한 관찰 사실. 길이를 계약이 정하지 않아 Text 다"
     )

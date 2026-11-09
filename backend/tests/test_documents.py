@@ -707,6 +707,63 @@ def test_create_document_masks_child_names_before_generation(db_session, monkeyp
     assert by_heading["해석"].startswith("이가명 해석")
 
 
+def test_create_document_masks_other_class_child_names(db_session, monkeypatch):
+    # 교사는 옆 반 아이 이름도 적는다. 그 반 아이로만 표를 만들면 옆 반 실명이 LLM 으로 나간다.
+    _, klass, child = _make_center_class_child(db_session)
+    other_class = Class(
+        center_id=klass.center_id,
+        name="달빛반",
+        school_year=2026,
+        age_min=4,
+        age_max=4,
+        teacher_name="박선생",
+    )
+    db_session.add(other_class)
+    db_session.flush()
+    db_session.add(Child(class_id=other_class.id, name="최옆반", code="하람"))
+    db_session.flush()
+    record = _observation(db_session, klass, child, 5, "이가명이 옆 반 최옆반과 모래를 팠다.")
+    seen = {}
+
+    def fake_generate(kind, masked_facts, curriculum=()):
+        seen["facts"] = masked_facts
+        return (
+            "도담 해석입니다. 하람과 함께한 기록에 드러난 사실만 근거로 씁니다.",
+            "도담 지원입니다. 다음 활동에서 교사가 할 방법을 적습니다.",
+        )
+
+    monkeypatch.setattr("app.features.documents.draft._generate", fake_generate)
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201
+    assert "최옆반" not in seen["facts"][0] and "옆반" not in seen["facts"][0]
+    assert "하람" in seen["facts"][0]
+    by_heading = {s["heading"]: s["body"] for s in response.json()["sections"]}
+    assert "최옆반과" in by_heading["해석"]
+
+
+def test_create_document_name_mask_failure_never_calls_llm(db_session, monkeypatch):
+    from app.shared.childCode import SubstitutionError
+
+    _, klass, child = _make_center_class_child(db_session)
+    record = _observation(db_session, klass, child, 5, "이가명이 블록을 쌓았다.")
+    called = []
+
+    def fail(*_):
+        raise SubstitutionError("같은 표기를 가릴 수 없다")
+
+    monkeypatch.setattr("app.features.documents.router.name_table", fail)
+    monkeypatch.setattr(
+        "app.features.documents.draft._generate", lambda *args, **kwargs: called.append(args)
+    )
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "GENERATION_FAILED"
+    assert "가명으로 바꾸지 못해" in response.json()["error"]["message"]
+    assert called == []
+
+
 @pytest.mark.parametrize(
     "overrides,field",
     [

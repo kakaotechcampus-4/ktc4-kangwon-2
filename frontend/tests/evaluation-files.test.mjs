@@ -132,9 +132,9 @@ test("도장 근거 줄은 쌤플 · 폴더 · 직접확인을 따로 적고 상
     ),
     ["ssample:short:확정 1건", "folder:short:일부 빠짐 · 빈 달 1개"],
   );
-  // 폴더를 안 골랐으면 「폴더를 고르면」 · 쌤플이 만들지 않는 서류는 쌤플 줄이 없고 누른 것만 직접확인
+  // 폴더를 안 골랐으면 「—」(안내는 폴더 쪽지 한 번) · 쌤플이 만들지 않는 서류는 쌤플 줄이 없고 누른 것만 직접확인
   assert.deepEqual(brief(sourceLines(doc("parent"), null, undefined, true)), [
-    "folder:none:폴더를 고르면 이름으로 찾아봐요",
+    "folder:none:—",
     "teacher:on:도장판에서 눌렀어요",
   ]);
   // 쌤플 서류의 옛 체크는 직접확인 줄을 만들지 않는다
@@ -147,7 +147,7 @@ test("도장 근거 줄은 쌤플 · 폴더 · 직접확인을 따로 적고 상
         true,
       ),
     ),
-    ["ssample:on:확정 3건", "folder:on:이름으로 찾음 · 1건"],
+    ["ssample:on:확정 3건", "folder:on:파일 이름으로 찾음 · 1개"],
   );
 });
 
