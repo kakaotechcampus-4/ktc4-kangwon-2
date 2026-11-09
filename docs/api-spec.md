@@ -154,7 +154,7 @@ me       GET /api/auth/me                                               → 200 
 | `TRENDS_DISABLED` | 403 | 그 원이 트렌드봇을 껐다 (§3-1 · FR-808) |
 | `CLASS_ACCESS_REQUIRED` | 403 | 같은 원 다른 반이다. 그 반 주인의 승인이 필요하다(§2-2) |
 | `CLASS_READ_ONLY` | 403 | 승인받아 보기만 된다. 고치기 · 확정 · 삭제는 주인만(§2-2) |
-| `CENTER_CREATOR_ONLY` | 403 | 원 전체에 걸리는 것(원 설정 · 성품인사 · 남이 올린 양식 지우기)이다. 원을 만든 교사만 한다(§3 · §3-1 · §8 · ADR-087) |
+| `CENTER_CREATOR_ONLY` | 403 | 원 전체에 걸리는 것(원 설정 · 성품인사 · 남이 올린 양식 지우기 · 원 기본 월간 양식 · 원장 서류 체크)이다. 원을 만든 교사만 한다(§3 · §3-1 · §8 · §9-4 · §12 · ADR-087) |
 | `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§9-3 월간 `expected_revision` · §6-1 · §7 놀이 프로젝트형 연간 `expected_revision` · §9-7 놀이 중심 월간 `expected_revision` · §9-4 포인터 `expected_profile_ref` · §11 문서 `updated_at` · §11 문서 생성 중 근거가 거듭 바뀜) |
 
 **409 가 넷이다.** 상태 코드가 같아도 FE 가 띄울 문구가 다르므로 `code` 로 갈라 본다 —
@@ -2490,6 +2490,8 @@ expected_profile_ref   필수 키.  화면이 GET 으로 본 지금 값.  기본
   바꾸지 않고 `409 STALE_WRITE` 다. 같은 `expected` 로 두 요청이 동시에 와도 하나만 저장된다. 화면은
   GET 으로 다시 읽어 보여 주고 다시 하게 한다.
 - 새 READY 가 생겨도 포인터는 움직이지 않는다(C2.6).
+- **PUT 은 원을 만든 교사만 한다**(ADR-087). 다른 교사는 `403 CENTER_CREATOR_ONLY` (`fields: ["center_id"]`) — 본문 검사보다 먼저다.
+  GET 은 같은 원 교사 누구나 한다. 월간 만들기 화면은 원 설정 `can_edit`(§3-1)이 거짓이면 원 기본 걸기를 건너뛴다.
 
 ### ④ 반 override — `GET · PUT /api/classes/{class_id}/template-profile-override`
 
@@ -2513,6 +2515,7 @@ expected_profile_ref   필수 키.  화면이 GET 으로 본 지금 값.  기본
 | `NOT_FOUND` | 404 | 기반 Template 이 없다 | `["base_template_ref"]` |
 | `NOT_FOUND` | 404 | 가리킬 Profile 이 없다 · READY 가 아니다(DRAFT · ARCHIVED) · 남의 원 것이다 (셋을 가르지 않는다) | `["profile_ref"]` |
 | `GATE_BLOCKED` | 409 | 기반 Template 이 사람 승인 전이다 | `["base_template_ref"]` |
+| `CENTER_CREATOR_ONLY` | 403 | ③ 원 기본 PUT 인데 원을 만든 교사가 아니다(ADR-087) | `["center_id"]` |
 | `STALE_WRITE` | 409 | `expected_profile_ref` 가 지금 포인터와 다르다 | `["expected_profile_ref"]` |
 
 ### 연간 → 월간 Gate 와의 관계
@@ -4636,6 +4639,8 @@ item    operation-plan · annual-plan · interaction-record · duty-training · 
 
 **원 단위다.** 자체평가 체크(아래 「체크 저장」)와 같은 모양이다 — ☐ 에서 ☑ 로 바뀐 시각을 남기고, 풀면 지운다.
 `checks` 는 1개 이상이고 같은 `item` 이 두 번 오면 안 된다.
+**바꾸기는 원을 만든 교사만이다**(ADR-087) — 다른 교사는 `403 CENTER_CREATOR_ONLY` (`fields: ["center_id"]`).
+같은 체크를 GET 으로 보기는 한다. 화면은 원 설정 `can_edit`(§3-1)이 거짓이면 체크 칸을 잠근다.
 
 **Response** `200` — GET 과 같은 전체 응답이다.
 
@@ -4645,6 +4650,7 @@ item    operation-plan · annual-plan · interaction-record · duty-training · 
 |---|---|---|---|
 | `UNAUTHENTICATED` | 401 | 토큰이 없거나 못 믿는다(§0) | `[]` |
 | `NOT_FOUND` | 404 | 없는 원. **남의 원도 404 다**(ADR-017) | `["center_id"]` |
+| `CENTER_CREATOR_ONLY` | 403 | 원장 서류 PUT 인데 원을 만든 교사가 아니다(ADR-087). 직접확인 · 폴더 결과는 교사 단위라 해당 없다 | `["center_id"]` |
 | `VALIDATION_FAILED` | 422 | 없는 키 · 받지 않는 서류의 직접확인 · `checked` 가 bool 이 아님 · 같은 키 두 번 · 상태와 숫자가 안 맞음 · 뒤집힌 기간 · 모르는 칸 · 빈 요청 | 칸 위치(`checks.0.doc` · `folder_scan.results.0.period`). 묶음 규칙은 그 묶음 — `folder_scan` 의 같은 서류 두 번은 `["folder_scan"]`, 상태와 숫자가 안 맞으면 `["folder_scan.results.0"]`. 요청 전체 규칙(빈 요청 · `checks` 의 같은 키 두 번)은 `[]` |
 
 **하나라도 틀리면 아무것도 저장하지 않는다.**

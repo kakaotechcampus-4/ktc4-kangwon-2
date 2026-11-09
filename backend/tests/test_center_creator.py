@@ -126,3 +126,34 @@ def test_양식은_올린_교사와_원을_만든_교사만_지운다(db_session
     as_(first)
     assert client.delete(f"/api/forms/{unknown}").status_code == 204
     assert client.delete(f"/api/forms/{by_first}").status_code == 204
+
+
+def test_뒤에_들어온_교사는_원_기본_양식을_못_바꾼다(center):
+    """원 기본 월간 양식은 원 모든 반의 다음 월간에 걸린다 (§9-4)."""
+    url = f"/api/centers/{center['id']}/template-profile-default"
+    body = {"profile_ref": None, "expected_profile_ref": None}
+
+    as_(center["joiner"])
+    response = client.put(url, json=body)
+
+    assert response.status_code == 403, response.text
+    assert response.json()["error"]["code"] == "CENTER_CREATOR_ONLY"
+    assert client.get(url).status_code == 200  # 읽기는 연다
+    # 원을 만든 교사는 권한 검사를 지나 본문 검사까지 간다(바꿀 것 없는 본문이라 422).
+    as_(center["first"])
+    assert client.put(url, json=body).status_code == 422
+
+
+def test_뒤에_들어온_교사는_원장_서류_체크를_못_바꾼다(center):
+    """원장 서류 체크는 원 단위다 (ADR-074 결정 4)."""
+    url = f"/api/centers/{center['id']}/evaluation-checklist"
+    body = {"checks": [{"item": "annual-plan", "checked": True}]}
+
+    as_(center["joiner"])
+    response = client.put(url + "/director", json=body)
+
+    assert response.status_code == 403, response.text
+    assert response.json()["error"]["code"] == "CENTER_CREATOR_ONLY"
+    assert not any(d["checked"] for d in client.get(url).json()["director"])
+    as_(center["first"])
+    assert client.put(url + "/director", json=body).status_code == 200

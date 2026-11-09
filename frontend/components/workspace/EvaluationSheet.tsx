@@ -1048,20 +1048,27 @@ export const directorDone = (checks: DirectorCheck[]) =>
 export function DirectorList({
   checks,
   onToggle,
+  canEdit = true,
 }: {
   checks: DirectorCheck[];
   onToggle: (item: string, on: boolean) => void;
+  /** 원을 처음 등록한 선생님만 바꾼다(ADR-087). 다른 선생님은 보기만 한다. */
+  canEdit?: boolean;
 }) {
   // 안내는 바탕에, 체크는 흰 카드에 — 다른 두 서랍(4-1 · 4-2 카드, 영역 카드)과 같은 틀(11-09).
   return (
     <div className={styles.director}>
-      <p className={ws.hint}>같은 원 선생님 모두 같은 체크를 봐요.</p>
+      <p className={ws.hint}>
+        같은 원 선생님 모두 같은 체크를 봐요.
+        {!canEdit && " 원 전체 서류라 원을 처음 등록한 선생님만 바꿀 수 있어요."}
+      </p>
       <div className={styles.directorCard}>
         {DIRECTOR_ITEMS.map((item) => (
           <label key={item.id} className={styles.directorItem}>
             <input
               type="checkbox"
               checked={directorOn(checks, item.id)}
+              disabled={!canEdit}
               onChange={(e) => onToggle(item.id, e.target.checked)}
             />
             <span>

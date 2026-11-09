@@ -51,6 +51,7 @@ const {
   "@/lib/api/plans": {},
   "@/lib/api/onboarding": {},
   "@/lib/api/templateProfiles": {},
+  "@/lib/api/centers": {},
   "@/lib/monthly/section-labels": monthlyLabels,
   "@/lib/onboarding/settings": {},
   "@/lib/onboarding/types": { MONTH_ORDER, ageSelectionLabel: stub, selectedAgesFor: stub },
