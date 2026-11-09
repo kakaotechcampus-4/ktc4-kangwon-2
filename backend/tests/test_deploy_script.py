@@ -11,12 +11,21 @@
 판정이 맞아도 **main 이 그 판정을 지키지 않으면** 소용없다 — 거절인데 checkout 을 하거나,
 건너뛰기인데 upgrade 를 돌리는 식이다. 그래서 끝에는 main 을 통째로 돌린다: 로컬 bare 저장소를
 원격으로 둔 가짜 서버 폴더에서, `sudo` 가짜가 서버 명령을 로그에 적는다.
+
+교체 뒤 서버 안 확인(`wait_ready`)도 같은 가짜 서버로 본다 — 안 살아나면 **종료 코드 3** 이고,
+deploy.yml 의 자동 롤백이 그 숫자 하나로 움직인다(ADR-075). 3 이 다른 실패에 새거나
+(예상 밖 실패는 1), root → ubuntu 재실행을 지나다 사라지면(트랩) 롤백이 안 돌거나
+엉뚱할 때 돈다. 그래서 둘 다 시험한다.
 """
 
+import fcntl
 import os
 import re
+import shutil
 import stat
 import subprocess
+import sys
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -158,8 +167,59 @@ case "$*" in
   "docker compose config --services") printf 'backend\\nfrontend\\n'; exit 0 ;;
 esac
 echo "$*" >> "$FAKE_LOG"
+case "$*" in *"compose build"*) exit "${FAKE_BUILD_EXIT:-0}" ;; esac
 """
-FAKE_ID = "#!/bin/sh\necho ubuntu\n"  # 이미 ubuntu 라서 runuser 로 내려가지 않는다
+# 평소에는 이미 ubuntu 라서 runuser 로 내려가지 않는다. FAKE_ROOT 면 root 로 보이다가
+# 가짜 runuser 가 FAKE_AS_UBUNTU 를 세워 준 뒤부터 ubuntu 로 보인다.
+FAKE_ID = '#!/bin/sh\n[ -n "$FAKE_ROOT" ] && [ -z "$FAKE_AS_UBUNTU" ] && echo root || echo ubuntu\n'
+# `runuser -u ubuntu -- env DEPLOY_REF=<ref> bash <복사본>` 을 받아, 복사본을 source 해서
+# 진짜 main 을 돈다. 스크립트로 돌리면 DEPLOY_PATH · REPO_URL 같은 상수를 로컬 경로로 바꿀 수 없다.
+FAKE_RUNUSER = """#!/bin/sh
+while [ "$1" != -- ]; do shift; done
+shift 2           # -- env
+ref=$1            # DEPLOY_REF=<ref>
+shift 2           # DEPLOY_REF=… bash
+inner=$1
+export FAKE_AS_UBUNTU=1
+exec env "$ref" bash -c 'source "$1"
+DEPLOY_PATH="$SIM_DIR"
+REPO_URL="$SIM_URL"
+READY_TRIES="$SIM_READY_TRIES"
+READY_INTERVAL=0
+LOCK_FILE="$SIM_LOCK"
+LOCK_WAIT="$SIM_LOCK_WAIT"
+main' bash "$inner"
+"""
+# 마지막 인자가 주소다. FAKE_READY · FAKE_PAGE 가 그 주소가 줄 응답 코드,
+# *_RC 가 curl 의 종료 코드다. FAKE_FAIL_FIRST=N 이면 처음 N 번의 호출은 연결 실패(000, 종료 7)다.
+FAKE_CURL = """#!/bin/sh
+for url; do :; done
+echo "$url" >> "$FAKE_CURL_LOG"
+if [ -n "$FAKE_FAIL_FIRST" ]; then
+  n=$(cat "$FAKE_CURL_COUNT" 2>/dev/null || echo 0)
+  echo $((n + 1)) > "$FAKE_CURL_COUNT"
+  [ "$n" -ge "$FAKE_FAIL_FIRST" ] || { printf 000; exit 7; }
+fi
+case "$url" in
+  */health/ready) printf '%s' "$FAKE_READY"; exit "${FAKE_READY_RC:-0}" ;;
+  *) printf '%s' "$FAKE_PAGE"; exit "${FAKE_PAGE_RC:-0}" ;;
+esac
+"""
+# macOS 에는 flock 이 없다. 서버(Linux)의 flock(1) 과 같은 flock(2) 를 거는 가짜다.
+# `flock -w <초> <fd>` 만 안다.
+FAKE_FLOCK = f"""#!{sys.executable}
+import fcntl, sys, time
+_, _, secs, fd = sys.argv
+deadline = time.monotonic() + float(secs)
+while True:
+    try:
+        fcntl.flock(int(fd), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        sys.exit(0)
+    except BlockingIOError:
+        if time.monotonic() >= deadline:
+            sys.exit(1)
+        time.sleep(0.05)
+"""
 
 
 @pytest.fixture
@@ -167,13 +227,19 @@ def server(tmp_path, sh, repo):
     """main 을 돌려 볼 가짜 서버. 원격은 repo 를 복제한 bare 저장소이고 서버 폴더는 그 복제본이다.
 
     `server(at)` 은 서버가 커밋 `at` 에 서 있는 채로 시작하고, `.run(ref, rev)` 가 main 을 돌린다.
+    기본은 교체 뒤 서버 안 확인이 둘 다 200 이다. `ready` · `page` 로 응답 코드를,
+    `env_extra` 로 가짜 명령의 동작을 바꾼다.
     """
     bare = tmp_path / "origin.git"
     srv = tmp_path / "srv"
     log = tmp_path / "server-commands.log"
+    curl_log = tmp_path / "server-curl.log"
     fake = tmp_path / "server-bin"
     fake.mkdir()
-    for name, body in {"sudo": FAKE_SUDO, "id": FAKE_ID}.items():
+    fakes = {"sudo": FAKE_SUDO, "id": FAKE_ID, "curl": FAKE_CURL, "runuser": FAKE_RUNUSER}
+    if shutil.which("flock") is None:
+        fakes["flock"] = FAKE_FLOCK
+    for name, body in fakes.items():
         p = fake / name
         p.write_text(body)
         p.chmod(p.stat().st_mode | stat.S_IEXEC)
@@ -185,21 +251,55 @@ def server(tmp_path, sh, repo):
         git(env, srv, "checkout", "-q", "-f", "--detach", at)
         (srv / ".env").write_text("")  # 커밋하지 않는 파일. main 이 있는지 본다
 
-        def run(ref: str, rev: str, *, db_fail: bool = False) -> subprocess.CompletedProcess:
+        def run(
+            ref: str,
+            rev: str,
+            *,
+            db_fail: bool = False,
+            ready: str = "200",
+            page: str = "200",
+            tries: int = 3,
+            lock: Path = tmp_path / "deploy.lock",
+            lock_wait: int = 5,
+            as_root: bool = False,
+            env_extra: dict[str, str] | None = None,
+        ) -> subprocess.CompletedProcess:
             run_env = {
                 **env,
                 "DEPLOY_REF": ref,
                 "FAKE_REV": rev,
                 "FAKE_LOG": str(log),
+                "FAKE_CURL_LOG": str(curl_log),
+                "FAKE_CURL_COUNT": str(tmp_path / "curl-count"),
+                "FAKE_READY": ready,
+                "FAKE_PAGE": page,
                 "SIM_DIR": str(srv),
                 "SIM_URL": str(bare),
+                "SIM_READY_TRIES": str(tries),
+                "SIM_LOCK": str(lock),
+                "SIM_LOCK_WAIT": str(lock_wait),
+                **(env_extra or {}),
             }
             if db_fail:
                 run_env["FAKE_DB_FAIL"] = "1"
-            # DEPLOY_PATH · REPO_URL 은 스크립트 위쪽 상수라 source 한 뒤에 로컬 경로로 바꾼다
-            body = f'source "{DEPLOY_SH}"\nDEPLOY_PATH="$SIM_DIR"\nREPO_URL="$SIM_URL"\nmain'
+            if as_root:
+                # 스크립트 파일로 돈다(복사해 넘기려고 $0 을 읽는다).
+                # 상수는 가짜 runuser 가 로컬 값으로 바꾼다
+                run_env["FAKE_ROOT"] = "1"
+                cmd = ["bash", str(DEPLOY_SH)]
+            else:
+                # DEPLOY_PATH · REPO_URL 같은 상수는 스크립트 위쪽에 있어
+                # source 한 뒤에 로컬 값으로 바꾼다
+                body = (
+                    f'source "{DEPLOY_SH}"\n'
+                    'DEPLOY_PATH="$SIM_DIR"\nREPO_URL="$SIM_URL"\n'
+                    'READY_TRIES="$SIM_READY_TRIES"\nREADY_INTERVAL=0\n'
+                    'LOCK_FILE="$SIM_LOCK"\nLOCK_WAIT="$SIM_LOCK_WAIT"\n'
+                    "main"
+                )
+                cmd = ["bash", "-c", body]
             return subprocess.run(
-                ["bash", "-c", body],
+                cmd,
                 cwd=tmp_path,
                 env=run_env,
                 capture_output=True,
@@ -211,6 +311,7 @@ def server(tmp_path, sh, repo):
             run=run,
             head=lambda: git(env, srv, "rev-parse", "HEAD"),
             log=lambda: log.read_text().splitlines() if log.exists() else [],
+            curls=lambda: curl_log.read_text().splitlines() if curl_log.exists() else [],
         )
 
     return make
@@ -271,7 +372,12 @@ def test_develop_도_모르는_리비전이면_거절한다(repo):
 
 
 def test_올릴_커밋을_못_읽으면_거절한다(repo):
-    assert repo.step("0" * 40, B).startswith("reject ")
+    out = repo.step("0" * 40, B)
+
+    assert out.startswith("reject ")
+    # 「못 찾았다」가 아니라 「읽지 못했다」로 답해야 한다. git grep 이 깨졌다는 종료 코드가
+    # ERR 트랩에 1(못 찾음)로 뭉개지면 develop 쪽 이유로 새 나간다
+    assert "마이그레이션 폴더를 읽지 못했다" in out
 
 
 def test_선언한_파일만_찾고_down_revision_은_세지_않는다(repo):
@@ -386,3 +492,113 @@ def test_main_올릴_코드가_리비전을_알면_up_전에_upgrade_를_돈다(
     upgrade = "docker compose run --rm backend alembic upgrade head"
     assert log.index(upgrade) < log.index("docker compose up -d")
     assert log.index("docker compose build backend frontend") < log.index(upgrade)
+
+
+def test_main_교체_뒤_서버_안이_둘_다_200이면_그_뒤에야_prune_하고_끝난다(server, repo):
+    srv = server(repo.a1)
+
+    proc = srv.run(repo.c, B)
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    log = srv.log()
+    reload = "docker compose exec -T nginx nginx -s reload"
+    up, prune = log.index("docker compose up -d"), log.index("docker image prune -f")
+    assert up < log.index(reload) < prune
+    assert "서버 안 확인 통과" in proc.stdout and "(1회째)" in proc.stdout
+    # 러너가 도메인으로 묻는 것과 따로, 서버 안 nginx 에 IPv4 로 묻는다 — localhost 는 ::1 로 붙는다
+    assert set(srv.curls()) == {"http://127.0.0.1/health/ready", "http://127.0.0.1/"}
+
+
+@pytest.mark.parametrize(
+    ("ready", "page", "env_extra", "last"),
+    [
+        ("503", "200", {}, "health/ready 503 · 화면 200"),  # backend · DB 가 안 살아났다
+        ("200", "502", {}, "health/ready 200 · 화면 502"),  # 화면(frontend)만 안 살아났다
+        # 응답 코드는 200 인데 curl 이 도중에 죽었다(타임아웃). 200 으로 읽으면 안 된다
+        ("200", "200", {"FAKE_READY_RC": "28"}, "health/ready 200(curl 28) · 화면 200"),
+    ],
+)
+def test_main_교체_뒤_서버_안이_안_살아나면_3으로_끝나고_prune_은_안_한다(
+    server, repo, ready, page, env_extra, last
+):
+    srv = server(repo.a1)
+
+    proc = srv.run(repo.c, B, ready=ready, page=page, env_extra=env_extra)
+
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    log = srv.log()
+    assert "docker compose up -d" in log  # 교체는 했다
+    assert "docker image prune -f" not in log  # 실패한 판에서는 옛 이미지를 지우지 않는다
+    assert "배포 끝" not in proc.stdout
+    assert f"마지막 {last}" in proc.stdout
+    assert len(srv.curls()) == 3 * 2  # 3번 × (ready · 화면)
+
+
+def test_main_처음_몇_번_못_닿아도_결국_둘_다_200이면_통과한다(server, repo):
+    srv = server(repo.a1)
+
+    proc = srv.run(repo.c, B, env_extra={"FAKE_FAIL_FIRST": "4"})  # 두 번째 시도까지 연결 실패
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "000(curl 7)" in proc.stdout  # 기다리는 동안 무엇을 봤는지 남는다
+    assert "(3회째)" in proc.stdout
+    assert "docker image prune -f" in srv.log()
+
+
+def test_main_예상_밖_명령이_3으로_죽어도_1로_끝난다(server, repo):
+    # 3 은 「교체 뒤 안 살아났다」 하나의 뜻이다. docker 가 3 으로 죽었다고 롤백이 돌면 안 된다
+    srv = server(repo.a1)
+
+    proc = srv.run(repo.c, B, env_extra={"FAKE_BUILD_EXIT": "3"})
+
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "docker compose up -d" not in srv.log()  # build 에서 멈췄다
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "code"),
+    [({}, 0), ({"ready": "503"}, 3), ({"db_fail": True}, 1)],
+)
+def test_main_root_로_시작해도_ubuntu_쪽_종료_코드가_그대로_나온다(server, repo, kwargs, code):
+    # SSM 은 root 로 돈다. root → runuser → ubuntu 를 지나다 3 이 1 로 뭉개지면
+    # 롤백이 영영 안 돈다
+    srv = server(repo.a1)
+
+    proc = srv.run(repo.c, B, as_root=True, **kwargs)
+
+    assert proc.returncode == code, proc.stdout + proc.stderr
+    if code != 1:
+        assert srv.head() == repo.c  # 가짜 runuser 를 지나 진짜 main 이 돌았다
+
+
+def test_다른_배포가_잠금을_쥐고_있으면_서버를_안_바꾸고_멈춘다(server, repo, tmp_path):
+    srv = server(repo.c)
+    before = srv.head()
+    lock = tmp_path / "held.lock"
+
+    with lock.open("w") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        proc = srv.run(repo.a1, B, lock=lock, lock_wait=1)
+
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "잠금을 못 잡았다" in proc.stdout
+    assert srv.head() == before
+    assert srv.log() == []
+
+
+def test_잠금이_풀리면_기다리던_배포가_이어서_돈다(server, repo, tmp_path):
+    srv = server(repo.a1)
+    lock = tmp_path / "held.lock"
+    held = lock.open("w")
+    fcntl.flock(held, fcntl.LOCK_EX)
+    timer = threading.Timer(1.0, held.close)  # 닫으면 잠금이 풀린다
+    timer.start()
+
+    try:
+        proc = srv.run(repo.c, B, lock=lock, lock_wait=30)
+    finally:
+        timer.cancel()
+        held.close()
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert srv.head() == repo.c

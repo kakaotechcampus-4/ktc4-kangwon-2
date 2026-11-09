@@ -10,8 +10,13 @@ name: Deploy
 # 인바운드 포트가 0개고, GitHub 에 저장하는 비밀키도 0개다.
 # 22 는 2026-09-22 에 닫았다(다른 팀이 공격을 받았다).
 #
-# 서버에서 실제로 도는 명령은 scripts/deploy.sh 다. 이 워크플로는 그 파일을
+# 서버에서 실제로 도는 명령은 scripts/deploy.sh 다. scripts/ssm-deploy.sh 가 그 파일을
 # 통째로 보내고 결과를 기다릴 뿐이다. 손으로 배포할 때도 같은 파일을 쓴다.
+#
+# **교체 뒤 서버 안에서 서비스가 안 살아나면 같은 run 이 직전 성공 커밋으로 되돌린다**(ADR-075).
+# 판정은 deploy.sh 가 서버 안에서 한다 — 안 살아나면 종료 코드 3 으로 끝난다. 이 워크플로는 그 3 에서만 되돌린다.
+# push 배포는 늘, 손 배포는 `auto_rollback` 을 켰을 때만. 러너가 인터넷 건너 도메인으로 묻는 「Health check」는
+# 알림 몫이다 — DNS · 인증서 · secret 문제는 코드를 되감아도 안 고쳐진다.
 
 on:
   push:
@@ -22,8 +27,13 @@ on:
         description: "올릴 브랜치 또는 커밋 SHA (되감으려면 직전 SHA 를 넣는다)"
         type: string
         default: main
+      auto_rollback:
+        description: "교체 뒤 서버 안에서 안 살아나면 마지막 성공 배포로 되돌린다 (push 배포는 늘 켜져 있다)"
+        type: boolean
+        default: false
 
 # 같은 서버에 두 배포가 겹치면 컨테이너가 반쯤 바뀐 상태가 된다.
+# 롤백도 이 run 안에서 도니까 같은 그룹이다 — 새 run 이 끼어들지 않는다.
 concurrency:
   group: deploy-production
   cancel-in-progress: false
@@ -32,6 +42,7 @@ concurrency:
 permissions:
   id-token: write # 빠지면 OIDC 인증이 실패한다
   contents: read # checkout 용
+  actions: read # 자동 롤백이 마지막 성공 배포 run 과 그 로그를 읽는다. 쓰기 권한은 늘리지 않는다
 
 env:
   INSTANCE_ID: i-041ebb00937bd371f # ktc4-team-server
@@ -55,6 +66,8 @@ jobs:
         run: |
           sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$DEPLOY_REF" --jq .sha)
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "그런 브랜치도 커밋도 없다: $DEPLOY_REF"; exit 1; }
+          # 자동 롤백이 지난 run 의 로그에서 이 줄을 읽어 「그때 올라간 커밋」을 찾는다(끝이 40자리 SHA 인 줄).
+          # 아래 echo 의 모양을 바꾸지 않는다.
           echo "올릴 커밋 $sha"
           echo "DEPLOY_SHA=$sha" >> "$GITHUB_ENV"
 
@@ -64,55 +77,56 @@ jobs:
           role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
           aws-region: ap-northeast-2
 
-      # 스크립트 파일을 서버에 미리 둘 필요가 없다. 이 커밋의 내용을 그대로 보낸다.
-      # executionTimeout 은 서버에서 도는 시간이다. docker build 가 오래 걸린다.
-      - name: 배포 명령 보내기
-        id: send
+      # deploy.sh 를 서버에 보내고 끝날 때까지 기다린다(scripts/ssm-deploy.sh). 종료 코드는 서버의 것이다:
+      # 0 성공 · 3 교체까지 했는데 서버 안에서 안 살아났다 · 124 안 끝났다 · 125 취소됐다 · 그 밖은 실패.
+      # 코드를 output 으로 남기려고 이 스텝은 늘 성공으로 끝낸다. run 의 성패는 아래 「배포 판정」이 정한다.
+      - name: 배포
+        id: deploy
         run: |
-          command_id=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name AWS-RunShellScript \
-            --comment "deploy $DEPLOY_SHA" \
-            --parameters "$(jq -n --rawfile script scripts/deploy.sh --arg ref "$DEPLOY_SHA" \
-              '{commands: ["#!/usr/bin/env bash", "export DEPLOY_REF=\($ref)", $script],
-                executionTimeout: ["1800"]}')" \
-            --query Command.CommandId --output text)
-          echo "배포 명령 $command_id"
-          echo "command_id=$command_id" >> "$GITHUB_OUTPUT"
+          code=0
+          scripts/ssm-deploy.sh "$DEPLOY_SHA" || code=$?
+          echo "배포 종료 코드: $code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
 
-      # send-command 는 보내고 바로 끝난다. 끝날 때까지 안 기다리면 실패해도 초록불이 뜬다.
-      # aws ssm wait 는 100초에서 포기해서 docker build 를 못 기다린다. 직접 돈다.
-      - name: 끝날 때까지 기다린다
+      # 3 일 때만 되돌린다. 다른 실패(124 · 125 포함)는 서버가 어떤 상태인지 몰라서 사람이 본다.
+      # 되돌릴 곳 L 은 **마지막으로 성공한 배포 run 이 올린 커밋**이다 — 브랜치 · 이벤트를 안 가린다.
+      # run.sha 가 아니라 그 run 로그의 「올릴 커밋」 줄을 읽는다(손 배포는 run.sha 와 올린 커밋이 다르다).
+      # 같은 deploy.sh 를 SHA 로 돌리는 평소 롤백 길이다. DB 는 안 되감기고, 마이그레이션을 건너는 되감기는
+      # deploy.sh 가 ADR-073 으로 판정한다. 거절하면 이 스텝의 코드가 1 이고 사람이 한다.
+      # 롤백 스텝도 늘 성공으로 끝낸다 — 결과는 output(code · target · reason)으로 알림에 넘긴다.
+      - name: 자동 롤백
+        id: rollback
+        if: ${{ !cancelled() && steps.deploy.outputs.code == '3' && (github.event_name == 'push' || inputs.auto_rollback) }}
         env:
-          COMMAND_ID: ${{ steps.send.outputs.command_id }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          status=Pending
-          for attempt in $(seq 1 120); do
-            status=$(aws ssm get-command-invocation \
-              --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
-              --query Status --output text 2>/dev/null || echo Pending)
-            case "$status" in
-              Pending | InProgress | Delayed) ;;
-              *) break ;;
-            esac
-            sleep 10
-          done
+          skip() { echo "reason=$1" >> "$GITHUB_OUTPUT"; echo "롤백하지 않는다 — $1"; exit 0; }
 
-          echo "--- 서버 출력 ---"
-          aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
-            --query StandardOutputContent --output text
-          echo "--- 서버 오류 ---"
-          aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
-            --query StandardErrorContent --output text
+          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy.yml --status success --limit 1 \
+            --json databaseId --jq '.[0].databaseId // empty') || run_id=""
+          [ -n "$run_id" ] || skip "마지막 성공 배포 run 을 찾지 못했다"
 
-          # 출력은 24000자에서 잘린다. 전문이 필요해지면 S3 로 내보내는 설정을 붙인다.
-          echo "상태 $status"
-          test "$status" = Success
+          # 줄 끝이 40자리 SHA 인 「올릴 커밋 …」 줄만 읽는다. 스텝 스크립트 본문(echo "올릴 커밋 $sha")은 안 걸린다.
+          target=$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --log 2>/dev/null \
+            | tr -d '\r' | sed -nE 's/.*올릴 커밋 ([0-9a-f]{40})$/\1/p' | sort -u) || target=""
+          case "$target" in
+            "" | *$'\n'*) skip "run $run_id 의 로그에서 올린 커밋 하나를 읽지 못했다" ;;
+          esac
+          [ "$target" != "$DEPLOY_SHA" ] || skip "마지막 성공 배포(run $run_id)가 지금 올린 커밋과 같다"
+
+          echo "롤백 대상 $target (마지막 성공 run $run_id)"
+          code=0
+          scripts/ssm-deploy.sh "$target" || code=$?
+          echo "롤백 종료 코드: $code"
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
 
       # /health 가 아니라 /health/ready 다 — /health 는 DB 를 안 보고 200 을 준다(ADR-011).
+      # 서버 안 확인은 deploy.sh 가 이미 했다. 여기는 **밖에서 닿는지**만 본다 — 실패해도 되돌리지 않는다(알림만).
+      # 배포가 성공했거나 롤백이 성공했을 때만 돈다. 서버 안이 죽은 채라면 밖을 물어도 소용없다.
       - name: Health check
+        id: health
+        if: ${{ !cancelled() && (steps.deploy.outputs.code == '0' || steps.rollback.outputs.code == '0') }}
         env:
           # 시크릿에 IP 를 박아 두면 터진다 — DuckDNS 라 IP 가 바뀐다. 2026-10-11 배포가
           # 옛 IP 의 80 포트로 136초 기다리다 실패했다(서버는 멀쩡했다). 도메인을 기본으로 둔다.
@@ -133,14 +147,65 @@ jobs:
           echo "30번 물었지만 200 이 오지 않았다"
           exit 1
 
+      # 롤백에 성공해도 run 은 실패여야 한다. 초록으로 끝나면 다음 롤백이 「마지막 성공」으로 이 실패한 커밋을 고른다.
+      - name: 배포 판정
+        if: ${{ !cancelled() && steps.deploy.outputs.code != '0' }}
+        env:
+          DEPLOY_CODE: ${{ steps.deploy.outputs.code }}
+        run: |
+          echo "배포 종료 코드: ${DEPLOY_CODE:-없음} — 이 run 은 실패다"
+          exit 1
+
       - name: 실패 알림
-        if: failure()
+        if: ${{ !cancelled() && failure() }}
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVENT: ${{ github.event_name }}
+          BRANCH: ${{ github.ref_name }}
+          DEPLOY_CODE: ${{ steps.deploy.outputs.code }}
+          ROLLBACK_OUTCOME: ${{ steps.rollback.outcome }}
+          ROLLBACK_CODE: ${{ steps.rollback.outputs.code }}
+          ROLLBACK_TARGET: ${{ steps.rollback.outputs.target }}
+          ROLLBACK_REASON: ${{ steps.rollback.outputs.reason }}
+          HEALTH_OUTCOME: ${{ steps.health.outcome }}
         run: |
           test -n "$WEBHOOK" || exit 0
+          f=${DEPLOY_SHA:-올릴 커밋을 못 정함}
+          nl=$'\n'
+          case "$DEPLOY_CODE" in
+            0)
+              msg="🔴 서버 안은 정상인데 밖에서 안 닿는다 — $f. DNS · 인증서 · HEALTHCHECK_URL 을 본다"
+              ;;
+            3)
+              if [ "$ROLLBACK_CODE" = 0 ] && [ "$HEALTH_OUTCOME" = failure ]; then
+                msg="🔴 $f 가 교체 뒤 안 살아나 $ROLLBACK_TARGET 로 되돌렸지만 밖에서 안 닿는다. DNS · 인증서 · HEALTHCHECK_URL 을 본다"
+              elif [ "$ROLLBACK_CODE" = 0 ]; then
+                msg="🟠 배포 실패 → 자동 롤백 성공. $f 가 교체 뒤 안 살아나 $ROLLBACK_TARGET 로 되돌렸다"
+                if [ "$EVENT" = push ]; then
+                  msg="${msg}${nl}${BRANCH} 끝은 아직 그대로다 — 되돌리는 PR 이 필요하다"
+                fi
+              else
+                if [ -n "$ROLLBACK_CODE" ]; then
+                  why="롤백 배포의 종료 코드가 $ROLLBACK_CODE"
+                elif [ -n "$ROLLBACK_REASON" ]; then
+                  why=$ROLLBACK_REASON
+                elif [ "$ROLLBACK_OUTCOME" = skipped ]; then
+                  why="손 배포라 자동 롤백(auto_rollback)을 켜지 않았다"
+                else
+                  why="롤백 스텝이 중간에 죽었다"
+                fi
+                msg="🔴 $f 교체 뒤 서비스가 안 살아났고 되돌리지 못했다 — $why. 서버를 직접 본다"
+              fi
+              ;;
+            124 | 125)
+              msg="🔴 서버 명령이 끝나지 않았거나 취소됐다 — $f. 서버를 직접 본다"
+              ;;
+            *)
+              msg="🔴 배포 실패 — $f. 서비스 상태를 확인한다"
+              ;;
+          esac
           curl -fsS -X POST "$WEBHOOK" \
             -H 'Content-Type: application/json' \
-            -d "$(printf '{"content":"🔴 배포 실패 — %s\\n%s"}' "${DEPLOY_SHA:-올릴 커밋을 못 정함}" "$RUN_URL")" \
+            -d "$(jq -n --arg c "${msg}${nl}${RUN_URL}" '{content: $c}')" \
             || echo "알림 전송 실패. 배포 결과는 위 스텝들을 본다"

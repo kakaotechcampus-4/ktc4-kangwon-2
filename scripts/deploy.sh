@@ -1,27 +1,43 @@
 #!/usr/bin/env bash
 # 서버에서 도는 배포 스크립트. GitHub Actions 가 SSM send-command 로 이 파일의
-# 내용을 통째로 보낸다(.github/workflows/deploy.yml). 서버에 미리 있을 필요가 없다.
+# 내용을 통째로 보낸다(scripts/ssm-deploy.sh 가 보내고 .github/workflows/deploy.yml 이 그것을 부른다).
+# 서버에 미리 있을 필요가 없다.
 #
 # **이 쉬뱅이 보내는 글의 첫 줄이어야 한다.** SSM 은 `commands` 배열을 줄로 이어 붙여
 # 한 파일로 만들고, 첫 줄이 `#!` 가 아니면 bash 가 아니라 `sh`(우분투는 dash)로 돈다.
-# dash 에는 `pipefail` 이 없어서 아래 `set -euo pipefail` 에서 바로 죽는다
+# dash 에는 `pipefail` 이 없어서 아래 `set -Eeuo pipefail` 에서 바로 죽는다
 # (2026-10-20 에 실제로 당했다 — `_script.sh: 9: set: Illegal option -o pipefail`).
-# 워크플로가 앞에 다른 줄을 끼울 일이 생기면 쉬뱅을 맨 앞에 따로 넣어 준다.
+# ssm-deploy.sh 가 앞에 다른 줄을 끼울 일이 생기면 쉬뱅을 맨 앞에 따로 넣어 준다.
 #
 # 손으로 배포할 때도 같은 것을 쓴다 — Session Manager 로 들어가서
 #   bash /home/ubuntu/ktc4-kangwon-2/scripts/deploy.sh
 # 자동과 수동이 다른 명령을 돌면 「손으로는 되는데 CI 는 안 된다」가 생긴다.
-set -euo pipefail
+#
+# **종료 코드에 뜻이 있다.** 3 은 「컨테이너를 바꿨는데 서버 안에서 서비스가 안 살아났다」 하나뿐이다.
+# deploy.yml 이 3 을 보면 같은 run 안에서 직전 성공 커밋으로 되돌린다(ADR-075). 그 밖의 실패는 전부 1 이다 —
+# 아래 ERR 트랩이 `set -e` 로 죽은 명령의 코드를 1 로 바꾼다. docker 나 git 이 3 으로 죽어도 롤백이 돌면 안 된다.
+# 트랩은 `set +e` 로도 안 꺼진다. 명령의 코드를 직접 받아야 하면 `|| status=$?` 로 받는다(아래 root → ubuntu).
+set -Eeuo pipefail
+trap 'exit 1' ERR
 
 DEPLOY_PATH=/home/ubuntu/ktc4-kangwon-2
 REPO_URL=https://github.com/kakaotechcampus-4/ktc4-kangwon-2.git
+
+# 교체 뒤 서버 안에서 서비스를 묻는 횟수 · 간격(초), 서버 잠금 파일 · 기다리는 시간(초).
+# 환경변수로 받지 않는다 — 서버에 남은 값이 배포를 바꾸면 안 된다. 시험은 source 한 뒤에 줄인다.
+# 2초 × 30번이면 빠른 실패는 약 60초, curl 이 5초씩 다 쓰면 약 360초다. 잠금 시간은 SSM 한도(1800초)보다 짧아야 한다.
+READY_TRIES=30
+READY_INTERVAL=2
+LOCK_FILE=/tmp/ssuksak-deploy.lock
+LOCK_WAIT=1500
 
 # <트리> 안에서 리비전 <rev> 를 **선언한** 파일 경로를 찍는다. 없으면 아무것도 안 찍는다.
 # 파일 이름이 아니라 선언(`revision = '…'` · `revision: str = "…"` 둘 다 있다)을 본다 —
 # `down_revision` 에 적힌 것은 선언이 아니다. <rev> 는 부르는 쪽이 12자리 16진수로 걸러 온다.
 revision_file() {
   local tree=$1 rev=$2 out rc=0 f
-  out=$(git grep -l -E "^revision(: str)? = ['\"]${rev}['\"]" "$tree" -- backend/alembic/versions/) || rc=$?
+  # 안쪽 `|| exit "$?"` 가 있어야 git grep 의 종료 코드가 바깥까지 온다 — 없으면 `$(…)` 안에서 ERR 트랩이 걸려 전부 1 이 된다.
+  out=$(git grep -l -E "^revision(: str)? = ['\"]${rev}['\"]" "$tree" -- backend/alembic/versions/ || exit "$?") || rc=$?
   # git grep 은 못 찾으면 1, 깨지면 2 이상이다. 못 찾은 것은 「없다」이고 깨진 것은 오류다.
   [ "$rc" -le 1 ] || return "$rc"
   [ -n "$out" ] || return 0
@@ -99,6 +115,33 @@ migration_step() {
   fi
 }
 
+# 주소 하나를 물어 응답 코드를 찍는다. curl 이 응답을 받고도 도중에 죽었으면 코드 뒤에 curl 종료 코드를 붙여
+# 200 으로 안 읽히게 한다(`200(curl 28)`). `-f` 를 쓰지 않는다 — `-f` 와 `|| echo 000` 을 같이 쓰면 `404000` 처럼 이어 붙는다.
+# 종료 코드는 `$(…)` 밖에서 받지 못한다 — 그 안에서 죽은 명령에도 ERR 트랩이 걸려 1 로 바뀐다. 안에서 `||` 로 받는다.
+probe() {
+  curl -s -m 5 -o /dev/null -w '%{http_code}' "$1" || printf '(curl %s)' "$?"
+}
+
+# 교체가 끝난 서비스가 살아났는지 **서버 안에서** 본다(ADR-075). 러너가 인터넷을 건너 도메인으로 묻는
+# deploy.yml 의 확인과 달리 DNS · 인증서 · IP 가 끼지 않는다. 안 살아났으면 1 을 돌려준다.
+# `/health/ready`(backend · DB)와 `/`(frontend 화면)가 둘 다 200 이어야 한다. nginx 의 localhost 블록이 받는다 —
+# 출발지는 172.28.0.1 로 보인다. `localhost` 는 ::1 로 붙어서 127.0.0.1 로 고정한다.
+wait_ready() {
+  local i ready=- page=-
+  for ((i = 1; i <= READY_TRIES; i++)); do
+    ready=$(probe http://127.0.0.1/health/ready)
+    page=$(probe http://127.0.0.1/)
+    if [ "$ready" = 200 ] && [ "$page" = 200 ]; then
+      echo "서버 안 확인 통과 — health/ready 200 · 화면 200 (${i}회째)"
+      return 0
+    fi
+    echo "서버 안 대기 ${i}/${READY_TRIES} — health/ready ${ready} · 화면 ${page}"
+    sleep "$READY_INTERVAL"
+  done
+  echo "${READY_TRIES}번 물었지만 둘 다 200 이 오지 않았다 — 마지막 health/ready ${ready} · 화면 ${page}"
+  return 1
+}
+
 main() {
   # 무엇을 올릴지. 브랜치 이름이거나 커밋 SHA 다. 기본은 main 이다.
   #
@@ -128,14 +171,20 @@ main() {
     INNER=$(mktemp /tmp/ssuksak-deploy.XXXXXX.sh)
     cat "$0" > "$INNER"
     chmod 0644 "$INNER"
-    set +e
+    # 자식의 종료 코드를 그대로 낸다(3 이 롤백 신호다). `set +e` 로 감싸면 안 된다 — ERR 트랩이 그래도 걸려서 1 이 된다.
+    # `||` 뒤의 실패에는 트랩이 안 걸린다.
+    status=0
     # runuser 가 환경을 물려준다는 보장이 없다. 쓰는 값은 손으로 넘긴다.
-    runuser -u ubuntu -- env DEPLOY_REF="$DEPLOY_REF" bash "$INNER"
-    status=$?
-    set -e
+    runuser -u ubuntu -- env DEPLOY_REF="$DEPLOY_REF" bash "$INNER" || status=$?
     rm -f "$INNER"
     exit "$status"
   fi
+
+  # 서버에서 배포가 둘 겹치면 컨테이너가 반쯤 바뀐다. deploy.yml 의 concurrency 는 러너 쪽만 막는다 —
+  # 손 배포(Session Manager)와 자동 배포가 서버에서 만나는 것은 이 잠금이 막는다. 프로세스가 끝나면 저절로 풀린다.
+  # ubuntu 로 도는 쪽에서만 잠근다. root 쪽도 잠그면 자식이 같은 파일을 다시 잠그려다 부모를 기다린다.
+  exec 9>"$LOCK_FILE" || { echo "잠금 파일을 못 연다: $LOCK_FILE"; exit 1; }
+  flock -w "$LOCK_WAIT" 9 || { echo "잠금을 못 잡았다 — 다른 배포가 ${LOCK_WAIT}초 넘게 돌고 있거나 flock 이 없다. 서버는 바꾸지 않았다"; exit 1; }
 
   # docker 그룹에 들어 있지 않을 수 있어 sudo 로 통일한다.
   # Ubuntu AMI 의 ubuntu 계정은 비밀번호 없이 sudo 가 된다.
@@ -216,6 +265,10 @@ main() {
   # reload 가 안 되면 다시 시작한다 — up -d 가 방금 다시 만들어 아직 준비 전이거나, 재시작을 반복하는
   # 중일 때다(up -d 는 재시작 반복 중인 컨테이너를 건드리지 않는다). 그때 nginx 는 어차피 응답을 못 하고 있다.
   sudo docker compose exec -T nginx nginx -s reload || sudo docker compose restart nginx
+
+  # 교체가 끝났다. 서버 안에서 살아났는지 본다. 안 살아났으면 **3 으로 끝낸다** — deploy.yml 이 이 코드를 보고
+  # 직전 성공 커밋으로 되돌린다(ADR-075). prune 은 그 뒤다: 실패한 판에서는 옛 이미지를 지우지 않는다.
+  wait_ready || { echo "교체한 서비스가 서버 안에서 살아나지 않았다. 종료 코드 3"; exit 3; }
 
   sudo docker image prune -f
 
