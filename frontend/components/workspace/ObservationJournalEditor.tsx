@@ -12,6 +12,7 @@ import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import { useUnsavedWarning } from "@/lib/hooks/use-unsaved-warning";
 import { Posty } from "@/components/app/Posty";
 import { DOMAIN_LOOK } from "@/lib/workspace/domain-look";
+import { AXES, type ObservationAxis } from "@/lib/workspace/observation-axis";
 import { Message, ws } from "./WorkspaceUI";
 import { serverIssues } from "./document-selection";
 import { FieldError, fieldErrorProps } from "./WorkspaceViewState";
@@ -529,22 +530,29 @@ function useLeaveGuard(dirty: boolean) {
   };
 }
 
-/** 확정본 — 내려받는 한글 양식과 같은 칸으로 그린다 (backend documents/export.py `_observation`). */
+/**
+ * 확정본 — 내려받는 한글 양식과 같은 칸으로 그린다 (backend documents/export.py `_observation`).
+ *
+ * 행은 **문서를 만들 때 찍은 축**이다 (ADR-077). 원이 나중에 축을 바꿔도 종이와 같게 그린다.
+ * 사본이 없는 옛 문서만 지금 원 설정(`current`)을 쓴다.
+ */
 function JournalSheet({
   doc,
-  domains,
+  domains: current,
   children,
 }: {
   doc: SavedDocument;
   domains: readonly string[];
   children: React.ReactNode;
 }) {
+  const domains = AXES[doc.observationAxis as ObservationAxis] ?? current;
   const sorted = [...doc.sources].sort((a, b) => a.date.localeCompare(b.date));
   const rows = domains.map((domain) => ({
     domain,
     lines: sorted
       .filter((s) => s.domain === domain)
-      .map((s) => `(${shortNumber(s.date)}) ${s.text}`),
+      // 종이와 같은 한 줄: `(9/5) (바깥놀이) 사실`. 상황이 없으면 괄호를 붙이지 않는다.
+      .map((s) => `(${shortNumber(s.date)}) ${s.context ? `(${s.context}) ` : ""}${s.text}`),
   }));
   const section = (heading: string) => doc.sections.find((s) => s.heading === heading)?.body ?? "";
   return (

@@ -36,17 +36,28 @@ export function documentServerId(localId: string): number | null {
   return Number.isSafeInteger(id) ? id : null;
 }
 
+type SourceKind = NonNullable<Source["kind"]>;
+const SOURCE_KINDS: readonly SourceKind[] = ["observation", "document", "routine"];
 /**
  * 근거 id 가 가리키는 것은 종류마다 다르다 (§11).
- * 주간 보육일지는 문서, 일일 보육일지는 일과 기록(ADR-025), 나머지는 관찰 기록이다.
+ * 서버가 `source_kind` 를 주면 그것을 따른다 — 주간 보육일지는 일일 문서이거나 일과 기록이다.
+ * 안 주는 서버(옛 응답)면 문서 종류로 짐작한다: 주간은 문서, 일일은 일과 기록(ADR-025),
+ * 나머지는 관찰 기록.
  */
-function sourceLocalId(kind: string, id: number) {
-  if (kind === "weeklyLog") return documentLocalId(id);
-  if (kind === "dailyLog") return routineLocalId(id);
+function sourceKindOf(docKind: string, given?: string | null): SourceKind {
+  if (given && (SOURCE_KINDS as readonly string[]).includes(given)) return given as SourceKind;
+  if (docKind === "weeklyLog") return "document";
+  if (docKind === "dailyLog") return "routine";
+  return "observation";
+}
+function sourceLocalId(kind: SourceKind, id: number) {
+  if (kind === "document") return documentLocalId(id);
+  if (kind === "routine") return routineLocalId(id);
   return observationLocalId(id);
 }
 function sourceServerId(kind: string, localId: string) {
-  if (kind === "weeklyLog") return documentServerId(localId);
+  // 주간은 근거가 두 종류다. 화면 id 의 접두사가 종류를 들고 있다.
+  if (kind === "weeklyLog") return documentServerId(localId) ?? routineServerId(localId);
   if (kind === "dailyLog") return routineServerId(localId);
   return observationServerId(localId);
 }
@@ -89,6 +100,10 @@ export interface ApiDocumentSource {
   text: string;
   /** 관찰일지 근거에만 있다. 양식의 영역 행을 이것으로 나눈다 (§11). */
   domain?: string | null;
+  /** 관찰 기록의 상황 사본 (ADR-077). 옛 문서 · 그 밖의 근거는 null 이다. */
+  context?: string | null;
+  /** 근거 종류. 아직 상세 응답에 없는 서버가 있어 비어 있을 수 있다. */
+  source_kind?: string | null;
   class_id: number;
   child_id: number | null;
 }
@@ -97,6 +112,8 @@ export interface ApiDocumentDetail extends Omit<ApiDocumentListItem, "sources_co
   sources: ApiDocumentSource[];
   review_note: string;
   class_note: string;
+  /** 관찰일지를 만들 때 찍은 영역 축 (ADR-077). 옛 문서 · 그 밖의 문서는 null 이다. */
+  observation_axis?: string | null;
 }
 
 /**
@@ -173,13 +190,18 @@ function summary(dto: ApiDocumentListItem): DocumentSummary {
 }
 
 export function toDocument(dto: ApiDocumentDetail): ServerDocument {
+  // 한 문서의 근거는 한 종류라 번호가 겹치지 않는다. 칸의 번호도 이 표로 종류를 찾는다.
+  const kinds = new Map(dto.sources.map((s) => [s.id, sourceKindOf(dto.kind, s.source_kind)]));
+  const localId = (id: number) => sourceLocalId(kinds.get(id) ?? sourceKindOf(dto.kind), id);
   const sources: Source[] = dto.sources.map((s) => ({
-    id: sourceLocalId(dto.kind, s.id),
+    id: localId(s.id),
+    kind: kinds.get(s.id),
     date: s.date ?? "",
     text: s.text,
     classId: localClass(s.class_id),
     childId: localChild(s.child_id),
     ...(s.domain ? { domain: s.domain } : {}),
+    ...(s.context ? { context: s.context } : {}),
   }));
   const generatedSection = (s: ApiDocumentSection) =>
     dto.origin === "AI" && ["해석", "지원"].includes(s.heading);
@@ -187,7 +209,7 @@ export function toDocument(dto: ApiDocumentDetail): ServerDocument {
   const sections: Section[] = dto.sections.map((s) => ({
     heading: s.heading,
     body: generatedSection(s) ? s.body.replace(MOCK_PREFIX, "") : s.body,
-    sourceIds: s.source_ids.map((id) => sourceLocalId(dto.kind, id)),
+    sourceIds: s.source_ids.map(localId),
   }));
   return {
     ...summary({ ...dto, sources_count: dto.sources.length }),
@@ -197,6 +219,7 @@ export function toDocument(dto: ApiDocumentDetail): ServerDocument {
     classNote: dto.class_note ?? "",
     // 새 문서는 서버가 `<규칙버전>-mock` 으로 알리고, 예전 문서는 떼어낸 접두어로 안다.
     mockDraft: legacyMock || /-mock$/.test(dto.generation.rule_version ?? ""),
+    ...(dto.observation_axis ? { observationAxis: dto.observation_axis } : {}),
   };
 }
 
@@ -272,9 +295,13 @@ export interface DocumentCreateInput {
 export async function createDocument(input: DocumentCreateInput): Promise<ServerDocument> {
   const class_id = classServerId(input.classId);
   const child_id = input.childId ? childServerId(input.childId) : null;
-  // 일과 기록을 근거로 쓰는 주간은 id 가 일과 표의 것이다 — 문서 접두사로 풀면 안 된다.
+  // 주간은 고른 종류의 id 만 받는다 — 일과 근거면 일과 표, 아니면 문서 표의 번호다.
   const source_ids = input.sourceIds.map((id) =>
-    input.sourceKind === "routine" ? routineServerId(id) : sourceServerId(input.kind, id),
+    input.kind !== "weeklyLog"
+      ? sourceServerId(input.kind, id)
+      : input.sourceKind === "routine"
+        ? routineServerId(id)
+        : documentServerId(id),
   );
   if (
     class_id === null ||

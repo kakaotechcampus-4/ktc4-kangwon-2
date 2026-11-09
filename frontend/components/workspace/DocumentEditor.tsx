@@ -44,14 +44,17 @@ const FACT_SOURCE: Partial<Record<DocumentKind, string>> = {
   assessment: "/records",
 };
 /**
- * 근거 하나가 원래 있던 곳. 일과 기록이면 그날 일과, 주간 일지면 그 일일 일지, 관찰이면 관찰 기록.
+ * 근거 하나가 원래 있던 곳. 일과 기록이면 그 반 · 그날 일과, 일일 문서면 그 문서, 관찰이면 관찰 기록.
  *
  * 「근거 1 · 2」가 누를 수 있을 것처럼 생겼는데 눌러도 아무 일이 없었다(멘토 12주차 리뷰).
  * 진짜로 그 근거로 데려간다. 일지를 쓰던 중이라 **새 탭**으로 연다.
+ *
+ * **문서 종류가 아니라 근거 종류로 가른다.** 주간 일지는 일과 기록에서 바로 만들 수도 있어,
+ * 문서 종류로 가르면 일과 31 이 문서 31 을 열었다.
  */
 function sourceHref(kind: DocumentKind, classId: string, source: Source): string | null {
-  if (kind === "dailyLog") return routinesPath(classId, source.date);
-  if (kind === "weeklyLog") return `/documents?id=${encodeURIComponent(source.id)}`;
+  if (source.kind === "routine") return routinesPath(source.classId || classId, source.date);
+  if (source.kind === "document") return `/documents?id=${encodeURIComponent(source.id)}`;
   return FACT_SOURCE[kind] ?? null;
 }
 
@@ -106,14 +109,20 @@ const SECTION_LABELS: Record<string, string> = {
   "sections.지원": "지원",
 };
 
+/** 근거를 반영하기 전, 저장 안 한 글을 어떻게 할지. */
+type RefreshChoice = "save" | "discard" | "cancel";
+
 export default function DocumentEditor({
   initial,
   onSave,
   server,
+  onDirty,
 }: {
   initial: SavedDocument;
   onSave: (doc: SavedDocument, expected: SavedDocument) => boolean;
   server?: ServerDocumentActions;
+  /** 서버 문서에 저장 안 한 글이 생기고 사라질 때 알린다. 날짜 · 주를 옮기는 화면이 먼저 묻는다. */
+  onDirty?: (dirty: boolean) => void;
 }) {
   const [baseline, setBaseline] = useState(initial);
   const [doc, setDoc] = useState(initial);
@@ -192,6 +201,16 @@ export default function DocumentEditor({
     (!!server && !imported && ["observation", "dailyLog", "weeklyLog"].includes(doc.kind));
   // 서버 요청 중에는 입력·저장·확정·삭제가 서로 끼어들지 못한다.
   const working = busy || hwpx.exporting || !!server?.pending;
+  /** 서버에 아직 안 보낸 해석 · 지원 · 반 특이사항이 있나. */
+  const dirty =
+    !!server &&
+    editable &&
+    (JSON.stringify(doc.sections) !== JSON.stringify(baseline.sections) ||
+      (doc.classNote ?? "") !== (baseline.classNote ?? ""));
+  useEffect(() => {
+    onDirty?.(dirty);
+    return () => onDirty?.(false);
+  }, [dirty, onDirty]);
   function change(index: number, body: string) {
     setDoc((prev) => ({
       ...prev,
@@ -228,8 +247,9 @@ export default function DocumentEditor({
       setBusy(false);
     }
   }
-  async function persist(confirm: boolean) {
-    if (stale || working) return;
+  /** 서버 문서는 저장에 성공했으면 true 다. 근거 반영 앞의 「저장하고 반영」이 본다. */
+  async function persist(confirm: boolean): Promise<boolean> {
+    if (stale || working) return false;
     if (server) {
       // AI 검증은 서버 확정 조건이 아니다 (§11) — 교사 확인 3개와 서버 게이트가 기준이다.
       // 올린 원문에는 해석 · 지원이 없다. 20자 규칙을 걸면 확정을 취소한 뒤 다시 확정할 수 없다.
@@ -237,11 +257,11 @@ export default function DocumentEditor({
       if (confirm && (blocking.length || !checks.every(Boolean))) {
         setIssues(blocking);
         setMessage("원본 대조와 교사 검토를 마쳐주세요.");
-        return;
+        return false;
       }
       if (confirm && server.stale) {
         setMessage("근거 기록이 바뀌었어요. 다시 검토한 뒤 확정해주세요.");
-        return;
+        return false;
       }
       setBusy(true);
       setMessage("");
@@ -255,6 +275,7 @@ export default function DocumentEditor({
         setChecks([false, false, false]);
         setStaleWrite(false);
         setMessage(confirm ? "검토한 문서를 확정했어요." : "작성 중인 초안을 저장했어요.");
+        return true;
       } catch (e) {
         // 실패하면 편집 내용을 그대로 둔다.
         if (isStaleWrite(e)) {
@@ -276,18 +297,18 @@ export default function DocumentEditor({
       } finally {
         setBusy(false);
       }
-      return;
+      return false;
     }
     const local = validateDocument(doc);
     if (confirm && (local.length || !checks.every(Boolean))) {
       setIssues(local);
       setMessage("원본 대조와 교사 검토를 마쳐주세요.");
-      return;
+      return false;
     }
     if (annualPlanId) {
       if (annualError || !annual.current) {
         setMessage("서버 계획안을 불러온 뒤 저장해주세요.");
-        return;
+        return false;
       }
       setBusy(true);
       try {
@@ -306,7 +327,7 @@ export default function DocumentEditor({
       } catch (e) {
         setMessage(e instanceof Error ? e.message : "서버 저장 실패");
         setBusy(false);
-        return;
+        return false;
       }
       setBusy(false);
     }
@@ -320,11 +341,11 @@ export default function DocumentEditor({
           : `${available && verified ? "AI 검증 + " : ""}교사 사실·해석·지원 검토 완료`
         : "교사 검토 전",
     });
-    if (onSave(next, baseline)) {
-      setBaseline(next);
-      setDoc(next);
-      setMessage(confirm ? "검토한 문서를 확정했어요." : "작성 중인 초안을 저장했어요.");
-    }
+    if (!onSave(next, baseline)) return false;
+    setBaseline(next);
+    setDoc(next);
+    setMessage(confirm ? "검토한 문서를 확정했어요." : "작성 중인 초안을 저장했어요.");
+    return true;
   }
 
   /** 서버가 준 문서로 편집기를 바꾼다. 사실이 달라졌을 수 있어 교사 확인은 다시 받는다. */
@@ -391,13 +412,42 @@ export default function DocumentEditor({
    * 확정본은 위쪽 「변경된 근거 검토」(비교 · 원자적 재확정)를 쓴다. 버튼도 초안에만
    * 보이지만, 목록과 상세가 어긋난 순간에도 잘못 나가지 않게 여기서 한 번 더 막는다.
    */
-  const refreshSources = () => {
+  /**
+   * 근거를 반영하면 서버 글로 바뀐다. 저장 안 한 글이 있으면 저장 · 버리기 · 취소를 묻는다
+   * (관찰일지 편집기와 같다). 계속해도 되면 true.
+   */
+  const refreshAsk = useRef<HTMLDialogElement>(null);
+  const answer = useRef<((choice: RefreshChoice) => void) | null>(null);
+  async function settleEdits(): Promise<boolean> {
+    if (!dirty) return true;
+    const choice = await new Promise<RefreshChoice>((resolve) => {
+      answer.current = resolve;
+      refreshAsk.current?.showModal();
+    });
+    if (choice === "cancel") return false;
+    return choice === "discard" || (await persist(false));
+  }
+  function reply(choice: RefreshChoice) {
+    const resolve = answer.current;
+    answer.current = null;
+    if (refreshAsk.current?.open) refreshAsk.current.close();
+    resolve?.(choice);
+  }
+  /** 사라진 근거 복구(초안)도 같은 반영이다 — 같이 묻는다. */
+  async function refreshWithResolutions(resolutions?: SourceResolution[]) {
+    if (!server) throw new Error("서버 문서가 아니에요.");
+    if (!(await settleEdits())) throw new Error("반영을 그만뒀어요. 고친 글은 그대로 있어요.");
+    return server.refresh(resolutions);
+  }
+
+  const refreshSources = async () => {
     if (doc.status === "confirmed") {
       setMessage(
         "확정된 문서는 이 버튼으로 반영하지 않아요. 위쪽 「변경된 근거 검토」에서 확인한 뒤 재확정해주세요.",
       );
       return;
     }
+    if (!(await settleEdits())) return;
     // 호출부가 기다릴 수 있게 그대로 돌려준다.
     return run(
       (s) => s.refresh(),
@@ -413,7 +463,7 @@ export default function DocumentEditor({
           doc={doc}
           pending={working}
           reconfirm={server.reconfirm}
-          refresh={server.refresh}
+          refresh={refreshWithResolutions}
           onRecovery={setRecovering}
           onReload={reloadLatest}
           onComplete={adopt}
@@ -777,6 +827,26 @@ export default function DocumentEditor({
           </button>
         )}
       </div>
+      <dialog
+        ref={refreshAsk}
+        className={ws.ojLeave}
+        aria-labelledby="doc-refresh-title"
+        onClose={() => reply("cancel")}
+      >
+        <h3 id="doc-refresh-title">잠깐만요!</h3>
+        <p>바뀐 근거를 받으면 저장 안 한 글이 사라져요.</p>
+        <div>
+          <button type="button" className={ws.primary} onClick={() => reply("save")}>
+            저장하고 반영
+          </button>
+          <button type="button" className={ws.secondary} onClick={() => reply("discard")}>
+            편집 버리고 반영
+          </button>
+          <button type="button" className={ws.link} autoFocus onClick={() => reply("cancel")}>
+            취소
+          </button>
+        </div>
+      </dialog>
     </section>
   );
 }
