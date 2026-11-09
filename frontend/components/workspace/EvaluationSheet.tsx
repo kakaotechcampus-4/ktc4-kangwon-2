@@ -955,6 +955,15 @@ export function FolderCard({
   const [guide, setGuide] = useState<"view" | "upload" | null>(null);
   const [reading, setReading] = useState(false);
   const [failed, setFailed] = useState(false);
+  // 큰 폴더를 읽는 사이 화면을 떠났다 돌아와 다른 폴더를 저장하면, 늦게 끝난 옛 검사가 서버 결과를 덮었다(11-10 Codex 검토).
+  // 이 쪽지가 사라진 뒤 끝난 검사는 버린다.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   function found(names: string[]) {
     onScan(scanNames(names, today()));
@@ -979,7 +988,10 @@ export function FolderCard({
         return namesIn(dir);
       })
       // 고르기 창을 닫거나 크롬 확인 창에서 「취소」를 누르면 AbortError 다 — 아무 말도 하지 않는다.
-      .then(found, (err: unknown) => setFailed((err as Error)?.name !== "AbortError"))
+      .then(
+        (names) => alive.current && found(names),
+        (err: unknown) => alive.current && setFailed((err as Error)?.name !== "AbortError"),
+      )
       .finally(() => setReading(false));
   }
 

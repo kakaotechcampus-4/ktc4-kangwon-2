@@ -73,11 +73,14 @@ function Requirement({
 }
 
 /**
- * 4-1 — 서버는 「두 조건을 다 채운 반」 수 하나만 준다(judge_4_1).
- * 계획안 · 일지를 따로 채운 반 수는 모르므로 줄마다 건수만 보이고 「채움」이라 하지 않는다.
+ * 4-1 — 서버가 두 조건을 다 채운 반(`classes`)과 조건마다 채운 반(`plan_classes` · `journal_classes`, ADR-074 결정 2)을 준다.
+ * ✓ 는 조건마다 모든 반이 채웠을 때만 — 건수가 1 이상이라고 찍으면 빈 반 · 빈 평일이 있어도 ✓ 가 됐다(11-10 Codex 검토).
  */
 function ClassRequirements({ item }: { item: AutoIndicator }) {
   const classes = item.classes ?? { met: 0, total: 0 };
+  const planClasses = item.plan_classes ?? { met: 0, total: 0 };
+  const journalClasses = item.journal_classes ?? { met: 0, total: 0 };
+  const full = (r: { met: number; total: number }) => r.total > 0 && r.met === r.total;
   const plans = item.plan_ids.length;
   const logs = item.document_ids.length;
   return (
@@ -87,17 +90,17 @@ function ClassRequirements({ item }: { item: AutoIndicator }) {
         <Bar value={percent(classes.met, classes.total)} />
       </p>
       <Requirement
-        done={plans > 0}
+        done={full(planClasses)}
         need="반마다 확정한 월간계획안 1건 이상"
-        have={`확정 월간계획안 ${plans}건`}
+        have={`확정 월간계획안 ${plans}건 · ${planClasses.met}/${planClasses.total}반`}
         href="/plans/monthly"
         action="월간계획안 만들기"
       />
       {/* 서버는 일일 보육일지만 센다(ADR-057 결과). 「집계에 들어간 문서」 펼침을 지우며 「일일」을 여기로 옮겼다(11-09). */}
       <Requirement
-        done={logs > 0}
+        done={full(journalClasses)}
         need="검토 기간 평일마다 확정한 일일 보육일지"
-        have={`확정 보육일지 ${logs}건`}
+        have={`확정 보육일지 ${logs}건 · ${journalClasses.met}/${journalClasses.total}반`}
         href="/routines"
         action="보육일지 쓰기"
         primary

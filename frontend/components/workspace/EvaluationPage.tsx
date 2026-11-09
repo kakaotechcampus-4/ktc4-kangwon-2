@@ -32,8 +32,14 @@ function AboutEvaluation() {
         평가제가 뭐예요?
       </summary>
       {/* 스마트폰(390)에서도 단추는 제목 줄 오른쪽에 남는다. 왼쪽에 맞춰 열면 쪽지가 화면 밖으로 나갔다. */}
-      {/* 이름 규칙 여섯 줄이 들어가 길어졌다 — 낮은 창에서는 쪽지 안에서 스크롤한다(--app-vh, globals.css). */}
-      <div className="absolute right-0 top-full z-20 mt-2 max-h-[calc(calc(100*var(--app-vh))-160px)] w-[min(420px,calc(100vw-32px))] overflow-y-auto rounded-md border border-line bg-paper px-4 py-3 leading-relaxed text-ink shadow-pg-card">
+      {/* 이름 규칙 여섯 줄이 들어가 길어졌다 — 낮은 창에서는 쪽지 안에서 스크롤한다(--app-vh, globals.css).
+          안에 누를 것이 없어 키보드로 스크롤하려면 쪽지 자체가 초점을 받아야 한다(사파리, 11-10 Codex 검토). */}
+      <div
+        tabIndex={0}
+        role="group"
+        aria-label="평가제 설명과 파일 이름 규칙"
+        className="absolute right-0 top-full z-20 mt-2 max-h-[calc(calc(100*var(--app-vh))-160px)] w-[min(420px,calc(100vw-32px))] overflow-y-auto rounded-md border border-line bg-paper px-4 py-3 leading-relaxed text-ink shadow-pg-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-ink"
+      >
         {/* 기관 이름은 ADR-022 의 지금 이름, 「지표」는 공식 용어 「평가항목」으로(ADR-022 결정 13).
             이 화면은 폴더 · 직접확인 · 원장님 서류도 다뤄 「쌤플 문서만 센다」고 하지 않는다.
             「선생님께서 확인해 주세요」는 가로 칸 아래 줄이 늘 말한다(11-09 문구 토론). */}
