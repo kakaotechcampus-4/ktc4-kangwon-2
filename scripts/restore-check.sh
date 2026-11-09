@@ -185,8 +185,9 @@ psql -d postgres -q -c "CREATE DATABASE $CHECK_DB OWNER ssuksak;"
 trap 'psql -d postgres -q -c "DROP DATABASE IF EXISTS $CHECK_DB;" >/dev/null 2>&1 || true' EXIT
 
 # **`ON_ERROR_STOP=1` 을 반드시 붙인다.** 없으면 위와 같은 이유로 실패를 못 본다.
-if ! gunzip -c "$FILE" | docker compose exec -T db psql -U ssuksak -d "$CHECK_DB" \
-    -v ON_ERROR_STOP=1 -q >/dev/null; then
+# 위에서 고른 psql(= dc) 로 붓는다. `docker compose` 를 바로 쓰면 docker 그룹에 없는 계정에서
+# 멀쩡한 백업이 「복구 중 오류」가 된다.
+if ! gunzip -c "$FILE" | psql -d "$CHECK_DB" -v ON_ERROR_STOP=1 -q >/dev/null; then
   echo "restore-check FAILED: 복구 중 오류가 났다 — $FILE" >&2
   exit 1
 fi
