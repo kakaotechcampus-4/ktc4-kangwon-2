@@ -174,6 +174,14 @@ def test_a_sample_seed_picks_top_k_from_the_top_pool_in_rank_order():
     assert len({tuple(found) for found in picks.values()}) > 1
     used = tuple(ranked[:5])  # earlier weeks still go out first, before sampling
     assert set(used).isdisjoint(_search(records, top_k=10, by_activity_type=True, sample_seed=1, prior_week_refs=used))
+    # 2026-11-10 하민 (b): exact-age records fill first; sampling happens only inside the tier that overflows.
+    mixed = tuple(_record(f"ev_m{i:02}", text=f"가을 열매 쌓기 m{i}", institution=f"M{i}", age_scope=(3, 4))
+                  for i in range(10))
+    tiered = mixed + records[:6]
+    for seed in range(5):
+        found = _search(tiered, top_k=10, by_activity_type=True, sample_seed=seed)
+        assert len(found) == 10 and {f"ev_{i:02}" for i in range(6)} <= set(found)
+    assert len({tuple(_search(tiered, top_k=10, by_activity_type=True, sample_seed=s)) for s in range(5)}) > 1
 
 
 def test_parent_citation_survives_top_k_without_bypassing_eligibility_or_source_cap():

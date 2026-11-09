@@ -18,7 +18,7 @@ from ..evidence.weekly_classification import (
     WeeklyEvidenceClassification,
     WeeklySemanticClass,
 )
-from .models import AGE_VERIFIABLE_TIERS, RetrievedEvidence
+from .models import AGE_TIER_ORDER, AGE_VERIFIABLE_TIERS, RetrievedEvidence
 from .ranking import (
     DEFAULT_INSTITUTION_CAP,
     apply_source_diversity,
@@ -180,8 +180,24 @@ def weekly_section_evidence(
         picked = apply_source_diversity(fresh, top_k=top_k, institution_cap=institution_cap, fill=by_activity_type)
     else:
         # 2026-11-10 하민: pick top_k of the top sample_pool at random, kept in rank order (filters unchanged).
-        pool = apply_source_diversity(fresh, top_k=sample_pool, institution_cap=institution_cap, fill=by_activity_type)
-        keep = set(random.Random(f"{sample_seed}:{weekly_class.value}").sample(range(len(pool)), min(top_k, len(pool))))
+        # 2026-11-10 하민 (b): fill from the best age tier first; sample among that tier's top sample_pool
+        # only when it overflows, so age fit never drops below the fixed cut (sim: weekly_tier_shuffle_sim).
+        # The overflowing tier is drawn one activity type at a time, keeping the ADR-054 type spread.
+        pool = apply_source_diversity(fresh, top_k=len(fresh), institution_cap=institution_cap, fill=by_activity_type)
+        rng = random.Random(f"{sample_seed}:{weekly_class.value}")
+        kind_of = indoor_play_type if weekly_class is WeeklySemanticClass.INDOOR_PLAY else activity_type
+        keep: set[int] = set()
+        for tier in AGE_TIER_ORDER:
+            need = top_k - len(keep)
+            members = [i for i, item in enumerate(pool) if item.trace.age_match is tier][:sample_pool]
+            if len(members) > need:
+                by_kind: dict[str, list[int]] = {}
+                for i in rng.sample(members, len(members)):
+                    by_kind.setdefault(kind_of(pool[i].record), []).append(i)
+                members = []
+                while len(members) < need:
+                    members += [group.pop() for group in by_kind.values() if group][: need - len(members)]
+            keep.update(members)
         picked = tuple(item for i, item in enumerate(pool) if i in keep)
     if len(picked) < top_k:
         have = {item.record_id for item in picked}

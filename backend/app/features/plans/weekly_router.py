@@ -279,7 +279,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
         raise _gate("월간계획안을 먼저 확정해주세요.")
     prior_week_evidence = _prior_week_evidence(session, center_id, class_id, week)
     # 2026-11-10 하민: 후보 근거를 상위 20건에서 섞어 뽑는다. 다시 만들면 다른 근거가 나온다.
-    # 실제로 쓴 근거는 칸 Evidence 에 남는다. seed 는 로그에만 둔다(저장 여부는 결정 전).
+    # seed 와 앞 주차 근거는 계획안 본문에 저장한다 — 로그 없이 재현한다(11-10 하민).
     candidate_seed = secrets.randbelow(2**31)
     _log.info("weekly candidate seed=%d", candidate_seed)
     # 만들 때의 원 설정을 계획안에 복사한다 — 뒤에 설정을 바꿔도 이 계획안은 그대로다(§3-5).
