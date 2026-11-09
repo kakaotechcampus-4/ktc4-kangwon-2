@@ -3167,7 +3167,7 @@ together.<item_id>.content_ids   그 행의 누리과정이 1~3개가 아니다
 
 **`context` 는 선택이다.** 빈 문자열을 허용한다 — 상황을 안 적고 사실만 남기는 교사가 있다.
 
-**`fact` 는 필수다.** 공백만 있으면 `VALIDATION_FAILED` 422.
+**`fact` 는 필수다.** 공백만 있으면 `VALIDATION_FAILED` 422. 5,000자를 넘어도 422 다(화면 입력칸과 같은 상한).
 
 **`child_id` 는 `class_id` 반의 아이여야 한다.** 같은 원의 다른 반 아이면 `VALIDATION_FAILED` 422,
 `fields: ["child_id"]`. 없는 반·아이와 남의 원 반·아이는 `NOT_FOUND` 404 다(「인증」).
