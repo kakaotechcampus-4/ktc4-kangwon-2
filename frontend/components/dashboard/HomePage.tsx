@@ -58,6 +58,9 @@ const DASH = "border-0 border-t border-dashed border-line";
 const LABEL = "text-[13px] font-medium tracking-[0.12em]";
 /** 일과를 얼마나 거슬러 보나. 두 주면 「비어 있는 날」이 들어온다. */
 const LOOK_BACK = 14;
+// 크롬 · 엣지의 받아쓰기는 소리를 브라우저 회사 서버로 보낸다(app/privacy 2번, #114).
+const DICTATION_NOTICE =
+  "말소리는 브라우저 회사(구글 등) 서버를 거쳐 글자로 바뀌어요. 아이 이름은 직접 적어 주세요.";
 /** 칠판에 붙이는 아이 쪽지. 색과 기울기를 번갈아 쓴다 — 같은 모양이 줄줄이 붙으면 한 장으로 보인다. */
 const KID_NOTE = [
   "border-note-soft-line bg-note-soft -rotate-2",
@@ -468,6 +471,9 @@ function Compose({
                 {dictation.error}
               </p>
             )}
+            {dictation.listening && (
+              <p className="mt-2 text-[13px] text-ink-soft">{DICTATION_NOTICE}</p>
+            )}
             <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3">
               {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
                   그 둘이 없으면 AI 가 해석과 지원을 쓸 근거가 없다. 안내일 뿐 막지는 않는다.
@@ -481,6 +487,7 @@ function Compose({
                     type="button"
                     aria-label={dictation.listening ? "받아쓰기 중지" : "음성 받아쓰기"}
                     aria-pressed={dictation.listening}
+                    title={DICTATION_NOTICE}
                     disabled={confirming}
                     onClick={dictation.toggle}
                     className={`flex h-10 w-10 items-center justify-center rounded-full border transition-colors ${
