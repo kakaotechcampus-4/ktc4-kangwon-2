@@ -100,9 +100,33 @@ async function dayRows(page: Page, classId: number, date: string): Promise<Routi
   return (await api(page, `/api/routines?class_id=${classId}&from=${date}&to=${date}`)).items;
 }
 
-async function saved(page: Page, exact = true) {
-  await page.getByRole("button", { name: "저장", exact: true }).click();
-  await expect(page.getByText(exact ? "저장했어요." : /저장했어요\./, { exact })).toBeVisible();
+interface Uploaded {
+  review_impact: { affected_document_ids: number[]; newly_stale_document_ids: number[] } | null;
+}
+
+/** `PUT /api/routines/draft` 중 근거로 올리는 요청(`promote: true`). */
+const promoteRequest = (r: {
+  url(): string;
+  request(): { method(): string; postDataJSON(): unknown };
+}) =>
+  r.url().includes("/api/routines/draft") &&
+  r.request().method() === "PUT" &&
+  (r.request().postDataJSON() as { promote?: boolean } | null)?.promote === true;
+
+/**
+ * 일과 화면에는 저장 단추가 없다(ADR-084). 쓰는 대로 임시본에 두고, **화면을 떠날 때** 근거로 올린다.
+ * 사이드바 「홈」으로 떠나서 올리는 요청이 끝나기를 기다린 뒤, 같은 날 · 같은 반으로 다시 연다.
+ * 올린 결과(`review_impact`)를 돌려준다.
+ */
+async function uploaded(page: Page): Promise<Uploaded> {
+  const back = page.url();
+  const promote = page.waitForResponse(promoteRequest);
+  await page.getByRole("link", { name: "홈", exact: true }).click();
+  const response = await promote;
+  expect(response.ok(), `${response.status()} ${await response.text()}`).toBeTruthy();
+  const result = (await response.json()) as Uploaded;
+  await page.goto(back);
+  return result;
 }
 
 /**
@@ -202,7 +226,7 @@ test.afterEach(async ({ page }, info: TestInfo) => {
   ).toEqual([]);
 });
 
-test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, 정확한 재검토 건수", async ({
+test("A B C G H J — 홈 진입, 7줄을 떠날 때 올림, S-J2 생성·확정, 정확한 재검토 건수", async ({
   page,
 }, info) => {
   const { classId } = await enterHome(page);
@@ -224,7 +248,7 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
     note(page, "A", { presetRows: PRESET_ROWS, classId });
   });
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
-  await test.step("B: 깔아 둔 하루 중 7줄을 고쳐 저장하고 새로고침 후 내용과 시간 확인", async () => {
+  await test.step("B: 깔아 둔 하루 중 7줄을 고치고 화면을 떠났다 오면 내용과 시간이 남는다", async () => {
     // 손대지 않은 세 줄은 저장되지 않는다 — 깔아 둔 하루를 서버에 쌓지 않는다.
     for (let i = 0; i < 7; i++) {
       const row = rows(page).nth(i);
@@ -234,8 +258,7 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
       await fillPlan(row, "놀이 자료를 준비한다.");
       if (i < 6) await row.getByLabel("실제로 한 것").fill("블록을 쌓고 길을 만들었다.");
     }
-    await saved(page);
-    await page.reload();
+    await uploaded(page);
     await expect(rows(page)).toHaveCount(7);
     for (let i = 0; i < 7; i++) {
       await expect(rows(page).nth(i).getByLabel("일과 이름")).toHaveValue(`일과${i + 1}`);
@@ -257,7 +280,7 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
     note(page, "C", expected);
   });
   let documentId: number;
-  await test.step("G: 저장 전 입력을 먼저 저장하고, 실제로 한 것이 있는 일과로 이 화면에서 초안 생성", async () => {
+  await test.step("G: 안 올린 입력을 먼저 올리고, 실제로 한 것이 있는 일과로 이 화면에서 초안 생성", async () => {
     await rows(page).nth(0).getByLabel("일과 이름").fill("수정한 일과1");
     const response = page.waitForResponse(
       (r) => r.url().endsWith("/api/documents") && r.request().method() === "POST",
@@ -301,16 +324,16 @@ test("A B C G H J — 홈 진입, 7줄·드래그 저장, S-J2 생성·확정, �
     await expect(rows(page)).toHaveCount(7);
     await rows(page).nth(0).getByLabel("실제로 한 것").fill("블록 길을 더 길게 이어 붙였다.");
     await rows(page).nth(2).getByLabel("실제로 한 것").fill("길 위에 자동차를 올려 굴렸다.");
-    await saved(page, false);
-    await expect(
-      page.getByText(/이 일과를 쓴 보육일지 1건이 다시 검토 대상이 되었어요/),
-    ).toBeVisible();
+    // 떠날 때 올린다. 두 줄을 고쳐도 그 일과를 쓴 보육일지는 1건으로 센다.
+    const changed = await uploaded(page);
+    expect(changed.review_impact?.newly_stale_document_ids).toEqual([documentId!]);
     const db = dbDocument(documentId!);
     expect(db.stale).toBe(true);
     note(page, "H", db);
     await fillPlan(rows(page).nth(0), "계획만 고친다.");
-    await saved(page);
-    await expect(page.getByText(/다시 검토 대상이 되었어요|이미 재검토 대상인/)).toHaveCount(0);
+    const planOnly = await uploaded(page);
+    // 계획만 고친 것은 근거(실제로 한 것)가 아니다 — 다시 검토로 세지 않는다.
+    expect(planOnly.review_impact?.affected_document_ids ?? []).toEqual([]);
     await page.screenshot({ path: info.outputPath("A-G-H-routines.png"), fullPage: true });
   });
 });
@@ -321,7 +344,7 @@ test("S-J2 빈 상태 — 실제로 한 것이 없는 저장 줄에서 입력 �
   await expect(rows(page)).toHaveCount(PRESET_ROWS);
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
   await rows(page).nth(0).getByLabel("일과 이름").fill("시간과 이름만 있는 일과");
-  await saved(page);
+  await uploaded(page);
   await expect(
     page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }),
   ).toBeDisabled();
@@ -340,7 +363,7 @@ test("S-J2 빈 상태 — 실제로 한 것이 없는 저장 줄에서 입력 �
   note(page, "S-J2 empty", { classId, date, returnedByLink: true });
 });
 
-test("D E F J — 어제 복사·검증 오류·실제 401 저장 실패와 재시도·삭제 지연", async ({
+test("D E F J — 어제 복사·검증 오류·실제 401 임시본 실패와 재시도·삭제 지연", async ({
   page,
 }, info) => {
   const { classId } = await enterHome(page);
@@ -379,8 +402,8 @@ test("D E F J — 어제 복사·검증 오류·실제 401 저장 실패와 재�
     (value) => sessionStorage.setItem("saessak.authToken", value + "invalid"),
     originalToken,
   );
-  await page.getByRole("button", { name: "저장", exact: true }).click();
-  await expect(page.getByText("로그인이 필요해요. 다시 로그인한 뒤 이용해주세요.")).toBeVisible();
+  // 저장 단추는 없다(ADR-084). 멈추면 임시본을 보내고, 실패하면 머리줄에 「저장 못 했어요」.
+  await expect(page.getByRole("alert").filter({ hasText: "저장 못 했어요" })).toBeVisible();
   await expect(rows(page).nth(0).getByLabel("실제로 한 것")).toHaveValue("오늘 작성 중인 실행");
   await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
   await expect(page.getByText("로그인이 필요해요. 다시 로그인한 뒤 이용해주세요.")).toBeVisible();
@@ -390,13 +413,12 @@ test("D E F J — 어제 복사·검증 오류·실제 401 저장 실패와 재�
     originalToken,
   );
   await page.getByRole("button", { name: "+ 줄 추가", exact: true }).click();
-  await saved(page);
-  await page.reload();
+  await uploaded(page);
   await expect(rows(page)).toHaveCount(1); // 완전히 빈 두 번째 줄만 제외했다.
   note(page, "F", { realServerStatus: 401, noNavigation: true, retrySaved: true });
   await rows(page).nth(0).getByRole("button", { name: "1번째 일과 지우기" }).click();
   expect(await dayRows(page, classId, date)).toHaveLength(1);
-  await saved(page);
+  await uploaded(page);
   expect(await dayRows(page, classId, date)).toEqual([]);
   await page.screenshot({ path: info.outputPath("D-E-F-routines.png"), fullPage: true });
 });
@@ -416,7 +438,7 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
   await rows(page).nth(0).getByLabel("일과 이름").fill("햇살반 일과");
   await rows(page).nth(0).getByLabel("실제로 한 것").fill("햇살반에서 블록을 쌓았다.");
-  await saved(page);
+  await uploaded(page);
   await switchClass(page, "달님반");
   await expect(page).toHaveURL(/\/routines(\?|$)/);
   await expect(rows(page)).toHaveCount(PRESET_ROWS);
@@ -424,7 +446,7 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   await expect(rows(page).nth(0).getByLabel("일과 이름")).toHaveValue("등원 및 통합보육");
   await rows(page).nth(0).getByLabel("일과 이름").fill("달님반 일과");
   await rows(page).nth(0).getByLabel("실제로 한 것").fill("달님반에서 공을 굴렸다.");
-  await saved(page);
+  // 「오늘 일지 만들기」가 먼저 근거로 올린다 — 따로 올리지 않는다(ADR-084).
   // 일지는 보관함으로 가지 않고 이 화면에서 만들어 칠판 밑에 펼친다.
   await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
   await expect(page.getByRole("region", { name: /보육일지$/ })).toBeVisible();
@@ -541,20 +563,17 @@ test("후속 #1~5 — 한 칸 시간 입력 · 기존 초 보존 · 이름 없�
   await pickTime(added, "종료", "07:00");
   await added.getByLabel("실제로 한 것").fill("새벽 활동을 기록했다.");
 
-  const mutations = () =>
-    diagnostics
-      .get(page)!
-      .network.filter((r) => /\/api\/routines(?:\/|$)/.test(r.url) && r.method !== "GET").length;
-  const initial = mutations();
-  await page.getByRole("button", { name: "저장", exact: true }).click();
+  // 임시본은 쓰는 대로 간다. 근거로 올리는 길(「오늘 일지 만들기」)만 고칠 곳이 있으면 멈춘다.
+  const before = await dayRows(page, classId, date);
+  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
   // 고칠 곳은 포스티 안내판이 줄마다 짚어 준다.
   await expect(page.getByRole("alert").filter({ hasText: "고칠 곳이" })).toBeVisible();
   await expect(added.getByLabel("일과 이름")).toBeFocused();
-  expect(mutations()).toBe(initial);
+  expect(await dayRows(page, classId, date)).toEqual(before);
 
   await added.getByLabel("일과 이름").fill("새벽 놀이");
-  await saved(page);
-  // 저장하면 보이는 순서가 그대로 서버 순서가 된다.
+  await uploaded(page);
+  // 올리면 보이는 순서가 그대로 서버 순서가 된다.
   const order = ["새벽 놀이", "기존 분초", "동률 놀이", "오후 놀이", "시간 미입력"];
   const stored = await dayRows(page, classId, date);
   expect(stored.map((r) => r.name)).toEqual(order);
