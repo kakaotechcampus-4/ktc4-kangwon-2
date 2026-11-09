@@ -800,11 +800,29 @@ def test_create_document_masks_one_syllable_call_name(db_session, monkeypatch):
     assert "민이가 쌓은" in by_heading["해석"]  # 가명 꼴(가람이) -> 부르는 이름 꼴(민이)
 
 
-def test_create_document_refuses_one_syllable_without_call_name(db_session, monkeypatch):
-    # 부르는 이름이 없으면 「민이가」를 가릴 표기가 없다. LLM 을 부르지 않고 고치는 방법을 알린다.
+@pytest.mark.parametrize("call_name", [None, "민이"])
+def test_create_document_masks_other_one_syllable_forms(db_session, monkeypatch, call_name):
+    # 부르는 이름(민이)을 등록해도 「민한테」 · 「민은」이 원문으로 나가면 안 된다(3차 점검 2번).
     _, klass, child = _make_center_class_child(db_session)
-    _one_syllable_child(db_session, klass, None)
-    record = _observation(db_session, klass, child, 5, "가명이가 민이가 쌓은 블록을 옮겼다.")
+    _one_syllable_child(db_session, klass, call_name)
+    record = _observation(
+        db_session, klass, child, 5, "가명이가 민한테 블록을 건넸다. 민은 웃었다."
+    )
+    seen = _capture_generation(monkeypatch)
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201, response.json()
+    assert "민한테" not in seen["facts"][0] and "민은" not in seen["facts"][0]
+    assert "가람한테" in seen["facts"][0] and "가람은" in seen["facts"][0]
+
+
+@pytest.mark.parametrize("call_name", [None, "민이"])
+def test_create_document_refuses_bare_one_syllable(db_session, monkeypatch, call_name):
+    # 「민」 한 글자는 가리면 「고민」까지 바뀐다. LLM 을 부르지 않고 고치는 방법을 알린다.
+    _, klass, child = _make_center_class_child(db_session)
+    _one_syllable_child(db_session, klass, call_name)
+    record = _observation(db_session, klass, child, 5, "가명이가 민 옆에서 블록을 옮겼다.")
     monkeypatch.setattr(
         "app.features.documents.draft._generate", lambda *_: pytest.fail("LLM 을 부르면 안 된다")
     )

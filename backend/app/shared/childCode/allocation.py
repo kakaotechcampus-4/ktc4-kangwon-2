@@ -5,7 +5,7 @@
 
 from collections.abc import Iterable
 
-from .names import bare_syllables, name_variants, one_syllable
+from .names import bare_words, name_variants, one_syllable
 from .pool import CallNameNeeded, PseudonymPool, SubstitutionError, has_final
 from .substitute import NameTable, mask
 
@@ -54,15 +54,12 @@ def allocate_for_class(
     return code
 
 
-def _refuse_bare_syllables(rows: list[Row], text: str) -> None:
-    """부르는 이름이 없는 외자 아이의 글자가 글에 홀로 서 있으면 LLM 을 부르지 않는다.
+def _refuse_bare_syllables(found: list[str]) -> None:
+    """외자 글자가 조사 없이 홀로 서 있으면 LLM 을 부르지 않는다.
 
-    「민이가」 는 등록 이름(김민)으로도, 성을 뗀 이름으로도 안 걸린다. 한 글자를 그대로
-    치환하면 「고민」 · 「민속놀이」 까지 바뀐다. 그래서 낱말로 홀로 설 때만 막고,
-    부르는 이름을 적게 한다(ADR-004 보완).
+    「민」 하나를 치환 대상에 넣으면 「고민」 · 「민속놀이」 까지 바뀌고, 되돌릴 꼴도 없다.
+    그래서 가리지 않고 막는다(ADR-004 보완).
     """
-    syllables = {s for name, _, call in rows if not call and (s := one_syllable(name))}
-    found = bare_syllables(text, syllables)
     if found:
         quoted = " · ".join(f"『{s}』" for s in found)
         josa = "이" if has_final(found[-1]) else "가"
@@ -90,13 +87,24 @@ def table_for_text(
     우리 반 두 아이가 같은 표기(김하나 · 박하나 -> 하나)를 쓰면 어느 아이인지 몰라 에러다.
     다른 반 아이의 표기가 먼저 넣은 아이와 겹치면 그 아이는 넣지 않는다 — 겹친 표기가 이미
     가려지므로 이름이 나가지 않는다. 마지막에 글에 나온 아이 이름이 하나도 안 남았는지 본다.
-    부르는 이름이 없는 외자 아이의 글자가 홀로 서 있으면 CallNameNeeded 다.
+
+    외자 아이(김민)는 등록 표기로 가린 뒤 **남은** 낱말을 부르는 이름과 상관없이 다시 본다.
+    「민은」 · 「민아」 · 「민한테」처럼 외자 글자에 조사 · 부르는 꼴이 붙은 낱말은 그 낱말을
+    가명 꼴(가람은 · 가람아 · 가람한테)로 바꾸고 그 낱말 그대로 되돌린다.
+    같은 글자의 아이가 여럿이면 우리 반 아이가 먼저다 — 어느 쪽이든 가려지고,
+    되돌릴 때는 원문 낱말로 돌아온다.
+    글자 하나만 홀로 선 「민」은 가릴 수 없어 CallNameNeeded 다.
     """
     own, others = list(own), list(others)
-    _refuse_bare_syllables(own + others, text)
+    owner: dict[str, Row] = {}  # 외자 글자 -> 그 글자를 가진 첫 아이(우리 반 먼저)
+    for row in own + others:
+        if syllable := one_syllable(row[0]):
+            owner.setdefault(syllable, row)
+    words = bare_words(text, set(owner))
+    spoken = {owner[w[0]] for w in words}
 
     def named(rows):
-        return [r for r in rows if any(v in text for v in _forms(r[0], r[2]))]
+        return [r for r in rows if r in spoken or any(v in text for v in _forms(r[0], r[2]))]
 
     mine, theirs = named(own), named(others)
     if not mine and not theirs:
@@ -121,9 +129,18 @@ def table_for_text(
         names.setdefault(name, code)
         if call:
             calls.append((name, call))
+    # 등록 표기로 가려지는 낱말(부르는 이름 「민이」 -> 「민이가」)은 그대로 두고 남은 것만 본다.
+    covered = NameTable(names, calls).masking
+    left_words = [w for w in words if not any(w.startswith(k) for k in covered)]
+    _refuse_bare_syllables(sorted({w for w in left_words if len(w) == 1}))
+    for word in left_words:
+        real = next((n for n in names if one_syllable(n) == word[0]), None)
+        if real is None:
+            raise SubstitutionError(f"외자 낱말의 아이를 표에 넣지 못했다: {word}")
+        calls.append((real, word))
     table = NameTable(names, calls)
     masked = mask(text, table)
-    left = sorted(v for v in variants if v in masked)
+    left = sorted(v for v in variants | set(words) if v in masked)
     if left:
         raise SubstitutionError(f"치환 후에도 실명이 남았다: {', '.join(left)}")
     return table

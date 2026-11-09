@@ -126,10 +126,40 @@ def test_외자_아이의_부르는_이름도_요청_사항에서_가명으로_�
     assert any("가람이가" in p for p in sent)
 
 
-def test_부르는_이름이_없는_외자_아이는_요청_사항을_LLM_에_보내지_않는다(
-    db_session, teacher, monkeypatch
+@pytest.mark.parametrize("call_name", [None, "민이"])
+def test_외자_아이의_다른_꼴도_요청_사항에서_가명으로_나간다(
+    db_session, teacher, monkeypatch, call_name
 ):
-    seed = _monthly_with_one_syllable_child(db_session, teacher, None)
+    # 부르는 이름(민이)을 등록해도 「민은」 · 「민한테」가 원문으로 나가면 안 된다(3차 점검 2번).
+    seed = _monthly_with_one_syllable_child(db_session, teacher, call_name)
+    sent = []
+
+    class Spy(RequestAwareMonthlyLlm):
+        def generate_monthly(self, request):
+            sent.append(request.user_content)
+            return super().generate_monthly(request)
+
+    monkeypatch.setattr(monthly_router, "monthly_llm_provider", Spy)
+    response = client.post(
+        "/api/plans/monthly",
+        json={
+            "class_id": seed["class"],
+            "month": 9,
+            "profile_ref": seed["profile"],
+            "memo": "민은 공룡 놀이를 좋아해요. 민한테 맞춰 주세요",
+        },
+    )
+
+    assert response.status_code == 201, response.json()
+    assert sent and all("민은" not in p and "민한테" not in p for p in sent)
+    assert any("가람은" in p and "가람한테" in p for p in sent)
+
+
+@pytest.mark.parametrize("call_name", [None, "민이"])
+def test_외자_글자가_홀로_서면_요청_사항을_LLM_에_보내지_않는다(
+    db_session, teacher, monkeypatch, call_name
+):
+    seed = _monthly_with_one_syllable_child(db_session, teacher, call_name)
     monkeypatch.setattr(
         monthly_router, "monthly_llm_provider", lambda: pytest.fail("LLM 을 부르면 안 된다")
     )
@@ -139,7 +169,7 @@ def test_부르는_이름이_없는_외자_아이는_요청_사항을_LLM_에_�
             "class_id": seed["class"],
             "month": 9,
             "profile_ref": seed["profile"],
-            "memo": ONE_SYLLABLE_MEMO,
+            "memo": "민 옆자리 친구와 공룡 놀이를 넣어 주세요",
         },
     )
 

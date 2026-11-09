@@ -100,6 +100,7 @@ def test_부르는_이름은_외자_글자나_등록_이름으로_시작해야_�
     NameTable({"이안": "가람"}, [("이안", "이안이")])  # 성 없이 적은 이름이 외자로 잡힌 경우
 
 
+@pytest.mark.parametrize("call_name", [None, "민이"])
 @pytest.mark.parametrize(
     "text",
     [
@@ -109,12 +110,23 @@ def test_부르는_이름은_외자_글자나_등록_이름으로_시작해야_�
         "민을 불렀다",
         "민도 왔다",
         "민이 블록",
-        "(민) 블록",
+        "민이랑 놀았다",
+        "민한테 블록을 줬다",
     ],
 )
-def test_부르는_이름이_없는_외자가_홀로_서면_LLM_전에_막는다(text):
+def test_외자에_조사나_부르는_꼴이_붙으면_부르는_이름과_상관없이_가린다(text, call_name):
+    # 부르는 이름(민이)을 등록해도 「민은」 · 「민아」가 원문으로 나가면 안 된다(3차 점검 2번).
+    table = table_for_text(load_pool(), [("김민", "가람", call_name)], [], text)
+    masked = mask(text, table)
+    assert "민" not in masked and "가람" in masked
+    assert unmask(masked, table) == text  # 교사가 쓴 꼴 그대로 돌아온다
+
+
+@pytest.mark.parametrize("call_name", [None, "민이"])
+@pytest.mark.parametrize("text", ["(민) 블록", "민 옆에서 쌓았다", "민, 이리 와"])
+def test_외자_글자가_홀로_서면_가릴_수_없어_LLM_전에_막는다(text, call_name):
     with pytest.raises(CallNameNeeded, match="『민』이 아이 이름이면 아이 명단에서 부르는 이름"):
-        table_for_text(load_pool(), [("김민", "가람", None)], [], text)
+        table_for_text(load_pool(), [("김민", "가람", call_name)], [], text)
 
 
 @pytest.mark.parametrize("text", ["민속놀이를 했다", "고민 끝에 골랐다", "김민이가 블록을 쌓았다"])
@@ -123,14 +135,19 @@ def test_낱말_안의_외자_글자는_막지_않는다(text):
     assert "김민" not in (text if table is None else mask(text, table))
 
 
-def test_다른_반_외자_아이도_막는다():
+def test_다른_반_외자_아이도_본다():
+    table = table_for_text(load_pool(), [], [("박진", "가람", None)], "진이랑 놀았다")
+    assert "진" not in mask("진이랑 놀았다", table)
     with pytest.raises(CallNameNeeded):
-        table_for_text(load_pool(), [], [("박진", "가람", None)], "진이랑 놀았다")
+        table_for_text(load_pool(), [], [("박진", "가람", None)], "진, 이리 와")
 
 
-def test_부르는_이름이_있으면_막지_않고_가린다():
-    table = table_for_text(load_pool(), [("김민", "가람", "민이")], [], "민이가 블록을 쌓았다")
-    assert mask("민이가 블록을 쌓았다", table) == "가람이가 블록을 쌓았다"
+def test_부르는_이름과_다른_꼴이_같이_나와도_모두_가린다():
+    text = "민이가 블록을 쌓았다. 민은 웃었고 민아 하고 불렀다."
+    table = table_for_text(load_pool(), [("김민", "가람", "민이")], [], text)
+    masked = mask(text, table)
+    assert masked == "가람이가 블록을 쌓았다. 가람은 웃었고 가람아 하고 불렀다."
+    assert unmask(masked, table) == text
 
 
 # ── 가명 발급 ─────────────────────────────────────────

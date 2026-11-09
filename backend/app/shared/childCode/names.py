@@ -118,11 +118,11 @@ _PARTICLES = (
 _TAILS = frozenset({head + p for head in ("", "이") for p in _PARTICLES} | {"아", "은", "을", "과"})
 
 
-def bare_syllables(text: str, syllables: set[str]) -> list[str]:
-    """글에서 낱말로 홀로 선 외자 글자를 찾는다.
+def bare_words(text: str, syllables: set[str]) -> list[str]:
+    """글에서 외자 글자로 시작해 그 뒤가 조사 · 부르는 꼴뿐인 낱말을 찾는다.
 
     「민이가」 · 「민아」 · 「민」 은 걸리고, 「민속놀이」 · 「고민」 · 「김민이」 는 안 걸린다.
-    「봄을」 · 「별을」 처럼 이름이 아닌 말도 걸린다 -- 모르면 막는 쪽이다.
+    「봄을」 · 「별을」 처럼 이름이 아닌 말도 걸린다 -- 모르면 이름으로 본다.
     """
     words = re.findall("[가-힣]+", text)
-    return sorted({w[0] for w in words if w[0] in syllables and w[1:] in _TAILS})
+    return sorted({w for w in words if w[0] in syllables and w[1:] in _TAILS})
