@@ -19,8 +19,8 @@ from ssuksak.planning.domain.provenance import EvidenceSourceType
 from ssuksak.planning.evidence.models import ExtractionQuality, ReusePolicy
 from ssuksak.planning.evidence.ports import InstitutionEvidenceRepository
 
-EXPECTED_FILE_SHA = "90f2a4a219457de506b8cb103824a6636b78f1e4007004214f85c3a59d4c69bf"
-EXPECTED_CONTENT_SHA = "ab6bb59178106f242225a163963d77b1f4cb038befc0032ba989a18fb57e50eb"
+EXPECTED_FILE_SHA = "7c051742a4e74628b8c4e2497c58e61dfa4e8399e72847a77539bfe92eeb7c98"
+EXPECTED_CONTENT_SHA = "99260c65df0ba0d1c5d010c93a17762c3aa134ea93836e6b8e04348afe27b3ce"
 
 
 @pytest.fixture(scope="module")

@@ -195,8 +195,8 @@ draft_exclusion : SECTION_LABEL_ECHO_EXCLUDE
 
 | activity_id | label | 기관 | 월 | 연령 |
 |---|---|---|---|---|
-| `act_outdoor_v2_1cffee74db` | 안전 관련 표지판 찾아보며 산책하기 | ['uri'] | [8] | [3, 4, 5] |
-| `act_outdoor_v2_44a1b42fff` | 안전 약속 지키며 놀이기구 타기 | ['uri'] | [3] | [3, 4, 5] |
+| `act_outdoor_v2_1cffee74db` | 안전 관련 표지판 찾아보며 산책하기 | ['inst_029'] | [8] | [3, 4, 5] |
+| `act_outdoor_v2_44a1b42fff` | 안전 약속 지키며 놀이기구 타기 | ['inst_029'] | [3] | [3, 4, 5] |
 | `act_outdoor_v2_b52ef53a20` | 훌라후프로 안전하게 놀아요 | ['inst_006'] | [1] | [3] |
 
 **`[실측]` 편입 3건 검증:**

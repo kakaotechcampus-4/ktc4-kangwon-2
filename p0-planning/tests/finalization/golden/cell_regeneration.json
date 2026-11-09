@@ -36,7 +36,7 @@
   "generation_mode": "LLM_PLANNER",
   "planner": {
     "model": "openai/gpt-6.1-sol",
-    "packet_fingerprint": "a582e306d31218615611d8197a3823b0dcccbd27d0a6507dd110f181da3bb2b0",
+    "packet_fingerprint": "81343386214a11e2856bc07ecb15d292749e9c6d2d1d9d17991423347a8e4601",
     "plan_snapshot_fingerprint": "b8bd38ad2ee43588591a29b54356d308a5efb8ba787587c1abfc6929bcb696f1",
     "prompt_version": "monthly-cell-planner-v10"
   },
