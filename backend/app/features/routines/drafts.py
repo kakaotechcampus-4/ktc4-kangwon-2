@@ -28,15 +28,25 @@ def fact_key(record: RoutineRecord) -> tuple:
     return (record.date, record.start_time, record.end_time, record.name, record.execution)
 
 
+def paper_marks(record: RoutineRecord) -> tuple[bool, list[str]]:
+    """사실 칸은 아니지만 종이에 나가는 표시 — 「반영」 · 맞다고 한 활동 (ADR-086)."""
+    return (bool(record.reflected), list(record.activities or []))
+
+
 def mark_if_changed(
-    session: Session, record: RoutineRecord, before: tuple, center_id: int
+    session: Session,
+    record: RoutineRecord,
+    before: tuple,
+    center_id: int,
+    before_marks: tuple[bool, list[str]] | None = None,
 ) -> SourceImpact:
     """고친 뒤 사실 칸이 달라졌으면 그 기록을 쓴 일지를 `stale` 로 바꾼다.
 
     계획 · 순서만 바뀌었으면 그대로다.
     """
     after = fact_key(record)
-    if before == after:
+    marks = paper_marks(record)
+    if before == after and before_marks in (None, marks):
         return SourceImpact()
     return source_changed(
         session,
@@ -47,6 +57,7 @@ def mark_if_changed(
         center_id=center_id,
         # 사실 사본에는 분까지만 남는다. 초만 고쳐도 시간 변경은 놓치지 않는다.
         force=before[1:3] != after[1:3],
+        marks=marks,
     )
 
 
@@ -192,7 +203,7 @@ def _promote(
             session.add(record)
             before = None
         else:
-            before = fact_key(record)
+            before, before_marks = fact_key(record), paper_marks(record)
         record.position = position
         record.start_time = _keep_seconds(record.start_time, row.start)
         record.end_time = _keep_seconds(record.end_time, row.end)
@@ -200,7 +211,7 @@ def _promote(
         record.reflected, record.activities = row.reflected, row.activities
         session.flush()
         if before is not None:
-            impact = _merge(impact, mark_if_changed(session, record, before, center))
+            impact = _merge(impact, mark_if_changed(session, record, before, center, before_marks))
         rows[index] = row.model_copy(update={"id": record.id})
         position += 1
     return impact

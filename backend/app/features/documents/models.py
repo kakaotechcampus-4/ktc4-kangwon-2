@@ -222,6 +222,19 @@ class DocumentSource(Base):
     text: Mapped[str] = mapped_column(
         Text, comment="생성 시점 원문 복사본. 원본이 나중에 바뀌어도 이 값은 안 바뀐다"
     )
+    reflected: Mapped[bool | None] = mapped_column(
+        comment=(
+            "일과 근거일 때 확정 시점 「반영」 표시 사본(ADR-086). 확정본 종이가 이것만 읽는다. "
+            "NULL 은 초안 · 일과가 아닌 근거 · 이 칸이 생기기 전 확정본(원본을 읽는다)"
+        ),
+    )
+    activities: Mapped[list[str] | None] = mapped_column(
+        JSONB,
+        comment=(
+            "확정 시점 「맞다고 한 활동」 사본(ADR-086). 일과 근거면 그 줄의 것, "
+            "일일 문서 근거(주간)면 그날 일일이 확정 때 박은 것을 모은 것. NULL 은 박지 않음"
+        ),
+    )
     domain: Mapped[str | None] = mapped_column(
         String(20),
         comment=(

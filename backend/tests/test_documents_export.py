@@ -1078,6 +1078,67 @@ def test_주간_우리반_놀이는_교사가_맞다고_한_활동_이름이고_
     assert rows[2][1] == "쌓기놀이"
 
 
+def test_확정본_종이는_확정_때_박은_반영과_활동을_싣는다(db_session, mine):
+    """확정한 종이는 확정 뒤 바뀌지 않는다 — 일과 기록을 나중에 고쳐도 사본을 읽는다 (ADR-086)."""
+    klass, _ = mine
+    outdoor = _routine(
+        db_session,
+        klass,
+        position=0,
+        start=None,
+        end=None,
+        name="바깥놀이",
+        execution="둑을 쌓았다.",
+    )
+    outdoor.reflected = True
+    doc = _daily_log(db_session, klass, [outdoor], status="DRAFT")
+    confirmed = client.post(f"/api/documents/{doc.id}/confirm", json={"checks": CHECKS})
+    assert confirmed.status_code == 200, confirmed.text
+    copy = db_session.scalar(select(DocumentSource).where(DocumentSource.document_id == doc.id))
+    assert (copy.reflected, copy.activities) == (True, [])
+
+    # stale 을 거치지 않고 원본만 바뀐 경우(옛 코드 · 손 고침)도 종이는 사본이다.
+    outdoor.reflected = False
+    db_session.flush()
+    _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+    assert rows[1][3] == "(반영) 둑을 쌓았다."
+
+    # 확정을 풀면 사본도 푼다 — 다시 확정할 때 그때 값을 박는다.
+    assert client.post(f"/api/documents/{doc.id}/unconfirm").status_code == 200
+    db_session.refresh(copy)
+    assert (copy.reflected, copy.activities) == (None, None)
+
+
+def test_주간_확정본의_우리반_놀이는_확정_때_박은_활동이다(db_session, mine):
+    klass, _ = mine
+    doc = _weekly_log(
+        db_session,
+        klass,
+        [(date(2026, 9, 21), "활동", "낙엽 모자이크를 했다.", "")],
+        status="DRAFT",
+    )
+    routine = db_session.scalar(select(RoutineRecord).where(RoutineRecord.name == "활동"))
+    routine.activities = ["낙엽 모자이크"]
+    used = [
+        s.source_id
+        for s in db_session.scalars(
+            select(DocumentSource).where(DocumentSource.document_id == doc.id)
+        )
+    ]
+    for section in db_session.scalars(
+        select(DocumentSection).where(DocumentSection.document_id == doc.id)
+    ):
+        section.source_ids = used
+    db_session.flush()
+    confirmed = client.post(f"/api/documents/{doc.id}/confirm", json={"checks": CHECKS})
+    assert confirmed.status_code == 200, confirmed.text
+
+    routine.activities = ["가을 소리 찾기"]
+    db_session.flush()
+    _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+    assert rows[1][1] == "낙엽 모자이크"
+
+
 def test_일일_보육일지_꼬리에_반_운영_특이사항_줄이_있다(db_session, mine):
     klass, _ = mine
     routine = _routine(

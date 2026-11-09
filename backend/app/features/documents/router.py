@@ -28,6 +28,7 @@ from app.features.documents.models import (
     DocumentSource,
     DocumentSourceResolution,
 )
+from app.features.documents.paper import clear_confirmed, stamp_confirmed
 from app.features.documents.review import (
     lock_sources,
     locked_review,
@@ -71,7 +72,6 @@ from app.features.documents.verify import (
 )
 from app.features.observations.models import AXES, DEFAULT_AXIS, Observation
 from app.features.routines.models import RoutineRecord
-from app.features.routines.weather import stamp_confirmed_weather
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import (
     own_class_clause,
@@ -1205,7 +1205,7 @@ def confirm_document(
 
     doc.status = "CONFIRMED"
     doc.updated_at = datetime.now(UTC)
-    stamp_confirmed_weather(session, doc)
+    stamp_confirmed(session, doc)
     session.commit()
     return _build_detail_response(session, doc)
 
@@ -1232,7 +1232,7 @@ def unconfirm_document(
     impact = SourceImpact()
     if doc.status != "DRAFT":
         doc.status = "DRAFT"
-        doc.weather = None
+        clear_confirmed(session, doc)
         doc.updated_at = datetime.now(UTC)
         impact = document_changed(session, doc.id)
         session.commit()

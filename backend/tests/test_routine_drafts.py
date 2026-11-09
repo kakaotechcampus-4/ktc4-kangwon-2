@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.features.centers.models import Center, Class
-from app.features.documents.models import Document, DocumentSource
+from app.features.documents.models import Document, DocumentSection, DocumentSource
 from app.features.routines.drafts import prune_drafts
 from app.features.routines.models import RoutineDraft, RoutineRecord
 from app.main import app
@@ -337,3 +337,85 @@ def test_반영과_맞다고_한_활동은_올릴_때_일과_기록에_따라간
     assert items[0]["activities"] == ["낙엽 모자이크"]
     record = db_session.get(RoutineRecord, items[0]["id"])
     assert record.fact_text() == "[오전 실내놀이 09:20~10:40] 블록으로 길을 만들었다."
+
+
+def test_확정_뒤_반영이나_활동을_바꾸면_그_확정_일지는_원본_바뀜이다(db_session, sun):
+    """종이에 나가는 표시가 바뀌었으니 사실이 바뀐 것과 같이 다시 본다 (ADR-086)."""
+    first = _save(sun, [_row()], promote=True).json()
+    record_id = first["items"][0]["id"]
+    doc = Document(
+        kind="dailyLog",
+        title="햇살반 보육일지",
+        class_id=sun.id,
+        start_date=datetime.date(2026, 11, 10),
+        end_date=datetime.date(2026, 11, 10),
+        status="DRAFT",
+        origin="AI",
+    )
+    db_session.add(doc)
+    db_session.flush()
+    record = db_session.get(RoutineRecord, record_id)
+    db_session.add(
+        DocumentSource(
+            document_id=doc.id,
+            source_kind="routine",
+            source_id=record_id,
+            class_id=sun.id,
+            date=record.date,
+            text=record.fact_text(),
+        )
+    )
+    for heading, body in [
+        ("사실", record.fact_text()),
+        ("해석", "블록으로 길을 이으며 공간을 나누는 데 관심을 보였다."),
+        ("지원", "긴 블록과 받침을 쌓기 영역에 더 두고 함께 길을 이어 보도록 돕는다."),
+    ]:
+        db_session.add(
+            DocumentSection(document_id=doc.id, heading=heading, body=body, source_ids=[record_id])
+        )
+    db_session.flush()
+    checks = {"fact": True, "interpretation": True, "support": True}
+    confirmed = client.post(f"/api/documents/{doc.id}/confirm", json={"checks": checks})
+    assert confirmed.status_code == 200, confirmed.text
+
+    rows = first["draft"]["rows"]
+    rows[0]["reflected"] = True
+    res = _save(sun, rows, revision=first["draft"]["revision"], promote=True)
+    assert res.status_code == 200, res.text
+    assert res.json()["review_impact"]["newly_stale_document_ids"] == [doc.id]
+    db_session.refresh(doc)
+    assert doc.stale is True
+
+
+def test_초안_일지는_반영이나_활동이_바뀌어도_원본_바뀜이_아니다(db_session, sun):
+    """초안 종이는 일과 기록에서 바로 읽는다 — 박은 사본이 없다."""
+    first = _save(sun, [_row()], promote=True).json()
+    record_id = first["items"][0]["id"]
+    doc = Document(
+        kind="dailyLog",
+        title="햇살반 보육일지",
+        class_id=sun.id,
+        start_date=datetime.date(2026, 11, 10),
+        end_date=datetime.date(2026, 11, 10),
+        status="DRAFT",
+        origin="AI",
+    )
+    db_session.add(doc)
+    db_session.flush()
+    record = db_session.get(RoutineRecord, record_id)
+    db_session.add(
+        DocumentSource(
+            document_id=doc.id,
+            source_kind="routine",
+            source_id=record_id,
+            class_id=sun.id,
+            date=record.date,
+            text=record.fact_text(),
+        )
+    )
+    db_session.flush()
+    rows = first["draft"]["rows"]
+    rows[0]["activities"] = ["낙엽 모자이크"]
+    _save(sun, rows, revision=first["draft"]["revision"], promote=True)
+    db_session.refresh(doc)
+    assert doc.stale is False
