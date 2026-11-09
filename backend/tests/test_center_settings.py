@@ -29,10 +29,28 @@ def test_설정한_적_없으면_꺼짐을_채워_준다(own_center):
         "trends_enabled": False,
         "weekly_saturday_enabled": False,
         "observation_axis": "NURI_5",
+        "reflect_mark": "(반영)",
     }
 
 
-OFF = {"trends_enabled": False, "weekly_saturday_enabled": False, "observation_axis": "NURI_5"}
+OFF = {
+    "trends_enabled": False,
+    "weekly_saturday_enabled": False,
+    "observation_axis": "NURI_5",
+    "reflect_mark": "(반영)",
+}
+
+
+@pytest.mark.parametrize("mark", ["(놀이반영)", "", "(반영)"])
+def test_반영_표기를_고를_수_있다(own_center, mark):
+    """어제 지원을 반영한 줄에 종이가 붙이는 글자 (ADR-085). 빈 문자열은 「붙이지 않음」이다."""
+    url = f"/api/centers/{own_center}/settings"
+    assert client.put(url, json={"reflect_mark": mark}).json() == {**OFF, "reflect_mark": mark}
+
+
+def test_모르는_반영_표기는_422(own_center):
+    url = f"/api/centers/{own_center}/settings"
+    assert client.put(url, json={"reflect_mark": "[반영]"}).status_code == 422
 
 
 def test_켜고_끌_수_있다(own_center):
@@ -75,6 +93,7 @@ def test_한_토글은_다른_토글을_건드리지_않는다(own_center):
         "trends_enabled": True,
         "weekly_saturday_enabled": True,
         "observation_axis": "NURI_5",
+        "reflect_mark": "(반영)",
     }
     assert client.put(
         f"/api/centers/{own_center}/settings", json={"weekly_saturday_enabled": False}
@@ -82,6 +101,7 @@ def test_한_토글은_다른_토글을_건드리지_않는다(own_center):
         "trends_enabled": True,
         "weekly_saturday_enabled": False,
         "observation_axis": "NURI_5",
+        "reflect_mark": "(반영)",
     }
     # 축만 바꿔도 앞의 둘은 그대로다.
     assert client.put(
@@ -90,6 +110,7 @@ def test_한_토글은_다른_토글을_건드리지_않는다(own_center):
         "trends_enabled": True,
         "weekly_saturday_enabled": False,
         "observation_axis": "DAILY_PLAY_2",
+        "reflect_mark": "(반영)",
     }
 
 

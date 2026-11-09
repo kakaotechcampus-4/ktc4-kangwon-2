@@ -327,3 +327,13 @@ def test_기본_일과표는_이름이_비거나_시간이_거꾸로면_422(sun)
     assert _template(sun, [{"name": " ", "start": None, "end": None}]).status_code == 422
     assert _template(sun, [{"name": "a", "start": "10:00", "end": "09:00"}]).status_code == 422
     assert _template(sun, [{"name": "a", "weekday": 7}]).status_code == 422
+
+
+def test_반영과_맞다고_한_활동은_올릴_때_일과_기록에_따라간다(db_session, sun):
+    """둘 다 사실 칸이 아니다 — 종이에서만 쓰는 표시다 (ADR-085)."""
+    row = _row(reflected=True, activities=["낙엽 모자이크"])
+    items = _save(sun, [row], promote=True).json()["items"]
+    assert items[0]["reflected"] is True
+    assert items[0]["activities"] == ["낙엽 모자이크"]
+    record = db_session.get(RoutineRecord, items[0]["id"])
+    assert record.fact_text() == "[오전 실내놀이 09:20~10:40] 블록으로 길을 만들었다."

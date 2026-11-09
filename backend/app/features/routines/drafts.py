@@ -197,6 +197,7 @@ def _promote(
         record.start_time = _keep_seconds(record.start_time, row.start)
         record.end_time = _keep_seconds(record.end_time, row.end)
         record.name, record.plan, record.execution = row.name, row.plan, row.execution
+        record.reflected, record.activities = row.reflected, row.activities
         session.flush()
         if before is not None:
             impact = _merge(impact, mark_if_changed(session, record, before, center))

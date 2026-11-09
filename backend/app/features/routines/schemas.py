@@ -54,6 +54,8 @@ class RoutineResponse(BaseModel):
     name: str
     plan: str
     execution: str
+    reflected: bool = False
+    activities: list[str] = []
     created_at: datetime.datetime
 
 
@@ -84,6 +86,9 @@ class DraftRow(BaseModel):
     execution: Body = ""
     # 깔아 둔 줄은 교사가 손대기 전까지 올리지 않는다.
     touched: bool = False
+    # 어제 지원을 반영한 줄 · 계획안에서 맞다고 한 활동 이름. 사실 칸이 아니다 (ADR-085).
+    reflected: bool = False
+    activities: Annotated[list[Name], Field(max_length=10)] = []
 
 
 class DraftSave(BaseModel):

@@ -59,6 +59,19 @@ class RoutineRecord(Base):
     execution: Mapped[str] = mapped_column(
         Text, server_default="", comment="활동실행 — 사실 층이다. 교사가 쓰고 AI 가 쓰지 않는다"
     )
+    # 아래 둘은 사실 칸이 아니다 — 근거 사본(`fact_text`)에 넣지 않고 종이에서만 쓴다 (ADR-085).
+    reflected: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        comment="어제 지원을 반영한 줄. 종이가 원 설정 표기(「(반영)」)를 활동실행 앞에 붙인다",
+    )
+    activities: Mapped[list[str]] = mapped_column(
+        JSONB,
+        default=list,
+        server_default="[]",
+        comment="주간계획안에서 교사가 맞다고 한 활동 이름. 주간 종이 「우리반 놀이」에 싣는다",
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

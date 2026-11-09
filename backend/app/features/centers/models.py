@@ -54,6 +54,16 @@ class Center(Base):
             "**기본은 NURI_5** — 교사 문서 3건 중 2건이 2축이라 둘 다 받는다"
         ),
     )
+    reflect_mark: Mapped[str] = mapped_column(
+        String(10),
+        default="(반영)",
+        server_default="(반영)",
+        nullable=False,
+        comment=(
+            "어제 지원을 반영한 일과 줄에 종이가 붙이는 글자 (ADR-085). "
+            "「(반영)」 · 「(놀이반영)」 · 빈 문자열(붙이지 않음)"
+        ),
+    )
     region_sigungu: Mapped[str] = mapped_column(
         String(30), comment="시·군·구. 지역사회 연계 활동 선별에 쓴다"
     )

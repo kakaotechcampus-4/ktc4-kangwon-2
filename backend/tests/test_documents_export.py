@@ -1029,6 +1029,55 @@ def test_일과_기록을_근거로_쓴_주간은_날짜별_해석_지원_칸을
     ]
 
 
+@pytest.mark.parametrize(
+    ("mark", "expected"), [("(반영)", "(반영) "), ("(놀이반영)", "(놀이반영) "), ("", "")]
+)
+def test_어제_지원을_반영한_줄은_원_설정_표기를_활동실행_앞에_붙인다(
+    db_session, mine, mark, expected
+):
+    """표시는 일과 기록의 칸이고 사실 글에 섞지 않는다 — 종이에서만 붙인다 (ADR-085)."""
+    klass, _ = mine
+    klass_center = db_session.get(Center, klass.center_id)
+    klass_center.reflect_mark = mark
+    plain = _routine(
+        db_session, klass, position=0, start=None, end=None, name="등원", execution="인사했다."
+    )
+    reflected = _routine(
+        db_session,
+        klass,
+        position=1,
+        start=None,
+        end=None,
+        name="바깥놀이",
+        execution="둑을 쌓았다.",
+    )
+    reflected.reflected = True
+    doc = _daily_log(db_session, klass, [plain, reflected])
+
+    _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+    assert rows[1][3] == "인사했다."
+    assert rows[2][3] == f"{expected}둑을 쌓았다."
+
+
+def test_주간_우리반_놀이는_교사가_맞다고_한_활동_이름이고_없으면_일과_이름이다(db_session, mine):
+    klass, _ = mine
+    doc = _weekly_log(
+        db_session,
+        klass,
+        [
+            (date(2026, 9, 21), "활동", "낙엽 모자이크를 했다.", ""),
+            (date(2026, 9, 22), "쌓기놀이", "블록으로 성을 쌓았다.", ""),
+        ],
+    )
+    monday = db_session.scalar(select(RoutineRecord).where(RoutineRecord.name == "활동"))
+    monday.activities = ["낙엽 모자이크", "가을 소리 찾기"]
+    db_session.flush()
+
+    _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+    assert rows[1][1] == "낙엽 모자이크\n가을 소리 찾기"
+    assert rows[2][1] == "쌓기놀이"
+
+
 def test_일일_보육일지_꼬리에_반_운영_특이사항_줄이_있다(db_session, mine):
     klass, _ = mine
     routine = _routine(

@@ -24,6 +24,7 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.features.centers.models import Center, Class
 from app.features.documents.models import Document, DocumentSection, DocumentSource
 from app.features.documents.router import (
     DbSession,
@@ -270,7 +271,13 @@ def _daily_log(
     found = {r.id for r in routines}
     _missing([f"sources.{i}" for i in ids if i not in found])
 
-    rows = [[r.time_range(), r.name.strip(), r.plan.strip(), r.execution.strip()] for r in routines]
+    # 어제 지원을 반영한 줄은 원이 고른 표기를 앞에 붙인다. 표시는 사실 글에 없다 (ADR-085).
+    mark = session.scalar(
+        select(Center.reflect_mark)
+        .where(Center.id == Class.center_id)
+        .where(Class.id == doc.class_id)
+    )
+    rows = [[r.time_range(), r.name.strip(), r.plan.strip(), _executed(r, mark)] for r in routines]
     return fill_grid(
         (TEMPLATE_DIR / "daily_log.hwpx").read_bytes(),
         doc.title,
@@ -284,6 +291,11 @@ def _daily_log(
         ],
         lines={DAILY_HEAD_PLACEHOLDER: _daily_head(session, doc)},
     )
+
+
+def _executed(record: RoutineRecord, mark: str | None) -> str:
+    text = record.execution.strip()
+    return f"{mark} {text}" if record.reflected and mark else text
 
 
 def _daily_head(session: Session, doc: Document) -> str:
@@ -316,7 +328,7 @@ def _weekly_log(
     된다. 실물도 놀이 이름을 늘어놓고, 무슨 일이 있었는지는 분석 칸에서 읽는다.
     """
     if any(s.source_kind == "routine" for s in sources):
-        return _weekly_log_from_routines(doc, sources, evaluation)
+        return _weekly_log_from_routines(session, doc, sources, evaluation)
 
     dailies = {
         d.id: d
@@ -334,13 +346,22 @@ def _weekly_log(
             .where(DocumentSection.heading.in_(("해석", "지원")))
         ).all()
     }
+    # 일일 일지마다 근거로 쓴 일과 기록 — 교사가 맞다고 한 활동 이름을 읽는다.
+    routine_ids: dict[int, list[int]] = {}
+    for document_id, routine_id in session.execute(
+        select(DocumentSource.document_id, DocumentSource.source_id).where(
+            DocumentSource.document_id.in_(dailies), DocumentSource.source_kind == "routine"
+        )
+    ):
+        routine_ids.setdefault(document_id, []).append(routine_id)
+    played = _activities(session, [i for ids in routine_ids.values() for i in ids])
     rows = []
     for copy in sorted(sources, key=lambda s: s.date):
         daily = dailies[copy.source_id]
         rows.append(
             [
                 f"{copy.date.month}/{copy.date.day}({WEEKDAYS[copy.date.weekday()]})",
-                "\n".join(_routine_names(copy.text)),
+                _our_plays(copy.text, routine_ids.get(daily.id, []), played),
                 bodies.get((daily.id, "해석"), ""),
                 bodies.get((daily.id, "지원"), ""),
                 daily.class_note.strip(),
@@ -356,7 +377,7 @@ def _weekly_log(
 
 
 def _weekly_log_from_routines(
-    doc: Document, sources: list[DocumentSource], evaluation: str
+    session: Session, doc: Document, sources: list[DocumentSource], evaluation: str
 ) -> bytes:
     """일일 보육일지를 쓰지 않는 원의 주간. 일과 기록을 날짜로 묶어 한 줄씩 담는다.
 
@@ -364,18 +385,19 @@ def _weekly_log_from_routines(
     해석과 지원인데, 이 문서에는 한 주를 통째로 본 해석 · 지원 하나뿐이다. 그것은 꼬리
     「주간 총평」에 들어간다. 지어내서 채우면 교사가 쓰지 않은 말이 종이에 찍힌다.
     """
-    by_date: dict[date, list[str]] = {}
+    played = _activities(session, [s.source_id for s in sources])
+    by_date: dict[date, list[DocumentSource]] = {}
     for source in sources:
-        by_date.setdefault(source.date, []).extend(_routine_names(source.text))
+        by_date.setdefault(source.date, []).append(source)
     rows = [
         [
             f"{day.month}/{day.day}({WEEKDAYS[day.weekday()]})",
-            "\n".join(names),
+            _our_plays("\n".join(s.text for s in copies), [s.source_id for s in copies], played),
             "",
             "",
             "",
         ]
-        for day, names in sorted(by_date.items())
+        for day, copies in sorted(by_date.items())
     ]
     return fill_grid(
         (TEMPLATE_DIR / "weekly_log.hwpx").read_bytes(),
@@ -384,6 +406,28 @@ def _weekly_log_from_routines(
         rows,
         [["주간 총평", evaluation]],
     )
+
+
+def _activities(session: Session, routine_ids: list[int]) -> dict[int, list[str]]:
+    """일과 기록마다 교사가 계획안에서 맞다고 한 활동 이름 (ADR-085)."""
+    if not routine_ids:
+        return {}
+    return dict(
+        session.execute(
+            select(RoutineRecord.id, RoutineRecord.activities).where(
+                RoutineRecord.id.in_(routine_ids)
+            )
+        ).all()
+    )
+
+
+def _our_plays(fact: str, routine_ids: list[int], played: dict[int, list[str]]) -> str:
+    """주간 「우리반 놀이」 칸. 교사가 맞다고 한 활동 이름이 있으면 그것, 없으면 일과 이름이다.
+
+    일과 이름(「점심식사」)은 놀이가 아니지만, 계획안을 쓰지 않는 반은 이름 말고 적을 것이 없다.
+    """
+    names = list(dict.fromkeys(a for i in routine_ids for a in played.get(i, [])))
+    return "\n".join(names or _routine_names(fact))
 
 
 def _routine_names(fact: str) -> list[str]:

@@ -83,6 +83,8 @@ def _response(row) -> RoutineResponse:
         name=record.name,
         plan=record.plan,
         execution=record.execution,
+        reflected=record.reflected,
+        activities=record.activities,
         created_at=record.created_at,
     )
 
