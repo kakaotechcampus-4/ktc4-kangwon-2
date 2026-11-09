@@ -404,6 +404,57 @@ def import_document(
     return DocumentImportResponse(**detail.model_dump(), notices=notices)
 
 
+def _recheck_sources(session: Session, copies: list[DocumentSource]) -> None:
+    """사본을 만든 뒤 원본이 바뀌었으면 409. 원본 → 문서, 종류 안에서 id 오름차순으로 잠근다.
+
+    review.lock_sources 와 같은 순서다. 일과 · 관찰 PUT · DELETE 도 원본을 먼저 잠근다.
+    """
+
+    def locked(model, kind):
+        ids = sorted({c.source_id for c in copies if c.source_kind == kind})
+        if not ids:
+            return {}
+        rows = session.scalars(
+            select(model)
+            .where(model.id.in_(ids))
+            .order_by(model.id)
+            .with_for_update(of=model)
+            .execution_options(populate_existing=True)
+        ).all()
+        return {row.id: row for row in rows}
+
+    routines = locked(RoutineRecord, "routine")
+    observations = locked(Observation, "observation")
+    documents = locked(Document, "document")
+    for copy in copies:
+        if copy.source_kind == "routine":
+            row = routines.get(copy.source_id)
+            same = row is not None and (row.fact_text(), row.date) == (copy.text, copy.date)
+        elif copy.source_kind == "observation":
+            row = observations.get(copy.source_id)
+            same = row is not None and (row.fact, row.date) == (copy.text, copy.date)
+        else:
+            row = documents.get(copy.source_id)
+            fact = session.scalar(
+                select(DocumentSection.body).where(
+                    DocumentSection.document_id == copy.source_id, DocumentSection.heading == "사실"
+                )
+            )
+            same = (
+                row is not None
+                and row.status == "CONFIRMED"
+                and not row.stale
+                and fact == copy.text
+            )
+        if not same:
+            raise _error(
+                status.HTTP_409_CONFLICT,
+                "STALE_WRITE",
+                "초안을 만드는 사이 근거 기록이 바뀌었어요. 다시 만들어주세요.",
+                [f"sources.{copy.source_id}"],
+            )
+
+
 @router.post("", response_model=DocumentDetailResponse, status_code=status.HTTP_201_CREATED)
 def create_document(
     body: DocumentCreateRequest, session: DbSession, user: CurrentUser
@@ -632,6 +683,11 @@ def create_document(
             "초안이 문서 규격을 통과하지 못했습니다. 다시 시도해주세요.",
             [],
         )
+
+    # 모델을 기다리는 동안 원본이 바뀌었을 수 있다. 저장 직전에 원본을 잠그고 다시 본다.
+    # 잠그지 않고 저장하면 옛 사본이 stale=False 로 남는다 — 그 사이의 수정은 아직 사본 행이
+    # 없어 stale 전파가 이 문서를 못 찾는다. 생성 시간 동안 원본을 붙잡지는 않는다.
+    _recheck_sources(session, copies)
 
     if body.kind == "dailyLog":
         # 두 번 누른 요청이 둘 다 앞의 검사를 지나 모델을 부르는 동안 겹칠 수 있다.
