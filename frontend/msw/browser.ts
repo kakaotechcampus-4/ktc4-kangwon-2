@@ -3,8 +3,14 @@ import type { UnhandledRequestCallback } from "msw";
 import { handlers } from "./handlers";
 import { annualImportHandlers } from "./annualImportHandlers";
 import { observationHandlers } from "./observationHandlers";
+import { journalHandlers } from "./journalHandlers";
 
-export const worker = setupWorker(...annualImportHandlers, ...observationHandlers, ...handlers);
+export const worker = setupWorker(
+  ...annualImportHandlers,
+  ...observationHandlers,
+  ...journalHandlers,
+  ...handlers,
+);
 const RELOADED_KEY = "saessak.msw.controllerReload";
 /** handlers.ts에 등록된 interception 판정 전용 probe 경로. */
 export const MSW_HEALTH_PATH = "/api/__msw_health";
