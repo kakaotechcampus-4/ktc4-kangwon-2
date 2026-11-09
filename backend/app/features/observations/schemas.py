@@ -13,8 +13,10 @@ from app.features.observations.models import DOMAINS
 # 목록을 다시 적지 않는다. models.py 의 CHECK 와 같은 튜플을 본다.
 Domain = Literal[DOMAINS]  # type: ignore[valid-type]
 
-# 공백만 있으면 422 (§10 「fact 는 필수다」). 길이는 계약이 정하지 않아 상한이 없다.
-Fact = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+# 공백만 있으면 422 (§10 「fact 는 필수다」). 컬럼이 Text 라 맞출 길이가 없어 상한 5,000자는
+# 화면 입력칸(RecordsPage 「본 대로 적기」 maxLength 5000) · 일과 기록 Body 와 같게 둔다.
+# 이 글이 그대로 일지 초안 LLM 으로 간다 — 화면을 거치지 않은 긴 글이 들어오지 않게 여기서 막는다.
+Fact = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)]
 # 선택이라 빈 문자열을 허용한다. 길이는 observations.context 컬럼(String(50))에 맞춘다.
 Context = Annotated[str, StringConstraints(strip_whitespace=True, max_length=50)]
 

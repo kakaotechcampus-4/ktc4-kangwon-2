@@ -14,6 +14,7 @@ from app.features.auth.models import User
 from app.features.centers.models import Child, Class
 from app.features.documents.draft import (
     KIND_LABELS,
+    NAME_MASK_FAILED,
     DraftFailed,
     draft_sections,
     rule_id,
@@ -58,7 +59,7 @@ from app.features.documents.schemas import (
     RelatedDocumentsResponse,
 )
 from app.features.documents.stale import SourceImpact, document_changed
-from app.features.documents.verify import verify_sections
+from app.features.documents.verify import name_table, verify_sections
 from app.features.observations.models import Observation
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.dependency import CurrentUser
@@ -586,12 +587,14 @@ def create_document(
         raise _invalid(fields)
 
     facts = [c.text for c in copies]
-    children = {
-        c.name: c.code
-        for c in session.scalars(select(Child).where(Child.class_id == body.class_id))
-    }
     try:
-        drafted = draft_sections(body.kind, facts, body.source_ids, children, sorted(domains))
+        # 교사는 옆 반 아이 이름도 적는다. 검증 · 계획안 메모와 같게 원 전체 아이로 표를 만든다.
+        table = name_table(session, body.class_id, "\n".join(facts))
+        drafted = draft_sections(body.kind, facts, body.source_ids, table, sorted(domains))
+    except SubstitutionError as exc:
+        raise _error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, "GENERATION_FAILED", NAME_MASK_FAILED, []
+        ) from exc
     except LlmBudgetExceeded as exc:
         # 예산을 넘기면 키가 지워진다. 다시 눌러도 안 되니 「다시 시도」로 뭉치지 않는다 (§공통).
         raise _error(

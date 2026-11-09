@@ -284,7 +284,7 @@ def test_masking_failure_never_calls_jev(db_session, real, monkeypatch):
     def fail(*_):
         raise SubstitutionError("받침이 다르다")
 
-    monkeypatch.setattr(verify_module, "_name_table", fail)
+    monkeypatch.setattr(verify_module, "name_table", fail)
     res = client.post(f"/api/documents/{doc.id}/verify")
     assert res.status_code == 422
     assert res.json()["error"]["code"] == "VALUE_INVALID"

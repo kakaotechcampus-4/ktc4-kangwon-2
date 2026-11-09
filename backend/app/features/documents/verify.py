@@ -31,7 +31,7 @@ from app.shared.llm import decide, is_mock
 logger = logging.getLogger("app.server")
 
 
-def _name_table(session: Session, class_id: int, text: str) -> NameTable | None:
+def name_table(session: Session, class_id: int, text: str) -> NameTable | None:
     """원 전체 아이(다른 반 포함) 중 글에 나온 아이로 표를 만든다 (PR #422 과 같은 범위).
 
     교사는 옆 반 아이 이름도 적는다. 못 바꾸면 SubstitutionError 가 그대로 올라간다.
@@ -65,7 +65,7 @@ def verify_sections(
         return [], "mock"
     bodies = {s.heading: s.body for s in sections if s.heading in ("해석", "지원")}
     whole = "\n".join([*(src.text for src in sources), *bodies.values()])
-    table = _name_table(session, doc.class_id, whole)
+    table = name_table(session, doc.class_id, whole)
 
     def hide(text: str) -> str:
         return text if table is None else mask(text, table)
