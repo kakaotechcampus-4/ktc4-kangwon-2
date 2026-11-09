@@ -63,7 +63,7 @@ def test_privacy_derivative_keeps_none_of_the_removed_records(payload):
 
 
 def test_shipped_data_carries_only_pseudonymous_institution_fields(payload):
-    """ADR-078: 다시 빌드해도 실명 · 유형 · 실명 경로가 data 에 돌아오지 않는다."""
+    """ADR-079: 다시 빌드해도 실명 · 유형 · 실명 경로가 data 에 돌아오지 않는다."""
     path = re.compile(r"references/samples/[^/]+/([0-9a-f]{12})\.pdf")
     for record in payload["records"]:
         assert re.fullmatch(r"inst_\d{3}", record.get("institution_id", "inst_000")), record["record_id"]
