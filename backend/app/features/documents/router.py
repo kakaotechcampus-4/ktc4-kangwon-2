@@ -404,8 +404,8 @@ def import_document(
     return DocumentImportResponse(**detail.model_dump(), notices=notices)
 
 
-def _recheck_sources(session: Session, copies: list[DocumentSource]) -> None:
-    """사본을 만든 뒤 원본이 바뀌었으면 409. 원본 → 문서, 종류 안에서 id 오름차순으로 잠근다.
+def _sources_changed(session: Session, copies: list[DocumentSource]) -> bool:
+    """사본을 만든 뒤 원본이 바뀌었나. 원본 → 문서, 종류 안에서 id 오름차순으로 잠근다.
 
     review.lock_sources 와 같은 순서다. 일과 · 관찰 PUT · DELETE 도 원본을 먼저 잠근다.
     """
@@ -447,17 +447,19 @@ def _recheck_sources(session: Session, copies: list[DocumentSource]) -> None:
                 and fact == copy.text
             )
         if not same:
-            raise _error(
-                status.HTTP_409_CONFLICT,
-                "STALE_WRITE",
-                "초안을 만드는 사이 근거 기록이 바뀌었어요. 다시 만들어주세요.",
-                [f"sources.{copy.source_id}"],
-            )
+            return True
+    return False
 
 
 @router.post("", response_model=DocumentDetailResponse, status_code=status.HTTP_201_CREATED)
 def create_document(
     body: DocumentCreateRequest, session: DbSession, user: CurrentUser
+) -> DocumentDetailResponse:
+    return _create_document(body, session, user, retry=True)
+
+
+def _create_document(
+    body: DocumentCreateRequest, session: Session, user: User, *, retry: bool
 ) -> DocumentDetailResponse:
     """교사가 고른 근거로 초안을 만든다 (docs/api-spec.md §11).
 
@@ -685,9 +687,22 @@ def create_document(
         )
 
     # 모델을 기다리는 동안 원본이 바뀌었을 수 있다. 저장 직전에 원본을 잠그고 다시 본다.
-    # 잠그지 않고 저장하면 옛 사본이 stale=False 로 남는다 — 그 사이의 수정은 아직 사본 행이
-    # 없어 stale 전파가 이 문서를 못 찾는다. 생성 시간 동안 원본을 붙잡지는 않는다.
-    _recheck_sources(session, copies)
+    # 그대로 저장하면 옛 사본이 stale=False 로 남는다 — 그 사이의 수정은 아직 사본 행이
+    # 없어 stale 전파가 이 문서를 못 찾는다. 바뀌었으면 최신 기록으로 한 번 다시 만든다.
+    # 생성 시간 동안 원본을 붙잡지는 않는다.
+    if _sources_changed(session, copies):
+        if retry:
+            # 최신 기록으로 한 번 더 만든다. 아직 아무것도 쓰지 않았다 — 커밋은 잠금만 푼다.
+            # 잠근 채로 다시 모델을 부르면 그동안 교사의 기록 수정이 기다린다.
+            assert not session.new and not session.dirty
+            session.commit()
+            return _create_document(body, session, user, retry=False)
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "STALE_WRITE",
+            "초안을 만드는 동안 근거 기록이 계속 바뀌었어요. 잠시 뒤 다시 만들어주세요.",
+            [],
+        )
 
     if body.kind == "dailyLog":
         # 두 번 누른 요청이 둘 다 앞의 검사를 지나 모델을 부르는 동안 겹칠 수 있다.

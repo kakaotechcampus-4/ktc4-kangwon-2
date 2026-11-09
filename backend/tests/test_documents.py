@@ -1300,16 +1300,20 @@ def test_create_weekly_log_refuses_a_child(db_session):
     assert "child_id" in response.json()["error"]["fields"]
 
 
-def test_create_document_refuses_when_a_source_changes_while_the_model_writes(
+def test_create_document_redrafts_from_the_latest_record_when_it_changes_meanwhile(
     db_session, monkeypatch
 ):
     # 모델을 기다리는 동안 교사가 기록을 고치면, 옛 사실로 만든 초안이 stale=False 로 남았다.
+    # 이제 최신 기록으로 한 번 더 만든다.
     _, klass, child = _make_center_class_child(db_session)
     record = _observation(db_session, klass, child, 5, "개미를 3분 동안 바라보았다.")
+    seen = []
 
     def generate_while_teacher_edits(kind, masked_facts, curriculum=()):
-        record.fact = "개미를 5분 동안 바라보았다."
-        db_session.flush()
+        seen.append(list(masked_facts))
+        if len(seen) == 1:
+            record.fact = "개미를 5분 동안 바라보았다."
+            db_session.flush()
         return (
             "도담 해석입니다. 기록에 드러난 사실만 씁니다.",
             "도담 지원입니다. 다음 활동에서 교사가 할 방법을 적습니다.",
@@ -1318,6 +1322,8 @@ def test_create_document_refuses_when_a_source_changes_while_the_model_writes(
     monkeypatch.setattr("app.features.documents.draft._generate", generate_while_teacher_edits)
     response = client.post("/api/documents", json=_create_body(klass, child, [record]))
 
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "STALE_WRITE"
-    assert db_session.query(Document).filter_by(class_id=klass.id).count() == 0
+    assert response.status_code == 201
+    assert seen == [["개미를 3분 동안 바라보았다."], ["개미를 5분 동안 바라보았다."]]
+    by_heading = {sec["heading"]: sec["body"] for sec in response.json()["sections"]}
+    assert by_heading["사실"] == "개미를 5분 동안 바라보았다."
+    assert response.json()["stale"] is False
