@@ -4,7 +4,7 @@ api-spec §9 · ADR-060.
 
 메모 원문만 바꾼다. 요청 전체를 바꾸면 누리과정 문장 속 「하나씩」 같은 말까지 이름으로
 보고 바꾼다. 답은 통째로 되돌린다 — 반영 못한 요청 요약에도 가명이 섞일 수 있다.
-Core 는 원문 메모를 보고 검증하므로, Core 에 돌아가는 답도 실명이어야 맞는다.
+Core 는 원문 메모를 보고 검증하므로, Core 에 돌아가는 답도 메모에 적힌 표기(실명)여야 맞는다.
 """
 
 from __future__ import annotations
@@ -104,8 +104,9 @@ def raise_if_mask_failed(error: BaseException, failure: HTTPException = MASK_FAI
 class MaskedMemoProvider:
     """어떤 생성 공급자든 감싼다: 요청의 user_content 속 메모만 가명으로, 답은 메모에 적힌 표기로.
 
-    수리 요청은 앞 답(실명으로 되돌린 것)을 다시 싣는다. 메모에 나온 아이 이름이 요청 어디에든
-    남아 있으면 부르지 않는다 — 「하나씩」처럼 낱말과 겹쳐도 내보내지 않는 쪽을 고른다.
+    수리 요청은 앞 답(메모에 적힌 표기로 되돌린 것)을 다시 싣는다.
+    메모에 나온 아이 이름이 요청 어디에든 남아 있으면 부르지 않는다
+    — 「하나씩」처럼 낱말과 겹쳐도 내보내지 않는 쪽을 고른다.
     """
 
     def __init__(self, inner, memo: str, table: NameTable) -> None:

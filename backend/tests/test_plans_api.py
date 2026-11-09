@@ -733,7 +733,7 @@ class _Request:
     system_prompt: str = ""
 
 
-def test_메모_속_아이_이름만_가명으로_나가고_답은_실명으로_돌아온다():
+def test_메모_속_아이_이름만_가명으로_나가고_답은_메모에_적힌_표기로_돌아온다():
     table = NameTable({"이가명": "도담"})
     memo = "가명이가 좋아하는 하나씩 쌓기"
     sent = []
@@ -752,7 +752,9 @@ def test_메모_속_아이_이름만_가명으로_나가고_답은_실명으로_
     assert '"rule": "하나씩"' in sent[0]  # 메모 밖은 건드리지 않는다
     # 답은 교사가 메모에 적은 표기(「가명」)로 돌아온다. 등록 실명으로 돌리지 않는다.
     assert response.content == '{"v": "가명이와 쌓기"}'
-    # 수리 요청이 앞 답(실명)을 다시 실으면 부르지 않는다.
+    # 수리 요청이 앞 답(실명)을 다시 실으면 부르지 않는다 — 등록 실명이든 되돌린 표기든.
+    with pytest.raises(MemoMaskFailed):
+        provider.generate_weekly(_Request(payload + " 이가명"))
     with pytest.raises(MemoMaskFailed):
         provider.generate_weekly(_Request(payload + " 가명이와"))
 
