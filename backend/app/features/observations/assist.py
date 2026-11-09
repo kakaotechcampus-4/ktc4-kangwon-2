@@ -15,7 +15,7 @@ import logging
 from sqlalchemy.orm import Session
 from ssuksak.adapters.v1_curriculum import v1_curriculum_catalog
 
-from app.features.documents.verify import _name_table
+from app.features.documents.verify import name_table
 from app.features.observations.models import NURI_DOMAINS
 from app.shared.childCode import SubstitutionError, mask
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable, decide, is_mock
@@ -50,7 +50,7 @@ def _criteria() -> dict[str, str]:
 
 
 def _masked(session: Session, class_id: int, *texts: str) -> list[str]:
-    table = _name_table(session, class_id, "\n".join(texts))
+    table = name_table(session, class_id, "\n".join(texts))
     return [t if table is None or not t else mask(t, table) for t in texts]
 
 
