@@ -760,6 +760,7 @@ def test_create_document_name_mask_failure_never_calls_llm(db_session, monkeypat
 
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "GENERATION_FAILED"
+    assert "가명으로 바꾸지 못해" in response.json()["error"]["message"]
     assert called == []
 
 

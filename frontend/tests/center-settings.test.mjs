@@ -10,7 +10,7 @@ import { registerHooks } from "node:module";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-// 라우트 핸들러는 "@/..." 별칭을 쓴다. tsconfig 의 paths 를 여기서 흉내 낸다.
+// lib/api 모듈은 "@/..." 별칭을 쓴다. tsconfig 의 paths 를 여기서 흉내 낸다.
 const ROOT = new URL("../", import.meta.url);
 
 registerHooks({
