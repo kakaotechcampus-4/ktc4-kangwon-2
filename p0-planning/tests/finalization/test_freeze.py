@@ -34,7 +34,7 @@ DATA = ROOT / "data"
 # HUMAN_APPROVED; the institution_evidence files are corpus observations without an
 # approval gate and is frozen for integrity only. A changed SHA is a different
 # contract (ADR-027), so these values are never edited.
-# One exception: ADR-074 (2026-11-08) re-pinned every data SHA here once after the
+# One exception: ADR-078 (2026-11-08) re-pinned every data SHA here once after the
 # institution pseudonymization overwrite. Only institution identifiers changed; the
 # evidence record_ids, texts and retrieval results are identical.
 FROZEN_ARTIFACTS = {

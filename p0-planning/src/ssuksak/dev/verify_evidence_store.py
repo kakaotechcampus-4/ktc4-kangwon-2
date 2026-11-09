@@ -1,6 +1,6 @@
 """Validate Evidence Store bytes, content hash, records, and optional source manifest.
 
-Manifest paths are pseudonymized (`references/samples/<kind>/<sha12>.pdf`, ADR-074), so local
+Manifest paths are pseudonymized (`references/samples/<kind>/<sha12>.pdf`, ADR-078), so local
 sources are matched by SHA-256, not by file name."""
 
 from __future__ import annotations
