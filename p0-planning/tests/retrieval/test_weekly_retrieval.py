@@ -161,6 +161,21 @@ def test_earlier_weeks_evidence_goes_last_and_fills_a_shortfall_least_used_first
     assert {"ev_7", "ev_8"}.isdisjoint(_search(tagged, top_k=8, by_activity_type=True, prior_week_refs=used))
 
 
+def test_a_sample_seed_picks_top_k_from_the_top_pool_in_rank_order():
+    # 2026-11-10 하민: sample 10 of the top 20; no seed keeps the fixed cut.
+    records = tuple(_record(f"ev_{i:02}", text=f"가을 열매 쌓기 {i}", institution=f"I{i}") for i in range(30))
+    ranked = _search(records, top_k=30, by_activity_type=True)
+    assert _search(records, top_k=10, by_activity_type=True, sample_seed=None) == ranked[:10]
+    picks = {seed: _search(records, top_k=10, by_activity_type=True, sample_seed=seed) for seed in range(5)}
+    for found in picks.values():
+        assert len(found) == 10 and set(found) <= set(ranked[:20])
+        assert found == sorted(found, key=ranked.index)
+    assert picks[0] == _search(records, top_k=10, by_activity_type=True, sample_seed=0)
+    assert len({tuple(found) for found in picks.values()}) > 1
+    used = tuple(ranked[:5])  # earlier weeks still go out first, before sampling
+    assert set(used).isdisjoint(_search(records, top_k=10, by_activity_type=True, sample_seed=1, prior_week_refs=used))
+
+
 def test_parent_citation_survives_top_k_without_bypassing_eligibility_or_source_cap():
     records = tuple(_record(f"ev_{i:02}", institution=f"I{i}") for i in range(12)) + (
         _record("ev_99", text="놀이터 약속", institution="parent"),
@@ -219,7 +234,7 @@ def test_reviewed_candidate_sources_match_the_unchanged_evidence_artifact():
     assert REVIEWED_UNCLEAR_ACTIVITY_SOURCES
     for ref, text in REVIEWED_UNCLEAR_ACTIVITY_SOURCES:
         assert records[ref].text == text
-        assert records[ref].month == 3
+        assert records[ref].month in {3, 12}  # the months reviewed so far
 
 
 @pytest.mark.parametrize("text,expected,terms", [

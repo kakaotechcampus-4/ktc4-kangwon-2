@@ -8,6 +8,7 @@ only (2026-10-21 decision B: no AGE_UNKNOWN), age-balanced, source-diverse.
 from __future__ import annotations
 
 import collections
+import random
 import re
 
 from ..venue_policy import venue_bound_evidence
@@ -28,6 +29,7 @@ from .ranking import (
 )
 
 WEEKLY_SECTION_TOP_K = 10  # the Monthly section block default
+WEEKLY_SAMPLE_POOL = 20  # 2026-11-09 sim: N=20 kept the age tier closest to today (analysis §7)
 
 # shortcut: only reviewed sources are filtered; extend after reviewing new unclear candidates (ADR-054).
 # Match both id and text so a revised source does not inherit this decision.
@@ -43,6 +45,8 @@ REVIEWED_UNCLEAR_ACTIVITY_SOURCES = frozenset({
     ("ev_010245b6472d_p01_r00208_c04_i01", "같은 신발 다른 신발"),  # no language activity method
     ("ev_5d3e713585b1_p01_r00252_c04_i01", "새로운 우리반, 새로운 선생님"),  # topic heading only
     ("ev_5d3e713585b1_p01_r00252_c07_i01", "이럴땐 이렇게"),  # no situation or activity
+    ("ev_7650ed22cba2_p03_r00337_c02_i02", "우리나라 지도 퍼즐 -"),  # extraction cut mid-title (2026-11-10 live: 12월 5주 500)
+    ("ev_7650ed22cba2_p03_r00337_c02_i03", "<컴톡> 고장난 키보"),  # extraction cut mid-title (2026-11-10 live: 12월 5주 500)
 })
 
 
@@ -114,11 +118,15 @@ def weekly_section_evidence(
     explicit_indoor_methods: bool = False,
     exclude_venue_bound: bool = False,
     prior_week_refs: tuple[str, ...] = (),
+    sample_seed: int | None = None,
+    sample_pool: int = WEEKLY_SAMPLE_POOL,
 ) -> tuple[RetrievedEvidence, ...]:
     """query_text: the parent theme and this week's focus, for the Korean 2-gram score.
 
     prior_week_refs: evidence ids earlier weeks of the same month cited (repeats count).
     They go last and fill only a shortfall, least-used first; none keeps today's result.
+    sample_seed: pick top_k at random from the top sample_pool instead of the top top_k.
+    None keeps the deterministic cut (Golden, regeneration).
     """
     classification.require_bound_to(store.content_sha256)
     records = [
@@ -163,14 +171,18 @@ def weekly_section_evidence(
                 if group:
                     ordered.append(group.pop(0))
     # Human Decision 2026-11-05(하민): for candidate pools the source cap orders, it does not cut (ADR-054).
-    if not prior_week_refs:
+    if not prior_week_refs and sample_seed is None:
         return apply_source_diversity(ordered, top_k=top_k, institution_cap=institution_cap, fill=by_activity_type)
     # 2026-11-09 하민: skip what earlier weeks used before the cap; fill a shortfall least-used first.
     used = collections.Counter(prior_week_refs)
-    picked = apply_source_diversity(
-        [item for item in ordered if item.record_id not in used],
-        top_k=top_k, institution_cap=institution_cap, fill=by_activity_type,
-    )
+    fresh = [item for item in ordered if item.record_id not in used]
+    if sample_seed is None:
+        picked = apply_source_diversity(fresh, top_k=top_k, institution_cap=institution_cap, fill=by_activity_type)
+    else:
+        # 2026-11-10 하민: pick top_k of the top sample_pool at random, kept in rank order (filters unchanged).
+        pool = apply_source_diversity(fresh, top_k=sample_pool, institution_cap=institution_cap, fill=by_activity_type)
+        keep = set(random.Random(f"{sample_seed}:{weekly_class.value}").sample(range(len(pool)), min(top_k, len(pool))))
+        picked = tuple(item for i, item in enumerate(pool) if i in keep)
     if len(picked) < top_k:
         have = {item.record_id for item in picked}
         rest = sorted(
