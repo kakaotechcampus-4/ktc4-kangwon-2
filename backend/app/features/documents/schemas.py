@@ -83,7 +83,7 @@ class DocumentSourceItem(BaseModel):
     source_kind: Literal["observation", "document", "routine"]
     date: date | None
     # 관찰 기록 근거일 때만 있다. 관찰일지 종이의 영역 행을 가른다 (§11 「종이 한 장」).
-    # 만들 때 찍은 사본이다. 사본이 없는 옛 문서만 지금 원본 영역을 준다 (ADR-077).
+    # 만들 때 찍은 사본이다. 사본이 없는 옛 문서만 지금 원본 영역을 준다 (ADR-080).
     domain: str | None = None
     # 관찰 기록 근거의 상황 사본. 빈 글은 「상황 없음」, null 은 그 밖의 근거와 옛 사본이다.
     context: str | None = None
@@ -109,7 +109,7 @@ class DocumentDetailResponse(BaseModel):
     status: str
     origin: str
     stale: bool
-    # 관찰 기록 근거 문서를 만들 때 찍은 영역 축. null 이면 그 밖의 문서이거나 옛 문서다 (ADR-077).
+    # 관찰 기록 근거 문서를 만들 때 찍은 영역 축. null 이면 그 밖의 문서이거나 옛 문서다 (ADR-080).
     observation_axis: str | None = None
     sections: list[DocumentSectionItem]
     sources: list[DocumentSourceItem]

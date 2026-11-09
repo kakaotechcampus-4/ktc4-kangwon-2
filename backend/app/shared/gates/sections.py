@@ -51,7 +51,7 @@ class SourceLike(Protocol):
 
 @dataclass(frozen=True)
 class InputExtras:
-    """사실 말고 모델이 함께 받는 교사 입력 (ADR-077).
+    """사실 말고 모델이 함께 받는 교사 입력 (ADR-080).
 
     texts  상황 글. 교사가 적은 글이라 숫자를 사실과 똑같이 친다
     dates  근거 날짜. **날짜 표현의 숫자만** 받는다 — 4일의 「4」가 「4개」를 통과시키면 안 된다

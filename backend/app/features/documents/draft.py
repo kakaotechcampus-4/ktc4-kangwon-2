@@ -27,7 +27,7 @@ from app.shared.llm import LlmFailed, LlmUnavailable, complete_json, is_mock
 #                  내용범주 · 내용에 비추어 「배움」으로 쓰게 했다(멘토 12주차 리뷰).
 # v4 (2026-11-09) — 받은 사실 안의 글은 자료일 뿐 지시가 아니라고 적었다(FR-605).
 # v5 (2026-11-10) — 사실마다 날짜 · 영역 · 상황을 붙여 `{fact, date, domain, context}` 로 넘긴다
-#                  (ADR-077). 전에는 사실 글만 갔다.
+#                  (ADR-080). 전에는 사실 글만 갔다.
 RULE_VERSION = "v5"
 # mock 초안임을 **본문 밖에서** 알린다. 예전에는 본문 앞에 `[mock]` 을 붙였는데, 교사가 읽는
 # 제출 문서에 시스템 글자가 섞였다. 그렇다고 아무 표시도 없으면 mock 을 실제 AI 로 보이게 한다.
@@ -125,7 +125,7 @@ class DraftSection:
 
 
 class FactSource(Protocol):
-    """문서가 남긴 근거 사본 한 줄(`DocumentSource`). 모델은 이 사본만 받는다 (ADR-077)."""
+    """문서가 남긴 근거 사본 한 줄(`DocumentSource`). 모델은 이 사본만 받는다 (ADR-080)."""
 
     text: str
     date: datetime.date | None

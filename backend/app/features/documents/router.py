@@ -171,7 +171,7 @@ def _sources(session: Session, document_id: int) -> list[DocumentSource]:
 
 
 def _observation_domains(session: Session, sources: list[DocumentSource]) -> dict[int, str]:
-    """관찰 기록 근거의 영역. **사본에 있으면 사본, 없으면 지금 원본이다** (ADR-077).
+    """관찰 기록 근거의 영역. **사본에 있으면 사본, 없으면 지금 원본이다** (ADR-080).
 
     사본이 없는(NULL) 것은 이 칸이 생기기 전에 만든 문서 중 채우기 규칙이 확실하지 않다고 본
     「다시 확인」 행이다. 그때는 예전처럼 원본을 읽는다. 원본도 사라졌으면 빠진다.
@@ -198,7 +198,7 @@ def center_axis(session: Session, class_id: int) -> str:
 
 
 def document_axis(session: Session, doc: Document) -> str:
-    """문서의 영역 축. 만들 때 찍은 사본이 없으면(옛 문서) 원의 지금 축이다 (ADR-077)."""
+    """문서의 영역 축. 만들 때 찍은 사본이 없으면(옛 문서) 원의 지금 축이다 (ADR-080)."""
     return doc.observation_axis or center_axis(session, doc.class_id)
 
 
@@ -521,7 +521,7 @@ def _create_document(
     copies: list[DocumentSource] = []
     # 관찰 기록에 교사가 고른 누리과정 영역. 관찰일지 배움 칸을 그 영역의 내용에 잇는다.
     domains: set[str] = set()
-    # 관찰 기록 근거 문서만 영역 축을 가진다 (ADR-077).
+    # 관찰 기록 근거 문서만 영역 축을 가진다 (ADR-080).
     axis: str | None = None
     if body.kind != "weeklyLog" and body.source_kind != "dailyLog":
         # 나머지 종류는 근거가 하나로 정해져 있다. 보낸 값이 반영되지 않는데 받으면
@@ -644,7 +644,7 @@ def _create_document(
                 )
             )
     else:
-        # 문서는 원이 지금 쓰는 축으로 만든다. 종이 양식이 축마다 다르다 (ADR-077).
+        # 문서는 원이 지금 쓰는 축으로 만든다. 종이 양식이 축마다 다르다 (ADR-080).
         axis = center_axis(session, body.class_id)
         by_id = {
             o.id: o
@@ -1190,7 +1190,7 @@ def refresh_document(
                 fresh.append(None)
             else:
                 if observation.domain not in AXES[axis]:
-                    # 다른 축의 영역으로 옮긴 기록이다. 이 문서의 양식에 그 줄이 없다 (ADR-077).
+                    # 다른 축의 영역으로 옮긴 기록이다. 이 문서의 양식에 그 줄이 없다 (ADR-080).
                     off_axis.append(field)
                 fresh.append(
                     (

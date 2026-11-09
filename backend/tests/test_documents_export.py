@@ -86,7 +86,7 @@ def _document(
 ):
     """근거 사본과 사실 · 해석 · 지원을 갖춘 문서. `observations` 순서가 교사가 고른 순서다.
 
-    `snapshot` 이면 생성 API 처럼 영역 · 상황 · 원의 지금 축을 사본으로 찍는다(ADR-077).
+    `snapshot` 이면 생성 API 처럼 영역 · 상황 · 원의 지금 축을 사본으로 찍는다(ADR-080).
     끄면 그 칸이 생기기 전의 옛 문서(「다시 확인」)다.
     """
     axis = session.get(Center, klass.center_id).observation_axis if snapshot else None
@@ -192,7 +192,7 @@ def test_2축_원은_두_줄짜리_양식으로_나간다(db_session, mine):
 
 
 def test_원이_축을_바꿔도_확정본은_만들_때의_축으로_나간다(db_session, mine):
-    """ADR-077 전에는 422 였다 — 종이가 원의 지금 축을 따라서 옛 확정본을 못 내보냈다."""
+    """ADR-080 전에는 422 였다 — 종이가 원의 지금 축을 따라서 옛 확정본을 못 내보냈다."""
     klass, child = mine
     old = _observation(db_session, klass, child, 5, "자연탐구", "지렁이를 찾았다.")
     doc = _document(db_session, klass, child, [old])
@@ -296,7 +296,7 @@ def test_영역_행은_누리과정_순서로_고정이다(db_session, mine):
 
 
 def test_종이의_영역_행은_만들_때의_사본이다(db_session, mine):
-    """ADR-077 전에는 고친 원본 영역을 따라 행이 옮겨 갔다. 배움 칸은 옛 영역으로 쓴 글이다.
+    """ADR-080 전에는 고친 원본 영역을 따라 행이 옮겨 갔다. 배움 칸은 옛 영역으로 쓴 글이다.
 
     API 로 고치면 문서가 stale 이 되어 내보내지 않는다.
     여기는 DB 를 직접 바꿔 종이가 무엇을 읽는지만 본다.

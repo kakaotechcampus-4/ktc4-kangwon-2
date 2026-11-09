@@ -165,7 +165,7 @@ def test_weekday_is_part_of_the_record_line(db_session, real):
 
 
 def test_judge_sees_the_same_snapshot_fields_as_the_draft(db_session, real):
-    """초안 모델은 사실마다 날짜 · 영역 · 상황을 받는다(ADR-077). 검토 근거도 같아야 한다.
+    """초안 모델은 사실마다 날짜 · 영역 · 상황을 받는다(ADR-080). 검토 근거도 같아야 한다.
 
     상황에만 나온 아이 이름도 가려져야 한다 — 이름 표를 만드는 글에 상황이 빠지면 실명이 나간다.
     """

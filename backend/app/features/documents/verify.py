@@ -73,7 +73,7 @@ def verify_sections(
     def hide(text: str | None) -> str | None:
         return text if table is None or not text else mask(text, table)
 
-    # 초안 모델이 받은 사본 칸 그대로 — 사실 · 날짜 · 영역 · 상황 (ADR-077).
+    # 초안 모델이 받은 사본 칸 그대로 — 사실 · 날짜 · 영역 · 상황 (ADR-080).
     masked_sources = [
         Source(src.source_id, src.date, hide(src.text), src.domain, hide(src.context))
         for src in sources

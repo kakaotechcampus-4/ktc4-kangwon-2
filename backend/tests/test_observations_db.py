@@ -297,7 +297,7 @@ def test_날짜만_고쳐도_stale(db_session, chain):
 
 
 def _snapshot(db_session, doc, record):
-    """만들 때 영역 · 상황을 찍은 사본으로 만든다 — 지금 생성 API 가 남기는 모양 (ADR-077)."""
+    """만들 때 영역 · 상황을 찍은 사본으로 만든다 — 지금 생성 API 가 남기는 모양 (ADR-080)."""
     for copy in db_session.query(DocumentSource).filter_by(document_id=doc.id):
         copy.domain, copy.context = record["domain"], record["context"]
     db_session.flush()
@@ -307,7 +307,7 @@ def _keep(record, **changes):
     return {k: record[k] for k in ("date", "domain", "context", "fact")} | changes
 
 
-# ADR-077 전에는 「영역 · 상황만 고치면 사실이 그대로라 stale 이 아니다」였다. 그런데 종이의 영역
+# ADR-080 전에는 「영역 · 상황만 고치면 사실이 그대로라 stale 이 아니다」였다. 그런데 종이의 영역
 # 행이 원본을 따라 바뀌어, 옛 영역의 누리과정으로 쓴 배움 칸이 다른 행 아래로 나갔다.
 @pytest.mark.parametrize(
     "changes", [{"domain": "의사소통"}, {"context": "실내"}], ids=["domain", "context"]
