@@ -124,6 +124,17 @@ function basisOf(doc: TeacherDoc) {
   return doc.basis.split(" · ").slice(1).join(" · ");
 }
 
+/** 파일 이름 규칙 두 줄. 카드 쪽지와 「평가제가 뭐예요?」가 같이 써서 한쪽만 바뀌지 않게 한다. */
+export function NameRule({ doc }: { doc: TeacherDoc }) {
+  return (
+    <>
+      이름에 날짜 + {doc.keywords.join(" / ")}
+      <br />
+      예: {doc.example}
+    </>
+  );
+}
+
 /** 이름 규칙과 검사 결과. 찾은 이름은 화면에만 보이고 저장하지 않는다(ADR-013). */
 function FoundDetail({
   doc,
@@ -138,9 +149,7 @@ function FoundDetail({
   return (
     <div className={styles.fileDetail}>
       <p>
-        이름에 날짜 + {doc.keywords.join(" / ")}
-        <br />
-        예: {doc.example}
+        <NameRule doc={doc} />
       </p>
       {result && result.missing.length > 0 && (
         <p>
