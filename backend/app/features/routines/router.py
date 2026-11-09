@@ -5,22 +5,27 @@
 
 `PUT` · `DELETE` 는 이 기록을 근거로 쓴 §11 일일 보육일지를 `stale` 로 바꾼다. 판정은 문서
 쪽이 갖고 있다 — `stale` 칸의 주인이 documents 다 (features/documents/stale.py).
+
+하루치 조회에는 그날 날씨가 붙고, 교사가 그 날씨를 고를 수 있다 (`weather.py`, ADR-078).
 """
 
+from dataclasses import asdict
 from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import Select, select
+from sqlalchemy import Select, delete, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.features.auth.models import User
 from app.features.centers.models import Class
 from app.features.documents.stale import SourceImpact, source_changed
-from app.features.routines.models import RoutineRecord
+from app.features.routines.models import RoutineRecord, RoutineWeather
 from app.features.routines.schemas import (
+    DayWeatherResponse,
     RoutineCreate,
     RoutineDeleteResponse,
     RoutineListResponse,
@@ -28,7 +33,9 @@ from app.features.routines.schemas import (
     RoutineResponse,
     RoutineReviewImpact,
     RoutineUpdate,
+    WeatherChoice,
 )
+from app.features.routines.weather import DayWeather, day_weather
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import own_class_clause, require_own_class
 
@@ -125,7 +132,40 @@ def list_routines(
         RoutineRecord.start_time.asc().nulls_last(),
         RoutineRecord.id,
     )
-    return RoutineListResponse(items=[_response(row) for row in session.execute(query)])
+    items = [_response(row) for row in session.execute(query)]
+    # 보육일지 화면은 반 하나 · 하루 하나로 부른다. 그때만 그날 날씨를 붙인다 (ADR-078).
+    one_day = class_id is not None and date_from is not None and date_from == date_to
+    weather = _weather(day_weather(session, class_id, date_from)) if one_day else None
+    return RoutineListResponse(items=items, weather=weather)
+
+
+def _weather(value: DayWeather) -> DayWeatherResponse:
+    return DayWeatherResponse(**asdict(value))
+
+
+@router.put("/weather", response_model=DayWeatherResponse)
+def choose_weather(
+    body: WeatherChoice, session: DbSession, user: CurrentUser
+) -> DayWeatherResponse:
+    """교사가 그날 날씨를 고른다. 자동 값과 따로 남기고, 있으면 그것이 이긴다 (ADR-078).
+
+    `/{record_id}` 보다 먼저 둔다 — 뒤에 두면 「weather」를 기록 id 로 읽고 422 를 낸다.
+    """
+    require_own_class(session, user, body.class_id)
+    where = (RoutineWeather.class_id == body.class_id, RoutineWeather.date == body.date)
+    if body.sky is None:
+        session.execute(delete(RoutineWeather).where(*where))
+    else:
+        session.execute(
+            insert(RoutineWeather)
+            .values(class_id=body.class_id, date=body.date, sky=body.sky)
+            .on_conflict_do_update(
+                index_elements=["class_id", "date"],
+                set_={"sky": body.sky, "updated_at": func.now()},
+            )
+        )
+    session.commit()
+    return _weather(day_weather(session, body.class_id, body.date))
 
 
 def _impact_response(impact: SourceImpact) -> RoutineReviewImpact:

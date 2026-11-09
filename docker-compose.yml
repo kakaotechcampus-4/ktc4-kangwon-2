@@ -43,6 +43,9 @@ services:
       KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
       KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI:-}
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
+      # 일지 날씨 (ADR-078). 비어 있으면 날씨만 「값 없음」— 기동은 막지 않는다.
+      DATA_GO_KR_SERVICE_KEY: ${DATA_GO_KR_SERVICE_KEY:-}
+      WEATHER_MODE: ${WEATHER_MODE:-mock}
       LLM_MODE: ${LLM_MODE:-mock}
       # 주간 실제 LLM (W7). 기본 꺼짐 — LLM_MODE=real 이어도 0 이면 주간은 503 (.env.example).
       WEEKLY_LLM_ENABLED: ${WEEKLY_LLM_ENABLED:-0}
