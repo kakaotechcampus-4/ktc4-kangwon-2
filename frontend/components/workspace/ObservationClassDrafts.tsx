@@ -73,7 +73,7 @@ const makeable = (row: DraftRow) => !row.doc && row.records.length > 0;
 const pickedByDefault = (row: DraftRow) => row.records.length >= 2;
 
 /**
- * 반 전체 초안 — 한 번 눌러 기록 있는 아이 전부 (ADR-085).
+ * 반 전체 초안 — 한 번 눌러 기록 있는 아이 전부 (ADR-083).
  *
  * 화면이 아이마다 차례로 부른다. 떠나려 하면 브라우저가 한 번 묻는다. 한도 초과면 남은 아이를
  * 부르지 않는다 — 키가 지워져 다음 호출도 실패한다.

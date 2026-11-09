@@ -379,7 +379,7 @@ export default function ObservationJournalPage() {
 
           <div className={ws.stack}>
             {!child && classroom?.children.length ? (
-              // 아이를 고르지 않았으면 반 전체 — 한 번 눌러 기록 있는 아이 전부 (ADR-085).
+              // 아이를 고르지 않았으면 반 전체 — 한 번 눌러 기록 있는 아이 전부 (ADR-083).
               <ObservationClassDrafts
                 kids={classroom.children}
                 records={records ?? []}

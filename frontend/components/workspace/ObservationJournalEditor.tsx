@@ -42,7 +42,7 @@ interface Review {
   note: string;
 }
 const MOCK_NOTE = "AI 검토가 꺼져 있어 판정하지 않았어요. 쪽지와 직접 대조해 주세요.";
-/** 만들 때 붙여 온 검토 (ADR-085). 글이 바뀌었으면 서버가 null 로 준다. */
+/** 만들 때 붙여 온 검토 (ADR-083). 글이 바뀌었으면 서버가 null 로 준다. */
 function storedReview(review?: AiReview | null): Review | null {
   if (!review) return null;
   const note =
@@ -639,7 +639,7 @@ function EmptyDomains({
 }
 
 /**
- * 칸 아래 쪽지 — 검토가 짚은 문장을 노란 형광펜으로, 이유는 한 줄로 (ADR-085).
+ * 칸 아래 쪽지 — 검토가 짚은 문장을 노란 형광펜으로, 이유는 한 줄로 (ADR-083).
  * 지금 칸에 그 문장이 그대로 있을 때만 보인다. 고친 문장은 보라 점선 — 아직 교사가 받지 않은 제안이다.
  */
 function SentenceNotes({

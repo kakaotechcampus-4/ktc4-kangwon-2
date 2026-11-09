@@ -450,7 +450,7 @@ def test_되감은_동안_옛_코드가_놓친_영역_상황_변경을_stale_로
     """옛 코드는 사실 · 날짜만 비교한다. 그동안 바뀐 영역 · 상황은 사본과 다시 대조해야 잡힌다."""
     me = _child(sun)
     moved = _obs(sun, me, 5, "개미를 바라보았다.")
-    # 같은 아이 · 같은 기간 초안은 하나라서(ADR-085) 남는 쪽은 다른 달에 둔다.
+    # 같은 아이 · 같은 기간 초안은 하나라서(ADR-083) 남는 쪽은 다른 달에 둔다.
     kept = _obs(sun, me, 6, "지렁이를 찾았다.", month=10)
     moved_doc = _create(sun, me, [moved]).json()["id"]
     kept_doc = _create(sun, me, [kept], month=10).json()["id"]

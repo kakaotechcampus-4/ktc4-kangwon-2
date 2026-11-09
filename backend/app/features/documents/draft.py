@@ -29,7 +29,7 @@ from app.shared.llm import LlmFailed, LlmUnavailable, complete_json, is_mock
 # v5 (2026-11-09) — 사실마다 날짜 · 영역 · 상황을 붙여 `{fact, date, domain, context}` 로 넘긴다
 #                  (ADR-088). 전에는 사실 글만 갔다.
 # v6 (2026-11-10) — 관찰일지에 그 교사가 전에 확정한 글의 짧은 발췌를 「말투 참고」로
-#                  같이 보낸다(ADR-085).
+#                  같이 보낸다(ADR-083).
 RULE_VERSION = "v6"
 # mock 초안임을 **본문 밖에서** 알린다. 예전에는 본문 앞에 `[mock]` 을 붙였는데, 교사가 읽는
 # 제출 문서에 시스템 글자가 섞였다. 그렇다고 아무 표시도 없으면 mock 을 실제 AI 로 보이게 한다.

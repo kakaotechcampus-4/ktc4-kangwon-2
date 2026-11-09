@@ -1,4 +1,4 @@
-"""걸린 문장 하나 고쳐 쓰기 — `POST /api/documents/{id}/rewrite` (AI ②, ADR-085).
+"""걸린 문장 하나 고쳐 쓰기 — `POST /api/documents/{id}/rewrite` (AI ②, ADR-083).
 
     가명      원 전체 아이 이름을 가명으로 (verify 와 같은 표)
     고쳐 쓰기  글 쓰는 모델이 그 문장 하나만 다시 쓴다 (shared/llm)

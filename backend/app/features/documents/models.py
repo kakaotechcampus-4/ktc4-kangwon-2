@@ -91,7 +91,7 @@ class Document(Base):
         JSONB,
         comment=(
             "마지막 AI 검토 결과 {state, issues, message, hash}. hash 는 검토한 사실 · 해석 · "
-            "지원의 지문이고, 지금 글과 다르면 보이지 않는다 (ADR-085)"
+            "지원의 지문이고, 지금 글과 다르면 보이지 않는다 (ADR-083)"
         ),
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

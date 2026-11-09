@@ -112,7 +112,7 @@ def export_document(
 def export_bundle(
     session: DbSession, user: CurrentUser, ids: Annotated[list[int], Query(min_length=1)]
 ) -> Response:
-    """확정본 여러 장을 zip 하나로 (ADR-085). 안의 파일은 한 장씩 받을 때와 같은 hwpx 다.
+    """확정본 여러 장을 zip 하나로 (ADR-083). 안의 파일은 한 장씩 받을 때와 같은 hwpx 다.
 
     **한 장이라도 못 내보내면 통째로 거절한다.** 몇 장이 빠졌는지 모르는 묶음을 내면 안 된다.
     화면이 확정 · 근거 그대로인 문서만 골라 보내고 「n명은 빠졌어요」를 따로 알린다.

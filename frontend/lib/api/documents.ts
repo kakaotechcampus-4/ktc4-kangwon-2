@@ -82,7 +82,7 @@ export interface ApiDocumentListItem {
   stale: boolean;
   generation: ApiDocumentGeneration;
   sources_count: number;
-  /** 지금 글에 붙은 AI 검토 상태 (ADR-085). 없거나 글이 바뀌었으면 null. */
+  /** 지금 글에 붙은 AI 검토 상태 (ADR-083). 없거나 글이 바뀌었으면 null. */
   ai_review_state?: AiReviewState | null;
   created_at: string;
   updated_at: string;
@@ -143,7 +143,7 @@ export interface DocumentSummary {
   origin: SavedDocument["origin"];
   stale: boolean;
   sourcesCount: number;
-  /** 목록에서만 온다 (ADR-085). */
+  /** 목록에서만 온다 (ADR-083). */
   aiReviewState?: AiReviewState | null;
   createdAt: string;
   updatedAt: string;
@@ -158,7 +158,7 @@ export interface ServerDocument extends SavedDocument {
   stale: boolean;
   /** 확정 취소 응답에서만 온다. 이 문서를 직접 근거로 쓴 문서 중 이번에 새로 stale 이 된 수. */
   newlyStaleCount?: number;
-  /** 지금 글을 검토한 결과 (ADR-085). 검토한 적 없거나 글이 바뀌었으면 null. */
+  /** 지금 글을 검토한 결과 (ADR-083). 검토한 적 없거나 글이 바뀌었으면 null. */
   aiReview: AiReview | null;
 }
 
@@ -306,7 +306,7 @@ export interface DocumentCreateInput {
    */
   sourceKind?: "dailyLog" | "routine";
   /**
-   * 관찰일지 「넣어서 다시」. 같은 아이 · 같은 기간 초안이 있으면 서버는 그것을 돌려주는데(ADR-085),
+   * 관찰일지 「넣어서 다시」. 같은 아이 · 같은 기간 초안이 있으면 서버는 그것을 돌려주는데(ADR-083),
    * 이걸 켜면 새로 만들고 옛 초안을 지운다.
    */
   replaceDraft?: boolean;
@@ -443,7 +443,7 @@ export interface VerifyIssue {
   fix: string;
 }
 
-/** 붙여 둔 검토 상태 (ADR-085). `mock` · `failed` 의 빈 목록은 「문제없음」이 아니다. */
+/** 붙여 둔 검토 상태 (ADR-083). `mock` · `failed` 의 빈 목록은 「문제없음」이 아니다. */
 export type AiReviewState = "done" | "mock" | "failed";
 export interface AiReview {
   state: AiReviewState;
@@ -476,7 +476,7 @@ export interface VerifyResult {
 
 /**
  * 3단 AI 검토 (§11 · ADR-071). 저장 전 글을 보낸다. 서버는 결과를 그 글의 지문과 함께
- * 붙여 두고(ADR-085), 같은 글이 저장돼 있을 때만 상세 응답에 다시 준다.
+ * 붙여 두고(ADR-083), 같은 글이 저장돼 있을 때만 상세 응답에 다시 준다.
  * 아이 이름은 서버가 가명으로 바꾼 뒤 판정 모델에 보낸다 — 화면은 이름을 바꾸지 않는다.
  */
 export async function verifyDocument(
@@ -517,7 +517,7 @@ export interface RewriteResult {
   judged: boolean;
 }
 
-/** 걸린 문장 하나 고쳐 쓰기 (AI ②, §11 · ADR-085). 서버는 저장하지 않는다. */
+/** 걸린 문장 하나 고쳐 쓰기 (AI ②, §11 · ADR-083). 서버는 저장하지 않는다. */
 export async function rewriteSentence(
   localId: string,
   kind: string,
