@@ -2801,8 +2801,8 @@ test("주간 일지를 펴면 총평 옆에 그 주 확정한 일일 평가를 �
   const card = journalCard(t, {
     weeklies: [draftWeekly],
     dailies: [
-      { id: "doc-1", start: "2026-11-03", status: "confirmed" },
-      { id: "doc-2", start: "2026-11-04", status: "draft" },
+      { id: "doc-1", start: "2026-11-03", status: "confirmed", origin: "ai" },
+      { id: "doc-2", start: "2026-11-04", status: "draft", origin: "ai" },
     ],
   });
   await card.view.flush();
@@ -2927,8 +2927,10 @@ function dailyCard(t, { dailies = [], day, create } = {}) {
     },
     "@/lib/api/onboarding": { classServerId: (id) => (id === "class-1" ? 7 : null) },
     "@/lib/onboarding/settings": { loadClassSettings: () => ({ classes: [{ id: "class-1" }] }) },
+    "@/lib/workspace/journal-day": journalDay,
     "@/lib/api/documents": {
       listDocuments: async () => dailies,
+      getDocument: async (id) => ({ id, sections: [] }),
       createDocument: async (input) => {
         calls.push({ op: "create", ...input });
         return create ? create(input) : { id: "doc-99" };
