@@ -305,3 +305,107 @@ def test_다시_검토하면_결과를_그_글에_묶어_둔다(db_session, jev)
     detail = client.get(f"/api/documents/{made['id']}").json()
     assert detail["ai_review"]["state"] == "done"
     assert detail["ai_review"]["issues"] == verified.json()["issues"]
+
+
+# ── 걸린 문장 고쳐 쓰기 (AI ②) ──────────────────────────────────────────────
+
+_INTERPRETATION = "이가명은 개미를 매일 오래 바라본다. 작은 생물의 움직임에 관심을 보인다."
+
+
+def _drafted(session):
+    klass, (kid,) = _room(session)
+    record = _record(session, klass, kid, 5, "이가명이 개미를 오래 바라보았다.")
+    made = _create(klass, kid, [record]).json()
+    sections = [
+        {**s, "body": _INTERPRETATION} if s["heading"] == "해석" else s for s in made["sections"]
+    ]
+    return made, sections
+
+
+@pytest.fixture
+def writer(monkeypatch):
+    from app.features.documents import rewrite as rewrite_module
+
+    seen = {}
+
+    def install(answer):
+        def fake(payload):
+            seen["payload"] = payload
+            return answer
+
+        monkeypatch.setattr(rewrite_module, "_write", fake)
+
+    return install, seen
+
+
+def _rewrite(doc_id, sections, **extra):
+    return client.post(
+        f"/api/documents/{doc_id}/rewrite",
+        json={
+            "heading": "해석",
+            "sentence": "이가명은 개미를 매일 오래 바라본다.",
+            "style": "fix",
+            "reason": "기록에 없는 일이 사실처럼 적혀 있어요.",
+            "sections": sections,
+            **extra,
+        },
+    )
+
+
+def test_고친_문장이_규칙_검사를_지나면_보여_주고_저장하지_않는다(db_session, writer):
+    install, seen = writer
+    install("도담은 개미를 오래 바라본다.")
+    made, sections = _drafted(db_session)
+
+    res = _rewrite(made["id"], sections)
+
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["sentence"] == "이가명은 개미를 오래 바라본다."
+    assert body["blocked"] == []
+    # mock 이면 판정하지 않았다고 알린다 — 「확인할 곳 없음」으로 보이지 않게.
+    assert body["judge"] == "mock"
+    # 모델에는 가명만 간다.
+    sent = str(seen["payload"])
+    assert "이가명" not in sent and "도담" in sent
+    # 저장하지 않는다. 바꿀지는 교사가 고른다.
+    detail = client.get(f"/api/documents/{made['id']}").json()
+    assert detail["sections"] == made["sections"]
+
+
+def test_규칙_검사에_걸린_문장은_보여_주지_않는다(db_session, writer):
+    install, _ = writer
+    install("도담은 개미를 3번 오래 바라본다.")  # 기록에 없는 숫자
+    made, sections = _drafted(db_session)
+
+    body = _rewrite(made["id"], sections).json()
+
+    assert body["sentence"] is None
+    assert body["blocked"] == ["sections.해석"]
+
+
+def test_jev_가_짚어도_거르지_않고_확인할_곳으로_같이_준다(db_session, writer, jev):
+    install, _ = writer
+    install("도담은 개미를 오래 바라본다.")
+    made, sections = _drafted(db_session)
+
+    body = _rewrite(made["id"], sections).json()
+
+    assert body["sentence"] == "이가명은 개미를 오래 바라본다."
+    assert body["judge"] == "jev"
+    assert [i["code"] for i in body["issues"]] == ["UNSUPPORTED_FACT"]
+    assert body["issues"][0]["sentence"] == "이가명은 개미를 오래 바라본다."
+
+
+def test_칸에_없는_문장이나_확정본은_고쳐_쓰지_않는다(db_session, writer):
+    install, _ = writer
+    install("도담은 개미를 오래 바라본다.")
+    made, sections = _drafted(db_session)
+
+    missing = _rewrite(made["id"], sections, sentence="없는 문장이다.")
+    assert missing.status_code == 422
+    assert missing.json()["error"]["fields"] == ["sentence"]
+
+    db_session.get(Document, made["id"]).status = "CONFIRMED"
+    db_session.flush()
+    assert _rewrite(made["id"], sections).status_code == 409

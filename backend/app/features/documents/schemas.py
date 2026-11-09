@@ -40,7 +40,7 @@ class DocumentListItem(BaseModel):
     stale: bool
     generation: DocumentGeneration
     sources_count: int
-    # 지금 글에 붙은 AI 검토 상태(ADR-082). 없거나 글이 바뀌었으면 null.
+    # 지금 글에 붙은 AI 검토 상태(ADR-083). 없거나 글이 바뀌었으면 null.
     # 「반 전체 초안」 목록이 쓴다.
     ai_review_state: Literal["done", "mock", "failed"] | None = None
     created_at: datetime
@@ -120,7 +120,7 @@ class DocumentDetailResponse(BaseModel):
     review_note: str
     # 반 운영 특이사항. 일일 보육일지만 쓴다 — 나머지 종류는 늘 빈 문자열이다.
     class_note: str
-    # 지금 글을 검토한 결과(ADR-082). 검토한 적 없거나 그 뒤 글이 바뀌었으면 null 이다.
+    # 지금 글을 검토한 결과(ADR-083). 검토한 적 없거나 그 뒤 글이 바뀌었으면 null 이다.
     ai_review: "DocumentAiReview | None" = None
     created_at: datetime
     updated_at: datetime
@@ -181,7 +181,7 @@ class DocumentVerifyIssue(BaseModel):
 
 
 class DocumentAiReview(BaseModel):
-    """문서에 붙여 둔 AI 검토 결과 (ADR-082).
+    """문서에 붙여 둔 AI 검토 결과 (ADR-083).
 
     `done` 은 jev 가 판정했다, `mock` 은 판정하지 않았다(테스트 모드), `failed` 는 판정하지 못했다
     (`message` 가 이유). `mock` · `failed` 의 빈 `issues` 를 「문제없음」으로 읽으면 안 된다.
@@ -246,7 +246,7 @@ class DocumentCreateRequest(BaseModel):
     source_kind: Literal["dailyLog", "routine"] = "dailyLog"
     # 관찰일지 · 영유아 평가만 쓴다.
     # 같은 아이 · 같은 기간 초안이 있으면 서버는 그것을 돌려준다(200).
-    # true 면 새로 만들고, **새 초안을 저장한 뒤에** 옛 초안을 지운다 — 「넣어서 다시」(ADR-082).
+    # true 면 새로 만들고, **새 초안을 저장한 뒤에** 옛 초안을 지운다 — 「넣어서 다시」(ADR-083).
     replace_draft: bool = False
 
 
