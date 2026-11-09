@@ -2,7 +2,7 @@
 
 어린이집 교사의 보육 문서 초안을 만드는 AI. 만 3~5세 유아반 담임교사 대상.
 
-카카오테크 캠퍼스 4기 2단계 팀 프로젝트 — 강원대 2팀 · 운영 <https://ssample.duckdns.org>
+카카오테크 캠퍼스 4기 2단계 팀 프로젝트 - 강원대 2팀 · 운영 <https://ssample.duckdns.org>
 
 ![쌤플 홈 화면](frontend/public/landing/v2/hero-pc.webp)
 
@@ -46,8 +46,8 @@ AI 가 채운 칸은 눌러서 고치고, 교사가 써야 하는 칸은 비워 
 
 <table>
 <tr>
-<td align="center"><img src="frontend/public/landing/v2/plan-annual.webp" alt="연간 보육계획안"/><br/><sub>연간 계획안 — 확정 뒤 내보내기 · 월간 만들기</sub></td>
-<td align="center"><img src="frontend/public/landing/v2/plan-monthly.webp" alt="월간 계획안 편집"/><br/><sub>월간 계획안 — 칸 편집</sub></td>
+<td align="center"><img src="frontend/public/landing/v2/plan-annual.webp" alt="연간 보육계획안"/><br/><sub>연간 계획안 - 확정 뒤 내보내기 · 월간 만들기</sub></td>
+<td align="center"><img src="frontend/public/landing/v2/plan-monthly.webp" alt="월간 계획안 편집"/><br/><sub>월간 계획안 - 칸 편집</sub></td>
 </tr>
 </table>
 
