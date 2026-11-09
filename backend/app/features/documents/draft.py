@@ -96,6 +96,9 @@ def rule_id(kind: str) -> str:
     return f"{kind}-draft"
 
 
+NAME_MASK_FAILED = "아동 이름을 가명으로 바꾸지 못해 AI 를 부르지 않았습니다."
+
+
 class DraftFailed(Exception):
     """초안을 만들지 못했다. 부분 결과를 저장하지 않는다 (GENERATION_FAILED)."""
 
@@ -111,26 +114,30 @@ def draft_sections(
     kind: str,
     facts: list[str],
     source_ids: list[int],
-    children: dict[str, str],
+    table: NameTable | None,
     domains: Sequence[str] = (),
 ) -> list[DraftSection]:
     """해석 · 지원 두 칸을 만든다.
 
-    `children` 은 이 반 아이들의 {실명: 가명} 이다.
-    - 교사가 `fact` 에 반 친구 이름을 같이 적기도 해서 문서 대상 아이 한 명만으로는 부족하다.
+    `table` 은 원 전체 아이(다른 반 포함) 가운데 `facts` 에 나온 아이의 실명 <-> 가명 표다
+    (documents.verify.name_table). 글에 아이 이름이 없으면 None 이다.
+    - 교사가 `fact` 에 반 친구 · 옆 반 아이 이름을 같이 적기도 해서
+      문서 대상 아이 한 명만으로는 부족하다.
     `domains` 는 관찰 기록에 교사가 고른 누리과정 영역이다. 관찰일지 배움 칸의 근거가 된다.
     """
     try:
-        table = NameTable(children)
-        masked = [mask(fact, table) for fact in facts]
+        masked = facts if table is None else [mask(fact, table) for fact in facts]
     except SubstitutionError as exc:
-        raise DraftFailed("아동 이름을 가명으로 바꾸지 못해 AI 를 부르지 않았습니다.") from exc
+        raise DraftFailed(NAME_MASK_FAILED) from exc
+
+    def restore(text: str) -> str:
+        return text if table is None else unmask(text, table)
 
     curriculum = _curriculum_for(domains) if kind == "observation" else []
     interpretation, support = _generate(kind, masked, curriculum)
     return [
-        DraftSection("해석", unmask(interpretation, table), list(source_ids)),
-        DraftSection("지원", unmask(support, table), list(source_ids)),
+        DraftSection("해석", restore(interpretation), list(source_ids)),
+        DraftSection("지원", restore(support), list(source_ids)),
     ]
 
 
