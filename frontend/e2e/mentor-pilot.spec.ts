@@ -330,7 +330,7 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   await page.getByRole("button", { name: /^평가항목 4-1 · 4-2/ }).click();
   await expect(
     page.getByRole("region", { name: "4-1 관찰 및 실행 계획", exact: true }),
-  ).toContainText("집계에 들어간 문서 1건");
+  ).toContainText("확정 보육일지 1건");
   const checklist = await api(page, `/api/centers/${user.center_id}/evaluation-checklist`);
   expect(checklist.items[0].count).toBe(1);
   expect(checklist.items[0].verdict).toBe("INSUFFICIENT");
