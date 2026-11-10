@@ -16,6 +16,7 @@ import {
 } from "@/lib/api/annualImport";
 import { classAnnualContext, saveAnnualContext } from "@/lib/plan-generator/context";
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
+import GenerationRing from "@/components/plan-ui/GenerationRing";
 import { BACK_BUTTON, BACK_ICON } from "./AnnualFrame";
 
 /** 지금 고른 반의 서버 id. 생성 화면과 같은 길로 얻는다. */
@@ -116,26 +117,36 @@ export default function AnnualImport({
     }
   }
 
+  // 읽는 동안은 생성 중 화면과 같은 모양. 진행률을 모르니 링은 차오르지 않고 휙휙 돈다(`spin`).
+  if (!rows && !error)
+    return (
+      <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
+        <GenerationRing
+          title="연간계획안을 읽고 있어요"
+          steps={["파일 열기", "달마다 주제 찾기", "표로 정리하기"]}
+          kind="annual-import"
+          expect={15}
+          spin
+          cancelLabel="읽기 멈추기"
+          onCancel={onCancel}
+        />
+      </div>
+    );
+
   if (!rows)
     return (
       <ImportShell title="연간계획안 파일 읽는 중" onCancel={onCancel}>
-        {error ? (
-          <div role="alert" className="flex flex-col items-start gap-3">
-            <p className="m-0 text-base">{error}</p>
-            <div className="flex gap-3">
-              <button type="button" onClick={onCancel} className={SECONDARY}>
-                다른 파일 올리기
-              </button>
-              <button type="button" onClick={typeManually} className={SECONDARY}>
-                직접 작성하기
-              </button>
-            </div>
+        <div role="alert" className="flex flex-col items-start gap-3">
+          <p className="m-0 text-base">{error}</p>
+          <div className="flex gap-3">
+            <button type="button" onClick={onCancel} className={SECONDARY}>
+              다른 파일 올리기
+            </button>
+            <button type="button" onClick={typeManually} className={SECONDARY}>
+              직접 작성하기
+            </button>
           </div>
-        ) : (
-          <p role="status" aria-busy="true" className="m-0 text-base text-[#5c5243]">
-            {file?.name} 에서 달마다 생활주제와 소주제를 찾고 있어요.
-          </p>
-        )}
+        </div>
       </ImportShell>
     );
 

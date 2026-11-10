@@ -537,10 +537,12 @@ def create_annual_plan(
                 plan, mask_memo(body.memo, names)
             )
             row.sub_themes = {
-                month: [unmask_text(text, names) for text in texts]
+                month: [unmask_text(text, names, body.memo) for text in texts]
                 for month, texts in sub_themes.items()
             }
-            notices = tuple(MemoNotice(unmask_text(n.summary, names), n.reason) for n in notices)
+            notices = tuple(
+                MemoNotice(unmask_text(n.summary, names, body.memo), n.reason) for n in notices
+            )
             plan = with_yearly_memo(plan, body.memo, applied, notices)
             # Core 가 이미 저장한 행을 고쳐 쓴다. 저장소 save 는 revision 을 올리므로 쓰지 않는다.
             row.body = to_jsonable(plan)

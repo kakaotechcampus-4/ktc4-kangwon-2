@@ -46,8 +46,8 @@
 | 실패 시 저장 안 함 | `backend/tests/test_plans_error_mapping.py`(생성기 결과가 계약을 어기면 500 `GENERATION_FAILED` · 저장 안 됨) · `p0-planning/tests/application/test_weekly_generation.py::test_verifier_failure_saves_nothing` | 생성이 실패하면 DB에 아무것도 남지 않는다 |
 | 놀이 연간 재개 | `p0-planning/tests/application/test_play_project_generation.py` | 실패 구간만 한 번 · 겹친 후보만 한 번 · 같은 `row_key` · 요청 반영 후보는 안 바꿈 · 멈추면 저장 안 함 |
 | 겹침 검사기의 한계 | `p0-planning/tests/planner/test_play_dup_pairs.py` | 사람이 라벨한 같은 놀이 24짝 · 다른 놀이 18짝. 지금 선이 못 잡는 짝은 xfail로 남겨, 검사기를 바꾸면 바로 보이게 했다 |
-| 주간 근거 뽑기 | `p0-planning/tests/retrieval/test_weekly_retrieval.py` | 앞 주 근거는 뒤로 · seed가 없으면 고정 상위 10 · 같은 seed는 같은 결과 · 정확 연령 기록을 따로 먼저 채우지 않음 · 혼합연령 반은 요청 연령마다 1건 (PR 대기) |
-| 주간 API | `backend/tests/test_weekly_plans_api.py` | 앞 주차만 넘김 (PR 대기) |
+| 주간 근거 뽑기 | `p0-planning/tests/retrieval/test_weekly_retrieval.py` | 앞 주 근거는 뒤로 · seed가 없으면 고정 상위 10 · 같은 seed는 같은 결과 · 정확 연령 기록을 따로 먼저 채우지 않음 · 혼합연령 반은 요청 연령마다 1건 (#469) |
+| 주간 API | `backend/tests/test_weekly_plans_api.py` | 앞 주차만 넘김 (#469) |
 | 호출 기록 | `test_llm_usage_log.py` | 호출마다 숫자만 남고 프롬프트 · 응답은 없다 |
 
 CI가 PR마다 backend + planning core pytest · ruff · alembic · docker build · e2e를 돌린다 — [08](../evaluation/08-code-tests.md)
@@ -56,9 +56,9 @@ CI가 PR마다 backend + planning core pytest · ruff · alembic · docker build
 
 | 날짜 | 무엇 | 어떻게 찾았나 | 고친 것 |
 |---|---|---|---|
-| 11-09 (PR 대기 #469) | 주간 5주차 500 — 「[절기놀이]」처럼 태그뿐인 제목이 후보 근거로 올라옴 | 앞 주 근거 빼기 실측. 풀 깊은 곳이 처음 드러남 | 태그뿐인 글은 활동 제목이 아니다(정규식) |
-| 11-10 (PR 대기 #469) | 12월 5주차 500 `ACTIVITY_CANDIDATE_INVALID` — 추출이 잘린 기록 2건(「…퍼즐 -」 · 「…키보」) | 섞어 뽑기 실측 → 그 주의 풀을 호출 없이 다시 계산 | 검토 목록에 2건 추가. 다시 돌려 5주 모두 201 |
-| 11-10 (PR 대기 #469) | seed 로그가 버려짐 — 그 주의 근거를 되살릴 수 없었음 | 위 실패를 재현하려다 발견 | logger 연결 (seed는 로그에만 둔다 — 본문 저장은 하지 않기로 함, 하민 11-10) |
+| 11-09 (#469) | 주간 5주차 500 — 「[절기놀이]」처럼 태그뿐인 제목이 후보 근거로 올라옴 | 앞 주 근거 빼기 실측. 풀 깊은 곳이 처음 드러남 | 태그뿐인 글은 활동 제목이 아니다(정규식) |
+| 11-10 (#469) | 12월 5주차 500 `ACTIVITY_CANDIDATE_INVALID` — 추출이 잘린 기록 2건(「…퍼즐 -」 · 「…키보」) | 섞어 뽑기 실측 → 그 주의 풀을 호출 없이 다시 계산 | 검토 목록에 2건 추가. 다시 돌려 5주 모두 201 |
+| 11-10 (#469) | seed 로그가 버려짐 — 그 주의 근거를 되살릴 수 없었음 | 위 실패를 재현하려다 발견 | logger 연결 (seed는 로그에만 둔다 — 본문 저장은 하지 않기로 함, 하민 11-10) |
 
 ## 6. 아직 아닌 것
 

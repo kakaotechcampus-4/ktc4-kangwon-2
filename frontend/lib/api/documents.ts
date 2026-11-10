@@ -87,6 +87,8 @@ export interface ApiDocumentSource {
   id: number;
   date: string | null;
   text: string;
+  /** 관찰일지 근거에만 있다. 양식의 영역 행을 이것으로 나눈다 (§11). */
+  domain?: string | null;
   class_id: number;
   child_id: number | null;
 }
@@ -177,6 +179,7 @@ export function toDocument(dto: ApiDocumentDetail): ServerDocument {
     text: s.text,
     classId: localClass(s.class_id),
     childId: localChild(s.child_id),
+    ...(s.domain ? { domain: s.domain } : {}),
   }));
   const generatedSection = (s: ApiDocumentSection) =>
     dto.origin === "AI" && ["해석", "지원"].includes(s.heading);
