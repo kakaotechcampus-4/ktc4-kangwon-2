@@ -84,6 +84,7 @@
 
 - 생성에 쓰는 기관 근거 자료에서 사람이 개인정보로 판정한 기록 42개를 통째 제외하고 분류 4종을 같은 SHA에 연결했다 — [검토·승인 기록](../evidence-store-v0-2-human-review.md) · `p0-planning/tests/evidence/test_evidence_store.py` · `p0-planning/tests/finalization/test_freeze.py`
 - 그 42개가 남아 있던 옛 근거 본체 v0.1.0 을 저장소에서 지웠다(git 이력에는 남는다) — `p0-planning/data/evidence/` · `p0-planning/tests/unit/test_safety_evidence_classification.py`
+- 남의 이메일로 먼저 가입해 둔 사람이 진짜 주인의 카카오 로그인 뒤에도 남지 못한다 — 이을 때 비밀번호와 그 전 토큰을 끊고, 비밀번호를 바꿔도 그 전 토큰을 끊는다 — ADR-092 · `test_auth_kakao.py` `test_이으면_먼저_가입한_비밀번호와_토큰을_끊는다` · `backend/app/shared/auth/tokens.py`
 
 - 계획안의 장소 경계: 검토된 특정 장소명·명시적 현장학습 근거를 맥락형 월간/주간 후보에서 제외한다. 생성의 장소 허용은 긍정 요청·교사가 입력/수정한 확정 부모 값에 한하며, 단순 확정·무변경 저장·거절 요청은 허용하지 않는다. 출처 전달·수리 거절은 `p0-planning/tests/planner/test_venue_policy.py`, 소주제 저장·재조회는 `backend/tests/test_plans_api.py`로 확인한다. 목록에 없는 새 장소명과 일반 외부 방문을 전부 감지하지는 않는다 — `p0-planning/CLAUDE.md`의 Named venue boundary.
 
@@ -91,6 +92,7 @@
 
 - 속도 제한은 IP 단위뿐이다 — 공유기 하나를 쓰는 원은 교사들이 한 몫을 나눠 쓰고, 계정 단위 제한은 없다(`nginx/nginx.conf`). 숫자는 파일럿 첫 값이라 운영 429 기록을 보고 다시 정한다
 - 로그에서 개인정보를 거르는 검사가 자동이 아니다 — `test_error_logging.py` · `test_llm_logging.py` 가 일부만 본다
+- 이메일 가입이 메일 주인인지 확인하지 않는다(인증 메일 없음). ADR-092 이전에 카카오로 이어진 계정의 비밀번호는 그대로 남아 운영 DB 에서 사람이 확인해야 한다 — ADR-092 「결과」
 - 소방대피 · 재난대비 후보 문장의 대피 장소 · 절차 · 주제 적합성을 결정적으로 거르는 검사기가 없다 — 지금은 프롬프트와 교사 검토뿐(§소방대피 · 재난대비 훈련 칸)
 
 ## 더 모을 근거
