@@ -448,7 +448,7 @@ def build_weekly_request(
         *(label for _, label in reference_candidates),
     ])
     suffix = DAY_CELLS_SUFFIX if any(t.days for t in targets) else ""
-    candidates = "+activity-candidates-v5" if any(t.activity_type is not None for t in targets) else ""
+    candidates = "+activity-candidates-v6" if any(t.activity_type is not None for t in targets) else ""
     if candidates:
         source_refs |= {t.section_key for t in targets if t.activity_type is not None}
     memo = _memo_addresses(targets) if teacher_memo else None
@@ -503,6 +503,10 @@ def build_weekly_request(
             "activity_basis는 이 후보가 사용할 원문 활동이다. 전체 근거에 다른 활동이 있어도 그 활동으로 바꾸거나 서로 섞어 새 활동을 만들지 않는다. "
             "required_name_terms는 문서 이름에 남겨야 할 활동 정보이며 모두 포함한다. 설명도 activity_basis의 같은 활동을 다룬다. "
             "작품명과 익숙한 놀이명은 유지하고, 모든 제목에 같은 행동어를 억지로 붙이지 않는다. "
+            "activity_basis에 따옴표로 묶인 이름(노래 · 동시 · 이야기 제목 등)이 있으면 따옴표째 제목으로 옮기고, "
+            "그 이름을 재료나 흉내 낼 대상처럼 풀어 쓰지 않는다. 설명에서도 그 이름을 제목으로만 가리키며"
+            "(예: '…' 말놀이를 함께 읊으며), '…에 어울리는 움직임'처럼 이름의 뜻을 소재로 삼지 않는다. "
+            "그 제목이 무엇을 담는지 근거에 없으면 지어내지 않는다. "
             "제목과 설명은 같은 활동을 뜻해야 하며, 근거에 없는 재료·놀이 방법·절차·결과물을 보태지 않는다. "
             "후보를 부모 소주제와 일치시키려고 대상을 바꾸거나 모두 같은 놀이로 만들지 않는다. "
             "같은 Section의 후보끼리 활동 이름이 겹치지 않게 하되 근거에 없는 활동으로 개수를 채우지 않는다. "
