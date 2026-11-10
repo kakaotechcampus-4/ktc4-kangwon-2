@@ -105,6 +105,8 @@ def _answers(questions, *, conflict_on="s1", conflict_rec="r1"):
             }
         elif name.endswith(".근거"):
             out[name] = {"type": "choice", "choice": conflict_rec if key == conflict_on else "없음"}
+        elif name.endswith((".때", ".기준")):
+            out[name] = {"type": "choice", "choice": "없음"}
         elif name == "지원.구체":
             out[name] = {"type": "noul", "noul": 0.95}
         else:
@@ -215,6 +217,15 @@ def test_verify_keeps_the_editors_write_token(db_session):
 
     assert res.status_code == 200, res.text
     assert res.json()["ai_review"]["state"] == "mock"
+
+
+def test_class_age_in_interpretation_passes_gate_two(db_session, real):
+    """#85 — 「만 4세」는 사실에 없어도 반 연령이면 2단에 걸리지 않는다. 반은 만 4세다."""
+    doc = _document(db_session)
+    edited = "만 4세답게 이가명은 블록 대신 퍼즐 놀이만 했다. 이가명은 끈기 있게 놀이에 머물렀다."
+    res = client.post(f"/api/documents/{doc.id}/verify", json={"sections": _sections(edited)})
+    assert res.status_code == 200, res.text
+    assert real  # 2단을 지나 3단까지 갔다
 
 
 def test_gate_one_and_two_run_first(db_session, real):
@@ -447,6 +458,7 @@ def test_chosen_conflict_is_reported_even_below_half():
         "choice": J.CONFLICT,
         "probabilities": {J.CONFLICT: 0.4, J.SAME: 0.2, J.NEW_FACT: 0.2, J.INTERPRETATION: 0.2},
     }
+    answers["s1.근거"]["choice"] = "r1"
     assert [i.code for i in J.read_issues(sentences, answers, {"r1": 1}, None)] == [
         "CONTRADICTS_SOURCE"
     ]

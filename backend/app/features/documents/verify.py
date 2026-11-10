@@ -42,11 +42,11 @@ from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable, decide,
 logger = logging.getLogger("app.server")
 
 
-def name_table(session: Session, class_id: int, text: str) -> NameTable | None:
-    """원 전체 아이(다른 반 포함) 중 글에 나온 아이로 표를 만든다 (PR #422 과 같은 범위).
+Row = tuple[str, str, str | None]
 
-    교사는 옆 반 아이 이름도 적는다. 못 바꾸면 SubstitutionError 가 그대로 올라간다.
-    """
+
+def center_children(session: Session, class_id: int) -> tuple[list[Row], list[Row]]:
+    """그 반 아이와 같은 원 다른 반 아이의 (실명, 가명, 부르는 이름). 가명표의 재료다."""
     center_id = select(Class.center_id).where(Class.id == class_id).scalar_subquery()
     rows = session.execute(
         select(Child.class_id, Child.name, Child.code, Child.call_name)
@@ -56,6 +56,15 @@ def name_table(session: Session, class_id: int, text: str) -> NameTable | None:
     ).all()
     own = [(name, code, call) for owner, name, code, call in rows if owner == class_id]
     others = [(name, code, call) for owner, name, code, call in rows if owner != class_id]
+    return own, others
+
+
+def name_table(session: Session, class_id: int, text: str) -> NameTable | None:
+    """원 전체 아이(다른 반 포함) 중 글에 나온 아이로 표를 만든다 (PR #422 과 같은 범위).
+
+    교사는 옆 반 아이 이름도 적는다. 못 바꾸면 SubstitutionError 가 그대로 올라간다.
+    """
+    own, others = center_children(session, class_id)
     return table_for_text(load_pool(), own, others, text)
 
 

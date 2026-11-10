@@ -149,11 +149,34 @@ def test_같은_이메일로_가입한_계정에_잇는다(db_session, monkeypat
     assert response.json()["user"]["id"] == signup.json()["user"]["id"]
     # 이름은 교사가 가입 때 적은 것을 둔다. 카카오 별명으로 덮지 않는다.
     assert response.json()["user"]["name"] == "이선생"
-    # 비밀번호 로그인도 그대로 된다.
+
+
+def test_이으면_먼저_가입한_비밀번호와_토큰을_끊는다(db_session, monkeypatch):
+    """남의 이메일로 먼저 가입한 사람이 진짜 주인이 카카오로 들어온 뒤에도 남지 못한다(ADR-092).
+
+    이메일 가입은 메일 주인인지 확인하지 않는다 — 누가 만든 비밀번호인지 서버는 모른다.
+    """
+    squatter = client.post(
+        "/api/auth/signup",
+        json={"email": "teacher@example.com", "name": "가로챈사람", "password": "sseuksak-2026"},
+    ).json()["token"]
+    use_profile(monkeypatch)
+    owner = client.post("/api/auth/kakao", json={"code": "c"}).json()["token"]
+
     login = client.post(
         "/api/auth/login", json={"email": "teacher@example.com", "password": "sseuksak-2026"}
     )
-    assert login.status_code == 200
+    assert login.status_code == 401
+
+    def me(token):
+        return client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert me(squatter).status_code == 401
+    assert me(owner).status_code == 200
+    # 다시 카카오로 들어와도 버전을 또 올리지 않는다 — 주인의 다른 기기가 튕기지 않는다.
+    again = client.post("/api/auth/kakao", json={"code": "c2"}).json()["token"]
+    assert me(owner).status_code == 200
+    assert me(again).status_code == 200
 
 
 def test_카카오로만_만든_계정은_비밀번호로_못_들어온다(db_session, monkeypatch):

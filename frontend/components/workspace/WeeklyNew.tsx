@@ -250,8 +250,9 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
       <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
           kind="weekly"
-          // Sol 실측: 33초(2026-11-05).
-          expect={35}
+          // 배포 서버 실측(2026-11-10, 29회, docs/evaluation/runs/2026-11-10-weekly): 중앙 26초.
+          // 만4 중앙 28.4 · 만5 26.3초. 링은 예상 시간에 90% 가 차서 조금 넉넉히 둔다.
+          expect={30}
           title={`${label} 주간계획안을 만들고 있어요`}
           done={done}
           steps={[`${label} 놀이 이어받기`, "요일별 활동 나누기", "문서로 정리하기"]}

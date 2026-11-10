@@ -374,6 +374,29 @@ def test_고친_문장이_규칙_검사를_지나면_보여_주고_저장하지_
     assert detail["sections"] == made["sections"]
 
 
+def test_고쳐_쓰기는_이유_칸에_적힌_이름도_가명으로_보낸다(db_session, writer):
+    install, seen = writer
+    install("도담은 개미를 오래 바라본다.")
+    made, sections = _drafted(db_session)
+
+    res = _rewrite(made["id"], sections, reason="가명이가 매일 봤다는 말이 기록에 없어요.")
+
+    assert res.status_code == 200, res.text
+    assert seen["payload"]["이유"] == "도담이가 매일 봤다는 말이 기록에 없어요."
+
+
+def test_고쳐_쓰기도_반_연령_만_4세는_2단에_걸리지_않는다(db_session, writer):
+    """다른 다섯 길처럼 반 연령을 넘긴다. 반은 만 4세다(_room)."""
+    install, _ = writer
+    install("만 4세답게 도담은 개미를 오래 바라본다.")
+    made, sections = _drafted(db_session)
+
+    body = _rewrite(made["id"], sections).json()
+
+    assert body["blocked"] == []
+    assert body["sentence"] == "만 4세답게 이가명은 개미를 오래 바라본다."
+
+
 def test_규칙_검사에_걸린_문장은_보여_주지_않는다(db_session, writer):
     install, _ = writer
     install("도담은 개미를 3번 오래 바라본다.")  # 기록에 없는 숫자
@@ -424,7 +447,8 @@ def test_말투_예시는_아이가_안_나오는_짧은_문장만_고르고_아
         "가명이가 블록을 쌓는다. 하윤이가 웃었다. 탐색을 이어 가도록 돋보기를 놓아 주겠다.",
         "다음 바깥놀이에서 관찰을 이어 가겠다.",
     ]
-    picked = pick_examples(texts, names=["이가명"], offset=0, limit=10)
+    own = [("이가명", "도담", None)]
+    picked = pick_examples(texts, own, [], offset=0, limit=10)
 
     # 이름이 나온 문장(성을 뗀 「가명이」 포함) · 따옴표 · 이름처럼 보이는 「하윤이가」는 뺀다.
     assert picked == [
@@ -433,15 +457,36 @@ def test_말투_예시는_아이가_안_나오는_짧은_문장만_고르고_아
         "탐색을 이어 가도록 돋보기를 놓아 주겠다.",
         "다음 바깥놀이에서 관찰을 이어 가겠다.",
     ]
-    first = pick_examples(texts, names=["이가명"], offset=0, limit=2)
-    second = pick_examples(texts, names=["이가명"], offset=1, limit=2)
+    first = pick_examples(texts, own, [], offset=0, limit=2)
+    second = pick_examples(texts, own, [], offset=1, limit=2)
     assert first != second and len(first) == len(second) == 2
+
+
+def test_말투_예시는_초안과_같은_가명표로_외자_부르는_이름_옆_반_아이까지_뺀다():
+    """외자 아이(김민)는 「민이가」로 적힌다. 두 글자 이름 꼴 · 등록 이름으로는 못 잡았다."""
+    from app.features.documents.style import pick_examples
+
+    own = [("김민", "가람", "민이"), ("최솔", "누리", None)]
+    others = [("박서준", "하준", None)]
+    texts = [
+        "민이가 모래를 깊게 파며 흙을 만진다.",  # 부르는 이름
+        "민은 친구 옆에서 끝까지 기다린다.",  # 외자 + 조사
+        "솔한테 삽을 건네며 웃는 모습을 보인다.",  # 부르는 이름 없는 외자 + 조사
+        "옆 반 서준과 블록을 나누어 쓴다.",  # 옆 반 아이(성을 뗀 이름)
+        "오늘은 민 혼자서 정리를 끝까지 해 본다.",  # 홀로 선 외자 — 가릴 수 없다
+        "손끝으로 흙의 감촉을 느껴 본다.",
+    ]
+
+    assert pick_examples(texts, own, others, offset=0, limit=10) == [
+        "손끝으로 흙의 감촉을 느껴 본다."
+    ]
 
 
 def test_전에_확정한_관찰일지에서_말투_예시를_골라_보낸다(db_session, monkeypatch):
     from app.features.documents.models import DocumentSection
 
-    klass, (kid, friend) = _room(db_session, names=("이가명", "박친구"))
+    klass, (kid, friend, single) = _room(db_session, names=("이가명", "박친구", "김민"))
+    single.call_name = "민이"
     old = Document(
         kind="observation",
         title="박친구 관찰일지 (8월)",
@@ -470,7 +515,9 @@ def test_전에_확정한_관찰일지에서_말투_예시를_골라_보낸다(d
             DocumentSection(
                 document_id=old.id,
                 heading="지원",
-                body="다음에는 삽과 체를 같이 놓아 주면 좋을 것 같다.",
+                # 외자 아이를 부른 문장 — 등록 이름(김민)으로는 안 잡힌다.
+                body="다음에는 삽과 체를 같이 놓아 주면 좋을 것 같다. "
+                "민아 하고 부르면 삽을 들고 온다.",
                 source_ids=[1],
             ),
         ]

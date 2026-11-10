@@ -42,7 +42,7 @@ import {
   type ViewStatus,
 } from "./WorkspaceViewState";
 
-const ENTRY_NONE = { classId: "", childId: "" };
+const ENTRY_NONE = { classId: "", childId: "", recordId: "" };
 
 export type RecordsStatus = ViewStatus;
 
@@ -75,14 +75,21 @@ function messageFor(error: unknown) {
 
 export default function RecordsPage() {
   const [records, setRecords] = useState<ServerObservation[]>([]);
+  /** `records` 가 어느 반 목록인가. 반을 바꾼 뒤 옛 반 목록으로 주소의 기록을 찾지 않게. */
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [status, setStatus] = useState<RecordsStatus>("loading");
   const [listError, setListError] = useState("");
   const [pending, setPending] = useState(false);
   // 우리 반 홈의 「이 아이 기록 보기」가 반·아이를 주소로 넘긴다. 없으면 주 반을 연다.
+  // 관찰일지의 쪽지 「고치기」는 그 기록(`record`)까지 넘긴다 — 목록을 받으면 그 기록을 고치는 칸에 연다.
   const [entry] = useClientState(() => {
-    if (typeof window === "undefined") return { classId: "", childId: "" };
+    if (typeof window === "undefined") return ENTRY_NONE;
     const q = new URLSearchParams(window.location.search);
-    return { classId: q.get("class") ?? "", childId: q.get("child") ?? "" };
+    return {
+      classId: q.get("class") ?? "",
+      childId: q.get("child") ?? "",
+      recordId: q.get("record") ?? "",
+    };
   }, ENTRY_NONE);
   const [pickedClass, setClassId] = useState<string | null>(null);
   const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
@@ -233,6 +240,7 @@ export default function RecordsPage() {
       .then((items) => {
         if (mine !== latest.current) return;
         setRecords(items);
+        setLoadedFor(classId);
         setListError("");
         setStatus("ready");
       })
@@ -245,6 +253,20 @@ export default function RecordsPage() {
       latest.current += 1;
     };
   }, [classId]);
+  // 주소로 받은 기록을 한 번만 연다. 그 반 목록이 온 뒤에 찾는다 — 없으면 지웠거나 남의 기록이다.
+  // entry 처럼 렌더 안에서 한 번만 채운다(효과 안 setState 를 피한다).
+  const [recordOpened, setRecordOpened] = useState(false);
+  if (
+    entry.recordId &&
+    !recordOpened &&
+    status === "ready" &&
+    (!entry.classId || loadedFor === entry.classId)
+  ) {
+    setRecordOpened(true);
+    const target = records.find((r) => r.id === entry.recordId);
+    if (target) fillEdit(target);
+    else setMessage("그 관찰 기록을 찾지 못했어요. 지워졌을 수 있어요.");
+  }
   // 저장·삭제 뒤 서버를 다시 읽는다. 첫 렌더가 이미 loading 이라 상태를 새로 세우지 않는다.
   async function reload() {
     const mine = ++latest.current;
@@ -252,6 +274,7 @@ export default function RecordsPage() {
       const items = await listRecords(classId);
       if (mine !== latest.current) return;
       setRecords(items);
+      setLoadedFor(classId);
       setListError("");
       setStatus("ready");
     } catch (e) {
@@ -312,6 +335,11 @@ export default function RecordsPage() {
   }
   function beginEdit(record: ServerObservation) {
     closeAsk();
+    fillEdit(record);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  /** 고치는 칸에 그 기록을 채운다. state 만 바꾼다 — 주소로 연 기록은 렌더 안에서 이것만 부른다. */
+  function fillEdit(record: ServerObservation) {
     // 고치던 기록을 두고 다른 기록을 고칠 때는 처음 것을 그대로 둔다.
     if (!editId) setBeforeEdit({ classId: pickedClass, childId, date, domain: picked, invalid });
     setEditId(record.id);
@@ -323,7 +351,6 @@ export default function RecordsPage() {
     setFact(record.fact);
     setMessage("");
     setInvalid([]);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
   function cancelEdit() {
     setEditId("");
