@@ -30,7 +30,7 @@ from app.features.plans.models import Plan
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.runtime import UuidGenerator
 from app.main import app
-from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
+from app.shared.llm import LlmBudgetExceeded, LlmCallCapExceeded, LlmFailed, LlmUnavailable
 
 # Core 가 공개 창구(`ssuksak.planning`)에 아직 안 내놓아 안쪽에서 가져온다 — router.py 와 같다.
 from ssuksak.planning.application.generate_play_project_plan import (  # isort: skip
@@ -636,6 +636,8 @@ def test_format과_form_id_요청을_검증한다(world):
         (_wrapped_budget_error(), 503, "LLM_BUDGET_EXCEEDED", 4),
         # ADR-077: 다시 불러 풀릴 수 있는 실패만 구간마다 한 번 더 부른다.
         (LlmFailed("provider failed"), 500, "GENERATION_FAILED", 8),
+        # ADR-081: 호출 상한은 `LlmFailed` 의 하위라 계약이 같지만 다시 불러도 풀리지 않는다.
+        (LlmCallCapExceeded("cap"), 500, "GENERATION_FAILED", 4),
     ],
 )
 def test_provider_오류가_계약_코드로_변환된다(world, monkeypatch, error, status_code, code, calls):
