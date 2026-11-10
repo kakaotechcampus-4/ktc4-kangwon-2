@@ -263,7 +263,7 @@ def test_reviewed_candidate_sources_match_the_unchanged_evidence_artifact():
     assert REVIEWED_UNCLEAR_ACTIVITY_SOURCES
     for ref, text in REVIEWED_UNCLEAR_ACTIVITY_SOURCES:
         assert records[ref].text == text
-        assert records[ref].month in {3, 12}  # the months reviewed so far
+        assert records[ref].month in {3, 4, 5, 9, 10, 12}  # the months reviewed so far
 
 
 @pytest.mark.parametrize("text,expected,terms", [
