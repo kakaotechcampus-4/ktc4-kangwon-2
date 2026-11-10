@@ -387,7 +387,7 @@ def test_picture_book_is_assigned_to_one_story_candidate_and_repaired_once_or_ke
 
     from ssuksak.planning.domain.trend import TrendItem, TrendKind
     from ssuksak.planning.planner.contracts import RawLlmResponse
-    from ssuksak.planning.planner.weekly import BOOK_SLOT_TAG, WEEKLY_BOOK_PROMPT
+    from ssuksak.planning.planner.weekly import BOOK_SLOT_TAG, WEEKLY_BOOK_PROMPT, book_slot
 
     book = TrendItem("data4library:9790000000001", TrendKind.STORY, "숲속 친구들 :겨울 이야기", "", "도서관 정보나루",
                      "2026-W44", date(2026, 10, 28))
@@ -410,6 +410,11 @@ def test_picture_book_is_assigned_to_one_story_candidate_and_repaired_once_or_ke
     first = provider.requests[0]
     slot, assigned = first.trend_required
     assert assigned == book and dict(first.trend_options)[slot] == (book.trend_id,)
+    group_fits = [a for a, _ in first.trend_options if a.startswith("group_activity.") and first.target(a).activity_type
+                  and {"이야기나누기", "동화", "동극"} & set(first.target(a).activity_type.split("·"))]
+    assert group_fits and slot == group_fits[0]  # 대·소집단 동화 자리가 실내놀이 언어놀이보다 먼저
+    indoor, group = ("indoor_play.candidate.1", (book.trend_id,)), ("group_activity.candidate.2", (book.trend_id,))
+    assert book_slot((indoor, group), book.trend_id) == group[0] and book_slot((indoor,), book.trend_id) == indoor[0]
     assert BOOK_SLOT_TAG in first.prompt_version and WEEKLY_BOOK_PROMPT in first.system_prompt
     target = next(t for t in json.loads(first.user_content)["targets"] if t["section_key"] == slot)
     assert target["trend_required"] == {"trend_id": book.trend_id, "title": "숲속 친구들"}  # subtitle off: no 「:」 clash

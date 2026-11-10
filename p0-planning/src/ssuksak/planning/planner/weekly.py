@@ -399,6 +399,12 @@ def trend_options(
     return tuple(options)
 
 
+def book_slot(options: tuple[tuple[str, tuple[str, ...]], ...], trend_id: str) -> str | None:
+    """2026-11-10 하민: 대·소집단(이야기나누기 · 동화 · 동극)을 먼저, 없으면 실내놀이(언어놀이). Stable: request order within each."""
+    ranked = sorted(options, key=lambda option: not option[0].startswith("group_activity."))
+    return next((address for address, ids in ranked if trend_id in ids), None)
+
+
 def validate_daily_life_context(daily_life: DailyLifeCatalog, curriculum: CurriculumCatalog | None) -> None:
     if not isinstance(daily_life, DailyLifeCatalog) or not daily_life.is_active or curriculum is None or (
         daily_life.curriculum_catalog_id, daily_life.curriculum_catalog_version
@@ -499,7 +505,7 @@ def build_weekly_request(
     # (same seed, same book). Without a seed the first passed book (ISBN order after select_trends) stays.
     books = [item for item in passed if item.trend_id.startswith(BOOK_SOURCE)]
     book = (random.Random(f"{book_seed}:book").choice(books) if book_seed is not None else books[0]) if books else None
-    slot = next((address for address, ids in options if book is not None and book.trend_id in ids), None)
+    slot = book_slot(options, book.trend_id) if book is not None else None
     required = (slot, book) if slot is not None and book is not None else None
     if required is not None:
         options = tuple((a, (book.trend_id,)) if a == slot else (a, ids) for a, ids in options)
