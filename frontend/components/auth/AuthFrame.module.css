@@ -1,6 +1,5 @@
-/* 로그인 · 가입 — 책상 위 공책. 왼쪽은 쌤플이 하는 일 한 장면, 오른쪽은 스프링 공책 한 장의 폼.
-   장면은 한 번 돈다(약 4초): 관찰 한 줄이 적히고 → 해석 · 지원 쪽지가 붙고 → 초안 도장.
-   움직임 줄이기면 처음부터 다 보인다 — 애니메이션이 꺼져도 마지막 모습이 기본값이다. */
+/* 로그인 · 가입 — 오른쪽은 쪽지 판 안의 폼, 왼쪽은 소개 화면 「하루」 장면(LoginDay).
+   좁은 화면은 나무 책상 위에 쪽지 판만. 넓은 화면은 지금 장면의 색이 화면 전체 바탕이 된다. */
 
 .desk {
   background:
@@ -21,195 +20,67 @@
   }
 }
 
-/* 위에서 본 머그잔 · 연필. 움직이지 않는다 */
-.mug {
-  position: absolute;
-  right: 0;
-  top: 28px;
-  width: 132px;
-  height: 132px;
+/* 넓은 화면(왼쪽 장면이 보일 때)은 책상 대신 지금 장면의 색을 화면 전체에 깐다 — 소개 화면 「하루」처럼.
+   저녁 장면이면 꼬리말도 밝게. 좁은 화면은 장면이 없어 바탕이 바뀔 까닭이 없으니 책상 그대로 */
+@media (min-width: 1024px) {
+  .desk {
+    background: var(--scene-bg);
+    transition: background-color 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .night footer {
+    color: var(--pg-board-ink-soft);
+    border-color: rgb(244 241 232 / 0.25);
+  }
+}
+
+/* 쪽지 판 — 소개 화면 쪽지 판의 몸통(landing.css `.pad`)을 세워 둔 것. 안의 흰 화면에 폼이 들어간다 */
+.pad {
+  padding: 16px 16px 18px;
+  border-radius: 30px;
+  background: linear-gradient(160deg, #f7f1e4, #e9dfcb);
+  box-shadow:
+    inset 0 2px 0 rgb(255 255 255 / 0.7),
+    inset 0 -3px 0 rgb(104 79 53 / 0.18),
+    0 2px 0 var(--pg-frame),
+    0 40px 70px -30px rgb(52 49 47 / 0.55);
+}
+.padTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 2px 8px 12px;
+}
+.padTop b {
+  font-weight: 900;
+  font-size: 15px;
+  letter-spacing: -0.04em;
+  color: var(--pg-primary-deep);
+}
+.padTop i {
+  font-style: normal;
+  color: var(--pg-peach-strong);
+}
+.holes {
+  display: flex;
+  gap: 5px;
+}
+.holes span {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    #6b4a32 0 42px,
-    #8a6446 42px 44px,
-    var(--pg-ivory) 45px 58px,
-    var(--pg-paper-warm-line) 58px 60px,
-    transparent 61px
-  );
-  box-shadow: 4px 6px 0 rgb(120 85 45 / 0.18);
+  background: rgb(104 79 53 / 0.28);
+  box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.25);
 }
-.pencil {
-  position: absolute;
-  left: 52%;
-  bottom: 48px;
-  rotate: -24deg;
-  filter: drop-shadow(3px 4px 0 rgb(120 85 45 / 0.2));
+.screen {
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgb(104 79 53 / 0.12);
 }
 
-/* 스프링 — 공책 윗변의 구멍 줄 */
-.ring {
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  top: -12px;
-  height: 16px;
-  background: radial-gradient(
-      ellipse 4px 9px at 9px 8px,
-      transparent 0 2px,
-      #8b8073 2.5px 3.6px,
-      transparent 4px
-    )
-    0 0 / 24px 16px round no-repeat;
-}
-
-/* 장면 속 공책 — 줄 간격(30px)과 글줄 높이를 맞춰 글자가 줄 위에 앉는다 */
-.book {
-  position: relative;
-  padding: 28px 24px 24px 60px;
-  background: var(--pg-paper);
-  border: 1px solid var(--pg-line);
-  box-shadow: var(--pg-shadow-card);
-}
-.book::before,
-.sheet::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 44px;
-  width: 1.5px;
-  background: #e9b9b6;
-}
-.ruled {
-  min-height: 90px;
-  margin-top: 8px;
-  line-height: 30px;
-  background: repeating-linear-gradient(to bottom, transparent 0 29px, var(--pg-line) 29px 30px);
-}
-.typed {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.typedStatic {
-  display: none;
-}
-.caret {
-  display: inline-block;
-  width: 2px;
-  height: 17px;
-  margin-left: 1px;
-  vertical-align: -3px;
-  background: var(--pg-ink);
-  opacity: 0;
-  animation: blink 0.8s steps(1) 4;
-}
-@keyframes blink {
-  0% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0;
-  }
-}
-
-.note {
-  position: relative;
-  transform: rotate(var(--r));
-  animation: noteIn 0.45s cubic-bezier(0.2, 0.9, 0.3, 1) both;
-}
-.note:first-child {
-  --r: -1.4deg;
-  animation-delay: 3.1s;
-}
-.note:last-child {
-  --r: 1.2deg;
-  animation-delay: 3.55s;
-}
-@keyframes noteIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px) rotate(var(--r));
-  }
-}
-.stamp {
-  rotate: -10deg;
-  opacity: 0.9;
-  animation: stamp 0.3s cubic-bezier(0.2, 1.4, 0.4, 1) 4.1s both;
-}
-@keyframes stamp {
-  from {
-    opacity: 0;
-    transform: scale(1.6);
-  }
-}
-/* 포스티 — 적는 동안 가리키다가, 쪽지가 붙으면 반긴다 */
-.posty {
-  position: absolute;
-  right: -30px;
-  top: -46px;
-  z-index: 2;
-}
-.postyBefore {
-  animation: hide 0s 4.1s both;
-}
-.postyAfter {
-  position: absolute;
-  inset: 0;
-  animation: show 0s 4.1s both;
-}
-@keyframes hide {
-  to {
-    visibility: hidden;
-  }
-}
-@keyframes show {
-  from {
-    visibility: hidden;
-  }
-}
-
-/* 폼 종이 — 스프링 · 빨간 여백선 */
-.sheet {
-  position: relative;
-  background: #fffdf8;
-  border: 1px solid var(--pg-line);
-  box-shadow: 4px 8px 0 rgb(120 85 45 / 0.18);
-}
-
-.sheet input:-webkit-autofill,
-.sheet input:-webkit-autofill:hover,
-.sheet input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 40px #fffdf8 inset;
+.screen input:-webkit-autofill,
+.screen input:-webkit-autofill:hover,
+.screen input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 40px #fff inset;
   -webkit-text-fill-color: var(--pg-ink);
   caret-color: var(--pg-ink);
-}
-
-/* 두 번째로 그릴 때 — 장면을 다시 돌리지 않는다 */
-.still .note,
-.still .stamp,
-.still .postyAfter {
-  animation: none;
-}
-.still .postyBefore,
-.still .caret {
-  display: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .note,
-  .stamp,
-  .postyAfter {
-    animation: none;
-  }
-  .postyBefore,
-  .caret {
-    display: none;
-  }
-  .typed {
-    display: none;
-  }
-  .typedStatic {
-    display: inline;
-  }
 }
