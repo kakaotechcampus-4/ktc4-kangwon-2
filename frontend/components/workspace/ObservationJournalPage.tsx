@@ -234,6 +234,7 @@ export default function ObservationJournalPage() {
           onChanged={() => setReload((n) => n + 1)}
           onClose={() => setOpenId("")}
           onNext={next ? () => setOpenId(next) : undefined}
+          onOpen={setOpenId}
         />
       ) : (
         <div className={`${ws.grid} ${ws.recordGrid}`}>
@@ -434,11 +435,14 @@ function JournalEditor({
   onChanged,
   onClose,
   onNext,
+  onOpen,
 }: {
   id: string;
   onChanged: () => void;
   onClose: () => void;
   onNext?: () => void;
+  /** 다시 만든 초안을 편다. */
+  onOpen: (id: string) => void;
 }) {
   const edit = useServerDocument(id, { onChanged, onRemoved: onClose });
   const domains = useObservationDomains();
@@ -451,6 +455,21 @@ function JournalEditor({
       server={edit.server}
       domains={domains}
       onNext={onNext}
+      onRemake={async () => {
+        // 같은 아이 · 기간 · 근거로 「넣어서 다시」. 또 실패하면 서버가 옛 초안을 남기고 오류를 준다.
+        const d = edit.doc!;
+        const made = await createDocument({
+          kind: "observation",
+          classId: d.classId,
+          childId: d.childId,
+          start: d.start,
+          end: d.end,
+          sourceIds: d.sources.map((s) => s.id),
+          replaceDraft: true,
+        });
+        onOpen(made.id);
+        onChanged();
+      }}
     />
   );
 }

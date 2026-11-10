@@ -96,6 +96,13 @@ class Document(Base):
             "지원의 지문이고, 지금 글과 다르면 보이지 않는다 (ADR-083)"
         ),
     )
+    generation_fallback: Mapped[dict | None] = mapped_column(
+        JSONB,
+        comment=(
+            "초안을 못 만들어 사실만 채운 초안을 줬을 때 {reason, at} (ADR-093). "
+            "해석 · 지원은 빈 칸으로 저장했다. NULL 이면 정상 초안이거나 AI 초안이 아니다"
+        ),
+    )
     weather: Mapped[str | None] = mapped_column(
         String(10),
         comment=(

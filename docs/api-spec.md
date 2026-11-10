@@ -156,7 +156,7 @@ me       GET /api/auth/me                                               → 200 
 | `NO_ACTIVITIES` | 503 | 활동 풀이 비었음 (운영 오류). **재시도해도 같다** |
 | `LLM_BUDGET_EXCEEDED` | 503 | 예산 초과로 키가 삭제돼 호출이 실패. 운영 문의 ↓ |
 | `DEPENDENCY_UNAVAILABLE` | 503 | 서버가 쓰는 변환기·외부 도구를 쓸 수 없음. **재시도해도 같다** ↓ |
-| `GENERATION_FAILED` | 500 | 생성 실패. **부분 결과를 저장하지 않는다** |
+| `GENERATION_FAILED` | 500 | 생성 실패. **부분 결과를 저장하지 않는다**. 일지 초안(`POST /api/documents`)은 이 코드 대신 사실만 채운 초안을 201 로 준다(§11 「초안을 못 만들면」, ADR-093) |
 | `GENERATION_STOPPED` | 499 | 브라우저가 생성 요청을 끊었다(「생성 멈추기」). 놀이 중심형 연간 생성만 본다 · 저장하지 않는다 · 받는 쪽이 없는 기록용(§4) |
 | `INTERNAL_ERROR` | 500 | 예상하지 못한 서버 오류. 문구는 「일시적인 문제가 생겼습니다. 잠시 후 다시 시도해 주세요.」 고정이고 원인은 서버 기록에만 남긴다 (ADR-030 「후속 결정」, PM 2026-10-21 · 원 ID U-19) |
 | `TRENDS_DISABLED` | 403 | 그 원이 트렌드봇을 껐다 (§3-1 · FR-808) |
@@ -3763,7 +3763,8 @@ source_kind   값                받는 kind      근거
       "context": "바깥놀이", "text": "...", "class_id": 1, "child_id": 5 }
   ],
   "observation_axis": "NURI_5",
-  "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v6" },
+  "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v6",
+                  "fallback": null },
   "review_note": "", "class_note": "",
   "ai_review": { "state": "done", "issues": [], "message": "" },
   "created_at": "...", "updated_at": "..."
@@ -3936,8 +3937,30 @@ sections 에 빈 body 가 있다
 응답을 못 받은 교사가 다시 누르면 둘이 생긴다 — 연간계획안과 같은 모양으로 막는다.
 모델을 부르기 전에 보고, 저장 직전에 반을 잠그고 한 번 더 본다. 화면은 목록에서 그 일지를 열게 한다.
 
-**예산 초과는 `503 LLM_BUDGET_EXCEEDED` 다.** `GENERATION_FAILED` 500 으로 뭉치지 않는다 —
-키가 지워져서 다시 눌러도 안 된다. 화면은 「다시 시도」가 아니라 「담당자에게 알려주세요」를 띄운다.
+### 초안을 못 만들면 — 사실만 채운 초안 (fail-closed 폴백, ADR-093)
+
+**모델이 실패해도, 만든 글이 1·2단 검사에 걸려도 `201` 로 초안을 준다.** 교사는 빈손이 아니다.
+`사실` 은 평소처럼 근거 원문이고, `해석` · `지원` 은 **빈 칸**(`body: ""`)이다.
+**모델이 쓴 글은 하나도 저장하지 않는다** — 걸린 글을 「조금 고쳐서」 넣지도 않는다.
+
+```
+generation.fallback   null 이면 정상 초안.  있으면 { "reason": ..., "at": "2026-11-11T09:00:00Z" }
+
+reason
+  llm_unavailable     설정이 없어 부를 수 없다 (키 · 주소 없음)
+  llm_failed          불렀는데 실패했다 · 시간 초과 · 답이 약속한 형식이 아니다 · 호출 상한(ADR-081)
+  budget_exceeded     한도 · 키 삭제 (전에는 503 LLM_BUDGET_EXCEEDED)
+  gate_rejected       만든 글이 1·2단 검사(사실에 없는 숫자 · 20자 미만 등)에 걸렸다
+  name_mask_failed    아이 이름을 가명으로 못 바꿔 모델을 부르지 않았다
+```
+
+- 목록(`GET /api/documents`)과 단건 둘 다 같은 `generation` 을 준다.
+- 서버 로그에 `document_draft_fallback kind= document_id= reason=` 한 줄을 남긴다. 글은 찍지 않는다.
+- 붙여 두는 AI 검토(ADR-083)는 하지 않는다 — 볼 글이 없다.
+- **확정은 평소 규칙 그대로다.** 빈 `해석` · `지원` 은 확정 검사(20자 미만)에 걸린다. 교사가 쓰고 `PUT` 한 뒤 확정한다.
+- **교사가 고칠 입력 오류는 그대로 막는다** — 거절 규칙의 `VALIDATION_FAILED` 422, 부르는 이름이 필요할 때의 `VALUE_INVALID` 422, 권한 · 같은 날 일지 409 는 바뀌지 않는다.
+- **「넣어서 다시」(`replace_draft: true`)가 실패하면 폴백하지 않는다.** 옛 초안이 남아 있으니 빈 초안으로 덮지 않고
+  예전 오류(`GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503)를 그대로 낸다. 옛 초안은 남는다.
 
 ### `stale` — 원본이 바뀌었다는 표시
 
@@ -4274,7 +4297,8 @@ GET    /api/documents/export/bundle?ids=1&ids=2                  확정본 여�
 | loading | 생성 중 — 수 초 걸린다. 진행 표시 필수 |
 | empty | "아직 만든 문서가 없어요" |
 | success | 편집 화면으로 이동 |
-| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `ALREADY_EXISTS` 409 (같은 날 일일 보육일지) · `STALE_WRITE` 409 (생성 중 근거가 바뀌어 최신 기록으로 한 번 더 만들었는데 또 바뀜 — 잠시 뒤 다시 만들기) · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 |
+| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `ALREADY_EXISTS` 409 (같은 날 일일 보육일지) · `STALE_WRITE` 409 (생성 중 근거가 바뀌어 최신 기록으로 한 번 더 만들었는데 또 바뀜 — 잠시 뒤 다시 만들기) · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 (만들기에서는 「넣어서 다시」가 실패했을 때만 — 나머지는 사실만 채운 초안 201, 위 「초안을 못 만들면」) |
+| fallback | `generation.fallback` 이 있으면 편집 화면 위에 「AI 가 이번에는 초안을 쓰지 못했어요. 사실은 그대로 담았으니 해석 · 지원을 직접 써 주세요.」. 관찰일지는 「다시 만들어 보기」(`replace_draft: true`) |
 
 ### 겹치는 문서를 찾아준다 — `/compare` 화면
 

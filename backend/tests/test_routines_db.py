@@ -804,7 +804,7 @@ def test_다른_날이나_다른_반이면_만들_수_있다(mine):
     assert _daily(mine["moon"], [moon]).status_code == 201
 
 
-def test_예산_초과는_다시_시도가_아니라_503_LLM_BUDGET_EXCEEDED(db_session, mine, monkeypatch):
+def test_예산을_넘겨도_사실만_채운_일일_보육일지를_준다(db_session, mine, monkeypatch):
     from app.shared.llm import LlmBudgetExceeded
 
     def over_budget(*args, **kwargs):
@@ -816,6 +816,8 @@ def test_예산_초과는_다시_시도가_아니라_503_LLM_BUDGET_EXCEEDED(db_
 
     response = _daily(mine["sun"], [record])
 
-    assert response.status_code == 503
-    assert response.json()["error"]["code"] == "LLM_BUDGET_EXCEEDED"
-    assert db_session.scalars(select(Document)).all() == []
+    # 503 으로 빈손이 아니다 — 사실만 채운 초안이다 (ADR-093).
+    assert response.status_code == 201, response.text
+    assert response.json()["generation"]["fallback"]["reason"] == "budget_exceeded"
+    bodies = {s["heading"]: s["body"] for s in response.json()["sections"]}
+    assert bodies["사실"] and bodies["해석"] == bodies["지원"] == ""

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { SavedDocument } from "@/lib/workspace/model";
 import {
+  FALLBACK_DRAFT,
   downloadDocumentHwpx,
   isStaleWrite,
   rewriteSentence,
@@ -74,12 +75,15 @@ export default function ObservationJournalEditor({
   server,
   domains,
   onNext,
+  onRemake,
 }: {
   initial: SavedDocument & { aiReview?: AiReview | null };
   server: ServerDocumentActions;
   domains: readonly string[];
   /** 반 전체 초안의 다음 아이 초안을 연다. 없으면 「확정하고 다음 아이」를 두지 않는다. */
   onNext?: () => void;
+  /** 사실만 채운 초안을 같은 근거로 다시 만든다(「넣어서 다시」). 없으면 단추를 두지 않는다. */
+  onRemake?: () => Promise<void>;
 }) {
   const [baseline, setBaseline] = useState(initial);
   const [doc, setDoc] = useState(initial);
@@ -97,6 +101,8 @@ export default function ObservationJournalEditor({
   const working = busy || hwpx.exporting || server.pending;
 
   const body = (heading: string) => doc.sections.find((s) => s.heading === heading)?.body ?? "";
+  const savedBody = (heading: string) =>
+    baseline.sections.find((s) => s.heading === heading)?.body.trim() ?? "";
   const dirty =
     doc.status !== "confirmed" &&
     JSON.stringify(doc.sections) !== JSON.stringify(baseline.sections);
@@ -306,6 +312,28 @@ export default function ObservationJournalEditor({
             {doc.origin === "ai" && <em>AI 초안</em>}
             {server.stale && <em data-alert>근거가 바뀜</em>}
           </header>
+          {/* 초안 칠판에만 뜬다. 교사가 해석 · 지원을 써서 저장하면 내린다. 「다시 만들어 보기」는 쓴 글이 없을 때만 —
+              「넣어서 다시」는 이 초안을 지운다. */}
+          {doc.fallbackDraft && !savedBody("해석") && !savedBody("지원") && (
+            <Message>
+              {FALLBACK_DRAFT}{" "}
+              {onRemake && (
+                <button
+                  type="button"
+                  className={ws.secondary}
+                  disabled={working || dirty}
+                  onClick={() =>
+                    run(async () => {
+                      await onRemake();
+                      return null;
+                    }, "")
+                  }
+                >
+                  다시 만들어 보기
+                </button>
+              )}
+            </Message>
+          )}
           {doc.mockDraft && (
             <p className={ws.ojChalk}>
               테스트 모드(mock)로 만든 초안이에요. 실제 AI 결과가 아니니 다시 써 주세요.

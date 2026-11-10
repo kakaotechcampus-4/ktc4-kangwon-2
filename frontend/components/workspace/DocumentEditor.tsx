@@ -14,6 +14,7 @@ import { serverIssues } from "./document-selection";
 import { Icon } from "@/components/app/icons";
 import { invalidFields } from "@/lib/api/client";
 import {
+  FALLBACK_DRAFT,
   downloadDocumentHwpx,
   isStaleWrite,
   verifyLines,
@@ -538,6 +539,7 @@ export default function DocumentEditor({
         )}
         {/* mock LLM 초안이다. **본문에 섞지 않고** 여기서만 알린다 — 제출 문서는 깨끗하게
             두면서도 테스트 초안을 실제 AI 결과로 보이게 하지 않는다. */}
+        {doc.fallbackDraft && editable && <Message>{FALLBACK_DRAFT}</Message>}
         {doc.mockDraft && (
           <p className={ws.muted}>
             테스트 모드(mock)로 만든 초안이에요. 실제 AI 생성 결과가 아니니 내용을 그대로 쓰지 말고

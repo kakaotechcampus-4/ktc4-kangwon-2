@@ -74,7 +74,13 @@ export interface ApiDocumentGeneration {
   method: string | null;
   rule_id: string | null;
   rule_version: string | null;
+  /** 초안을 못 만들어 사실만 채운 초안이다 (ADR-093). 해석 · 지원은 빈 칸으로 왔다. */
+  fallback?: { reason: string; at: string } | null;
 }
+
+/** 사실만 채운 초안(ADR-093) 위에 띄우는 말. 일지 편집기 둘이 같이 쓴다. */
+export const FALLBACK_DRAFT =
+  "AI 가 이번에는 초안을 쓰지 못했어요. 사실은 그대로 담았으니 해석 · 지원을 직접 써 주세요.";
 export interface ApiDocumentListItem {
   id: number;
   kind: string;
@@ -235,6 +241,7 @@ export function toDocument(dto: ApiDocumentDetail): ServerDocument {
     classNote: dto.class_note ?? "",
     // 새 문서는 서버가 `<규칙버전>-mock` 으로 알리고, 예전 문서는 떼어낸 접두어로 안다.
     mockDraft: legacyMock || /-mock$/.test(dto.generation.rule_version ?? ""),
+    fallbackDraft: !!dto.generation.fallback,
     ...(dto.observation_axis ? { observationAxis: dto.observation_axis } : {}),
     aiReview: dto.ai_review
       ? {

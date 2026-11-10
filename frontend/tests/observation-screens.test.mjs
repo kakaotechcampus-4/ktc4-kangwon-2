@@ -836,7 +836,7 @@ const DOC = {
   ],
 };
 
-function editor(t, { initial = DOC, save, refresh, api = {}, onNext, extra = {} } = {}) {
+function editor(t, { initial = DOC, save, refresh, api = {}, onNext, onRemake, extra = {} } = {}) {
   browser(t);
   const app = host();
   const calls = [];
@@ -871,10 +871,31 @@ function editor(t, { initial = DOC, save, refresh, api = {}, onNext, extra = {} 
     },
     ...extra,
   };
-  const view = app.mount(Editor, { initial, server, domains: DOMAINS, onNext });
+  const view = app.mount(Editor, { initial, server, domains: DOMAINS, onNext, onRemake });
   const pad = (heading) => view.nodes().find((n) => n.props["aria-label"] === `${heading} 내용`);
   return { ...view, calls, pad };
 }
+
+test("ADR-093 사실만 채운 초안이면 알림과 「다시 만들어 보기」를 띄우고, 누르면 같은 근거로 다시 만든다", async (t) => {
+  const empty = {
+    ...DOC,
+    fallbackDraft: true,
+    sections: DOC.sections.map((s) => (s.heading === "사실" ? s : { ...s, body: "" })),
+  };
+  let remade = 0;
+  const view = editor(t, { initial: empty, onRemake: async () => void remade++ });
+  assert.ok(view.text().includes(documents.FALLBACK_DRAFT));
+  await view.press("다시 만들어 보기");
+  assert.equal(remade, 1);
+
+  // 적던 글이 있으면 다시 만들기를 막는다 — 「넣어서 다시」는 이 초안을 지운다.
+  view.type(view.pad("해석"), "고치던 해석");
+  assert.equal(view.button("다시 만들어 보기").props.disabled, true);
+
+  // 보통 초안 · 다시 만들 길이 없는 화면에서는 단추가 없다.
+  assert.ok(!editor(t).text().includes(documents.FALLBACK_DRAFT));
+  assert.equal(editor(t, { initial: empty }).button("다시 만들어 보기"), undefined);
+});
 
 test("F9 저장 안 한 해석이 있으면 반영 전에 묻는다 — 저장하고 반영", async (t) => {
   const view = editor(t);

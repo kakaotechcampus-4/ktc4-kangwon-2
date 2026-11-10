@@ -9,12 +9,22 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 MAX_SOURCES = 60
 
 
+class DocumentGenerationFallback(BaseModel):
+    """초안을 못 만들어 사실만 채운 초안이다 (ADR-093). 해석 · 지원은 빈 칸으로 왔다."""
+
+    reason: Literal[
+        "llm_unavailable", "llm_failed", "budget_exceeded", "gate_rejected", "name_mask_failed"
+    ]
+    at: datetime
+
+
 class DocumentGeneration(BaseModel):
     """`RULE_LLM` 처럼 어떻게 만들어졌나. origin 이 AI 가 아니면 셋 다 `None` 이다."""
 
     method: str | None
     rule_id: str | None
     rule_version: str | None
+    fallback: DocumentGenerationFallback | None = None
 
 
 class DocumentListItem(BaseModel):

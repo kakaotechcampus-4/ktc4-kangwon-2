@@ -799,9 +799,9 @@ def test_create_document_name_mask_failure_never_calls_llm(db_session, monkeypat
     )
     response = client.post("/api/documents", json=_create_body(klass, child, [record]))
 
-    assert response.status_code == 500
-    assert response.json()["error"]["code"] == "GENERATION_FAILED"
-    assert "가명으로 바꾸지 못해" in response.json()["error"]["message"]
+    # 모델을 부르지 않고 사실만 채운 초안을 준다 (ADR-093).
+    assert response.status_code == 201
+    assert response.json()["generation"]["fallback"]["reason"] == "name_mask_failed"
     assert called == []
 
 
@@ -1008,8 +1008,8 @@ def test_create_weekly_log_requires_confirmed_daily_logs(db_session):
     assert source_row.source_status == "CONFIRMED"
 
 
-def test_create_document_saves_nothing_when_generation_fails(db_session, monkeypatch):
-    """AI 를 못 부르면 **부분 결과를 남기지 않는다.**
+def test_create_document_gives_facts_only_draft_when_llm_is_not_set(db_session, monkeypatch):
+    """AI 를 못 부르면 **모델 글 없이** 사실만 채운 초안을 준다 (ADR-093).
 
     `real` 인데 엘리스 설정이 없는 상태를 만든다 — 운영에서 키를 안 넣고 배포한 경우다.
     """
@@ -1023,9 +1023,10 @@ def test_create_document_saves_nothing_when_generation_fails(db_session, monkeyp
 
     response = client.post("/api/documents", json=_create_body(klass, child, [record]))
 
-    assert response.status_code == 500
-    assert response.json()["error"]["code"] == "GENERATION_FAILED"
-    assert db_session.query(Document).count() == 0
+    assert response.status_code == 201
+    assert response.json()["generation"]["fallback"]["reason"] == "llm_unavailable"
+    bodies = {s["heading"]: s["body"] for s in response.json()["sections"]}
+    assert bodies == {"사실": "개미를 바라보았다.", "해석": "", "지원": ""}
 
 
 def test_create_document_refuses_assessment_without_calling_llm(db_session, monkeypatch):
