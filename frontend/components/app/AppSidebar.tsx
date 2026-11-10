@@ -415,9 +415,11 @@ function switchClass(classId: string) {
   if (!saveClassSettings({ ...settings, primaryClassId: classId })) return;
   // 화면들은 주소에 적힌 반을 주 반보다 먼저 본다 (깊은 링크로 들어온 길이니까).
   // 그대로 다시 읽으면 옛 반이 이겨서 바꾼 것이 먹히지 않는다. 반만 떼고 날짜는 둔다.
+  // 보관함의 `foreign`(알림이 연 남의 반 · 받은 요청 칸)도 뗀다 — 남겨 두면 반을 바꿔도 그 칸이 다시 열린다.
   const params = new URLSearchParams(window.location.search);
   params.delete("class_id");
   params.delete("class");
+  params.delete("foreign");
   const query = params.toString();
   window.location.href = window.location.pathname + (query ? `?${query}` : "");
 }
