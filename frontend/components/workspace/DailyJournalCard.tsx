@@ -8,6 +8,7 @@ import { Posty } from "@/components/app/Posty";
 import { Message, ws } from "./WorkspaceUI";
 import DocumentEditor from "./DocumentEditor";
 import { useServerDocument } from "./use-server-document";
+import { useJournalEditor } from "./use-journal-editor";
 
 const NO_CLASS = "반을 서버에서 찾지 못했어요. 페이지를 새로고침해주세요.";
 
@@ -21,12 +22,14 @@ const NO_CLASS = "반을 서버에서 찾지 못했어요. 페이지를 새로�
  * 근거는 그날 일과 기록이다 (api-spec §11) — 관찰 기록이 아니다.
  */
 export function useDailyJournal({ classId, date }: { classId: number | null; date: string }) {
-  const [journal, setJournal] = useState<DocumentSummary | null | undefined>(undefined);
+  const scope = `${classId}|${date}`;
+  const [loaded, setLoaded] = useState<{ scope: string; doc: DocumentSummary | null }>();
+  const journal = loaded?.scope === scope ? loaded.doc : undefined;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
   // 펴 놓은 일지. 만들면 바로 펴고, 교사가 접으면 칠판만 남는다.
-  const [openId, setOpenId] = useState("");
+  const editor = useJournalEditor(scope, busy);
 
   useEffect(() => {
     if (classId === null || !date) return;
@@ -34,18 +37,18 @@ export function useDailyJournal({ classId, date }: { classId: number | null; dat
     listDocuments({ kind: "dailyLog", class_id: classId })
       .then((items) => {
         if (!live) return;
-        setJournal(items.find((doc) => doc.start === date) ?? null);
+        setLoaded({ scope, doc: items.find((doc) => doc.start === date) ?? null });
         setError("");
       })
       .catch((e) => {
         if (!live) return;
-        setJournal(null);
+        setLoaded({ scope, doc: null });
         setError(e instanceof Error ? e.message : "오늘 일지를 불러오지 못했습니다.");
       });
     return () => {
       live = false;
     };
-  }, [classId, date, reload]);
+  }, [classId, date, scope, reload]);
 
   /** 방금 저장한 일과를 근거로 초안을 만든다. `sourceIds` 는 `routine:31` 모양이다. */
   async function make(sourceIds: string[]) {
@@ -67,7 +70,7 @@ export function useDailyJournal({ classId, date }: { classId: number | null; dat
         end: date,
         sourceIds,
       });
-      setOpenId(made.id);
+      editor.open(made.id);
       setReload((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "초안을 만들지 못했습니다.");
@@ -82,9 +85,7 @@ export function useDailyJournal({ classId, date }: { classId: number | null; dat
     busy,
     error,
     make,
-    openId,
-    open: (id: string) => setOpenId(id),
-    close: () => setOpenId(""),
+    ...editor,
     retry: () => setReload((n) => n + 1),
     off: classId === null || !date,
   };
@@ -173,7 +174,7 @@ export function DailyJournalEditor({ state, day }: { state: DailyJournal; day: s
   const edit = useServerDocument(state.openId, {
     onChanged: state.retry,
     // 지운 문서를 편집기에 남겨 두면 저장할 수 없는 칸만 보인다.
-    onRemoved: state.close,
+    onRemoved: state.dismiss,
   });
   if (state.off || !state.openId) return null;
 
@@ -186,6 +187,7 @@ export function DailyJournalEditor({ state, day }: { state: DailyJournal; day: s
           key={edit.doc.id}
           initial={edit.doc}
           server={edit.server}
+          onEditStateChange={state.onEditStateChange}
           /* 서버 문서는 편집기가 서버에 바로 쓴다. 브라우저 저장소로 가는 길은 쓰지 않는다. */
           onSave={() => true}
         />

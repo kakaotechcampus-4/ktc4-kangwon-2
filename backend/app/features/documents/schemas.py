@@ -3,7 +3,10 @@
 from datetime import date, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+# 문서 하나의 근거 상한(입력 상한). 화면이 같은 선을 지키지만 서버가 다시 본다.
+MAX_SOURCES = 60
 
 
 class DocumentGeneration(BaseModel):
@@ -75,9 +78,15 @@ class DocumentSourceItem(BaseModel):
     """
 
     id: int
+    # `id` 가 가리키는 곳. 주간은 일일 문서(document)도 일과 기록(routine)도 근거로 쓴다 —
+    # 번호만으로는 화면이 「원본 보기」를 어디로 열지 모른다.
+    source_kind: Literal["observation", "document", "routine"]
     date: date | None
     # 관찰 기록 근거일 때만 있다. 관찰일지 종이의 영역 행을 가른다 (§11 「종이 한 장」).
+    # 만들 때 찍은 사본이다. 사본이 없는 옛 문서만 지금 원본 영역을 준다 (ADR-088).
     domain: str | None = None
+    # 관찰 기록 근거의 상황 사본. 빈 글은 「상황 없음」, null 은 그 밖의 근거와 옛 사본이다.
+    context: str | None = None
     text: str
     class_id: int
     child_id: int | None
@@ -100,6 +109,8 @@ class DocumentDetailResponse(BaseModel):
     status: str
     origin: str
     stale: bool
+    # 관찰 기록 근거 문서를 만들 때 찍은 영역 축. null 이면 그 밖의 문서이거나 옛 문서다 (ADR-088).
+    observation_axis: str | None = None
     sections: list[DocumentSectionItem]
     sources: list[DocumentSourceItem]
     generation: DocumentGeneration
@@ -215,7 +226,8 @@ class DocumentCreateRequest(BaseModel):
     child_id: int | None = None
     start: date
     end: date
-    source_ids: list[int]
+    # 넘으면 422 `source_ids`. 모델을 부르기 전에 막는다.
+    source_ids: list[int] = Field(max_length=MAX_SOURCES)
     # `weeklyLog` 에서만 쓴다. 안 보내면 예전처럼 확정된 일일 보육일지를 근거로 본다.
     source_kind: Literal["dailyLog", "routine"] = "dailyLog"
 

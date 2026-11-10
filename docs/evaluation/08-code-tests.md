@@ -125,6 +125,8 @@ e2e (playwright)               실제 DB 로
 | 평가 점검 | 서버의 9개 지표 · 19개 요소 · 체크 보존 | `mentor-pilot.spec.ts:423` |
 | 설정 · 반 수정 | 설정 · 기관 양식 · 트렌드봇 진입, 등록한 반 고치기 · 동의 잠금 | `mentor-pilot.spec.ts:456` · `:483` · `:497` |
 
+- 타반 놀이 월간 누락·관찰일지 생성 중 선택 경합·검색 실패와 빈 결과 혼동·기간 이동 뒤 옛 일지 유지에 회귀 검사를 두고, 미저장·저장 실패·이동 취소도 확인한다 — `frontend/tests/cross-review-regressions.test.mjs` · `frontend/tests/routines-server.test.mjs` · `frontend/tests/documents-server.test.mjs`
+
 ## 규칙
 
 - 구현이 하나뿐인 인터페이스는 안 만든다 — [CLAUDE.md](../../CLAUDE.md) §일하는 방식 ②
