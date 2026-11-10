@@ -931,7 +931,7 @@ export default function RoutinesPage() {
   const doneCount = rows.filter((row) => row.execution.trim()).length;
   /** 날짜를 옮긴다. 이 하루는 떠나면서 올라간다 — 일과는 묻지 않고, 펴 놓은 일지에 저장 안 한 글만 묻는다. */
   const moveTo = (next: string, month: string | null) => {
-    if (!journal.leave()) return;
+    if (next !== date && !journal.leave()) return;
     setPickedDate(next);
     setPickedMonth(month);
     revisit();
@@ -1009,7 +1009,7 @@ export default function RoutinesPage() {
                 month={month}
                 today={todayDate}
                 marked={marked}
-                disabled={!!busy}
+                disabled={!!busy || journal.pending}
                 onMonth={setPickedMonth}
                 onPick={(next) => moveTo(next, null)}
               />
@@ -1020,7 +1020,7 @@ export default function RoutinesPage() {
                   name="date"
                   type="date"
                   value={date}
-                  disabled={!!busy}
+                  disabled={!!busy || journal.pending}
                   onChange={(e) => moveTo(e.target.value, null)}
                 />
               </label>

@@ -76,6 +76,22 @@ def load() -> ApprovedSources:
     return parse(yaml.safe_load(APPROVED_PATH.read_text(encoding="utf-8")) or {})
 
 
+def is_approved(source: str, origin: str) -> bool:
+    """ADR-016 4단: 지금 승인 목록에 있는 곳에서 왔는가.
+
+    목록에서 뺀 출처의 지난 주 자료를 걸러낸다.
+
+    유튜브는 채널 이름, 기사는 언론사 도메인이 `RawItem.origin` 이다(sources.py).
+    모르는 소스는 아니다.
+    """
+    sources = load()
+    if source == "youtube":
+        return any(c.name == origin for c in sources.channels)
+    if source == "naver_news":
+        return any(o.domain == origin for o in sources.outlets)
+    return False
+
+
 def _required(row: dict, key: str) -> str:
     value = str(row.get(key, "")).strip()
     if not value:

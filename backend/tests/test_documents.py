@@ -1029,6 +1029,23 @@ def test_create_document_gives_facts_only_draft_when_llm_is_not_set(db_session, 
     assert bodies == {"사실": "개미를 바라보았다.", "해석": "", "지원": ""}
 
 
+def test_create_document_refuses_assessment_without_calling_llm(db_session, monkeypatch):
+    """영유아 평가는 만들지 않는다 (ADR-091). 원에서 쓴 평가는 증빙 등록으로 올린다."""
+    _, klass, child = _make_center_class_child(db_session)
+    record = _observation(db_session, klass, child, 5, "개미를 바라보았다.")
+    called = []
+    monkeypatch.setattr("app.features.documents.draft._generate", lambda *a, **k: called.append(a))
+
+    response = client.post(
+        "/api/documents", json=_create_body(klass, child, [record], kind="assessment")
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == ["kind"]
+    assert called == []
+    assert db_session.query(Document).count() == 0
+
+
 # ── POST /api/documents/{id}/confirm ────────────────────────────────────────
 _ALL_CHECKED = {"fact": True, "interpretation": True, "support": True}
 
