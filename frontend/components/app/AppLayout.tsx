@@ -9,7 +9,7 @@ import Tour from "./Tour";
  *   AppLayout
  *   ├ AppSidebar      (데스크톱: 좌측 고정 / 모바일: 하단 네비)
  *   ├ WorkspaceTopBar (얇은 상단 띠 — 지금 어디인지와 오늘 날짜)
- *   ├ Content         (각 페이지가 AppHeader + PageContainer 로 구성)
+ *   ├ Content         (각 페이지가 PageContainer 로 구성)
  *   └ Tour            (처음 온 선생님 안내 — 홈 · 관찰 · 일과 · 주간 기록)
  *
  * 사이드바가 lg 에서 fixed 라서 본문에 같은 폭만큼 왼쪽 여백을 준다.

@@ -11,6 +11,7 @@ import {
 import { classServerId } from "@/lib/api/onboarding";
 import { routinesScope } from "@/lib/workspace/routines-route";
 import { Wordmark } from "./Wordmark";
+import NotificationBell from "./NotificationBell";
 
 /** 사이드바 메뉴 이름과 같아야 한다 — 다르면 어디 있는지 되묻게 된다. */
 const PAGE_NAMES: [prefix: string, name: string][] = [
@@ -64,7 +65,7 @@ export default function WorkspaceTopBar() {
         <span className="font-medium text-ink">{page}</span>
       </div>
 
-      <div className="flex items-center gap-3 text-[13px] text-ink-soft">
+      <div className="flex min-w-0 items-center gap-3 text-[13px] text-ink-soft">
         {/* 날짜는 바로 아래 손글씨 머리글에 크게 있다. 같은 날짜를 두 번 쓰는 대신
             쌤플 표시를 작게 둔다 — 화면을 캡처해 나눌 때 어느 서비스인지 남는다 (PM 선택). */}
         <Wordmark size="xs" label="쌤플 홈으로" className="hidden lg:inline-flex" />
@@ -73,6 +74,8 @@ export default function WorkspaceTopBar() {
         <span aria-label="상단 현재 반" className="max-w-[calc(40*var(--app-vw))] truncate">
           {className}
         </span>
+        {/* 같은 원 열람 요청이 오가면 여기 쌓인다. 화면을 옮겨도 이 띠는 그대로라 알림도 여기서 다시 받는다. */}
+        <NotificationBell />
       </div>
     </header>
   );

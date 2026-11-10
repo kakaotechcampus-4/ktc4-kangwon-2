@@ -284,8 +284,8 @@ export const handlers = [
   http.get("*/api/__msw_health", () => HttpResponse.json({ msw: true })),
   // 보육일지 하루 화면 — 일과 기록 · 날씨 · 임시본 · 반 기본 일과표 (msw/journal.ts).
   ...journalHandlers,
-  // 계획안 밖 화면(관찰 · 일지 · 반 공유 요청)은 목업 데이터가 없다 — 빈 목록으로 답해 404 이슈만 막는다.
-  ...["observations", "documents", "access-requests/received"].map((path) =>
+  // 계획안 밖 화면(관찰 · 일지 · 반 공유 요청 · 상단바 알림)은 목업 데이터가 없다 — 빈 목록으로 답해 404 이슈만 막는다.
+  ...["observations", "documents", "access-requests/received", "me/notifications"].map((path) =>
     http.get(`*/api/${path}`, () => HttpResponse.json({ items: [] })),
   ),
   // 인증 (docs/api-spec.md §0). **목업은 토큰을 검증하지 않는다** —
