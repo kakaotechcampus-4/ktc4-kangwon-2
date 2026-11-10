@@ -266,7 +266,10 @@ for (const viewport of viewports) {
     await api(page, `/api/classes/${other.id}/children`, "POST", { name: "마바사" });
     await openCare(page);
     await expect(docButton(page, draft.doc.title)).toContainText("검토 중");
-    await expect(page.getByText("확정", { exact: true }).first()).toBeVisible();
+    // 거르개의 숨은 <option>확정</option> 이 아니라 목록에 보이는 상태 글자를 본다.
+    await expect(
+      page.getByText("확정", { exact: true }).filter({ visible: true }).first(),
+    ).toBeVisible();
     await expect(page.getByText("미작성", { exact: true }).first()).toBeVisible();
     await captureLayout(page, info, "care");
     // 반별 보육일지는 아동 선택 없이 탐색한다.

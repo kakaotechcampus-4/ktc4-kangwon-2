@@ -21,7 +21,7 @@ import ChildPicker from "@/components/app/ChildPicker";
 import { SsampleNote } from "@/components/app/SsampleNote";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { DOMAIN_LOOK } from "@/lib/workspace/domain-look";
-import { listRecords, addRecord } from "@/lib/api/records";
+import { listRecords, addRecord, suggestRecordDomain } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import { listRoutines, routineTime, type Routine } from "@/lib/api/routines";
 import { today } from "@/lib/workspace/model";
@@ -58,6 +58,9 @@ const DASH = "border-0 border-t border-dashed border-line";
 const LABEL = "text-[13px] font-medium tracking-[0.12em]";
 /** 일과를 얼마나 거슬러 보나. 두 주면 「비어 있는 날」이 들어온다. */
 const LOOK_BACK = 14;
+// 크롬 · 엣지의 받아쓰기는 소리를 브라우저 회사 서버로 보낸다(app/privacy 2번, #114).
+const DICTATION_NOTICE =
+  "말소리는 브라우저 회사(구글 등) 서버를 거쳐 글자로 바뀌어요. 아이 이름은 직접 적어 주세요.";
 /** 칠판에 붙이는 아이 쪽지. 색과 기울기를 번갈아 쓴다 — 같은 모양이 줄줄이 붙으면 한 장으로 보인다. */
 const KID_NOTE = [
   "border-note-soft-line bg-note-soft -rotate-2",
@@ -332,11 +335,12 @@ function Compose({
   const [many, setMany] = useState(false);
   // 원마다 축이 다르다 (observation-axis.ts). 5영역 원이면 다섯, 2축 원이면 둘이다.
   //
-  // **고른 영역 하나만 둔다.** 칸에는 첫 영역을 띄우고 상태는 빈 채로 두면, 교사가 고르지
-  // 않고 저장했을 때 화면이 보여준 것과 다른 값(빈 값)이 서버로 간다 — 422 다.
+  // **기본값이 없다.** 첫 영역이 눌린 채 저장돼 블록 놀이가 종이의 신체 줄에 들어갔다.
+  // 교사가 고르기 전에는 남기기가 막힌다 — 관찰 기록 화면과 같다(ADR-082).
   const domains = useObservationDomains();
-  const [picked, setDomain] = useState("");
-  const domain = picked || domains[0];
+  const [domain, setDomain] = useState("");
+  /** AI 가 제안한 영역과 그때 적혀 있던 글. 글이 바뀌면 그 제안은 안 띄운다. */
+  const [suggested, setSuggested] = useState<{ fact: string; domain: string | null } | null>(null);
   const [fact, setFact] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -358,9 +362,22 @@ function Compose({
         ? `${chosen.length}명으로 남기기`
         : "이대로 남기기";
 
+  const suggestion =
+    !domain && suggested?.fact === fact.trim() ? (suggested?.domain ?? null) : null;
+
+  /** 「누구 기록인지 고르기」 — 다 쓴 글로 AI 에게 영역을 한 번 묻는다. 제안일 뿐이다. */
+  function startConfirm() {
+    setConfirming(true);
+    const written = fact.trim();
+    if (domain || !activeClassId || suggested?.fact === written) return;
+    void suggestRecordDomain(activeClassId, written, "").then((found) =>
+      setSuggested({ fact: written, domain: found }),
+    );
+  }
+
   async function save() {
     const written = fact.trim();
-    if (!written || !activeClassId || !chosen.length || busy) return;
+    if (!written || !activeClassId || !chosen.length || !domain || busy) return;
     setBusy(true);
     try {
       /*
@@ -400,6 +417,8 @@ function Compose({
       }
       setFact("");
       setChildIds([]);
+      setDomain("");
+      setSuggested(null);
       setConfirming(false);
       onSaved();
     } catch (e) {
@@ -452,6 +471,9 @@ function Compose({
                 {dictation.error}
               </p>
             )}
+            {dictation.listening && (
+              <p className="mt-2 text-[13px] text-ink-soft">{DICTATION_NOTICE}</p>
+            )}
             <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3">
               {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
                   그 둘이 없으면 AI 가 해석과 지원을 쓸 근거가 없다. 안내일 뿐 막지는 않는다.
@@ -465,6 +487,7 @@ function Compose({
                     type="button"
                     aria-label={dictation.listening ? "받아쓰기 중지" : "음성 받아쓰기"}
                     aria-pressed={dictation.listening}
+                    title={DICTATION_NOTICE}
                     disabled={confirming}
                     onClick={dictation.toggle}
                     className={`flex h-10 w-10 items-center justify-center rounded-full border transition-colors ${
@@ -480,7 +503,7 @@ function Compose({
                   <button
                     type="button"
                     disabled={!fact.trim() || dictation.listening}
-                    onClick={() => setConfirming(true)}
+                    onClick={startConfirm}
                     className={PRIMARY}
                   >
                     <Icon name="check" className="h-4 w-4" />
@@ -516,20 +539,43 @@ function Compose({
               }}
             />
           </div>
-          <label className="mt-3 block max-w-[260px] text-[13px] text-primary-ink">
+          {/* 영역은 하나만 고른다. AI 제안은 보라 점선 — 「이 활동 했어요」와 같은 뜻이다. */}
+          <p id="home-domain-label" className="mt-3 text-[13px] text-primary-ink">
             영역
-            <select
-              value={domain}
-              onChange={(e) => setDomain(e.target.value)}
-              className="selectField mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
-            >
-              {domains.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </label>
+          </p>
+          <div
+            role="radiogroup"
+            aria-labelledby="home-domain-label"
+            className="mt-1 flex flex-wrap gap-1.5"
+          >
+            {domains.map((d) => (
+              <button
+                key={d}
+                type="button"
+                role="radio"
+                aria-checked={d === domain}
+                data-suggested={d === suggestion || undefined}
+                onClick={() => setDomain(d)}
+                className={`min-h-11 rounded-md border px-3 text-xs font-semibold transition-colors ${
+                  d === domain
+                    ? "border-ink bg-ink text-paper"
+                    : d === suggestion
+                      ? "border-[1.5px] border-dashed border-primary bg-paper text-primary-ink"
+                      : "border-line bg-paper text-ink"
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+          {suggestion && (
+            <p className="mt-1.5 text-xs text-primary-ink">
+              점선은 AI 제안이에요. 맞으면 눌러 주세요.
+            </p>
+          )}
+          {!domain && chosen.length > 0 && (
+            <p className="mt-1.5 text-xs text-primary-ink">영역을 골라야 남길 수 있어요.</p>
+          )}
           <div className="mt-4 flex items-center justify-end gap-2">
             <button
               type="button"
@@ -540,7 +586,7 @@ function Compose({
             </button>
             <button
               type="button"
-              disabled={busy || !chosen.length}
+              disabled={busy || !chosen.length || !domain}
               onClick={save}
               className={PRIMARY}
             >

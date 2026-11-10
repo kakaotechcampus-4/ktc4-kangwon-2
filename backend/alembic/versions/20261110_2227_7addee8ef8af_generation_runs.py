@@ -4,7 +4,7 @@
 직전 코드가 표를 모른 채 그대로 돈다(ADR-073 롤백 한 칸).
 
 Revision ID: 7addee8ef8af
-Revises: 463ecc68c630
+Revises: a93f0e1d7c52
 Create Date: 2026-11-10 22:27:31.214897
 
 """
@@ -17,7 +17,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "7addee8ef8af"
-down_revision: str | None = "463ecc68c630"
+down_revision: str | None = "a93f0e1d7c52"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

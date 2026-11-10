@@ -838,6 +838,8 @@ export interface ApiForm {
   /** 라벨 → 표준 키(ADR-009). 데이터 값이거나 매핑표에 없는 표현이면 `null`. */
   label_map: Record<string, string | null>;
   created_at: string;
+  /** 이 계정이 지울 수 있는지 — 올린 교사 · 원을 처음 등록한 교사만 참이다 (ADR-087). */
+  can_delete?: boolean;
 }
 
 /**

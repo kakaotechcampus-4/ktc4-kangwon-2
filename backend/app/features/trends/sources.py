@@ -21,6 +21,8 @@ from app.features.trends.item import RawItem
 
 # (url, params, headers) -> 파싱된 JSON
 Fetch = Callable[[str, Mapping[str, str], Mapping[str, str]], Any]
+# (실패한 채널 · 검색어 이름, 예외). 주면 그것만 건너뛰고 나머지를 모은다. 안 주면 그대로 터진다.
+OnError = Callable[[str, Exception], None]
 
 YOUTUBE = "https://www.googleapis.com/youtube/v3"
 # 네이버가 2026 에 검색 API 를 개발자센터에서 네이버 클라우드 플랫폼(API HUB)으로
@@ -39,25 +41,35 @@ def youtube_uploads(
     api_key: str,
     channels: Sequence[ApprovedChannel],
     per_channel: int = 20,
+    on_error: OnError | None = None,
 ) -> list[RawItem]:
     """승인 채널의 최근 업로드를 긁는다.
 
     검색(search.list)을 쓰지 않는다. 호출당 100 units 라 하루 100회면 끝나는데,
     어차피 승인 채널 것만 쓰므로 검색해서 긁어와도 전부 걸러진다.
     playlistItems.list 는 1 unit 이다 (ADR-016 근거).
+
+    **채널 하나가 죽어도(삭제 · 비공개) 나머지 채널은 모은다** — `on_error` 를 주면 그 채널만
+    알리고 넘어간다. 아동용 표시(videos.list)를 못 받으면 1단 검열 근거가 없어 통째로 터진다.
     """
     collected: list[RawItem] = []
     for channel in channels:
-        page = fetch(
-            f"{YOUTUBE}/playlistItems",
-            {
-                "part": "snippet,contentDetails",
-                "playlistId": channel.uploads_playlist_id,
-                "maxResults": str(per_channel),
-                "key": api_key,
-            },
-            {},
-        )
+        try:
+            page = fetch(
+                f"{YOUTUBE}/playlistItems",
+                {
+                    "part": "snippet,contentDetails",
+                    "playlistId": channel.uploads_playlist_id,
+                    "maxResults": str(per_channel),
+                    "key": api_key,
+                },
+                {},
+            )
+        except Exception as error:
+            if on_error is None:
+                raise
+            on_error(channel.name, error)
+            continue
         for entry in page.get("items") or []:
             snippet = entry.get("snippet") or {}
             video_id = (entry.get("contentDetails") or {}).get("videoId")
@@ -186,22 +198,30 @@ def naver_news(
     queries: Iterable[str],
     outlets: Sequence[ApprovedOutlet],
     per_query: int = 50,
+    on_error: OnError | None = None,
 ) -> list[RawItem]:
     """승인 언론사 기사만 남긴다.
 
     네이버가 `originallink` 로 원문 주소를 주므로 도메인으로 대조할 수 있다.
     블로그·카페는 쓰지 않는다 — 협찬 글을 구분할 방법이 없다 (ADR-016).
+    검색어 하나가 실패해도 나머지는 모은다 — `on_error` 를 주면 그 검색어만 알린다.
     """
     allowed = {outlet.domain: outlet for outlet in outlets}
     headers = {"X-NCP-APIGW-API-KEY-ID": client_id, "X-NCP-APIGW-API-KEY": client_secret}
     collected: list[RawItem] = []
     seen: set[str] = set()
     for query in queries:
-        page = fetch(
-            NAVER_NEWS,
-            {"query": query, "display": str(per_query), "sort": "date"},
-            headers,
-        )
+        try:
+            page = fetch(
+                NAVER_NEWS,
+                {"query": query, "display": str(per_query), "sort": "date"},
+                headers,
+            )
+        except Exception as error:
+            if on_error is None:
+                raise
+            on_error(query, error)
+            continue
         for entry in page.get("items") or []:
             original = (entry.get("originallink") or "").strip()
             outlet = allowed.get(_domain(original))

@@ -84,11 +84,15 @@ with create_engine(os.environ["DATABASE_URL"]).connect() as c:
 # **`set -e` 에 기대지 않는다.** `if` · `$(…)` 안에서 불리면 errexit 이 꺼져서, 명령이 실패해도
 # 다음 줄로 넘어가 엉뚱한 답이 나온다. 실패할 수 있는 명령마다 직접 검사하고 reject 로 답한다.
 #
-# 건너뛰는 것은 **R 을 들여온 PR 의 머지 직전 커밋(B)** 으로 되감을 때뿐이다. B 는 CI 의
-# rollback compat 이 「새 스키마에서 B 코드가 도는지」를 시험한 유일한 코드다. 서버가 지금 도는 코드나
+# 건너뛰는 것은 **R 을 들여온 머지의 직전 커밋(B)** 으로 되감을 때뿐이다. B 는 CI 의
+# rollback compat 이 「새 스키마에서 B 코드가 도는지」를 시험한 코드다. 서버가 지금 도는 코드나
 # 리비전의 부모로 판정하면 「A 는 칸을 쓰고, B 는 안 쓰고, C 가 지운다」에서 시험하지 않은 A 도 통과한다.
+#
+# 머지를 찾는 이력은 둘이다(ADR-094). main 의 first-parent 에서 R 을 들여온 develop→main 머지의 직전 main 커밋,
+# develop 의 first-parent 에서 R 을 들여온 PR 머지의 직전 develop 커밋. CI 가 main 으로 가는 PR 과
+# develop 으로 가는 PR 에서 각각 그 base 를 시험한다. main 배포를 되돌릴 때 직전 성공 커밋이 앞쪽 B 다.
 migration_step() {
-  local target=$1 rev file m b
+  local target=$1 rev file m b branch known="" only=""
   # 리비전은 정확히 하나, 12자리 16진수. 둘 이상이면 갈래가 갈라진 것이라 어디로도 못 간다.
   rev=$(printf '%s\n' "$2" | grep -v '^$') || rev=""
   [[ "$rev" =~ ^[0-9a-f]{12}$ ]] || {
@@ -106,30 +110,35 @@ migration_step() {
     return 0
   fi
 
-  # 올릴 코드가 R 을 모른다 — 마이그레이션을 건너는 롤백이다. R 을 들여온 곳을 develop 에서 찾는다.
-  file=$(revision_file origin/develop "$rev") || {
-    echo "reject origin/develop 의 마이그레이션 폴더를 읽지 못했다"
-    return 0
-  }
-  [ -n "$file" ] || {
-    echo "reject DB 리비전 $rev 을 origin/develop 도 모른다 — 다른 브랜치에서 올라간 리비전이다"
-    return 0
-  }
-  m=$(git log origin/develop --first-parent --diff-filter=A --format=%H -1 -- "$file") || m=""
-  [ -n "$m" ] || {
-    echo "reject 리비전 $rev 을 들여온 develop 커밋을 찾지 못했다"
-    return 0
-  }
-  b=$(git rev-parse --verify --quiet "${m}^1") || b=""
-  [ -n "$b" ] || {
-    echo "reject 리비전 $rev 을 들여온 커밋 ${m:0:8} 의 앞 커밋을 찾지 못했다"
-    return 0
-  }
+  # 올릴 코드가 R 을 모른다 — 마이그레이션을 건너는 롤백이다. R 을 들여온 머지를 main · develop 에서 찾는다.
+  for branch in main develop; do
+    file=$(revision_file "origin/$branch" "$rev") || {
+      echo "reject origin/$branch 의 마이그레이션 폴더를 읽지 못했다"
+      return 0
+    }
+    [ -n "$file" ] || continue
+    known=1
+    m=$(git log "origin/$branch" --first-parent --diff-filter=A --format=%H -1 -- "$file") || m=""
+    [ -n "$m" ] || {
+      echo "reject 리비전 $rev 을 들여온 $branch 커밋을 찾지 못했다"
+      return 0
+    }
+    b=$(git rev-parse --verify --quiet "${m}^1") || b=""
+    [ -n "$b" ] || {
+      echo "reject 리비전 $rev 을 들여온 커밋 ${m:0:8} 의 앞 커밋을 찾지 못했다"
+      return 0
+    }
+    if [ "$b" = "$target" ]; then
+      echo "skip $rev $m $b"
+      return 0
+    fi
+    only="${only:+$only · }${b:0:8}($branch ${m:0:8} 의 직전)"
+  done
 
-  if [ "$b" = "$target" ]; then
-    echo "skip $rev $m $b"
+  if [ -z "$known" ]; then
+    echo "reject DB 리비전 $rev 을 origin/main 도 origin/develop 도 모른다 — 다른 브랜치에서 올라간 리비전이다"
   else
-    echo "reject DB 가 $rev 에 있다(${m:0:8} 에서 들어왔다). 그것을 건너뛰는 되감기는 ${b:0:8} 로만 된다. 올리려는 ${target:0:8} 은 CI 가 시험한 적이 없다"
+    echo "reject DB 가 $rev 에 있다. 그것을 건너뛰는 되감기는 $only 로만 된다. 올리려는 ${target:0:8} 은 CI 가 시험한 적이 없다"
   fi
 }
 
