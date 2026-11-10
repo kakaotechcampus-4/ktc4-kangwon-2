@@ -1242,6 +1242,9 @@ function RowCard({
   children?: ReactNode;
 }) {
   const set = (field: Field) => (value: string) => onEdit(row.key, field, value);
+  // 「계획한 것」을 교사가 펼쳤으면 글을 다 지워도 접지 않는다. 글이 있는지만 보고 접었더니
+  // 적다가 백스페이스로 비우는 순간 칸이 닫혀 커서를 잃었다(덕철 점검).
+  const [planOpen, setPlanOpen] = useState(false);
   return (
     <article className={ws.routineRow} data-tone={row.tone} data-lean={row.tone % 2}>
       <div className={ws.routineHead}>
@@ -1311,7 +1314,11 @@ function RowCard({
       {/* 「계획한 것」은 안 쓰는 원이 많다. 적은 줄만 펴 두고 나머지는 접는다. */}
       {/* 이름은 안의 글칸 하나만 갖는다. 접는 칸에도 같은 이름을 달면 「계획한 것」을 찾는
           보조기기 · 테스트가 둘을 만나 어느 쪽인지 모른다. 접는 칸은 summary 글자로 읽힌다. */}
-      <details className={ws.rowPlan} open={row.plan ? true : undefined}>
+      <details
+        className={ws.rowPlan}
+        open={planOpen || !!row.plan}
+        onToggle={(e) => setPlanOpen(e.currentTarget.open)}
+      >
         <summary>{row.plan ? "계획한 것" : "계획한 것 적기"} ▾</summary>
         <textarea
           aria-label="계획한 것"
