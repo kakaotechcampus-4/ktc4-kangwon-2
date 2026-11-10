@@ -24,6 +24,7 @@ import { listRecords } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import { listRoutines, timeRange, type ApiRoutine } from "@/lib/api/routines";
 import { classServerId } from "@/lib/api/onboarding";
+import { dayLabel } from "@/lib/workspace/journal-day";
 import { today, localTime } from "@/lib/workspace/model";
 import { ROUTINES_UNMAPPED, routinesPath } from "@/lib/workspace/routines-route";
 import { useClientState } from "@/lib/hooks/use-client-state";
@@ -203,19 +204,25 @@ export default function WeeklyRecordsPage() {
               <button
                 type="button"
                 aria-label="지난 주"
-                className={ws.weekStep}
+                className={`${ws.weekStep} tap44`}
                 disabled={journal.pending}
                 onClick={() => pick(shift(selected, -7))}
               >
                 <Icon name="arrow" className="h-4 w-4 rotate-180" />
               </button>
               <h2 className={ws.weekTitle}>
-                {days.length > 0 && `${label(days[0])} – ${Number(days[6].slice(8, 10))}일`}
+                {/* 「11월 9일 (월) ~ 11월 / 15일 (일)」처럼 날짜 가운데서 줄이 넘어가지 않게 날짜마다 묶는다. */}
+                {days.length > 0 && (
+                  <>
+                    <span className="whitespace-nowrap">{dayLabel(days[0])}</span> ~{" "}
+                    <span className="whitespace-nowrap">{dayLabel(days[6])}</span>
+                  </>
+                )}
               </h2>
               <button
                 type="button"
                 aria-label="다음 주"
-                className={ws.weekStep}
+                className={`${ws.weekStep} tap44`}
                 disabled={journal.pending}
                 onClick={() => pick(shift(selected, 7))}
               >
@@ -354,7 +361,9 @@ export default function WeeklyRecordsPage() {
                             </span>
                             <span>{localTime(record.createdAt)}</span>
                           </div>
-                          <p className={ws.weekSlipText}>{record.fact}</p>
+                          <p className={ws.weekSlipText} title={record.fact}>
+                            {record.fact}
+                          </p>
                         </li>
                       ))}
                     </ul>

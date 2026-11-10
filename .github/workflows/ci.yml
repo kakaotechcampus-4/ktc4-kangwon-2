@@ -253,8 +253,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y fonts-nanum
       # postgres 를 띄운다. /health/ready 200 이 배포 성공 판정이 보는 응답이라
       # 실제 DB 로 확인한다. 503 은 SessionLocal 을 모의해서 본다. ADR-011.
-      - name: pytest
-        run: pytest
+      - name: pytest — 실 Postgres 통합 (real_db)
+        id: real_db
+        run: pytest -m real_db
+      # 위 단계가 실패해도 돌아 백엔드 실패가 한 번에 다 보이게 한다 (전에는 한 단계라 그랬다).
+      - name: pytest — DB 없는 테스트
+        if: ${{ success() || steps.real_db.outcome == 'failure' }}
+        run: pytest -m "not real_db"
       # p0-planning 은 backend 와 별도 패키지라 위 pytest 가 보지 않는다.
       # job 을 새로 만들지 않고 스텝으로 붙인다 — job 개수는 멘토 리뷰 후 정한다.
       - name: planning core pytest
@@ -327,6 +332,7 @@ jobs:
         with:
           python-version: "3.12"
       # 아래는 test job 과 같다. 다만 이 작업 폴더는 base 코드다.
+      # pytest 는 test job 처럼 나누지 않는다 — base 코드엔 real_db 마커 훅이 없어 -m real_db 가 0건(종료 코드 5)이다.
       - name: Install planning core
         working-directory: p0-planning
         run: pip install -e .

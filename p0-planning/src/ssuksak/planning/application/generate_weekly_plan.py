@@ -575,7 +575,7 @@ def llm_context(
     request = _weekly_request(
         parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
         daily_life=daily_life, activity_candidates=activity_candidates, indoor_play_candidates=indoor_play_candidates,
-        teacher_memo=teacher_memo, trends=trends,
+        teacher_memo=teacher_memo, trends=trends, book_seed=candidate_sample_seed,
     )
     return WeeklyLlmContext(packet, fingerprint, classified, store_version, request)
 
@@ -729,6 +729,7 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
 def _weekly_request(
     parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
     *, daily_life=None, activity_candidates=False, indoor_play_candidates=False, teacher_memo="", trends=(),
+    book_seed=None,
 ) -> WeeklyPlanningRequest:
     """The Rule decides what the LLM may write; anything without a basis is not a target."""
     linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)
@@ -808,6 +809,7 @@ def _weekly_request(
             memo=parent.teacher_memo, inherited=parent.parent_teacher_venues,
         ),
         trends=trends,
+        book_seed=book_seed,
     )
 
 

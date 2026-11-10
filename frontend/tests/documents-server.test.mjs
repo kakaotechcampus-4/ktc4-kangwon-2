@@ -1426,7 +1426,9 @@ function editorHarness(selection, onEditStateChange) {
       },
     ];
   };
-  const jsx = (type, props, key) => ({ type, props, key });
+  // 편집기 안의 작은 그림 함수(사실 칸 · 자물쇠)는 훅이 없어 바로 그린다 — 사실 글이 트리에 남는다.
+  const jsx = (type, props, key) =>
+    typeof type === "function" ? type(props) : { type, props, key };
   const modules = {
     react: {
       useState: state,
@@ -1442,6 +1444,13 @@ function editorHarness(selection, onEditStateChange) {
     // 스텁이면 "어느 칸이 틀렸나" 를 검증하지 못한다.
     "@/lib/api/client": { ApiError, invalidFields },
     "./SourceReview": { default: "source-review" },
+    // 사실 칸의 시간 줄. 그림일 뿐이라 이름만 둔다.
+    "./DocumentArchivePreview": {
+      FactTimeline: "fact-rows",
+      WeekTitle: "week-title",
+      factRows: () => null,
+    },
+    "./DocumentEditor.module.css": { __esModule: true, default: {} },
     "@/lib/api/storage-context": { API_STORAGE_CONTEXT },
     "@/lib/api/plans": {},
     "@/lib/api/documents": documents,
@@ -1635,11 +1644,11 @@ async function editing(over = {}, api = {}) {
 
 test("확정된 서버 문서에만 확정 취소가 보이고 초안에는 보이지 않는다", async () => {
   const { editor } = await editing({ status: "confirmed" });
-  assert.ok(editor.button("확정 취소"));
+  assert.ok(editor.button("다시 수정"));
   assert.equal(editor.button("문서 수정"), undefined, "서버 문서는 화면에서 상태를 바꾸지 않는다");
 
   const draft = await editing();
-  assert.equal(draft.editor.button("확정 취소"), undefined);
+  assert.equal(draft.editor.button("다시 수정"), undefined);
 });
 
 test("확정이 막히면 서버가 짚은 칸을 교사 말로 알려준다", async () => {
@@ -1662,7 +1671,7 @@ test("확정이 막히면 서버가 짚은 칸을 교사 말로 알려준다", a
   );
   editor.checks().forEach((box) => box.props.onChange({ target: { checked: true } }));
   editor.render();
-  editor.button("검토 완료 · 문서 확정").props.onClick();
+  editor.button("확정").props.onClick();
   await tick();
   editor.render();
   assert.match(editor.text(), /해석 칸이 원본과 맞지 않아요/);
@@ -1694,7 +1703,7 @@ test("확정 취소는 확인창 없이 바로 서버를 부르고 초안으로 
     },
   };
   try {
-    await editor.button("확정 취소").props.onClick();
+    await editor.button("다시 수정").props.onClick();
   } finally {
     globalThis.window = before;
   }
@@ -1711,7 +1720,7 @@ test("확정 취소로 다시 검토 대상이 된 문서가 있으면 그 수�
     { status: "confirmed" },
     { unconfirm: async () => ({ ...doc(1, { status: "draft" }), newlyStaleCount: 2 }) },
   );
-  await editor.button("확정 취소").props.onClick();
+  await editor.button("다시 수정").props.onClick();
   editor.render();
   assert.match(editor.text(), /이 문서를 근거로 쓴 문서 2건이 다시 검토 대상이 되었어요/);
 
@@ -1719,7 +1728,7 @@ test("확정 취소로 다시 검토 대상이 된 문서가 있으면 그 수�
     { status: "confirmed" },
     { unconfirm: async () => ({ ...doc(1, { status: "draft" }), newlyStaleCount: 0 }) },
   );
-  await none.editor.button("확정 취소").props.onClick();
+  await none.editor.button("다시 수정").props.onClick();
   none.editor.render();
   assert.match(none.editor.text(), /확정을 취소했어요/);
   assert.equal(/다시 검토 대상이 되었어요/.test(none.editor.text()), false);
@@ -1727,10 +1736,10 @@ test("확정 취소로 다시 검토 대상이 된 문서가 있으면 그 수�
 
 test("확정 취소는 근거를 다시 반영하지 않는다 — stale 은 그대로 남는다", async () => {
   const { editor, selection, calls } = await editing({ status: "confirmed", stale: true });
-  assert.ok(editor.button("확정 취소"));
+  assert.ok(editor.button("다시 수정"));
   assert.equal(editor.button("변경된 근거 반영하기"), undefined, "확정본에는 보이지 않는다");
 
-  await editor.button("확정 취소").props.onClick();
+  await editor.button("다시 수정").props.onClick();
   editor.render();
   assert.deepEqual(calls, ["unconfirm"], "확정 취소가 refresh 를 자동으로 부르지 않는다");
   assert.equal(selection.get().detail.stale, true);
@@ -1806,10 +1815,10 @@ test("확정 취소가 실패해도 보던 확정 문서를 그대로 둔다", a
       },
     },
   );
-  await editor.button("확정 취소").props.onClick();
+  await editor.button("다시 수정").props.onClick();
   editor.render();
   assert.equal(selection.get().detail.status, "confirmed");
-  assert.ok(editor.button("확정 취소"));
+  assert.ok(editor.button("다시 수정"));
   assert.match(editor.text(), /확정을 취소하지 못했어요/);
 });
 

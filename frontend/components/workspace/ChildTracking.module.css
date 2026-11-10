@@ -227,8 +227,7 @@
   gap: 5px;
   margin-top: 8px;
 }
-.noteDomains i,
-.domainRow i {
+.noteDomains i {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -304,58 +303,49 @@
   display: grid;
   gap: 10px;
 }
-/* 영역 칸 — 칸마다 제 색과 숫자. 빈 칸은 같은 색 점선에 0. */
+/* 영역별 기록 수 — 쌓인 기록의 거르기 칩과 같은 칩(그림 · 이름 · 숫자).
+   큰 칸 다섯 장이 자리를 많이 차지했다(수민 점검). 기록이 있는 영역은 그 영역 색, 없는 영역은 흰 칩.
+   데스크톱 오른쪽 칸(446px)에는 다섯 칩(569px)이 한 줄에 안 들어 두 줄로 앉는다 — 숨기지 않는다.
+   휴대폰은 한 줄로 두고 줄 안에서 옆으로 민다(600px 규칙). */
 .domainRow {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .domainRow li {
-  --tone-bg: var(--pg-shell, #ede8e0);
+  --tone-bg: var(--pg-primary-tint);
   --tone-line: var(--pg-line);
-  --tone-ink: var(--pg-ink);
-  display: grid;
-  justify-items: center;
-  align-content: start;
+  --tone-ink: var(--pg-primary-ink);
+  display: inline-flex;
+  flex: none;
+  align-items: center;
   gap: 4px;
-  padding: 12px 4px 10px;
+  min-height: 34px;
+  padding: 0 12px;
   border: 1px solid var(--tone-line);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--tone-bg) 60%, #fff);
-  text-align: center;
+  border-radius: 999px;
+  background: var(--tone-bg);
+  color: var(--tone-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 .domainRow i {
-  width: 34px;
-  height: 34px;
-}
-.domainRow span {
-  display: flex;
-  align-items: center;
-  min-height: 2.5em;
-  font-size: 11.5px;
-  font-weight: 700;
-  line-height: 1.25;
+  display: inline-flex;
   color: var(--tone-ink);
-  word-break: keep-all;
 }
 .domainRow b {
-  font-size: 24px;
-  font-weight: 900;
-  line-height: 1.1;
-  color: var(--tone-ink);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  opacity: 0.75;
 }
 .domainRow li[data-empty] {
-  border-style: dashed;
-  border-width: 1.5px;
-  background: color-mix(in srgb, var(--tone-bg) 25%, #fff);
-}
-.domainRow li[data-empty] b,
-.domainRow li[data-empty] i {
-  opacity: 0.55;
+  border-color: var(--pg-line-strong);
+  background: var(--pg-paper);
+  color: var(--pg-ink-soft);
 }
 .helper {
   margin: 0;
@@ -416,7 +406,9 @@
 }
 .slipLine > time {
   flex: none;
-  width: 44px;
+  /* 「11월 10일 (화)」이 한 줄에 들어가는 폭 */
+  width: 92px;
+  white-space: nowrap;
   padding-top: 2px;
   color: var(--pg-ink-soft);
   font-size: 13px;
@@ -549,12 +541,6 @@
   .detail {
     padding: 18px 14px;
   }
-  .domainRow {
-    gap: 5px;
-  }
-  .domainRow span {
-    font-size: 10.5px;
-  }
 }
 
 @media (max-width: 1100px) {
@@ -572,6 +558,11 @@
 @media (max-width: 600px) {
   .page {
     padding: 18px 14px calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  .domainRow {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
