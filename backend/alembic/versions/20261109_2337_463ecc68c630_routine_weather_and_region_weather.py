@@ -4,7 +4,7 @@
 직전 코드가 그대로 돈다(ADR-073 롤백 한 칸).
 
 Revision ID: 463ecc68c630
-Revises: 7ee95b0e8ac0
+Revises: b7d2e9a4c1f3
 Create Date: 2026-11-09 23:37:00.919209
 
 """
@@ -16,7 +16,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "463ecc68c630"
-down_revision: str | None = "7ee95b0e8ac0"
+down_revision: str | None = "b7d2e9a4c1f3"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
