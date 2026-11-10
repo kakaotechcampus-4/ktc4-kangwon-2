@@ -1891,7 +1891,7 @@ test("v1 — 안전 줄 칸을 누르면 편집기 라벨이 「안전교육 후
   assert.equal(view.editor().label, "안전교육 후보 · 2주");
   assert.equal(view.editor().value, "횡단보도 건너기");
   assert.equal(withText(opened, "button", "AI로 이 칸 다시 만들기").length, 0);
-  assert.equal(withText(opened, "p", "이 문장을 둔 다른 주도 같이 바뀌어요.").length, 1);
+  assert.equal(withText(opened, "p", "이 문장을 둔 다른 주도 같이 바뀌어요.").length, 0);
 
   view.editor().onSave("손을 들고 건너요");
   await view.tick();
