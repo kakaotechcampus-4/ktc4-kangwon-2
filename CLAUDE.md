@@ -340,7 +340,7 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1
 docker compose run --rm -v "$(pwd)/backend:/app" backend alembic check   # CI 도 이걸 돌린다
 
 # 린트
-cd backend  && ruff check . && ruff format .
+cd backend  && ruff check . && ruff format . && mypy
 cd frontend && npm run lint && npx prettier --write .
 
 # 서버 배포 — 배포 브랜치에 머지되면 Actions 가 한다. 상세는 docs/deploy.md

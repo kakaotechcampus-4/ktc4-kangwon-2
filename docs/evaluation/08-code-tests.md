@@ -35,7 +35,7 @@ e2e                        35 passed   실제 Postgres · FastAPI · Next 빌드
 `.github/workflows/ci.yml`
 
 ```
-backend (ruff)                 ruff check · ruff format --check
+backend (ruff)                 ruff check · ruff format --check · mypy(타입)
 backend (alembic check)        postgres:15 띄우고 upgrade head → alembic check
 frontend (eslint·prettier·build)  + 프런트 테스트
 backend (pytest)               backend + planning core 둘 다
@@ -48,7 +48,7 @@ e2e (playwright)               실제 DB 로
 - 같은 PR 에 연달아 push 하면 이전 실행을 취소한다 (`concurrency`)
 - E2E 를 CI 에 넣은 이유 — ADR-028
 - CI 로 무엇을 검증하고 무엇을 안 하는지 — ADR-011
-- 7번째 잡 `backend (rollback compat)` 는 develop 으로 가는 PR 에서 마이그레이션이 바뀔 때만 돈다 — 머지 전 코드가 새 스키마에서도 도나 본다. 아직 필수 검사가 아니다 (`ci.yml:265`)
+- 7번째 잡 `backend (rollback compat)` 는 develop 으로 가는 PR 에서 마이그레이션이 바뀔 때만 돈다 — 머지 전 코드가 새 스키마에서도 도나 본다. 아직 필수 검사가 아니다 (`ci.yml:281`)
 
 ## 머지 전에 CI 를 통과해야 한다 — develop 규칙 (2026-11-10 부터)
 
@@ -74,7 +74,7 @@ develop 에 **켜진(active) 규칙**이 있다 — ruleset `23517686` 「develo
 
 ## 통합 테스트 범위 — 백엔드가 진짜 Postgres 를 쓰는 테스트
 
-CI 의 `backend (pytest)` 잡은 `postgres:15` 서비스 컨테이너를 띄우고 그 DB 로 돈다(`ci.yml:204` ~ `:219`).
+CI 의 `backend (pytest)` 잡은 `postgres:15` 서비스 컨테이너를 띄우고 그 DB 로 돈다(`ci.yml:219` ~ `:234`).
 테스트는 처음 한 번 `alembic upgrade head` 로 스키마를 올리고(`backend/tests/conftest.py:45`),
 테스트마다 바깥 트랜잭션을 열어 끝나면 통째로 되돌린다(`db_session`, `conftest.py:61`).
 `create_all` 이 아니라 마이그레이션을 쓰므로 마이그레이션이 깨지면 테스트도 깨진다.
@@ -88,7 +88,7 @@ CI 의 `backend (pytest)` 잡은 `postgres:15` 서비스 컨테이너를 띄우�
 | DB 안 씀 | 43 | 규칙 · 코덱 · 한글 파일 채우기 · LLM 가짜 응답 · 운영 스크립트 | `test_gates_sections.py` · `test_plan_rules.py` |
 
 - 세는 법 — `pytest --collect-only` 로 시험마다 쓰는 fixture 를 모아 `db_session`(또는 `_schema`)을 쓰는 파일을 DB 통합으로, 그중 `TestClient` 로 API 를 부르는 파일을 API 통합으로 셌다. 로컬에 한글 변환 도구가 없어 수집이 안 되는 4개는 파일을 직접 봤다
-- e2e 는 따로다 — 같은 `postgres:15` 위에 실제 FastAPI · Next 빌드본을 띄우고 브라우저가 누른다(`ci.yml:371` ~ `:402`, 아래 「화면 경로 E2E」)
+- e2e 는 따로다 — 같은 `postgres:15` 위에 실제 FastAPI · Next 빌드본을 띄우고 브라우저가 누른다(`ci.yml:386` ~ `:417`, 아래 「화면 경로 E2E」)
 - LLM 은 CI 에서 부르지 않는다(가짜 응답). 실제 모델은 운영 서버에서 따로 잰다 — [06 AI 품질](06-ai-quality.md)
 
 ## CI 시간 — 줄인 기록

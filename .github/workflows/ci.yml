@@ -80,6 +80,7 @@ jobs:
           echo "frontend_only=$front" >> "$GITHUB_OUTPUT"
           echo "migrations=$migr" >> "$GITHUB_OUTPUT"
 
+  # 이름은 develop 필수 검사라 바꾸지 않는다 — ruff 와 mypy 를 같이 돈다(ADR-095).
   backend:
     name: backend (ruff)
     needs: changes
@@ -99,6 +100,20 @@ jobs:
         run: ruff check .
       - name: ruff format --check
         run: ruff format --check .
+      # 타입 검사(ADR-095). 타입을 읽으려면 앱 의존이 깔려 있어야 한다. p0-planning 을 먼저 깐다 —
+      # backend 가 ssuksak-planning 을 의존하는데 그 이름은 PyPI 에 없다.
+      # ruff 가 실패해도 타입 결과가 보이게 !cancelled() 로 돈다 — 앞 단계 실패가 뒤를 가리지 않게(ADR-011).
+      - name: Install planning core
+        if: ${{ !cancelled() }}
+        working-directory: p0-planning
+        run: pip install -e .
+      - name: Install
+        id: install
+        if: ${{ !cancelled() }}
+        run: pip install -e ".[dev]"
+      - name: mypy
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: mypy
 
   migration:
     name: backend (alembic check)
