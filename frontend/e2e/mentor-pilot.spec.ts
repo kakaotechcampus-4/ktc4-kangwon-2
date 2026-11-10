@@ -293,6 +293,8 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   await dateInput.fill(yesterday.toISOString().slice(0, 10));
   const row = page.locator('[aria-label="일과 목록"] article').first();
+  // 이름 있는 일과 쪽지는 이름 · 시간 한 줄로 접혀 있다. 누르면 편다.
+  await row.locator('[data-fold-toggle="open"]').click();
   await row.getByLabel("일과 이름").fill("오전 실내놀이");
   // 시작 · 종료 칸은 시계판과 함께 접혀 있다. 열고 고친 뒤 닫는다.
   await row.getByRole("button", { name: /시계로 시간 고르기/ }).click();
