@@ -6,25 +6,27 @@
 
 ---
 
-## 숫자 (2026-11-04 기준, 10-28 → 11-04)
+## 숫자 (2026-11-10 기준, 11-04 → 11-10)
 
 | 무엇 | 수 | 세는 법 |
 |---|---|---|
-| 백엔드 테스트 파일 | 64 → **85** | `ls backend/tests \| grep -c '^test_'` |
-| 계획 코어 테스트 파일 | 65 → **74** | `find p0-planning/tests -name 'test_*.py' \| wc -l` |
-| 프런트 테스트 파일 | 39 → **65** | `ls frontend/tests/*.test.mjs \| wc -l` |
-| E2E 시나리오 파일 | 4 → **5** | `frontend/e2e/` — `document-archive-layout` 추가 |
-| ADR | 41 → **58** | `ls docs/adr/*.md \| grep -v README \| wc -l` |
+| 백엔드 테스트 파일 | 85 → **98** | `ls backend/tests \| grep -c '^test_'` |
+| 계획 코어 테스트 파일 | 74 → **78** | `find p0-planning/tests -name 'test_*.py' \| wc -l` |
+| 프런트 테스트 파일 | 65 → **71** | `ls frontend/tests/*.test.mjs \| wc -l` |
+| E2E 시나리오 파일 | 5 → **7** | `ls frontend/e2e/*.spec.ts \| wc -l` — 무엇을 덮는지는 아래 「화면 경로 E2E」 |
+| ADR | 58 → **78** | `ls docs/adr/*.md \| grep -v README \| wc -l` |
 
-**통과 건수 (파일 수 아님)** — CI 2026-11-04 (run 41796637037, PR #373)
+**통과 건수 (파일 수 아님)** — develop CI 2026-11-10 (run 42754752760, `e532701b`)
 
 ```
-backend         1,558 passed
-planning core   1,601 passed · 1 skipped
-frontend          909 pass · 0 fail
+backend         1,558 → 1,885 passed
+planning core   1,601 → 1,759 passed · 1 skipped · 19 xfailed
+frontend          909 →   934 pass · 0 fail
+e2e                        35 passed   실제 Postgres · FastAPI · Next 빌드본, MSW 끔, LLM 은 mock
 ```
 
-**CI 한 번 평균 8.8분** — 최근 완료 25회 (`gh run list --workflow ci.yml --status completed --limit 25`, 시작~끝)
+**CI 한 번 평균 8.8분 → 4.0분** — 최근 완료 25회, 같은 세는 법 (`gh run list --workflow ci.yml --status completed --limit 25`, 시작~끝).
+성공한 25회만 보면 평균 4.7분 · 중앙값 5.8분(문서만 바뀐 PR 은 수 초). 줄인 기록은 아래 「CI 시간」.
 
 ## CI — PR 마다 6개가 돈다
 
@@ -107,8 +109,21 @@ e2e (playwright)               실제 DB 로
 
 ## 화면 경로 E2E
 
-- 연간 → 월간 → 주간계획안을 API 로 건너뛰지 않고 화면으로 만들고 · 고치고 · 확정해 한글로 받는다 — `frontend/e2e/mentor-pilot.spec.ts` · PR #402
-- 주간 보육일지 확정본을 한글로 받아 교사가 고친 글이 파일 안에 있는지 연다 — `frontend/e2e/routines.spec.ts` 「주간 보육일지 — … 한글 다운로드」
+교사가 누르는 순서대로 브라우저가 누른다. 생성은 API 로 건너뛰지 않고, 저장 · 확정 결과는 서버에서 다시 읽어 본다.
+한글 파일은 받은 hwpx 를 열어 본문 · 미리보기에 **교사가 넣은 글**이 있는지 본다(`frontend/e2e/hwpx.ts`) — 모델 문장은 기대값으로 두지 않는다(ADR-023).
+
+| 무엇 | 화면에서 하는 것 | 어디 |
+|---|---|---|
+| 계획안 연간 → 월간 → 주간 (월별 주제형) | 생성 · 칸 수정 · 새로고침 뒤 유지 · 확정 · 한글 받기 · 보관함에서 다시 열기 | `mentor-pilot.spec.ts:60` · PR #402 |
+| 일일 보육일지 | 일과 입력 → 생성 · 확정 · 한글 받기 · 평가 점검 4-1 에 집계 | `mentor-pilot.spec.ts:284` · `routines.spec.ts:205` |
+| 주간 보육일지 | 근거 두 갈래(확정 일일 · 일과 기록) → 생성 · 편집 · 확정 · 한글 받기 | `routines.spec.ts:1056` · PR #427 |
+| 관찰일지 | 관찰 기록 → 생성 · 수정 · 확정 · 한글 받기 · 근거를 고치면 바뀐 근거 반영 후 재확정 | `mentor-pilot.spec.ts:340` |
+| 일과 기록 · 근거 바뀜 | 7줄 · 드래그 저장 · 401 저장 실패 재시도 · 삭제된 근거 대체 · 제외 · 재확정 | `routines.spec.ts:205~1002` (11개) |
+| 가입 · 온보딩 · 첫 기록 | 가입 → 원 · 반 등록 안내 → 첫 관찰 기록 | `first-record.spec.ts:11` |
+| 홈 기록 · 두 반 | 홈에서 남긴 관찰이 홈에 그대로 보이고, 반이 둘이면 저장 · 조회 · 뒤로 가기에서 같은 반을 유지한다 | `home-record.spec.ts:134` · `:158` |
+| 문서 보관함 | 탐색 · 상태 · 다시 열기 · 키보드 · 화면 4가지 크기 · 실패 · 재시도 | `document-archive-layout` · `-design` · `-card-size` |
+| 평가 점검 | 서버의 9개 지표 · 19개 요소 · 체크 보존 | `mentor-pilot.spec.ts:423` |
+| 설정 · 반 수정 | 설정 · 기관 양식 · 트렌드봇 진입, 등록한 반 고치기 · 동의 잠금 | `mentor-pilot.spec.ts:456` · `:483` · `:497` |
 
 ## 규칙
 
@@ -120,9 +135,9 @@ e2e (playwright)               실제 DB 로
 
 - 커버리지를 재지 않는다
 - 프런트 테스트가 가짜 `useState` 하네스라 실제 렌더 경로를 전부 안 지난다
-- 영유아 평가 · 놀이 프로젝트형 연간 · 월간은 화면 경로 E2E 가 없다. 영유아 평가는 만든 문서를 보관함에서 열 길부터 없다 — `frontend/components/workspace/DocumentArchiveView.tsx` 의 `ArchiveType` 에 종류가 없음
+- 영유아 평가 · 놀이 프로젝트형 연간 · 월간은 화면 경로 E2E 가 없다. 영유아 평가는 만든 문서를 보관함에서 열 길부터 없다 — `frontend/components/workspace/DocumentArchiveView.tsx` 의 `ArchiveType` 에 종류가 없음 · 이슈 #496
 
 ## 더 모을 근거
 
 - [x] `pytest` 통과 건수(파일 수 아님) — 위 「통과 건수」
-- [x] CI 평균 소요 시간 — 8.8분
+- [x] CI 평균 소요 시간 — 8.8분(11/04) → 4.0분(11/10)
