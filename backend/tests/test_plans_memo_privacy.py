@@ -139,6 +139,77 @@ def test_주간_칸을_다시_만들어도_요청_사항의_아이_이름은_가
     _no_names(prompt)
 
 
+def test_월간_칸을_다시_만들면_교사가_고친_다른_칸의_아이_이름도_가명으로_나간다(
+    db_session, teacher, monkeypatch
+):
+    # 칸 재생성은 같은 달의 다른 칸 값(month_snapshot)을 맥락으로 싣는다. 메모만 가리면
+    # 교사가 칸에 적은 아이 이름이 그대로 나간다.
+    seed = _seed(db_session, "가원", "a@example.com")
+    teacher.center_id = seed["center"]
+    _children(db_session, seed["class"])
+    annual = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": seed["class"]}
+    )
+    assert client.post(f"/api/plans/annual/{annual.json()['id']}/confirm").status_code == 200
+    plan = client.post(
+        "/api/plans/monthly",
+        json={"class_id": seed["class"], "month": 9, "profile_ref": seed["profile"]},
+    ).json()
+    outdoor = next(s for s in plan["sections"] if s["section_key"] == "outdoor_play")["cells"][0]
+    edited = client.put(
+        f"/api/plans/monthly/{plan['id']}/cells/{outdoor['item_id']}",
+        json={"value": "가명이가 다솜이와 개미를 관찰한다", "expected_revision": plan["revision"]},
+    )
+    assert edited.status_code == 200, edited.json()
+    sent = []
+
+    class Spy(RequestAwareMonthlyLlm):
+        def generate_cell(self, request):
+            sent.append(request.user_content)
+            return super().generate_cell(request)
+
+    monkeypatch.setattr(monthly_router, "monthly_llm_provider", Spy)
+    focus = next(s for s in plan["sections"] if s["section_key"] == "focus")["cells"][0]
+    response = client.post(
+        f"/api/plans/monthly/{plan['id']}/cells/{focus['item_id']}/regenerate",
+        json={"expected_revision": edited.json()["revision"]},
+    )
+
+    assert response.status_code == 200, response.json()
+    [prompt] = sent
+    assert "개미를 관찰한다" in prompt  # 고친 칸은 맥락으로 실렸다
+    assert "가명" not in prompt and "다솜" not in prompt
+
+
+def test_주간_칸을_다시_만들면_교사가_고친_다른_칸의_아이_이름도_가명으로_나간다(
+    db_session, teacher, monkeypatch
+):
+    # 주간 칸 재생성은 다른 칸 값을 current_plan 으로 싣는다.
+    seed = weekly_api._seed(db_session, "가원", "a@example.com")
+    teacher.center_id = seed["center"]
+    _children(db_session, seed["class"])
+    weekly_api._monthly(seed)
+    plan = client.post(
+        "/api/plans/weekly", json={"class_id": seed["class"], "week_id": weekly_api.WEEK}
+    ).json()
+    edited = weekly_api._put(plan, "event_schedule", "가명이 생일 잔치 · 다솜이 발표")
+    assert edited.status_code == 200, edited.json()
+    sent = []
+
+    class Spy(RequestAwareWeeklyLlm):
+        def generate_weekly(self, request):
+            sent.append(request.user_content)
+            return super().generate_weekly(request)
+
+    monkeypatch.setattr(weekly_router, "_weekly_provider", Spy)
+    response = weekly_api._regenerate(edited.json(), "goals")
+
+    assert response.status_code == 200, response.json()
+    [prompt] = sent
+    assert "생일 잔치" in prompt  # 고친 칸은 맥락으로 실렸다
+    assert "가명" not in prompt and "다솜" not in prompt
+
+
 def _docx(rows) -> bytes:
     ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
     cells = "".join(

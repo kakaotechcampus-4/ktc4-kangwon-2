@@ -793,11 +793,14 @@ def regenerate_weekly_cell(
         target = plan.find_cell(_item_id(item_id))
         if target is not None and target.section_key == "indoor_play":
             raise _CELL_NOT_REGENERATABLE
-    # 칸 프롬프트에도 저장된 요청 사항이 실린다. 생성과 같이 가린다(ADR-060).
-    names = memo_name_table(session, int(plan.classroom_ref), plan.teacher_memo, REGEN_MASK_FAILED)
+    # 칸 프롬프트에는 저장된 요청 사항과 이 계획안의 다른 칸 값(current_plan · 교사가 고친 값
+    # 포함)이 실린다. 둘 다 생성과 같이 가린다(ADR-060).
+    cells = tuple(cell.value for cell in plan.cells if cell.value)
+    seen = "\n".join((plan.teacher_memo or "", *cells))
+    names = memo_name_table(session, int(plan.classroom_ref), seen, REGEN_MASK_FAILED)
     session.commit()  # 이름표 읽기까지 끝낸다. LLM 을 기다리는 동안 transaction 을 잡지 않는다
     try:
-        provider = with_masked_memo(_weekly_provider(), plan.teacher_memo, names)
+        provider = with_masked_memo(_weekly_provider(), plan.teacher_memo, names, cells)
     except LlmUnavailable as error:
         raise _UNAVAILABLE from error
     try:

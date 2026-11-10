@@ -1019,8 +1019,11 @@ def regenerate_monthly_cell(
     LLM 을 기다리는 동안 transaction 이 없다. 그 사이 누가 고쳤으면 결과를 버리고 409 다.
     """
     plan = _read_draft(session, user, plan_id, body.expected_revision)
-    # 칸 프롬프트에도 저장된 요청 사항이 실린다. 생성과 같이 가린다(ADR-060).
-    names = memo_name_table(session, int(plan.classroom_ref), plan.teacher_memo, REGEN_MASK_FAILED)
+    # 칸 프롬프트에는 저장된 요청 사항과 이 계획안의 다른 칸 값(month_snapshot · 교사가 고친 값
+    # 포함)이 실린다. 둘 다 생성과 같이 가린다(ADR-060).
+    cells = tuple(cell.value for section in plan.sections for cell in section.cells if cell.value)
+    seen = "\n".join((plan.teacher_memo or "", *cells))
+    names = memo_name_table(session, int(plan.classroom_ref), seen, REGEN_MASK_FAILED)
     session.commit()  # 이름표 읽기까지 끝낸다. LLM 을 기다리는 동안 transaction 을 잡지 않는다
     try:
         provider = monthly_llm_provider()
@@ -1028,7 +1031,7 @@ def regenerate_monthly_cell(
         raise _UNAVAILABLE from error
     use_case = monthly_regeneration(
         plan_repository=_drafts(plan),
-        provider=with_masked_memo(provider, plan.teacher_memo, names),
+        provider=with_masked_memo(provider, plan.teacher_memo, names, cells),
         clock=SystemClock(),
     )
     try:

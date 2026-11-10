@@ -10,6 +10,7 @@ Core 는 원문 메모를 보고 검증하므로, Core 에 돌아가는 답도 �
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import replace
 
 from fastapi import HTTPException, status
@@ -43,7 +44,10 @@ REGEN_MASK_FAILED = HTTPException(
     status.HTTP_422_UNPROCESSABLE_ENTITY,
     detail={
         "code": "VALUE_INVALID",
-        "message": "요청 사항에 아이 이름이 있어 AI 를 부르지 않았어요. 이 칸은 직접 고쳐 주세요.",
+        "message": (
+            "요청 사항이나 계획안 칸에 아이 이름이 있어 AI 를 부르지 않았어요. "
+            "이 칸은 직접 고쳐 주세요."
+        ),
         "fields": ["memo"],
     },
 )
@@ -102,21 +106,28 @@ def raise_if_mask_failed(error: BaseException, failure: HTTPException = MASK_FAI
 
 
 class MaskedMemoProvider:
-    """어떤 생성 공급자든 감싼다: 요청의 user_content 속 메모만 가명으로, 답은 메모에 적힌 표기로.
+    """어떤 생성 공급자든 감싼다: 요청 user_content 속 교사 글만 가명으로, 답은 그 글의 표기로.
 
-    수리 요청은 앞 답(메모에 적힌 표기로 되돌린 것)을 다시 싣는다.
-    메모에 나온 아이 이름이 요청 어디에든 남아 있으면 부르지 않는다
+    교사 글은 메모와, 칸 재생성이 맥락으로 싣는 이 계획안의 다른 칸 값(`texts` — 월간
+    month_snapshot · 주간 current_plan, 교사가 고친 값 포함)이다.
+    수리 요청은 앞 답(그 글에 적힌 표기로 되돌린 것)을 다시 싣는다.
+    그 글에 나온 아이 이름이 요청 어디에든 남아 있으면 부르지 않는다
     — 「하나씩」처럼 낱말과 겹쳐도 내보내지 않는 쪽을 고른다.
     """
 
-    def __init__(self, inner, memo: str, table: NameTable) -> None:
+    def __init__(self, inner, memo: str, table: NameTable, texts: Sequence[str] = ()) -> None:
         self._inner = inner
         self._table = table
-        self._memo = memo
-        # 요청 본문은 JSON 이다. 메모가 들어간 모양(따옴표 안)을 그대로 찾아 바꾼다.
-        self._real = json.dumps(memo, ensure_ascii=False)[1:-1]
-        self._fake = json.dumps(mask(memo, table), ensure_ascii=False)[1:-1]
-        self._names = tuple(variant for variant in table.masking if variant in memo)
+        sources = [text for text in dict.fromkeys((memo, *texts)) if text]
+        self._original = "\n".join(sources)
+        # 요청 본문은 JSON 이다. 글이 들어간 모양(따옴표 안)을 그대로 찾아 바꾼다.
+        # 긴 글부터 — 짧은 칸 값이 긴 글 안에 들어 있을 수 있다.
+        quoted = lambda text: json.dumps(text, ensure_ascii=False)[1:-1]  # noqa: E731
+        self._swaps = [
+            (quoted(text), quoted(mask(text, table)))
+            for text in sorted(sources, key=len, reverse=True)
+        ]
+        self._names = tuple(variant for variant in table.masking if variant in self._original)
 
     def __getattr__(self, name):
         method = getattr(self._inner, name)
@@ -124,18 +135,19 @@ class MaskedMemoProvider:
             return method
 
         def call(request, *args, **kwargs):
-            masked = replace(
-                request, user_content=request.user_content.replace(self._real, self._fake)
-            )
+            content = request.user_content
+            for real, fake in self._swaps:
+                content = content.replace(real, fake)
+            masked = replace(request, user_content=content)
             text = masked.user_content + masked.system_prompt
             if any(variant in text for variant in self._names):
                 raise MemoMaskFailed
             response = method(masked, *args, **kwargs)
-            content = unmask_as_written(response.content, self._table, self._memo)
+            content = unmask_as_written(response.content, self._table, self._original)
             return replace(response, content=content)
 
         return call
 
 
-def with_masked_memo(provider, memo: str, table: NameTable | None):
-    return provider if table is None else MaskedMemoProvider(provider, memo, table)
+def with_masked_memo(provider, memo: str, table: NameTable | None, texts: Sequence[str] = ()):
+    return provider if table is None else MaskedMemoProvider(provider, memo, table, texts)
