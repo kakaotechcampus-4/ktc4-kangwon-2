@@ -122,7 +122,7 @@ from app.features.plans.weekly_schemas import (
     WeeklySectionOut,
     WeekPeriodOut,
 )
-from app.features.trends.planning import TrendContextProvider
+from app.features.trends.planning import TrendContextProvider, book_words_for
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import foreign_class_refs, require_own_class
 from app.shared.llm import LlmBudgetExceeded, LlmUnavailable, is_mock
@@ -287,7 +287,23 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     center = session.get(Center, center_id)
     saturday = center.weekly_saturday_enabled
     # ADR-072: 원이 켠 경우에만 트렌드를 읽는다. 오늘 = 서버의 한국 날짜.
-    trends = TrendContextProvider(enabled=center.trends_enabled, today=today_kst(datetime.now(UTC)))
+    # 그림책은 그 주 주제 낱말이 제목에 있는 것만(2026-11-10 보완).
+    # 주 주제 = 부모 그 주 focus, 없으면 월 주제.
+    week_theme = next(
+        (
+            cell.value
+            for key in ("focus", "theme")
+            if (section := parent.section(key)) is not None
+            for cell in (section.cell_for_week(week), section.cell_for_week(None))
+            if cell is not None and cell.value.strip()
+        ),
+        "",
+    )
+    trends = TrendContextProvider(
+        enabled=center.trends_enabled,
+        today=today_kst(datetime.now(UTC)),
+        book_words=book_words_for(week_theme),
+    )
     try:
         provider = _weekly_provider()
     except LlmUnavailable as error:
