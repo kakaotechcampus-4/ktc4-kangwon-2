@@ -1,17 +1,21 @@
 # 동시 생성 부하 측정(#457) 전용 override. docs/load-check.md 를 먼저 읽는다.
 #
 # **운영 폴더(~/ktc4-kangwon-2)에서 쓰지 않는다.** 운영 밖 폴더(~/loadtest-457/)에
-# docker-compose.yml 과 이 파일을 나란히 두고, 그 폴더 .env 에
-#   COMPOSE_PROJECT_NAME=loadtest
-#   COMPOSE_FILE=docker-compose.yml:compose.loadtest.yml
-# 을 적는다. 그러면 컨테이너 · 볼륨 · 망 이름이 전부 loadtest 로 시작해 운영(ktc4-kangwon-2)과 겹치지 않는다.
+# docker-compose.yml 과 이 파일을 나란히 두고 `backend/scripts/loadtest.sh` 로만 돌린다.
+# 그 스크립트가 프로젝트 이름(-p loadtest) · 파일(-f) · env 파일을 명령줄로 못 박고 셸의 COMPOSE_* 를 지운다.
+# 셸의 COMPOSE_PROJECT_NAME 은 이 파일의 `name:` 보다 우선한다 — 이 파일만 믿으면 운영 이름 망 · 볼륨이 된다.
 #
-# 이 파일이 막는 것 — 운영과 같은 상자에서 돌려도 운영이 다치지 않게:
+# 이 파일이 하는 것:
 #   · 호스트 포트를 열지 않는다(운영 db 가 5432 · backend 가 8000 을 이미 쥐고 있다).
 #   · 운영 이미지를 그대로 쓴다(빌드 안 함 — 빌드는 메모리를 먹고 서버에서 Killed 가 난 적 있다, docs/deploy.md).
-#   · 메모리 상한 — 넘치면 운영 대신 loadtest 컨테이너가 죽는다.
+#   · 메모리 상한 db 512m · backend 1g · 부하기 256m, memswap 도 같게(스왑으로 새지 않게).
+#     **상한으로 줄일 뿐 보장은 아니다** — 호스트 메모리가 모자라면 커널이 운영 컨테이너를 고를 수도 있다.
+#     그래서 시작 전에 `free -m` 의 available 이 세 상한 합 + 운영 여유 500MB 이상인지 본다.
 #   · restart: "no" — 죽은 채로 두고, 되살아나며 자원을 쓰지 않는다.
-#   · 운영 망(172.28.0.0/16)과 다른 대역.
+#   · 운영 망(172.28.0.0/16)과 다른 대역 172.29.0.0/16. 부하기는 이 대역 안의 backend 에만 보낸다.
+#
+# 부하기(loadgen)는 backend 와 같은 이미지지만 따로 둔 서비스다 — `run backend` 로 돌리면 backend 의 상한을
+# 물려받아 합이 늘어난다. 앱 설정(SECRET_KEY · 엘리스 키 · LLM_MODE)을 주지 않는다: 이 컨테이너는 LLM 을 안 부른다.
 #
 # journald 로그(docker-compose.server.yml)는 일부러 붙이지 않는다. 기본 json-file 이라
 # `docker compose logs -t backend` 로 읽는다. 정리(down) **전에** 반드시 덤프해 둔다.
@@ -22,6 +26,7 @@ services:
     ports: !reset []
     restart: "no"
     mem_limit: 512m
+    memswap_limit: 512m
 
   backend:
     # 서버에서는 운영 backend 이미지에 이 태그를 붙여 쓴다(docs/load-check.md). 이름이 달라야
@@ -32,9 +37,26 @@ services:
     ports: !reset []
     restart: "no"
     mem_limit: 1g
+    memswap_limit: 1g
     environment:
       # load_check.py 가 이 값이 없으면 돌지 않는다 — 운영 backend 컨테이너에서 잘못 부르는 것을 막는다.
       LOADTEST: "1"
+
+  loadgen:
+    profiles: ["loadgen"]
+    image: ssample-loadtest-backend:457
+    pull_policy: never
+    restart: "no"
+    mem_limit: 256m
+    memswap_limit: 256m
+    entrypoint: ["python", "/lt/load_check.py"]
+    environment:
+      # 이 두 개뿐이다. gate 가 이름을 확인한다.
+      DATABASE_URL: ${DATABASE_URL:?.env 가 없다}
+      LOADTEST: "1"
+    volumes:
+      - ./load_check.py:/lt/load_check.py:ro
+      - ./out:/lt/out
 
   # 나머지 셋은 쓰지 않는다. 인자 없는 `docker compose up` 이 nginx 의 80 · 443 · frontend 의 3000 을
   # 잡으려 들거나 없는 frontend/ 를 빌드하려 하지 못하게, 켜지지 않는 profile 에 넣는다.

@@ -73,22 +73,98 @@ def test_원화_계산과_시간초과는_최대_단가로_센다():
     assert sp["per_max"] == {"s2": pytest.approx(biggest)}
 
 
-def test_부하_대상_호스트_가드():
-    for ok in ("http://backend:8000", "http://localhost:8000", "http://127.0.0.1:8000"):
-        lc.check_base(ok, False)
-    with pytest.raises(SystemExit):
-        lc.check_base("http://10.0.0.5:8000", False)
-    lc.check_base("http://10.0.0.5:8000", True)
-    for prod in ("https://ssample.duckdns.org", "http://ssample.duckdns.org:80"):
-        with pytest.raises(SystemExit):
-            lc.check_base(prod, True)  # 플래그가 있어도 운영은 거절
+def _resolver(*ips):
+    return lambda host, port: [(None, None, None, "", (ip, 0)) for ip in ips]
 
 
-def test_LOADTEST_환경이_없으면_거절한다():
+def _refused(resolver=None, base="http://backend:8000", environ=None):
+    resolver = resolver or _resolver("172.29.0.3")
+    environ = {"LOADTEST": "1"} if environ is None else environ
     with pytest.raises(SystemExit):
-        lc.check_env({}, False)
-    lc.check_env({"LOADTEST": "1"}, False)
-    lc.check_env({}, True)
+        lc.check_target(base, environ, resolver)
+
+
+def test_부하_대상은_loadtest_망_안의_backend_뿐이다():
+    lc.check_target("http://backend:8000", {"LOADTEST": "1"}, _resolver("172.29.0.3"))
+    # 이름이 backend 가 아니면 거절 — loopback 도(운영 8000 이 열려 있다), 운영 주소는 더더욱
+    for base in (
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://10.0.0.5:8000",
+        "https://ssample.duckdns.org",
+        "http://ssample.duckdns.org:80",
+    ):
+        _refused(base=base)
+    # backend 가 운영 망(172.28)이나 망 밖으로 풀리거나, 하나라도 밖이거나, 풀리지 않으면 거절
+    _refused(_resolver("172.28.0.3"))
+    _refused(_resolver("172.29.0.3", "172.28.0.9"))
+    _refused(_resolver("::1"))
+    _refused(_resolver())
+
+    def broken(host, port):
+        raise OSError("Name or service not known")
+
+    _refused(broken)
+    _refused(environ={})  # LOADTEST=1 이 없다
+
+
+def test_DB_호스트도_loadtest_망_안이어야_한다():
+    lc.check_db("postgresql://u:p@db:5432/ssuksak", _resolver("172.29.0.2"))
+    with pytest.raises(SystemExit):
+        lc.check_db("postgresql://u:p@db:5432/ssuksak", _resolver("172.28.0.2"))
+    with pytest.raises(SystemExit):
+        lc.check_db("postgresql://u:p@localhost:5432/ssuksak", _resolver("127.0.0.1"))
+
+
+def test_다음_단계_추정은_반복과_S2_최대_시도를_곱한다():
+    assert lc.MAX_ATTEMPTS == {
+        "s1": 2,
+        "s2": 6,
+    }  # S2: 주제 · 소주제 · 개수 수리 3호출 × 전송 재시도
+    assert lc.parse_next("s2:10x2") == ("s2", 10, 2)
+    with pytest.raises(SystemExit):
+        lc.parse_next("s2:10")
+    assert lc.worst_case_won("s2", 10, 2, 50.0) == 10 * 2 * 6 * 50.0
+    assert lc.worst_case_won("s1", 40, 3, 10.0) == 40 * 3 * 2 * 10.0
+
+
+def _event(kind, scenario="s1", **kv):
+    return {"kind": kind, "kv": kv, "rnd": {"scenario": scenario}}
+
+
+def test_비용을_모르는_호출이_있으면_다음_단계는_멈춘다():
+    known = {k: 0 for k in ("usage_incomplete", "usage_missing", "log_gap", "timeout_unpriced")}
+    assert lc.next_verdict(0, 100, 50, known) == "진행 가능"
+    assert lc.next_verdict(29_950, 100, 50, known) == "멈춤(상한 초과 가능)"
+    assert lc.next_verdict(0, 0, 0, known) == "멈춤(단가 모름)"  # 단가를 한 번도 못 봤다
+
+    ok = _event("llm_call", outcome="ok")
+    # usage 가 불완전한 성공 호출
+    sp = lc.spend([ok, _event("llm_usage", prompt="-", completion="-")], {"s1": 1})
+    assert sp["unknown"]["usage_incomplete"] == 1
+    assert lc.next_verdict(0, 100, 50, sp["unknown"]) == "멈춤(단가 모름)"
+    # llm_usage 줄이 아예 없는 성공 호출
+    assert lc.spend([ok], {"s1": 1})["unknown"]["usage_missing"] == 1
+    # 단가를 아직 못 본 timeout 만 있는 로그
+    sp = lc.spend([_event("llm_call", outcome="timeout")], {})
+    assert sp["unknown"]["timeout_unpriced"] == 1 and sp["timeout_won"] == 0
+    # 로그 수집 실패: 201 이 있는데 성공 호출 줄이 없다(S2 는 201 하나에 성공 호출 2 이상)
+    assert lc.spend([], {"s1": 1, "s2": 3})["unknown"]["log_gap"] == 7
+    # 아무 문제 없는 로그
+    good = [ok, _event("llm_usage", prompt="1000", completion="1000")]
+    assert not any(lc.spend(good, {"s1": 1})["unknown"].values())
+
+
+def test_한도_오류가_있는_회차는_남은_회차를_멈춘다():
+    rnd = {"requests": [{"status": 201}, {"status": 503, "code": "LLM_BUDGET_EXCEEDED"}]}
+    assert lc.budget_exceeded(rnd)
+    assert not lc.budget_exceeded({"requests": [{"status": 201}, {"status": 500, "code": "X"}]})
+
+
+def test_plan_timing_total_ms_는_요청과_짝짓지_않고_분포로_본다():
+    timings = [_event("plan_timing", total_ms="10000"), _event("plan_timing", total_ms="100")]
+    assert lc.plan_totals(timings) == [10000.0, 100.0]  # 끝 시각 순서와 무관하다
+    assert not hasattr(lc, "rtt_gaps")  # 종료 시각으로 짝짓던 계산은 순서가 바뀌면 틀려서 없앴다
 
 
 def test_요청_하나가_여러_번_불러도_첫_시작만_센다():

@@ -10,13 +10,13 @@
 **돈이 드는 것은 서버 쪽 LLM 호출이다.** 이 스크립트는 LLM 을 부르지 않고 키도 읽지 않는다.
 `LLM_MODE` 를 정하는 것은 부하를 받는 backend 의 환경이다.
 
-**운영을 못 건드리게 막아 둔다.**
-  · `--base` 의 호스트가 backend · localhost · 127.0.0.1 이 아니면 거절한다
-    (`ssample.duckdns.org` 는 항상).
-  · 환경에 `LOADTEST=1` 이 없으면 거절한다 — `backend/scripts/compose.loadtest.yml` 이
-    loadtest 프로젝트 backend 에만 넣는다. 운영 backend 컨테이너에서 실수로 부르면 여기서 멈춘다.
-  · 둘 다 `--i-know-this-is-not-prod` 로 풀 수 있다(로컬 개발 스택 시험용).
-    운영 주소는 그래도 거절한다.
+**운영을 못 건드리게 막아 둔다.** 풀 수 있는 플래그는 없다.
+  · `--base` 의 호스트는 `backend` 하나뿐이다. localhost · 127.0.0.1 도 거절한다.
+  · 환경에 `LOADTEST=1` 이 있어야 한다 — `backend/scripts/compose.loadtest.yml` 이 loadtest 프로젝트
+    컨테이너에만 넣는다.
+  · `backend`(burst 에서는 DB 호스트도)를 이름 풀이한 주소가 모두 loadtest 망 172.29.0.0/16 안일
+    때만 돈다. 운영 망(172.28.0.0/16)에서 `backend` 는 운영 backend 라서 여기서 멈춘다.
+  · `ssample.duckdns.org` 는 어떤 경우에도 거절한다.
 
 표준 라이브러리 + httpx + psycopg 만 쓴다(backend 이미지에 이미 있다).
 """
@@ -24,11 +24,13 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import math
 import os
 import re
 import secrets
+import socket
 import sys
 import threading
 import time
@@ -40,8 +42,8 @@ from urllib.parse import urlparse
 import httpx
 import psycopg
 
-SAFE_HOSTS = frozenset({"backend", "localhost", "127.0.0.1"})
 PROD_HOST = "ssample.duckdns.org"
+LOADTEST_NET = ipaddress.ip_network("172.29.0.0/16")  # compose.loadtest.yml 의 망 대역
 
 EMAIL = "lt01@example.com"  # EmailStr 가 .test · .local 을 거절한다
 CLIENT_TIMEOUT = 180.0  # 서버 최악 ≈ 풀 대기 30 + LLM 30 + 저장 뒤 재대여 30 = 90초 안팎
@@ -52,8 +54,12 @@ LEAD_SECONDS = 2.0  # burst 전후로 표본만 도는 시간 — 평소 값을 
 # 캐시 할인은 안 센다 — 실제보다 조금 비싸게 나온다. 단가를 바꾸면 두 곳을 같이 바꾼다.
 PROMPT_WON_PER_1K = 2.835
 COMPLETION_WON_PER_1K = 14.175
-# 요청 하나가 부를 수 있는 LLM 시도 수(재시도 1회 포함): S1 은 호출 1 · S2 는 호출 2.
-MAX_CALLS = {"s1": 2, "s2": 4}
+# 요청 하나가 보낼 LLM 전송 시도의 최대치. 502 · 503 · 504 · 연결 실패는 호출마다 1회 더 보낸다.
+#   S1  초안 1호출 × 2 = 2           (documents/router.py. 근거가 바뀌어 다시 만드는 일은 없다)
+#   S2  주제 1 + 소주제 1 + 소주제 개수 수리 1 = 3호출 × 2 = 6
+#       (plans/llm.py 한 번 · plans/annual_content.py 의 generate 한 번 + 개수가 틀리면 수리 한 번)
+# 정상일 때 S2 는 2호출이다. 여기는 **상한 계산용 최대치**다.
+MAX_ATTEMPTS = {"s1": 2, "s2": 6}
 BUDGET_CAP_WON = 30_000
 
 PG_SQL = (
@@ -66,25 +72,49 @@ PG_SQL = (
 # ── 순수 함수 (tests/test_load_check.py 가 본다) ─────────────────────────────
 
 
-def check_base(base: str, allow_other: bool) -> None:
-    """부하를 보낼 곳이 허용된 호스트인가. 운영 주소는 플래그가 있어도 거절한다."""
-    host = (urlparse(base).hostname or "").lower()
-    if host == PROD_HOST or host.endswith("." + PROD_HOST):
-        raise SystemExit(f"거절: {host} 는 운영 주소다. 이 스크립트는 운영에 부하를 보내지 않는다.")
-    if host not in SAFE_HOSTS and not allow_other:
+def check_inside(host: str, resolver=socket.getaddrinfo) -> None:
+    """이 호스트가 이름 풀이로 loadtest 망(172.29.0.0/16) 안의 주소만 주는가."""
+    try:
+        ips = {info[4][0] for info in resolver(host, None)}
+    except OSError as exc:
         raise SystemExit(
-            f"거절: --base 의 호스트가 {host!r} 이다. backend · localhost · 127.0.0.1 만 받는다."
-            " 로컬 개발 스택이면 --i-know-this-is-not-prod."
+            f"거절: {host} 를 이름 풀이하지 못했다 ({exc}). loadtest 망 안이 아니다."
+        ) from exc
+    outside = []
+    for ip in sorted(ips):
+        try:
+            inside = ipaddress.ip_address(ip) in LOADTEST_NET
+        except ValueError:  # 영역 ID 가 붙은 IPv6 등
+            inside = False
+        if not inside:
+            outside.append(ip)
+    if not ips or outside:
+        raise SystemExit(
+            f"거절: {host} 가 {', '.join(outside) or '아무 주소도 없음'} 으로 풀린다. "
+            f"loadtest 망 {LOADTEST_NET} 밖이다 — 운영일 수 있다."
         )
 
 
-def check_env(environ, allow_other: bool) -> None:
-    """loadtest 프로젝트 안에서만 돈다 — 운영 backend 컨테이너에서는 이 값이 없다."""
-    if environ.get("LOADTEST") != "1" and not allow_other:
+def check_target(base: str, environ, resolver=socket.getaddrinfo) -> None:
+    """부하를 보낼 곳이 loadtest 망 안의 `backend` 인가. 풀 수 있는 플래그가 없다."""
+    host = (urlparse(base).hostname or "").lower()
+    if host == PROD_HOST or host.endswith("." + PROD_HOST):
+        raise SystemExit(f"거절: {host} 는 운영 주소다. 이 스크립트는 운영에 부하를 보내지 않는다.")
+    if host != "backend":
+        raise SystemExit(
+            f"거절: --base 의 호스트가 {host!r} 이다. loadtest 망 안의 `backend` 만 받는다."
+        )
+    if environ.get("LOADTEST") != "1":
         raise SystemExit(
             "거절: 환경에 LOADTEST=1 이 없다. "
             "loadtest 프로젝트(compose.loadtest.yml)의 컨테이너에서만 돈다."
         )
+    check_inside(host, resolver)
+
+
+def check_db(url: str, resolver=socket.getaddrinfo) -> None:
+    """pg_stat 표본과 행 수 대조가 읽는 DB 도 loadtest 망 안이어야 한다."""
+    check_inside(urlparse(url).hostname or "", resolver)
 
 
 def percentile(values, p: float):
@@ -209,8 +239,7 @@ def save_state(out: Path, state: dict) -> None:
 
 
 def cmd_setup(a) -> None:
-    check_base(a.base, a.i_know_this_is_not_prod)
-    check_env(os.environ, a.i_know_this_is_not_prod)
+    check_target(a.base, os.environ)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     fresh = load_state(out) is None
@@ -438,9 +467,14 @@ def one_line(rnd: dict) -> str:
     )
 
 
+def budget_exceeded(rnd: dict) -> bool:
+    """이 회차에 한도 오류(401 · 403 · 429 가 묶인 `LLM_BUDGET_EXCEEDED`)가 하나라도 있나."""
+    return any(r.get("code") == "LLM_BUDGET_EXCEEDED" for r in rnd["requests"])
+
+
 def cmd_burst(a) -> None:
-    check_base(a.base, a.i_know_this_is_not_prod)
-    check_env(os.environ, a.i_know_this_is_not_prod)
+    check_target(a.base, os.environ)
+    check_db(db_url())
     out = Path(a.out)
     state = load_state(out)
     if state is None:
@@ -473,6 +507,15 @@ def cmd_burst(a) -> None:
         result["rounds"].append(rnd)
         path.write_text(json.dumps(result, ensure_ascii=False))
         print(f"  {one_line(rnd)}" + (" (예열 — 표에서 따로 센다)" if rnd["warmup"] else ""))
+        if budget_exceeded(rnd):
+            # 결과는 위에서 저장했다. 남은 회차는 보내지 않는다 — 한도는 다시 눌러도 같다.
+            left = a.repeat - r - 1
+            print(
+                f"중단: LLM_BUDGET_EXCEEDED. 남은 {left}회차를 보내지 않는다(종료 코드 3).\n"
+                "60초 뒤 S1 한 건으로 한도(429)인지 키 삭제인지 본다 — docs/load-check.md H."
+            )
+            print(f"결과 → {path}")
+            sys.exit(3)
         if r + 1 < a.repeat:
             time.sleep(a.pause)
     print(f"burst 끝 → {path}")
@@ -506,19 +549,9 @@ def assign(ts: datetime, rounds: list[dict]) -> dict | None:
     return owner
 
 
-def rtt_gaps(requests: list[tuple], timings: list[tuple]) -> list[float]:
-    """(끝 시각, 왕복 ms) 와 (끝 시각, total_ms) 를 끝 시각이 가장 가까운 것끼리 짝지어 차를 낸다.
-
-    `plan_timing` 은 의존성(첫 질의 = 풀 대기) 뒤에 시작해 풀 대기를 못 본다. 그래서 차이가
-    스레드풀 대기 + 풀 대기 + 인증 질의 + 응답 직렬화다.
-    """
-    left, gaps = list(requests), []
-    for t_end, total in sorted(timings):
-        if not left:
-            break
-        j = min(range(len(left)), key=lambda k: abs((left[k][0] - t_end).total_seconds()))
-        gaps.append(left.pop(j)[1] - total)
-    return gaps
+def plan_totals(timings: list[dict]) -> list[float]:
+    """`plan_timing` 줄의 total_ms 모음. 요청과 짝짓지 않는다(요청에 번호가 없다)."""
+    return [float(e["kv"]["total_ms"]) for e in timings if "total_ms" in e["kv"]]
 
 
 def fmt(value, unit: str = "ms") -> str:
@@ -586,17 +619,11 @@ def analyze_stage(label: str, rnds: list[dict], events: list[dict], a) -> None:
     print(f"  unexpected_error {len(errors)}건: {dict(by_path)}")
     timings = [e for e in mine if e["kind"] == "plan_timing"]
     if scenario == "s2":
+        # 요청과 짝짓지 않고 분포 둘을 따로 본다. 요청에 번호가 없어 짝짓기는 순서가 바뀌면 틀린다.
         missing = len(reqs) - len(timings)
         print(f"  요청 {len(reqs)} − plan_timing {len(timings)} = {missing} (핸들러에 못 닿은 수)")
-        reached = [
-            (iso(r["end_utc"]), r["ms"])
-            for r in reqs
-            if not r["timeout"]
-            and r.get("code") not in ("INTERNAL_ERROR", "UNAUTHENTICATED")
-            and r["status"] is not None
-        ]
-        gaps = rtt_gaps(reached, [(e["ts"], float(e["kv"]["total_ms"])) for e in timings])
-        print(f"  왕복 − total_ms: {stats(gaps)}")
+        print(f"  서버 plan_timing total_ms: {stats(plan_totals(timings))}")
+        print("  (클라이언트 왕복은 위 「응답 시간」 — 둘의 차이를 요청 단위로 계산하지 않는다)")
     else:
         print("  plan_timing: S1(일지)은 이 줄을 안 남긴다 — llm_call 시작 시각으로 본다")
     # 같은 회차의 t0 를 쓰려고 회차별로 나눠 처음 시작만 모은다.
@@ -604,29 +631,60 @@ def analyze_stage(label: str, rnds: list[dict], events: list[dict], a) -> None:
     for rnd in rnds:
         mine_in_round = [e for e in calls if e["rnd"] is rnd]
         offsets += [(t - rnd["t0"]).total_seconds() for t in first_starts(mine_in_round)]
-    print(f"  LLM 첫 시작 시각 (burst t0 기준 {a.bin:g}초 칸 — 0 · H · 2H 에 몰리면 풀 병목)")
+    if scenario == "s2":
+        print(
+            f"  LLM 첫 시작 시각 (run 별 첫 호출, burst t0 기준 {a.bin:g}초 칸 — "
+            "0 · H · 2H 에 몰리면 풀 병목의 직접 증거)"
+        )
+    else:
+        print(
+            f"  LLM 호출 시도 시작 시각 (burst t0 기준 {a.bin:g}초 칸. S1 은 run 으로 못 묶어 "
+            "전송 재시도도 한 줄로 센다 — 참고용이다)"
+        )
     print("\n".join(histogram(offsets, a.bin)))
 
 
-def spend(events: list[dict]) -> dict:
-    """원화 지출. 시간 초과(`outcome=timeout`)는 과금됐을 수 있어 최대 관측 단가로 센다."""
+def spend(events: list[dict], created: dict | None = None) -> dict:
+    """원화 지출. 시간 초과(`outcome=timeout`)는 과금됐을 수 있어 최대 관측 단가로 센다.
+
+    **비용을 모르는 호출을 0원으로 치지 않는다.** 아래 넷은 따로 세고, 하나라도 있으면 멈춘다.
+      usage_incomplete  llm_usage 줄은 있는데 토큰이 숫자가 아니다(응답에 usage 가 없거나 깨졌다)
+      usage_missing     llm_call 은 성공인데 짝이 되는 llm_usage 줄이 없다
+      log_gap           201 수에서 기대한 성공 호출(S1 1 · S2 2 이상)보다 로그의 성공 호출이 적다
+                        — 로그 수집이 실패했거나 덤프가 옛것이다
+      timeout_unpriced  시간 초과인데 아직 한 번도 단가를 못 봤다
+    """
     costs: dict = {}
+    usage_lines = incomplete = 0
     for e in events:
         if e["kind"] != "llm_usage":
             continue
+        usage_lines += 1
         p, c = e["kv"].get("prompt", "-"), e["kv"].get("completion", "-")
         if p.isdigit() and c.isdigit():
             scenario = e["rnd"]["scenario"] if e["rnd"] else None
             costs.setdefault(scenario, []).append((int(p), int(c), cost_won(int(p), int(c))))
+        else:
+            incomplete += 1
     flat = [x for v in costs.values() for x in v]
     overall_max = max((x[2] for x in flat), default=0.0)
     per_max = {s: max(x[2] for x in v) for s, v in costs.items() if s}
-    timeouts = [
-        e for e in events if e["kind"] == "llm_call" and e["kv"].get("outcome") == "timeout"
-    ]
-    timeout_won = sum(
-        per_max.get(e["rnd"]["scenario"] if e["rnd"] else None, overall_max) for e in timeouts
-    )
+    calls = [e for e in events if e["kind"] == "llm_call"]
+    ok_calls = [e for e in calls if e["kv"].get("outcome") == "ok"]
+    timeouts = [e for e in calls if e["kv"].get("outcome") == "timeout"]
+    timeout_won, unpriced = 0.0, 0
+    for e in timeouts:
+        unit = per_max.get(e["rnd"]["scenario"] if e["rnd"] else None, overall_max)
+        timeout_won += unit
+        unpriced += unit == 0
+    created = created or {}
+    expected_ok = created.get("s1", 0) + 2 * created.get("s2", 0)
+    unknown = {
+        "usage_incomplete": incomplete,
+        "usage_missing": max(0, len(ok_calls) - usage_lines),
+        "log_gap": max(0, expected_ok - len(ok_calls)),
+        "timeout_unpriced": unpriced,
+    }
     return {
         "calls": len(flat),
         "prompt": sum(x[0] for x in flat),
@@ -636,10 +694,34 @@ def spend(events: list[dict]) -> dict:
         "timeout_won": timeout_won,
         "per_max": per_max,
         "overall_max": overall_max,
+        "unknown": unknown,
+        "expected_ok": expected_ok,
+        "observed_ok": len(ok_calls),
+        "failed": sum(e["kv"].get("outcome") == "failed" for e in calls),
     }
 
 
-def print_spend(sp: dict, next_n: int | None) -> None:
+def parse_next(text: str) -> tuple[str, int, int]:
+    """`s2:10x2` → (s2, 10, 2). 다음 단계의 시나리오 · 동시 요청 수 · 반복 수."""
+    m = re.fullmatch(r"(s1|s2):(\d+)x(\d+)", text)
+    if not m:
+        raise SystemExit(f"--next 는 시나리오:동시x반복 꼴이다. 예) s2:10x2 (받은 값: {text!r})")
+    return m.group(1), int(m.group(2)), int(m.group(3))
+
+
+def worst_case_won(scenario: str, n: int, repeat: int, unit: float) -> float:
+    """다음 단계 추정 = 요청 수 × 반복 × 요청당 최대 시도 × 관측 최대 단가."""
+    return n * repeat * MAX_ATTEMPTS[scenario] * unit
+
+
+def next_verdict(total: float, worst: float, unit: float, unknown: dict) -> str:
+    """비용을 모르는 호출이 있거나 단가를 한 번도 못 봤으면 계산이 맞아도 멈춘다."""
+    if unit == 0 or any(unknown.values()):
+        return "멈춤(단가 모름)"
+    return "진행 가능" if total + worst <= BUDGET_CAP_WON else "멈춤(상한 초과 가능)"
+
+
+def print_spend(sp: dict, next_stage: tuple[str, int, int] | None) -> None:
     total = sp["ok_won"] + sp["timeout_won"]
     print("\n=== 원화 지출 (llm_usage 단가: scripts/llm-usage.sh, VAT 별도, 캐시 할인 없음) ===")
     tokens = f"입력 {sp['prompt']:,} · 출력 {sp['completion']:,} 토큰"
@@ -648,22 +730,32 @@ def print_spend(sp: dict, next_n: int | None) -> None:
     print(f"  합계 ₩{total:,.0f} / 상한 ₩{BUDGET_CAP_WON:,}")
     units = {k.upper(): round(v, 1) for k, v in sp["per_max"].items()}
     print(f"  호출 1회 최대 관측 단가(원): {units}")
-    if next_n is None:
+    labels = {
+        "usage_incomplete": "usage 가 없거나 불완전한 llm_usage 줄",
+        "usage_missing": "llm_usage 줄이 없는 성공 호출",
+        "log_gap": f"로그 부족(기대 성공 호출 ≥{sp['expected_ok']} · 관측 {sp['observed_ok']})",
+        "timeout_unpriced": "단가를 못 본 시간 초과",
+    }
+    found = [f"{labels[k]} {n}" for k, n in sp["unknown"].items() if n]
+    print(f"  비용을 모르는 호출: {' · '.join(found) if found else '없음'}")
+    if sp["failed"]:
+        print(f"  (참고) outcome=failed {sp['failed']}건 — 과금 여부 불명, 합계에 넣지 않았다")
+    if next_stage is None:
         return
+    scenario, n, repeat = next_stage
+    unit = sp["per_max"].get(scenario, sp["overall_max"])
+    worst = worst_case_won(scenario, n, repeat, unit)
     print(
-        f"\n=== 다음 단계 동시 {next_n} 의 최악 비용 (요청 수 × 요청당 최대 호출 × 최대 단가) ==="
+        f"\n=== 다음 단계 {scenario}:{n}x{repeat} — 관측 최대 단가 기준 추정 "
+        f"(요청 {n} × 반복 {repeat} × 요청당 최대 시도 {MAX_ATTEMPTS[scenario]} × 단가) ==="
     )
-    for scenario, calls in MAX_CALLS.items():
-        unit = sp["per_max"].get(scenario, sp["overall_max"])
-        if unit == 0:
-            print(f"  {scenario.upper()}: 단가를 아직 못 봤다 — 기준선(동시 1)부터 잰다")
-            continue
-        if scenario not in sp["per_max"]:
-            print(f"  ({scenario.upper()} 관측이 없어 전체 최대 단가 ₩{unit:,.1f} 로 센다)")
-        worst = next_n * calls * unit
-        verdict = "진행 가능" if total + worst <= BUDGET_CAP_WON else "멈춘다 — 상한을 넘을 수 있다"
-        after = f"₩{total + worst:,.0f} / ₩{BUDGET_CAP_WON:,}"
-        print(f"  {scenario.upper()}: ₩{worst:,.0f} → 지출 합계 {after} : {verdict}")
+    if unit == 0:
+        print("  단가를 아직 한 번도 못 봤다 — 기준선(동시 1)부터 잰다")
+    elif scenario not in sp["per_max"]:
+        print(f"  ({scenario.upper()} 관측이 없어 전체 최대 단가 ₩{unit:,.1f} 로 센다)")
+    verdict = next_verdict(total, worst, unit, sp["unknown"])
+    after = f"₩{total + worst:,.0f} / ₩{BUDGET_CAP_WON:,}"
+    print(f"  추정 ₩{worst:,.0f} → 지출 합계 {after} : {verdict}")
 
 
 def cmd_analyze(a) -> None:
@@ -694,7 +786,10 @@ def cmd_analyze(a) -> None:
     shown = [rounds[-1]["label"]] if a.last_only else list(by_label)
     for label in shown:
         analyze_stage(label, by_label[label], events, a)
-    print_spend(spend(events), a.next_n)
+    created = {"s1": 0, "s2": 0}
+    for rnd in rounds:
+        created[rnd["scenario"]] += len(rnd["ok_class_ids"])
+    print_spend(spend(events, created), parse_next(a.next) if a.next else None)
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -707,8 +802,7 @@ def main(argv=None) -> None:
     def common(sp, base: bool = True) -> None:
         sp.add_argument("--out", required=True, help="state.json · burst-*.json 을 두는 폴더")
         if base:
-            sp.add_argument("--base", required=True, help="예: http://backend:8000")
-            sp.add_argument("--i-know-this-is-not-prod", action="store_true")
+            sp.add_argument("--base", required=True, help="http://backend:8000")
 
     s = sub.add_parser("setup", help="교사 · 원 · 반 · 일과 기록 (여러 번 돌리면 반이 더해진다)")
     common(s)
@@ -731,7 +825,9 @@ def main(argv=None) -> None:
     z = sub.add_parser("analyze", help="burst 결과 + backend 로그 → 표")
     common(z, base=False)
     z.add_argument("--backend-log", required=True, help="docker compose logs -t backend 덤프")
-    z.add_argument("--next-n", type=int, help="다음 단계 동시 요청 수 — 최악 비용을 낸다")
+    z.add_argument(
+        "--next", help="다음 단계 시나리오:동시x반복. 예) s2:10x2 — 추정 비용 · 판정을 낸다"
+    )
     z.add_argument("--bin", type=float, default=5.0, help="LLM 시작 히스토그램 칸(초)")
     z.add_argument("--last-only", action="store_true", help="마지막 단계 표만 (지출은 누적 전체)")
     z.set_defaults(fn=cmd_analyze)
