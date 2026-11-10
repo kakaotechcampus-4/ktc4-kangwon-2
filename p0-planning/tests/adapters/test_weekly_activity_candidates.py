@@ -317,7 +317,7 @@ class _Trends:
         return OptionalContextResult(name, OptionalContextStatus.AVAILABLE, self.items)
 
 
-def _trend_generate(provider, trends, memo=""):
+def _trend_generate(provider, trends, memo="", seed=None):
     from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateRepository
     from ssuksak.adapters.weekly_composition import weekly_generation
 
@@ -330,7 +330,7 @@ def _trend_generate(provider, trends, memo=""):
             paths=(Path(__file__).parents[2] / "data/templates/weekly_template_a_v0_2_0.json",)),
     )
     command = replace(_day_command(parent), activity_candidates=True, indoor_play_candidates=True, teacher_memo=memo,
-                      optional_context_names=() if trends is None else ("trend",))
+                      optional_context_names=() if trends is None else ("trend",), candidate_sample_seed=seed)
     return harness, use_case.execute(command).plan
 
 
@@ -420,6 +420,24 @@ def test_picture_book_is_assigned_to_one_story_candidate_and_repaired_once_or_ke
         assert "『숲속 친구들』" in fix[0]["reason"]
     books = [s for c in plan.activity_candidates for s in _trend_source(c.cell) if s.source_id == book.trend_id]
     assert len(books) == (0 if case == "fallback" else 1)  # §7: a missing book never fails the generation
+
+
+def test_generation_seed_picks_the_picture_book_at_random_and_repeats_it():
+    from datetime import date
+
+    from ssuksak.planning.domain.trend import TrendItem, TrendKind
+
+    shelf = tuple(TrendItem(f"data4library:979000000000{n}", TrendKind.STORY, f"그림책 {n}", "", "도서관 정보나루",
+                            "2026-W44", date(2026, 10, 28)) for n in range(4))
+
+    def picked(seed):
+        provider = RequestAwareWeeklyLlm()
+        _trend_generate(provider, _Trends((*_trend_items(), *shelf)), seed=seed)
+        return provider.requests[0].trend_required[1].trend_id
+
+    assert picked(None) == shelf[0].trend_id  # no seed: the first passed book, as before
+    by_seed = {seed: picked(seed) for seed in range(6)}
+    assert by_seed[3] == picked(3) and len(set(by_seed.values())) > 1
 
 
 def test_trend_not_allowed_for_that_candidate_is_rejected_and_nothing_saved():

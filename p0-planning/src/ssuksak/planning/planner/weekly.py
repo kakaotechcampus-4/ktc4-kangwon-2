@@ -13,6 +13,7 @@ from ... import timing
 import hashlib
 import json
 import logging
+import random
 import re
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -426,6 +427,7 @@ def build_weekly_request(
     teacher_memo: str = "",
     teacher_venues: tuple[str, ...] = (),
     trends: tuple[TrendItem, ...] = (),
+    book_seed: int | None = None,  # generation's candidate seed; None keeps the first passed book
 ) -> WeeklyPlanningRequest:
     body = {
         "task": "weekly_plan",
@@ -493,9 +495,10 @@ def build_weekly_request(
     # ADR-072: without a fitting trend nothing below runs — request, prompt and fingerprint stay as before.
     options = trend_options(targets, trends)
     passed = tuple(item for item in trends if any(item.trend_id in ids for _, ids in options))
-    # ponytail: the first book in the passed order (ISBN order after select_trends), not the best theme hit —
-    # every passed book already matched the week theme words. Keep the rank through select_trends if it matters.
-    book = next((item for item in passed if item.trend_id.startswith(BOOK_SOURCE)), None)
+    # 2026-11-10 하민: every passed book already matched the week theme words, so the seed picks one at random
+    # (same seed, same book). Without a seed the first passed book (ISBN order after select_trends) stays.
+    books = [item for item in passed if item.trend_id.startswith(BOOK_SOURCE)]
+    book = (random.Random(f"{book_seed}:book").choice(books) if book_seed is not None else books[0]) if books else None
     slot = next((address for address, ids in options if book is not None and book.trend_id in ids), None)
     required = (slot, book) if slot is not None and book is not None else None
     if required is not None:
