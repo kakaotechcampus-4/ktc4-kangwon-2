@@ -199,7 +199,8 @@ export default function WeeklyRecordsPage() {
                 type="button"
                 aria-label="지난 주"
                 className={ws.weekStep}
-                onClick={() => setSelected(shift(selected, -7))}
+                disabled={journal.pending}
+                onClick={() => journal.leave() && setSelected(shift(selected, -7))}
               >
                 <Icon name="arrow" className="h-4 w-4 rotate-180" />
               </button>
@@ -210,7 +211,8 @@ export default function WeeklyRecordsPage() {
                 type="button"
                 aria-label="다음 주"
                 className={ws.weekStep}
-                onClick={() => setSelected(shift(selected, 7))}
+                disabled={journal.pending}
+                onClick={() => journal.leave() && setSelected(shift(selected, 7))}
               >
                 <Icon name="arrow" className="h-4 w-4" />
               </button>
