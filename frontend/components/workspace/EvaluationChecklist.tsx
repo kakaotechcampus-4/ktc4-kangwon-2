@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getCurrentUser } from "@/lib/api/auth";
+import { getCenterSettings } from "@/lib/api/centers";
 import {
   getEvaluationChecklist,
   saveDirectorChecks,
@@ -39,6 +40,8 @@ import styles from "./Evaluation.module.css";
 export default function EvaluationChecklist() {
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [centerId, setCenterId] = useState<number | null>(null);
+  // 원장 서류 체크는 원을 처음 등록한 선생님만 바꾼다(ADR-087). 못 읽으면 잠그지 않는다 — 서버가 403 으로 막는다.
+  const [canEdit, setCanEdit] = useState(true);
   const [error, setError] = useState("");
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [initiallyOpen, setInitiallyOpen] = useState(new Set<string>());
@@ -59,9 +62,13 @@ export default function EvaluationChecklist() {
       try {
         const user = await getCurrentUser();
         if (user.center_id === null) throw new Error("원 정보를 먼저 등록해 주세요.");
-        const result = await getEvaluationChecklist(user.center_id, controller.signal);
+        const [result, settings] = await Promise.all([
+          getEvaluationChecklist(user.center_id, controller.signal),
+          getCenterSettings(user.center_id).catch(() => null),
+        ]);
         if (controller.signal.aborted) return;
         setCenterId(user.center_id);
+        setCanEdit(settings?.can_edit !== false);
         setChecklist(result);
         // 안 끝난 첫 평가항목 하나만 펼쳐서 연다. 나머지는 접어 두어 스크롤을 줄인다.
         const next = result.items.find((item) => item.kind === "SELF_CHECK" && !item.complete);
@@ -203,7 +210,9 @@ export default function EvaluationChecklist() {
       label: "원장님이 챙기는 서류",
       note: directorCount,
       title: `원장님이 챙기는 서류 · ${directorCount}`,
-      body: <DirectorList checks={checklist.director} onToggle={toggleDirector} />,
+      body: (
+        <DirectorList checks={checklist.director} onToggle={toggleDirector} canEdit={canEdit} />
+      ),
     },
     {
       key: "auto" as const,

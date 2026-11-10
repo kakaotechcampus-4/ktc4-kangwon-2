@@ -28,9 +28,11 @@ const SETTINGS_DEFAULT = {
   observation_axis: "NURI_5" as const,
   reflect_mark: "(반영)" as ReflectMark,
 };
+/** 목업 계정은 늘 그 원을 만든 교사다 — 원 설정을 바꿀 수 있다 (ADR-087). 저장하지 않는 값이다. */
 export const findCenterSettings = (id: number) => ({
   ...SETTINGS_DEFAULT,
   ...read().centerSettings[id],
+  can_edit: true,
 });
 export const putCenterSettings = (
   id: number,
@@ -44,7 +46,7 @@ export const putCenterSettings = (
   commit((db) => {
     const next = { ...SETTINGS_DEFAULT, ...db.centerSettings[id], ...patch };
     db.centerSettings[id] = next;
-    return next;
+    return { ...next, can_edit: true };
   });
 /**
  * 목업 어린이집 목록 (§1 「어린이집 찾기」). 어느 지역을 골라도 같은 일곱 곳이 나온다 —

@@ -6,8 +6,8 @@ import localFont from "next/font/local";
  *
  * 한글 폰트(display·body)는 여기에 없다. next/font/local 은 src 별
  * unicode-range 를 못 줘서 한글 한 덩어리를 통째로 받게 되는데, 구글 폰트는
- * 이미 구간별로 쪼개 보낸다. 그래서 Noto Sans KR · Gaegu 는 globals.css 의
- * @import 로 받고, --font-body · --font-display 도 거기서 정한다.
+ * 이미 구간별로 쪼개 보낸다. 그래서 Noto Sans KR · Gaegu 는 app/layout.tsx 의
+ * <link> 로 받고, --font-body · --font-display 는 globals.css 에서 정한다.
  */
 export const mono = localFont({
   src: "../public/fonts/JetBrainsMono-Latin.woff2",

@@ -162,6 +162,7 @@ me       GET /api/auth/me                                               → 200 
 | `TRENDS_DISABLED` | 403 | 그 원이 트렌드봇을 껐다 (§3-1 · FR-808) |
 | `CLASS_ACCESS_REQUIRED` | 403 | 같은 원 다른 반이다. 그 반 주인의 승인이 필요하다(§2-2) |
 | `CLASS_READ_ONLY` | 403 | 승인받아 보기만 된다. 고치기 · 확정 · 삭제는 주인만(§2-2) |
+| `CENTER_CREATOR_ONLY` | 403 | 원 전체에 걸리는 것(원 설정 · 성품인사 · 남이 올린 양식 지우기 · 원 기본 월간 양식 · 원장 서류 체크)이다. 원을 만든 교사만 한다(§3 · §3-1 · §8 · §9-4 · §12 · ADR-087) |
 | `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§9-3 월간 `expected_revision` · §6-1 · §7 놀이 프로젝트형 연간 `expected_revision` · §9-7 놀이 중심 월간 `expected_revision` · §9-4 포인터 `expected_profile_ref` · §11 문서 `updated_at` · §11 문서 생성 중 근거가 거듭 바뀜) |
 | `RATE_LIMITED` | 429 | 같은 IP 에서 요청이 너무 잦다. **앱이 아니라 nginx 가 낸다**(`nginx/app-routes.conf`). 로그인 · 가입 · 카카오 · 비밀번호 바꾸기는 분당 10번, 생성 POST(연간 · 월간 · 주간 · 칸 재생성 · 연간 가져오기 추출 · 일지 초안 · 일지 검증)는 합쳐서 분당 6번이고, 둘 다 한꺼번에 10번까지 먼저 받는다. 같은 주소의 목록 GET 은 세지 않는다. 1분쯤 뒤 다시 |
 
@@ -227,6 +228,10 @@ GET /health/ready    DB 까지 본다(SELECT 1).  배포 판정은 이쪽   200 
 - `kind` · `address` 는 목록에서 읽어 붙인다(직접 적은 원은 `null`). `teacher_count` 는 그 원에 가입한 교사 수다.
 
 **원 정보는 고치지 않는다.** `PATCH /api/centers/{center_id}` 는 없다(ADR-068) — 같은 원 교사가 여럿이다.
+
+**원을 만든 교사를 남긴다(`centers.created_by`, ADR-087).** 새로 만든 원(`201`)은 보낸 교사, 들어간 원(`200`)은
+그대로다. 원 설정 · 성품인사 바꾸기와 남이 올린 양식 지우기는 이 교사만 한다 — 같은 원 다른 교사는 읽기만
+한다(`403 CENTER_CREATOR_ONLY`). 응답에는 싣지 않는다 — 화면은 §3-1 `can_edit` · §8 `can_delete` 를 본다.
 
 ### 어린이집 찾기 — `GET /api/daycares?sido=&sigungu=&q=`
 
@@ -354,7 +359,7 @@ GET /health/ready    DB 까지 본다(SELECT 1).  배포 판정은 이쪽   200 
 | `my_access` | 뜻 |
 |---|---|
 | `OWNER` | 내가 만든 반 |
-| `OPEN` | 주인 없는 옛 반 |
+| `OPEN` | 주인 없는 반 — 교사가 없는 원의 반뿐이다. 옛 반은 그 원 첫 교사로 주인을 채웠다(ADR-068 §6) |
 | `APPROVED` | 주인이 열람을 승인함 |
 | `PENDING` | 요청을 기다리는 중 |
 | `REJECTED` | 요청이 거절됨 |
@@ -708,7 +713,8 @@ P0 에서는 아동 기록이 없는 온보딩 단계에서만 일어난다. 이
 **호출 지점은 온보딩이 아니라 설정 화면(7주차)이다.** 계약 자체는 안 바뀐다.
 **6주차에 FE 가 이 엔드포인트를 부르지 않는다.** (ADR-012 — 온보딩 S4 를 비웠다)
 
-**PUT Request** — 같은 형식. **전체 교체다.**
+**PUT Request** — 같은 형식. **전체 교체다.** **원을 만든 교사만 바꾼다**(ADR-087) — 같은 원 다른 교사는
+`403 CENTER_CREATOR_ONLY` (`fields: ["center_id"]`). 읽기(GET)는 같은 원 교사 누구나 한다.
 
 ```
 items 는 정확히 12개다.                          그 외는 VALIDATION_FAILED 422
@@ -738,10 +744,14 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 
 ```json
 { "trends_enabled": false, "weekly_saturday_enabled": false,
-  "observation_axis": "NURI_5", "reflect_mark": "(반영)" }
+  "observation_axis": "NURI_5", "reflect_mark": "(반영)", "can_edit": true }
 ```
 
 설정한 적 없으면 기본값을 채워 내려준다. 빈 객체를 주지 않는다.
+
+**`can_edit` — 이 계정이 바꿀 수 있는지(ADR-087).** 원을 만든 교사만 `true` 다. 저장된 값이 아니고
+PUT 으로 보내면 모르는 칸이라 422 다. 같은 원 다른 교사도 GET 은 된다 — 화면은 고르개를 잠그고
+「원을 처음 등록한 선생님만 바꿀 수 있다」를 띄운다. PUT 응답에도 같은 칸이 있다.
 
 **`trends_enabled` 기본값은 `false` 다.** 세 가지 이유다.
 
@@ -758,7 +768,12 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 ```json
 { "trends_enabled": true }
 { "weekly_saturday_enabled": true }
+{ "observation_axis": "DAILY_PLAY_2" }
 ```
+
+**`observation_axis` — 관찰 기록의 영역 축.** `NURI_5`(누리과정 5영역, 기본) · `DAILY_PLAY_2`(일상생활 · 놀이활동).
+그 밖의 값은 422. 관찰 기록(§10)의 `domain` 이 이 축의 값이어야 하고, 관찰일지 종이가 이 축으로 줄을 나눈다.
+바꿔도 이미 쌓은 기록은 그대로 읽힌다.
 
 성품인사와 달리 전체 교체가 아니다. 토글은 **한 번에 하나씩** 누르고, 설정이 늘어날수록
 전체 교체는 「다른 토글을 건드리지 않았다」를 매번 증명해야 한다.
@@ -804,6 +819,7 @@ PM 결정(ADR-030 WQ-01): 주간계획안은 기본 5일이고, 토요일을 운
 | code | status | 언제 |
 |---|---|---|
 | `NOT_FOUND` | 404 | 없거나 남의 원이다 |
+| `CENTER_CREATOR_ONLY` | 403 | PUT 인데 원을 만든 교사가 아니다(ADR-087). `fields: ["center_id"]` |
 | `VALIDATION_FAILED` | 422 | 참/거짓이 아닌 값이다 |
 
 **UI states**
@@ -1656,10 +1672,16 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 **같은 파일을 다시 올리면 새 행이 생긴다.** 중복을 막지 않는다 — 잘못 올렸으면 지운다.
 
 **`GET /api/centers/{center_id}/forms`** → `{ "items": [...] }`. 항목은 위 등록 응답과 같다.
+같은 원 교사는 누구나 읽는다. 항목마다 `can_delete` 가 붙는다 — 이 계정이 지울 수 있는지다(아래 삭제, ADR-087).
+등록 응답의 `can_delete` 는 늘 `true` 다(올린 교사).
 정렬은 `created_at DESC, id DESC`. 상세 조회(`GET /api/forms/{id}`)는 두지 않는다 — 원당 양식이
 몇 개라 목록에 파싱 결과까지 싣는다. 양식이 늘어 목록이 무거워지면 목록을 요약으로 줄이고 상세를 붙인다.
 
 **`DELETE /api/forms/{id}`** → `204`.
+
+**지우는 사람은 올린 교사와 원을 만든 교사뿐이다(ADR-087).** 원 모든 반이 같이 쓰는 양식이다. 그 밖의 같은 원
+교사는 `403 CENTER_CREATOR_ONLY` (`fields: ["center_id"]`). 올린 교사를 모르는 옛 양식(`forms.uploaded_by` NULL,
+이 결정 전에 올린 것)은 원을 만든 교사만 지운다. 올리기는 같은 원 교사 누구나 한다.
 
 **파생 계획안이 남아 있으면 지우지 않고 숨긴다 — 그래도 `204` 다.** `plans.form_id` FK 가 삭제를 막으면
 `forms.hidden_at` 에 시각을 남긴다(ADR-026). 감춘 양식은 목록에 없고, 다시 지우면 `404 NOT_FOUND` 다.
@@ -1679,7 +1701,7 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 **§4 가 받은 `form_id` 는 forms 의 조회 함수로 검사한다** — 없거나 감췄거나 남의 원 것이면 `NOT_FOUND` 404
 (`fields: ["form_id"]`). plans 가 forms 를 직접 import 하지 않는다(`structure.md`).
 
-**에러** — parse 의 세 개에 둘이 더 붙는다
+**에러** — parse 의 세 개에 셋이 더 붙는다
 
 | code | status | 언제 | `fields` |
 |---|---|---|---|
@@ -1688,6 +1710,7 @@ FE 양식 화면(`TemplatesPage`)은 지금 pdf · docx 등을 받아 브라우�
 | `DEPENDENCY_UNAVAILABLE` | 503 | parse 와 같다 | `[]` |
 | `UNAUTHENTICATED` | 401 | 토큰이 없거나 못 믿는다(§0) | `[]` |
 | `NOT_FOUND` | 404 | 없는 원 · 없는 양식 · 감춘 양식. **남의 원 것도 404 다**(ADR-017) | 등록 · 목록 `["center_id"]` / 삭제 `["form_id"]` |
+| `CENTER_CREATOR_ONLY` | 403 | 삭제인데 올린 교사도 원을 만든 교사도 아니다(ADR-087) | `["center_id"]` |
 
 **앱에서 파일 크기를 제한하지 않는다** — parse 도 같다. nginx `client_max_body_size 10m` 이
 큰 요청을 먼저 거부하므로 nginx 를 거치는 원본은 최대 10MB 다(ADR-026).
@@ -2485,6 +2508,8 @@ expected_profile_ref   필수 키.  화면이 GET 으로 본 지금 값.  기본
   바꾸지 않고 `409 STALE_WRITE` 다. 같은 `expected` 로 두 요청이 동시에 와도 하나만 저장된다. 화면은
   GET 으로 다시 읽어 보여 주고 다시 하게 한다.
 - 새 READY 가 생겨도 포인터는 움직이지 않는다(C2.6).
+- **PUT 은 원을 만든 교사만 한다**(ADR-087). 다른 교사는 `403 CENTER_CREATOR_ONLY` (`fields: ["center_id"]`) — 본문 검사보다 먼저다.
+  GET 은 같은 원 교사 누구나 한다. 월간 만들기 화면은 원 설정 `can_edit`(§3-1)이 거짓이면 원 기본 걸기를 건너뛴다.
 
 ### ④ 반 override — `GET · PUT /api/classes/{class_id}/template-profile-override`
 
@@ -2508,6 +2533,7 @@ expected_profile_ref   필수 키.  화면이 GET 으로 본 지금 값.  기본
 | `NOT_FOUND` | 404 | 기반 Template 이 없다 | `["base_template_ref"]` |
 | `NOT_FOUND` | 404 | 가리킬 Profile 이 없다 · READY 가 아니다(DRAFT · ARCHIVED) · 남의 원 것이다 (셋을 가르지 않는다) | `["profile_ref"]` |
 | `GATE_BLOCKED` | 409 | 기반 Template 이 사람 승인 전이다 | `["base_template_ref"]` |
+| `CENTER_CREATOR_ONLY` | 403 | ③ 원 기본 PUT 인데 원을 만든 교사가 아니다(ADR-087) | `["center_id"]` |
 | `STALE_WRITE` | 409 | `expected_profile_ref` 가 지금 포인터와 다르다 | `["expected_profile_ref"]` |
 
 ### 연간 → 월간 Gate 와의 관계
@@ -4064,7 +4090,6 @@ not_a_pass    등록이 평가 통과를 뜻하지 않는다는 것을 아는가
 (§12 · ADR-019 · ADR-022). 여기서 보는 것은 **집계에 들어갈 수 있는 모양인가**뿐이다.
 
 ```
-ASSESSMENT_NEEDS_CHILD   영유아 평가인데 아동을 안 골랐다 — 4-2 는 아이마다 센다
 OUT_OF_REVIEW_PERIOD     평가제가 보는 기간 밖이다
 BODY_TOO_SHORT           원문이 50자 미만이다 — 파일을 제대로 읽었는지
 ALREADY_REGISTERED       같은 아동 · 종류 · 겹치는 기간의 증빙이 이미 있다
@@ -4646,6 +4671,8 @@ item    operation-plan · annual-plan · interaction-record · duty-training · 
 
 **원 단위다.** 자체평가 체크(아래 「체크 저장」)와 같은 모양이다 — ☐ 에서 ☑ 로 바뀐 시각을 남기고, 풀면 지운다.
 `checks` 는 1개 이상이고 같은 `item` 이 두 번 오면 안 된다.
+**바꾸기는 원을 만든 교사만이다**(ADR-087) — 다른 교사는 `403 CENTER_CREATOR_ONLY` (`fields: ["center_id"]`).
+같은 체크를 GET 으로 보기는 한다. 화면은 원 설정 `can_edit`(§3-1)이 거짓이면 체크 칸을 잠근다.
 
 **Response** `200` — GET 과 같은 전체 응답이다.
 
@@ -4655,6 +4682,7 @@ item    operation-plan · annual-plan · interaction-record · duty-training · 
 |---|---|---|---|
 | `UNAUTHENTICATED` | 401 | 토큰이 없거나 못 믿는다(§0) | `[]` |
 | `NOT_FOUND` | 404 | 없는 원. **남의 원도 404 다**(ADR-017) | `["center_id"]` |
+| `CENTER_CREATOR_ONLY` | 403 | 원장 서류 PUT 인데 원을 만든 교사가 아니다(ADR-087). 직접확인 · 폴더 결과는 교사 단위라 해당 없다 | `["center_id"]` |
 | `VALIDATION_FAILED` | 422 | 없는 키 · 받지 않는 서류의 직접확인 · `checked` 가 bool 이 아님 · 같은 키 두 번 · 상태와 숫자가 안 맞음 · 뒤집힌 기간 · 모르는 칸 · 빈 요청 | 칸 위치(`checks.0.doc` · `folder_scan.results.0.period`). 묶음 규칙은 그 묶음 — `folder_scan` 의 같은 서류 두 번은 `["folder_scan"]`, 상태와 숫자가 안 맞으면 `["folder_scan.results.0"]`. 요청 전체 규칙(빈 요청 · `checks` 의 같은 키 두 번)은 `[]` |
 
 **하나라도 틀리면 아무것도 저장하지 않는다.**

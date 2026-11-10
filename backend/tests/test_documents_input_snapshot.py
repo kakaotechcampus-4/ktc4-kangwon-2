@@ -30,8 +30,15 @@ def _logged_in(db_session, teacher):
 
 @pytest.fixture
 def sun(db_session, teacher):
+    # 축을 바꾸는 시험이 있다 — 원 설정은 원을 만든 교사만 바꾼다(ADR-087).
+    db_session.add(teacher)
+    db_session.flush()
     center = Center(
-        name="테스트어린이집", director_name="김원장", region_sido="강원", region_sigungu="춘천"
+        name="테스트어린이집",
+        director_name="김원장",
+        region_sido="강원",
+        region_sigungu="춘천",
+        created_by=teacher.id,
     )
     db_session.add(center)
     db_session.flush()

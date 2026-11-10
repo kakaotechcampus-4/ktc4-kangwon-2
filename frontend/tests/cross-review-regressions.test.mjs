@@ -74,6 +74,9 @@ function harness(path, imports, extra = "") {
         if (id === "./use-journal-editor")
           return compile("../components/workspace/use-journal-editor.ts");
         if (id === "@/lib/hooks/use-unsaved-warning") return { useUnsavedWarning() {} };
+        // 승인받은 반 목록은 ApprovedList 가 이 모듈에 맡긴다. 같은 대역(API)으로 진짜를 돌린다.
+        if (id === "@/lib/workspace/approved-rows")
+          return compile("../lib/workspace/approved-rows.ts");
         assert.ok(id in modules, id);
         return modules[id];
       },
@@ -289,10 +292,13 @@ test("#416: 검색 실패는 빈 결과와 구분하고 같은 조건으로 재�
       (n) => typeof n?.type === "function" && n.type.name === "FindField",
     );
     const field = find.type(find.props);
-    assert.match(text(field), /불러오지 못했어요/);
+    // 실패 안내는 SearchFailed 로 나뉘어 있다. 그 칸을 그려서 본다.
+    const failedBox = walk(field).find((n) => n?.type?.name === "SearchFailed");
+    const failedView = failedBox.type(failedBox.props);
+    assert.match(text(failedView), /불러오지 못했어요/);
     assert.ok(!walk(field).some((n) => n?.type?.name === "NoDaycare"));
     failing = false;
-    walk(field)
+    walk(failedView)
       .find((n) => n?.type === "CtaButton")
       .props.onClick();
     h.render();

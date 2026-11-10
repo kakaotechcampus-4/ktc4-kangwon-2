@@ -31,7 +31,7 @@ class Activity(Base):
     safety_flags: Mapped[list[str]] = mapped_column(
         JSONB,
         default=list,
-        comment="resources/rules/safety_flags.yaml 의 값. safety 규칙이 대조한다",
+        comment="resources/rules/safety_flags.yaml 의 값. 아직 대조하는 규칙이 없다",
     )
     tags: Mapped[list[str]] = mapped_column(
         JSONB, default=list, comment="5영역 태그·주제 태그. ADR-001:19"
