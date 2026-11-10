@@ -432,7 +432,7 @@ def test_판이_없는_끝난_줄의_prompt_versions_는_jsonb_null_이_아니�
 def test_시도가_없는_끝난_줄의_attempts_는_jsonb_null_이_아니라_SQL_NULL_이다(committed):
     rid = uuid.uuid4()
     _post_annual(committed)
-    assert _post_annual(committed, rid).status_code == 409  # 구간을 부르기 전에 끝난다
+    assert _post_annual(committed, rid).status_code == 409  # LLM 을 부르기 전에 끝나 시도가 없다
 
     # 위 테스트와 같은 이유 — ORM 은 둘 다 None 으로 읽는다.
     with Session(engine) as session:
