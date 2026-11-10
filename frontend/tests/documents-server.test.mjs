@@ -1959,6 +1959,23 @@ test("확정 취소·근거 반영 성공 뒤에는 문서 목록도 다시 읽�
   // 동시 수정 복구용 reload 를 근거 반영으로 대체하지 않는다.
   assert.match(page, /reload:\s*pinned\.reload/);
 });
+test("ADR-093 generation.fallback 이 있으면 사실만 채운 초안으로 읽고, 편집기가 알린다", () => {
+  const fallback = documents.toDocument({
+    ...DETAIL,
+    generation: {
+      ...DETAIL.generation,
+      fallback: { reason: "llm_failed", at: "2026-11-11T00:00:00Z" },
+    },
+  });
+  assert.equal(fallback.fallbackDraft, true);
+  assert.equal(documents.toDocument(DETAIL).fallbackDraft, false);
+  // 일일 · 주간 보육일지가 쓰는 편집기. 초안일 때만 띄운다.
+  assert.match(
+    read("DocumentEditor.tsx"),
+    /doc\.fallbackDraft && editable && <Message>\{FALLBACK_DRAFT\}<\/Message>/,
+  );
+});
+
 test("후속 #6 v1-mock은 본문 밖 표식으로 매핑하고 일반 버전은 그대로 읽는다", () => {
   const mock = documents.toDocument({
     ...DETAIL,

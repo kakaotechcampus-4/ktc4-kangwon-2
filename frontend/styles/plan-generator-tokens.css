@@ -126,6 +126,44 @@
   --pg-sky-line: #a9c3de;
   --pg-sky-ink: #3d5f86;
 
+  /* 영역 색 — 홈 메모 「이렇게 남길까요?」의 영역 고르기 버튼(그림 · 색 · 이름). 다섯이 색만으로 갈리게
+     위 쪽지 색보다 한 단계 진하게, 색상환에서 서로 멀게 잡았다. 그림 선 · 글자는 면 위에서 5.5:1 이상. */
+  --pg-domain-body: #f3b89b;
+  --pg-domain-body-line: #c9825f;
+  --pg-domain-body-ink: #7a2b1f;
+  --pg-domain-talk: #a9cff5;
+  --pg-domain-talk-line: #5f97cf;
+  --pg-domain-talk-ink: #1f4a78;
+  --pg-domain-social: #f5d77a;
+  --pg-domain-social-line: #b08d1f;
+  --pg-domain-social-ink: #5a4510;
+  --pg-domain-art: #e2b6ec;
+  --pg-domain-art-line: #b47ac4;
+  --pg-domain-art-ink: #5b2a73;
+  --pg-domain-nature: #aedbb8;
+  --pg-domain-nature-line: #5fa071;
+  --pg-domain-nature-ink: #23512f;
+  /* 관찰 기록 카드 바탕(시안 「A 진하게 2」, PM 2026-11-10) — 카드 면은 -mid(아주 연한 색보다 한 단계 진하게),
+     테두리와 영역 동그라미는 -deep. 동그라미 위 흰 그림은 -deep 위에서 4.9:1 이상, 본문 먹색은 -mid 위에서 9:1 이상. */
+  --pg-domain-body-mid: #f6d2c0;
+  --pg-domain-body-deep: #a8532f;
+  --pg-domain-talk-mid: #cfe0f3;
+  --pg-domain-talk-deep: #3f6fa3;
+  --pg-domain-social-mid: #f6e3a6;
+  --pg-domain-social-deep: #8f6a0f;
+  --pg-domain-art-mid: #e6d7f2;
+  --pg-domain-art-deep: #7a52a3;
+  --pg-domain-nature-mid: #cfe5d4;
+  --pg-domain-nature-deep: #3f7a52;
+
+  /* 미세먼지 등급 — 에어코리아 · 날씨 앱이 쓰는 4단계 색 그대로다(ADR-081 화면).
+     「빨강은 되돌릴 수 없는 일에만」의 예외다 — 누르는 것이 아니라 교사가 이미 아는 값의 색이다.
+     얼굴 선과 아래 작은 글자에 쓴다. 흰 종이 위 대비 4.5:1 이상으로 한 단계 진하게 잡았다. */
+  --pg-air-good: #1f66c9;
+  --pg-air-normal: #1f7a46;
+  --pg-air-bad: #b85a0c;
+  --pg-air-worst: #c2362b;
+
   /* 아래 세 묶음은 원래 월간/주간/일간을 색으로 갈라 쓰던 자리다.
      새 디자인은 종류를 색이 아니라 글로 가른다(PlanNotebook 의 세 버튼은
      같은 색이고 눌린 것만 진해진다). 이름은 그대로 두고 값만 같은 계열로

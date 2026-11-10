@@ -15,7 +15,7 @@ from threading import Barrier
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 from ssuksak.adapters.monthly_reference_repositories import (
     DEFAULT_TEMPLATE_PATH,
@@ -140,6 +140,9 @@ def world(db_session, teacher):
     draft = repo_a.derive_draft(p1, actor_id=user_a.id)
     pb = _ready(PostgresTemplateProfileRepository(db_session, center_id=b.id), user_b.id)
     teacher.id, teacher.center_id = user_a.id, a.id
+    # 원 기본을 바꾸는 교사다 — 원을 만든 교사로 둔다(ADR-087).
+    a.created_by = user_a.id
+    db_session.flush()
     # id 만 들고 다닌다 — 라우터가 commit 하면 ORM 객체가 만료된다.
     return {
         "session": db_session,
@@ -656,6 +659,7 @@ def live(_schema, teacher, monkeypatch):
         klass = _class(session, center)
         repo = PostgresTemplateProfileRepository(session, center_id=center.id)
         refs = [_json(_ready(repo, user.id)) for _ in range(3)]
+        center.created_by = user.id  # 원 기본을 바꾸는 교사 — 원을 만든 교사다(ADR-087)
         session.commit()
         seed = {"center": center.id, "user": user.id, "class": klass.id, "refs": refs}
     teacher.id, teacher.center_id = seed["user"], seed["center"]
@@ -685,6 +689,10 @@ def live(_schema, teacher, monkeypatch):
             for model in (TemplateProfileDefault, TemplateProfileVersion):
                 session.execute(delete(model).where(model.center_id == seed["center"]))
             session.execute(delete(Class).where(Class.id == seed["class"]))
+            # 원과 계정이 서로를 가리킨다(created_by · center_id) — 한쪽을 먼저 끊는다.
+            session.execute(
+                update(Center).where(Center.id == seed["center"]).values(created_by=None)
+            )
             session.execute(delete(User).where(User.id == seed["user"]))
             session.execute(delete(Center).where(Center.id == seed["center"]))
             session.commit()

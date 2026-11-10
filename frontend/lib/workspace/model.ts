@@ -59,6 +59,8 @@ export type SavedDocument = {
   /** mock LLM 이 만든 초안. **본문이 아니라 여기로** 알린다 — 제출 문서에 시스템 글자를
    *  남기지 않으면서도 mock 을 실제 AI 로 보이게 하지 않는다. */
   mockDraft?: boolean;
+  /** 초안을 못 만들어 사실만 채워 왔다 (ADR-093). 해석 · 지원은 교사가 쓴다. */
+  fallbackDraft?: boolean;
   /** 관찰일지를 만들 때 찍은 영역 축 (ADR-088). 없으면 옛 문서라 지금 원 설정을 쓴다. */
   observationAxis?: string;
 };

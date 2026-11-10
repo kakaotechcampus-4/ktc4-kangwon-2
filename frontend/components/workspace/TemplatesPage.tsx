@@ -197,15 +197,22 @@ export default function TemplatesPage() {
                     ))}
                   </div>
                 </details>
-                <div className={ws.actions} style={{ marginTop: 18 }}>
-                  <button
-                    className={ws.secondary}
-                    disabled={busy !== null}
-                    onClick={() => remove(form)}
-                  >
-                    삭제
-                  </button>
-                </div>
+                {/* 원 모든 반이 같이 쓰는 양식이라 올린 선생님과 원을 처음 등록한 선생님만 지운다(ADR-087). */}
+                {form.can_delete === false ? (
+                  <p className={ws.hint} style={{ marginTop: 18 }}>
+                    올린 선생님이나 원을 처음 등록한 선생님만 삭제할 수 있어요.
+                  </p>
+                ) : (
+                  <div className={ws.actions} style={{ marginTop: 18 }}>
+                    <button
+                      className={`${ws.secondary} ${ws.danger}`}
+                      disabled={busy !== null}
+                      onClick={() => remove(form)}
+                    >
+                      삭제
+                    </button>
+                  </div>
+                )}
               </article>
             );
           })}

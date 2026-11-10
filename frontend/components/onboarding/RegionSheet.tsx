@@ -48,7 +48,7 @@ function ChalkBox({ index }: { index: number }) {
   );
 }
 const iconButton =
-  "inline-flex h-10 w-10 items-center justify-center squircle [--r:12px] text-ink-soft hover:bg-primary-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
+  "tap44 inline-flex h-10 w-10 items-center justify-center squircle [--r:12px] text-ink-soft hover:bg-primary-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
 
 /**
  * 지역 고르개 — 칠판 위에 뜨는 작은 칠판, 이름은 분필로 적은 글씨. 휴대폰에서는 아래에서 올라오는 판,
@@ -103,7 +103,7 @@ export default function RegionSheet({
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
       aria-labelledby="region-sheet-title"
-      className="chalkboard m-0 mt-auto h-[min(640px,85vh)] w-full max-w-none squircle [--r-bl:0px] [--r-br:0px] [--r:24px] p-0 pb-7 text-ink open:flex open:flex-col backdrop:bg-[rgba(46,42,38,0.55)] sm:m-auto sm:max-w-[560px] sm:[--r:0px]"
+      className="chalkboard m-0 mt-auto h-[min(640px,85vh)] w-full max-w-none squircle [--r-bl:0px] [--r-br:0px] [--r:24px] p-0 pb-[calc(28px+env(safe-area-inset-bottom,0px))] text-ink open:flex open:flex-col backdrop:bg-[rgba(46,42,38,0.55)] sm:m-auto sm:max-w-[560px] sm:[--r:0px]"
     >
       <div
         aria-hidden="true"
@@ -178,7 +178,7 @@ export default function RegionSheet({
           autoComplete="off"
           spellCheck={false}
           enterKeyHint="search"
-          className="w-full bg-transparent px-1 pb-2 pt-1 text-[17px] text-ink placeholder:text-ink-soft focus:outline-none"
+          className="min-h-11 w-full bg-transparent px-1 pb-2 pt-1 text-[17px] text-ink placeholder:text-ink-soft focus:outline-none"
         />
         <ChalkLine className="text-line group-focus-within:text-primary" />
       </div>

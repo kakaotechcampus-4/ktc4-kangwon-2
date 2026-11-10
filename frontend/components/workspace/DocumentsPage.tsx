@@ -49,6 +49,13 @@ import { Icon } from "@/components/app/icons";
 import { ArchiveNoteArt } from "./DocumentArchiveArt";
 import { FlowerMeadow } from "./ChildTrackingArt";
 import creation from "./DocumentCreation.module.css";
+import archive from "./DocumentArchive.module.css";
+import {
+  ARCHIVE_FILTER_NONE,
+  archiveQuery,
+  passesFilter,
+  type ArchiveFilter,
+} from "@/lib/workspace/document-archive";
 import {
   WorkspaceViewState,
   FieldError,
@@ -148,6 +155,10 @@ export default function DocumentsPage() {
       : primaryClass;
   const classId = pickedClass ?? requestedClass;
   const [serverDocs, setServerDocs] = useState<DocumentSummary[]>([]);
+  // 보관함 거르개 (FR-701 · FR-406). 상태 · 원본 바뀜은 서버가 거른 목록을 따로 받는다 —
+  // `serverDocs` 는 만들기 화면의 근거 후보도 쓰므로 거르지 않고 둔다.
+  const [filter, setFilter] = useState<ArchiveFilter>(ARCHIVE_FILTER_NONE);
+  const [filteredDocs, setFilteredDocs] = useState<DocumentSummary[] | null>(null);
   const [listStatus, setListStatus] = useState<ViewStatus>("loading");
   const [listError, setListError] = useState("");
   const [records, setRecords] = useState<ServerObservation[]>([]);
@@ -243,6 +254,37 @@ export default function DocumentsPage() {
       setListStatus("error");
     }
   }
+
+  const filterQuery = archiveQuery(filter);
+  const filterKey = JSON.stringify(filterQuery);
+  useEffect(() => {
+    const query = JSON.parse(filterKey);
+    if (!query) return;
+    let live = true;
+    listDocuments(query)
+      .then((items) => {
+        if (live) setFilteredDocs(items);
+      })
+      .catch((e) => {
+        if (live) setListError(messageFor(e));
+      });
+    return () => {
+      live = false;
+    };
+    // 목록을 다시 받으면(저장 · 확정 뒤) 거른 목록도 다시 받는다.
+  }, [filterKey, serverDocs]);
+  const shownDocs = (filterQuery ? (filteredDocs ?? []) : serverDocs).filter((d) =>
+    passesFilter(d, filter),
+  );
+  const shownPlans = plans?.items.filter((p) =>
+    passesFilter(
+      {
+        title: `${p.school_year}학년도 ${DOCUMENT_KINDS.annual}`,
+        status: p.status === "CONFIRMED" ? "confirmed" : "draft",
+      },
+      filter,
+    ),
+  );
 
   // 보관함은 예전 증빙 옮기기를 기다리지 않고 먼저 열린다. 옮기기가 끝나면 목록과 안내를 다시 읽는다.
   // 의존성 없이 매번 다시 건다 — 늘 지금의 reloadList · classId 를 부른다.
@@ -373,7 +415,7 @@ export default function DocumentsPage() {
   // 브라우저에 남았던 예전 증빙은 로그인 · 서비스 화면 진입 때 서버로 옮기고 지운다(`moveLegacyImports`).
   // 목록에는 sections · sources 가 없다 — 제목 · 종류 · 날짜 · 상태만 그린다 (§11).
   const entries = [
-    ...serverDocs.map((d) => ({
+    ...shownDocs.map((d) => ({
       id: d.id,
       source: "document" as const,
       serverId: d.serverId,
@@ -385,7 +427,7 @@ export default function DocumentsPage() {
       createdAt: d.createdAt,
       stale: d.stale,
     })),
-    ...(plans?.items ?? []).map((p) => ({
+    ...(shownPlans ?? []).map((p) => ({
       id: `annual:${p.id}`,
       source: "plan" as const,
       serverId: p.id,
@@ -403,7 +445,7 @@ export default function DocumentsPage() {
 
   // 보관함 탐색(반 → 종류 → 기간)이 쓰는 목록. 계획안은 각자 API 가 따로 준다.
   const archiveDocs: ArchiveDoc[] = [
-    ...serverDocs.map((d) => ({
+    ...shownDocs.map((d) => ({
       id: d.id,
       kind: d.kind,
       title: d.title,
@@ -665,6 +707,7 @@ export default function DocumentsPage() {
         header={
           <>
             {head}
+            <ArchiveFilters value={filter} onChange={setFilter} />
             {listStatus === "error" && (
               <div>
                 <Message error>{listError}</Message>
@@ -700,7 +743,7 @@ export default function DocumentsPage() {
           selection.select("", null);
         }}
         documents={archiveDocs}
-        annual={plans?.items ?? null}
+        annual={shownPlans ?? null}
         onAnnualChanged={reloadPlans}
         activeId={active}
         editingId={editingId}
@@ -1015,5 +1058,44 @@ export default function DocumentsPage() {
         )}
       </div>
     </main>
+  );
+}
+
+/** 보관함 거르개 — 상태 · 원본 바뀜 · 제목 찾기 (FR-701 · FR-406). 지금 모양 안에 한 줄로 둔다. */
+function ArchiveFilters({
+  value,
+  onChange,
+}: {
+  value: ArchiveFilter;
+  onChange: (next: ArchiveFilter) => void;
+}) {
+  return (
+    <div className={archive.filters} role="search" aria-label="문서 거르기">
+      <select
+        aria-label="상태"
+        value={value.status}
+        onChange={(e) => onChange({ ...value, status: e.target.value as ArchiveFilter["status"] })}
+      >
+        <option value="">전체</option>
+        <option value="DRAFT">초안</option>
+        <option value="CONFIRMED">확정</option>
+      </select>
+      <label>
+        <input
+          type="checkbox"
+          checked={value.stale}
+          onChange={(e) => onChange({ ...value, stale: e.target.checked })}
+        />
+        원본 바뀜
+      </label>
+      <input
+        type="search"
+        aria-label="제목 찾기"
+        placeholder="제목 찾기"
+        maxLength={200}
+        value={value.title}
+        onChange={(e) => onChange({ ...value, title: e.target.value })}
+      />
+    </div>
   );
 }

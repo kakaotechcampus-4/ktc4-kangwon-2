@@ -14,6 +14,7 @@ import { serverIssues } from "./document-selection";
 import { Icon } from "@/components/app/icons";
 import { invalidFields } from "@/lib/api/client";
 import {
+  FALLBACK_DRAFT,
   downloadDocumentHwpx,
   isStaleWrite,
   verifyLines,
@@ -117,12 +118,15 @@ export default function DocumentEditor({
   onSave,
   server,
   onEditStateChange,
+  noteChips = [],
 }: {
   initial: SavedDocument;
   onSave: (doc: SavedDocument, expected: SavedDocument) => boolean;
   server?: ServerDocumentActions;
   /** 서버 문서에 저장 안 한 글 · 요청 중을 알린다. 날짜 · 주를 옮기는 화면이 먼저 묻고 잠근다. */
   onEditStateChange?: (state: { dirty: boolean; pending: boolean }) => void;
+  /** 반 운영 특이사항 아래 띄울 칩. 누르면 그 글이 칸에 들어간다 — 그날 날씨 대체놀이 (ADR-089 화면). */
+  noteChips?: string[];
 }) {
   const [baseline, setBaseline] = useState(initial);
   const [doc, setDoc] = useState(initial);
@@ -535,6 +539,7 @@ export default function DocumentEditor({
         )}
         {/* mock LLM 초안이다. **본문에 섞지 않고** 여기서만 알린다 — 제출 문서는 깨끗하게
             두면서도 테스트 초안을 실제 AI 결과로 보이게 하지 않는다. */}
+        {doc.fallbackDraft && editable && <Message>{FALLBACK_DRAFT}</Message>}
         {doc.mockDraft && (
           <p className={ws.muted}>
             테스트 모드(mock)로 만든 초안이에요. 실제 AI 생성 결과가 아니니 내용을 그대로 쓰지 말고
@@ -671,6 +676,30 @@ export default function DocumentEditor({
             </label>
           ) : (
             <p>{doc.classNote || "적지 않았어요."}</p>
+          )}
+          {editable && noteChips.length > 0 && (
+            <div className={ws.actions}>
+              {noteChips
+                .filter((chip) => !(doc.classNote ?? "").includes(chip))
+                .map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    className={ws.secondary}
+                    disabled={working || stale}
+                    onClick={() =>
+                      setDoc((prev) => ({
+                        ...prev,
+                        classNote: prev.classNote?.trim()
+                          ? `${prev.classNote.trimEnd()}\n${chip}`
+                          : chip,
+                      }))
+                    }
+                  >
+                    {chip}
+                  </button>
+                ))}
+            </div>
           )}
         </section>
       )}

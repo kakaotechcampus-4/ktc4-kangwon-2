@@ -405,3 +405,60 @@ def test_해시태그_줄_검사가_역추적으로_멈추지_않는다():
     started = time.monotonic()
     _body("#a" * 200 + " 놀이")
     assert time.monotonic() - started < 1.0
+
+
+def test_채널_하나가_죽어도_다른_채널_결과는_남긴다():
+    """삭제 · 비공개 채널 하나 때문에 그 주 유튜브가 통째로 0건이 되면 안 된다. 검색어도 같다."""
+
+    def fetch(url, params, headers):
+        if "/playlistItems" in url:
+            if params["playlistId"] == "UU_gone":
+                raise RuntimeError("playlistNotFound")
+            return {
+                "items": [
+                    {
+                        "snippet": {"title": "공룡 놀이", "publishedAt": "2026-09-18T07:00:00Z"},
+                        "contentDetails": {"videoId": "vid1"},
+                    }
+                ]
+            }
+        if "/videos" in url:
+            return {"items": [{"id": "vid1", "status": {"madeForKids": True}}]}
+        if params["query"] == "깨진 검색어":
+            raise RuntimeError("bad query")
+        return {
+            "items": [
+                {
+                    "title": "기사",
+                    "description": "",
+                    "originallink": "https://ibabynews.com/news/1",
+                    "pubDate": "Mon, 22 Sep 2026 10:00:00 +0900",
+                }
+            ]
+        }
+
+    result = collect(
+        fetch,
+        parse(
+            {
+                "youtube_channels": [
+                    {
+                        "name": "없어진채널",
+                        "channel_id": "UC_gone",
+                        "uploads_playlist_id": "UU_gone",
+                    },
+                    {"name": "EBS키즈", "channel_id": "UC_ebs", "uploads_playlist_id": "UU_ebs"},
+                ],
+                "news_outlets": [{"name": "베이비뉴스", "domain": "ibabynews.com"}],
+                "news_queries": ["깨진 검색어", "유아 놀이"],
+            }
+        ),
+        youtube_key="key",
+        naver_id="id",
+        naver_secret="secret",
+    )
+
+    assert sorted(item.source for item in result.items) == ["naver_news", "youtube"]
+    assert len(result.failures) == 2
+    assert "없어진채널" in result.failures[0]
+    assert "깨진 검색어" in result.failures[1]

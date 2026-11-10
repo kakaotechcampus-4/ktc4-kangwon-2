@@ -133,7 +133,7 @@ playlistItems     1회 1 units      하루 1만 회
 
 ```
 월요일 새벽   Actions 가 수집 · 검열 · 놀이 서술 정리
-             backend/resources/trends/2026-W39.json 을 만들고 PR 을 연다
+             backend/resources/trends/collected/2026-W39.json 을 만들고 PR 을 연다
 월요일        팀원 한 명이 diff 를 본다. 이상한 줄을 지우고 merge
 일요일        develop → main → 배포에 실려 나간다
 ```
