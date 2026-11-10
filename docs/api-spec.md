@@ -193,9 +193,9 @@ GET /health/ready    DB 까지 본다(SELECT 1).  배포 판정은 이쪽   200 
 **Request**
 
 ```json
-{ "name": "서충주어린이집", "director_name": "김원장",
+{ "name": "햇살어린이집", "director_name": "김원장",
   "region_sido": "충청북도", "region_sigungu": "충주시",
-  "registry_key": "충청북도|충주시|서충주어린이집|충청북도 충주시 ○○로 00" }
+  "registry_key": "충청북도|충주시|햇살어린이집|충청북도 충주시 ○○로 00" }
 ```
 
 **Response** `201` (새 원) · `200` (같은 원이 이미 있어 그리로 들어감)
@@ -222,9 +222,9 @@ GET /health/ready    DB 까지 본다(SELECT 1).  배포 판정은 이쪽   200 
 ### 어린이집 찾기 — `GET /api/daycares?sido=&sigungu=&q=`
 
 ```json
-{ "items": [ { "key": "강원특별자치도|춘천시|리틀빌리지어린이집|강원특별자치도 춘천시 영서로 2920 …",
-               "name": "리틀빌리지어린이집", "kind": "민간", "status": "정상",
-               "address": "강원특별자치도 춘천시 영서로 2920 …", "teacher_count": 2 } ] }
+{ "items": [ { "key": "강원특별자치도|춘천시|솔숲어린이집|강원특별자치도 춘천시 ○○로 00",
+               "name": "솔숲어린이집", "kind": "민간", "status": "정상",
+               "address": "강원특별자치도 춘천시 ○○로 00", "teacher_count": 2 } ] }
 ```
 
 - 그 시군구에서 이름에 `q` 가 든 곳(띄어쓰기 무시). 이름 앞부분이 맞는 곳이 먼저, 가나다순, **30곳까지**.
@@ -3311,7 +3311,7 @@ RESIZE_HEIGHT    null            null        null          null          [24] �
 
 **`context` 는 선택이다.** 빈 문자열을 허용한다 — 상황을 안 적고 사실만 남기는 교사가 있다.
 
-**`fact` 는 필수다.** 공백만 있으면 `VALIDATION_FAILED` 422.
+**`fact` 는 필수다.** 공백만 있으면 `VALIDATION_FAILED` 422. 5,000자를 넘어도 422 다(화면 입력칸과 같은 상한).
 
 **`child_id` 는 `class_id` 반의 아이여야 한다.** 같은 원의 다른 반 아이면 `VALIDATION_FAILED` 422,
 `fields: ["child_id"]`. 없는 반·아이와 남의 원 반·아이는 `NOT_FOUND` 404 다(「인증」).
@@ -3565,7 +3565,7 @@ source_kind   값                받는 kind      근거
 꼬리   주간 총평                              ← 해석 + 지원
 ```
 
-- **[실측] 멘토가 준 현장 실물(2025년 도담어린이집 만3세)에서 가운데 세 칸이 우리 3층과 그대로 맞는다.**
+- **[실측] 멘토가 준 현장 실물(2025년 ○○어린이집 만3세)에서 가운데 세 칸이 우리 3층과 그대로 맞는다.**
   실물은 하루마다 표를 하나씩 두는데, 우리는 한 표에 날짜마다 한 줄이다(2020 공식 사례 ③과 같은 모양).
 - **「우리반 놀이」는 그날 일과 **이름만** 적는다.** 활동실행까지 넣으면 한 줄이 종이 한 장이 된다.
   실물도 놀이 이름을 늘어놓고, 무슨 일이 있었는지는 분석 칸에서 읽는다.
@@ -4007,6 +4007,7 @@ assessment    observation · dailyLog
 ### 개인정보
 
 - **LLM 호출 직전에 `shared/childCode` 로 치환한다.** 프롬프트 · 응답 · 로그에 실명이 남지 않는다.
+  치환 대상은 그 원 아이(다른 반 포함) 가운데 근거 사실에 나온 아이다 — 교사는 옆 반 아이 이름도 적는다(§4 · §4-1 · 검증(ADR-071)과 같은 범위).
 - **응답을 교사에게 주기 전에 복원한다.**
 - **치환 실패 시 호출하지 않고 에러를 낸다** (ADR-004).
 - 가명은 `backend/resources/pseudonyms.yaml` 에서 뽑는다.
@@ -4392,7 +4393,7 @@ item    operation-plan · annual-plan · interaction-record · duty-training · 
    → backend/resources/pseudonyms.yaml.  받침 있음 30 · 없음 30
    → 원본 이름의 받침과 같은 쪽에서 뽑는다. 다른 쪽에서 뽑으면 복원 후 조사가 틀어진다
 □  LLM 호출 위치                                   하민 (7주차)
-   → 지금은 frontend/app/api/assistant/route.ts 가 OpenAI 를 직접 부른다. 백엔드로 옮긴다
+   → 백엔드로 옮긴다. 화면 서버(frontend/app/api/assistant/route.ts)가 OpenAI 를 직접 부르던 길은 지웠다 — 남은 GET 은 연결 상태(false)만 준다
    → 예산 카운터는 만들지 않는다. 사용량은 담당자가 알려준다 (2026-09-21)
 □  재생성 횟수 상한                                 하민 · 성진 (7주차 논의)
    → 검사(ADR-014)가 위반을 내면 몇 번까지 다시 만드나. 예산과 같이 정한다

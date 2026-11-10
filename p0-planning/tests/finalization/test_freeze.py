@@ -34,18 +34,21 @@ DATA = ROOT / "data"
 # HUMAN_APPROVED; the institution_evidence files are corpus observations without an
 # approval gate and is frozen for integrity only. A changed SHA is a different
 # contract (ADR-027), so these values are never edited.
+# One exception: ADR-079 (2026-11-08) re-pinned every data SHA here once after the
+# institution pseudonymization overwrite. Only institution identifiers changed; the
+# evidence record_ids, texts and retrieval results are identical.
 FROZEN_ARTIFACTS = {
     "themes/theme_reference_v0.json": (
-        "dae9f62db452c56b3b529aaa8e620411e9c11a2072163d6f9cc2a9d2ebc4d902"
+        "b1f181a28a5bb4c6373886a268ab2ea4282313714f38d8c1f9633498fbf9772e"
     ),
     "activities/activity_reference_v0_2.json": (
-        "e27ebca3342a84327c6624c5ba258b9bc98aef37ba5362b61f283c47ece0bde6"
+        "3cb32eb34cd8501152bd3708f1df9fb21021c7ecf2d1cf4202376364380a4ff2"
     ),
     "activities/activity_reference_v0_2_1.json": (
-        "fa9f3215c3af212ea727835c5ab06ef903b0d7ee5c1f0c615d5eaf4bc156da1a"
+        "9bcdb96820911e5518c65d2f11f0ee5818c74bae5b7133b47fe9f3a985b52a06"
     ),
     "templates/monthly_template_a.json": (
-        "a65b5f7355a4ac86f33d0973f1c94f8237434dc03fe593cad28aa0388cab2aaf"
+        "9b4898106f6f2cb6057918fcc70af6e8c8c04aa42d4d6cfa6c15ef428405eceb"
     ),
     # Human-approved 2026-10-21 (reviewer_pm_001). ADR-027 §5: approval metadata only.
     "templates/weekly_template_a_v0_1_0.json": (
@@ -68,21 +71,21 @@ FROZEN_ARTIFACTS = {
     ),
     # Human-approved 2026-10-20 (reviewer_pm_001). ADR-027 §5: approval metadata only.
     "templates/monthly_template_a_v0_2_1.json": (
-        "e7b29c36ede3438204041b5d2b454e5594338c7f12c8c423bc985e308de27aed"
+        "db65d4a9bca652ed5df6ecd47b969dfdce3316e2ba596125b6345e4169e4ed1d"
     ),
     # Human-approved 2026-10-31 (reviewer_ai_lead_001). ADR-050 D-3: approval metadata only.
     "templates/monthly_template_a_v0_2_2.json": (
-        "f7b1ab1994de2114fb886cfb5aee270adc02cb6e5d64a1958b24cc70812e4ae1"
+        "95e7189f49110d6a9669d65f4d1f779b9786c0a44663bc399420b2e86be0e99b"
     ),
     # Human-approved 2026-10-31 (reviewer_ai_lead_001). Drill R-1 · R-2: approval metadata only.
     "templates/monthly_template_a_v0_2_3.json": (
-        "6edfddca7165a4909a9513730371fe9d3d1e98367056e9b6b5a29e59ac8c80b5"
+        "69e2c7c813f548a74be6905d64084aaf77d3302a7d25742e19336d79aab21bd4"
     ),
     "templates/monthly_template_a_v0_2_0.json": (
-        "fcde73aee479dfe020a966a5e69b06b4a6829f2d4f51217a39762eeabe707de9"
+        "598c7460c072c98f49beb517b2f3ccee41816c919786f2ce57c2e7373c152b78"
     ),
     "rules/safety_education_legal_v1.json": (
-        "bd5c04864eb4eca66e51c24d58224723dbb401ead1b72f5e3b09d3a32057b3e9"
+        "977cd3ffc04b2efb0a15d897e1d5d2099a8c5bec9c2194339ec889f564b22c45"
     ),
     "rules/safety_placement_policy_v2.json": (
         "52b3dff8ef2015493010e31cac01dcd6955824e8c1d9ab8521c3b172298fe75a"
@@ -109,19 +112,19 @@ FROZEN_ARTIFACTS = {
     ),
     # Human-approved 2026-11-02 (reviewer_ai_lead_001): privacy exclusions, unchanged entry decisions.
     "evidence/institution_evidence_v0_2_0.json": (
-        "5bf84e5a59fd74880b040ea1e545b00f4ddbe8cd1cc07da11a416161dedc8bb4"
+        "3bbe06f8d7c6ae317d3cb7bc1649a4b6b3585d359716cbd8aff0beb66dccf569"
     ),
     "evidence/monthly_evidence_semantic_classification_v0_2_0.json": (
-        "464d8bcba8dd554264bc628b1a89e7b30c15183c31488836977dab530bd2dcda"
+        "3e95638b0603873e41592317d8849d273e99bd324575f3884a1a6d986ad7216b"
     ),
     "evidence/weekly_evidence_semantic_classification_v0_2_0.json": (
-        "3e9688120c14f07fe9d7ee55d8f1196bad53c32621975bcc174ab32786db6234"
+        "2262793049e456a012075acb72a8cea623c6624abf97196718a5c6688d91c4d5"
     ),
     "evidence/safety_evidence_classification_v0_3_0.json": (
-        "9b14e38a9943a02d1bfdb4deb9c13e0e1376e9d693628b6f58dec1cd5a14b973"
+        "9ec4ed7af719bcb5c7764b1ee36f0a9f754bc2da1792b9c6a854729b54c25f8b"
     ),
     "evidence/safety_reference_quality_v0_2_0.json": (
-        "bc69551897b4940597e43f0e77a2b5cdac438a9eb6345c7825a15f6d5d68a3c4"
+        "5f74f8b2b29ac7a3f80b8463f477627e9fba1a2faa8641e0169598eae3e5abf0"
     ),
 }
 
@@ -132,7 +135,7 @@ FROZEN_ARTIFACTS = {
 # FROZEN_ARTIFACTS. PENDING_REVIEW_CONTENT proves nothing else changed.
 PENDING_REVIEW_PINS = {
     "templates/monthly_template_a_v0_1_1.json": (
-        "9c9da830a1596295f1cb6573a6463108ea9c7cc82e7fed40e5bb61916cd7b944"
+        "e47bce2ae40af931e44e218dde9d5e6658ede28f32aa14bf7f3eccfcd4170a83"
     ),
 }
 
@@ -152,16 +155,16 @@ APPROVAL_METADATA_KEYS = frozenset(
 # after approval.
 PENDING_REVIEW_CONTENT = {
     "templates/monthly_template_a_v0_1_1.json": (
-        "a934a2d9eccd9796ac8793447913d428adc747afd25a99f3f7496f939907fae4"
+        "6c206fe2e35f8450f113ab8f5c72a18d3d8e340e65bdd10993b7f0568ff40610"
     ),
     "templates/monthly_template_a_v0_2_1.json": (
-        "5497aba0b41065c857b7d8ece58dc0297f2ff713bed65a8a339dd0ec3a6b9be4"
+        "47c303b952368a62f1c6db31c4f6f5dd3ece93d89a3e90b7fa20ce95e2460ba6"
     ),
     "templates/monthly_template_a_v0_2_2.json": (
-        "44d9be175995ea2668143a58966b8bb3969dd3dbdf860dc4925020c4ec999b5c"
+        "42dedfe72a8b8c62e10ab0093b4ee6025f1c07dac340aea2028a19308f4cba4c"
     ),
     "templates/monthly_template_a_v0_2_3.json": (
-        "86103af45d9294cadd2483b76b8e7d4c6ec8038f941f7e90aa7b68f141bd47e4"
+        "2388f6d9182f4f5b827cc624639883bbccb2fd11b77be58fda78221621b2799d"
     ),
     "templates/weekly_template_a_v0_1_0.json": (
         "8762cdadc23420795608a8b67a123306c51447f1318aa26b4ceacfbae4aa8bf8"
@@ -332,7 +335,7 @@ def test_safety_reference_exact_version_and_six_categories_are_frozen():
     ("filename", "version", "sha", "records"),
     [
         ("institution_evidence_v0_2_0.json", "institution-evidence-ingestion-v0.2.0",
-         "7d6d9bdb29dc5e84c024acc418a092c6e01d72134cf51043ab5dfd38a1332463", 12_325),
+         "4e01195eea06f28c71548b7c091ad8223b322b155e54f2bcbab957132f9cd7cd", 12_324),
     ],
 )
 def test_evidence_store_identity_content_hash_and_non_normative_role_are_frozen(filename, version, sha, records):
