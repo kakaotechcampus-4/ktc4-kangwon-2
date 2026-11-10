@@ -117,8 +117,8 @@ export default function RecordsPage() {
   // 기본값이 없다 — 첫 영역이 눌린 채 저장돼 블록 놀이가 신체 줄에 들어갔다(ADR-082).
   const [picked, setDomain] = useState("");
   const domain = picked;
-  /** AI 가 제안한 영역. 칩에 점선만 친다 — 고르는 것은 교사다. */
-  const [suggested, setSuggested] = useState<string | null>(null);
+  /** AI 가 제안한 영역과 그것을 물은 입력(반 · 사실 · 상황). 칩에 점선만 친다 — 고르는 것은 교사다. */
+  const [suggested, setSuggested] = useState<{ key: string; domain: string | null } | null>(null);
   const asking = useRef(0);
   /** 방금 저장한 기록에서 빠진 것 하나 — 쪽지 한 줄로 띄운다. */
   const [gap, setGap] = useState<{ record: ServerObservation; part: string } | null>(null);
@@ -191,17 +191,21 @@ export default function RecordsPage() {
     적고 멈추면 AI 에게 영역을 묻는다(ADR-082). 이미 골랐거나 고치는 중이면 묻지 않는다.
     늦게 온 옛 답은 버린다 — 고친 글과 다른 글에 대한 제안이다.
   */
+  const askedFor = JSON.stringify([classId, fact.trim(), context.trim()]);
   useEffect(() => {
-    if (picked || editId || !classId || fact.trim().length < SUGGEST_MIN) return;
+    // 입력이 바뀌면 진행 중인 물음도 버린다 — 짧게 줄여 다시 묻지 않는 글에도 옛 답이 오면 안 된다.
     const mine = ++asking.current;
+    if (picked || editId || !classId || fact.trim().length < SUGGEST_MIN) return;
+    const key = askedFor;
     const timer = setTimeout(() => {
       void suggestRecordDomain(classId, fact.trim(), context.trim()).then((found) => {
-        if (mine === asking.current) setSuggested(found);
+        if (mine === asking.current) setSuggested({ key, domain: found });
       });
     }, SUGGEST_PAUSE_MS);
     return () => clearTimeout(timer);
-  }, [fact, context, picked, editId, classId]);
-  const suggestion = !picked && !editId && fact.trim() ? suggested : null;
+  }, [askedFor, fact, context, picked, editId, classId]);
+  // 제안은 그것을 물은 글에만 보인다. 글을 바꾸거나 저장해 비우면 옛 제안은 사라진다.
+  const suggestion = !picked && !editId && suggested?.key === askedFor ? suggested.domain : null;
 
   /** 지금 이 날 · 이 시각에 미리 눌러 둘 상황. 오늘이 아니거나 일과 밖이면 비운다. */
   const autoContext = (rows: DaySlot[], on: string) =>
@@ -391,13 +395,21 @@ export default function RecordsPage() {
     새로고침 · 탭 닫기는 브라우저 창이 묻는다(`useUnsavedWarning`).
   */
   const lacking = !child ? "child" : !domain ? "domain" : null;
-  const pass = useLeaveCatch(unsaved && !!fact.trim() && !pending, (target) => {
+  // 저장하는 동안에도 붙잡는다. 놓으면 두 번째 링크가 저장이 끝나기 전에 화면을 닫고,
+  // 저장이 실패했을 때 적던 글을 돌려줄 화면이 없다. 저장 중 누른 이동은 무시한다.
+  const leavingSave = useRef(false);
+  const pass = useLeaveCatch(unsaved && !!fact.trim(), (target) => {
+    if (pending || leavingSave.current) return;
     if (lacking) {
       setHeld(target);
       leaveNote.current?.showModal();
       return;
     }
-    void save().then((done) => done && pass(target));
+    leavingSave.current = true;
+    void save().then((done) => {
+      leavingSave.current = false;
+      if (done) pass(target);
+    });
   });
   function closeNote() {
     leaveNote.current?.close();
