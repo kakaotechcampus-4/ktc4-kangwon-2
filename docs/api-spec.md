@@ -3369,7 +3369,7 @@ DAILY_PLAY_2  일상생활 · 놀이활동
 **수정** `PUT /api/observations/{id}` — `date` · `domain` · `context` · `fact` 만 받는다.
 `class_id` · `child_id` 는 바꾸지 못한다. 대상이 바뀌면 다른 기록이다. 삭제 후 재등록한다.
 
-**삭제** `DELETE /api/observations/{id}` → `204`.
+**삭제** `DELETE /api/observations/{id}` → `204`. 영향 건수가 필요하면 아래 `include_impact=true`.
 
 ### 기록을 고치면 그걸 쓴 문서가 무효가 된다
 
@@ -3382,6 +3382,26 @@ DAILY_PLAY_2  일상생활 · 놀이활동
 
 **이 판정은 문자열 대조다. 모델이 개입하지 않는다.** 3단 게이트의 2단이 이것이다.
 
+### 저장 뒤 재검토 안내 — 선택 응답
+
+일과 기록(§10-1 「저장 뒤 재검토 안내」)과 같은 모양이다. 옵션을 빼면 응답은 지금과 같다.
+
+- `PUT /api/observations/{id}?include_impact=true` → 기록 필드에 `review_impact` 를 더한 `200`.
+- `DELETE /api/observations/{id}?include_impact=true` → `review_impact` 만 담은 `200`. 옵션이 없으면 본문 없는 `204`.
+
+```json
+{ "review_impact": {
+  "affected_document_ids": [7, 12],
+  "newly_stale_document_ids": [12]
+} }
+```
+
+`affected_document_ids` 는 **이 기록을 직접 인용한 확정 문서**(관찰일지 · 영유아 평가) 가운데 이번에
+사본과 달라졌거나(사실 · 날짜 · 영역 · 상황) 원본이 지워진 것이다. `newly_stale_document_ids` 는 그중
+이번 요청으로 `stale=false` 에서 `true` 가 된 문서다. 초안과 연쇄로 따라간 문서는 stale 로 바꾸되
+세지 않는다. 화면은 신규 수를 「N건이 다시 검토 대상」으로, 나머지를 「이미 재검토 대상」으로 띄우고
+그 일지로 가는 링크를 단다.
+
 | | |
 |---|---|
 | loading | 저장 중 — 버튼 비활성 |
@@ -3389,11 +3409,36 @@ DAILY_PLAY_2  일상생활 · 놀이활동
 | success | 목록 맨 위에 추가 |
 | error | `VALIDATION_FAILED` — 입력값 유지, 해당 칸에 표시 |
 
+### 영역 추천 · 빠진 것 — jev 가 돕는다 (ADR-082)
+
+**AI 가 값을 정하거나 글을 쓰지 않는다.** 제안과 짚기만 하고, 고르고 고치는 것은 교사다. 둘 다 덤이라
+mock · 2축 원 · 가명 실패 · jev 실패여도 `200` 에 빈 값이다. 결과는 저장하지 않는다.
+
+**`POST /api/observations/domain-suggest`** — 아직 저장하지 않은 글로 영역 하나를 제안한다.
+
+```json
+{ "class_id": 1, "fact": "블록 세 개를 쌓고 친구에게 같이 만들자고 말했다.", "context": "실내놀이, 쌓기" }
+```
+→ `200 { "domain": "사회관계", "confidence": 0.86 }`
+
+- `domain` 은 1순위 확률이 0.8 이상일 때만 온다. 모자라면 `domain: null` 에 `confidence` 만 온다.
+- 묻지 않았으면(mock · `DAILY_PLAY_2` 원 · 실패) `{ "domain": null, "confidence": null }`.
+- `fact` 는 공백만이면 422, 5,000자 넘으면 422. `context` 는 50자까지. 남의 반은 404.
+- 화면은 `domain` 칩에 보라 점선을 친다. **눌러야 고른 것**이다. 영역을 안 고르면 저장하지 않는다.
+
+**`POST /api/observations/{id}/missing`** — 저장한 기록에 상황 · 행동 · 아이 반응이 있는지 본다.
+
+→ `200 { "missing": ["반응"] }`
+
+- 값은 「상황」 「행동」 「반응」 중 빠진 것, 그 순서다. 상황 칸을 적었으면 상황은 묻지 않는다.
+- mock · 실패면 `{ "missing": [] }`. 남의 원 기록은 404. 같은 원 다른 반 기록은 승인 없으면 403 `CLASS_ACCESS_REQUIRED` (읽기라 승인받은 반은 된다).
+- 화면은 첫 번째 하나만 쪽지 한 줄로 띄운다. 저장을 막지 않는다.
+
 ### 개인정보
 
 - **아동 실명이 본문에 들어온다.** `fact` 에 "서준이가" 같은 표현이 그대로 온다.
-  §11 이 LLM 을 부를 때 `shared/childCode` 로 치환한다. 이 엔드포인트는 치환하지 않는다 —
-  교사 화면에는 실명이 보여야 한다.
+  §11 이 LLM 을 부를 때 `shared/childCode` 로 치환한다. 저장 · 조회는 치환하지 않는다 —
+  교사 화면에는 실명이 보여야 한다. 영역 추천 · 빠진 것은 jev 를 부르기 직전에 원 전체 아이 이름을 가린다.
 - **브라우저에 저장하지 않는다.** 입력 즉시 서버로 보낸다 (ADR-013).
   화면은 `listRecords()` 로 서버를 본다 — 브라우저 저장소에 쌓지 않는다.
 

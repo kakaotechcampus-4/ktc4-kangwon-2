@@ -46,7 +46,7 @@ def observation_changed(
     observation: Observation | None,
     *,
     domain_moved: bool = False,
-) -> None:
+) -> SourceImpact:
     """관찰 기록이 바뀌었거나(`observation` 은 고친 뒤 값) 사라졌다(None).
 
     사본과 사실 · 날짜 · 영역 · 상황 중 하나라도 다르면 `stale` 이다 (ADR-088). 영역은
@@ -55,6 +55,9 @@ def observation_changed(
     **영역 · 상황 사본이 없는 옛 문서(NULL, 「다시 확인」)는** 종이가 지금 원본 영역을 따른다.
     그래서 원본 영역이 실제로 바뀌었을 때(`domain_moved`)만 `stale` 이다. 상황은 옛 종이에
     쓰이지 않아 보지 않는다. `class_id` · `child_id` 는 §10 이 수정을 막으므로 비교하지 않는다.
+
+    돌려주는 영향은 이 기록을 **직접** 인용한 확정 문서(관찰일지 · 영유아 평가)다. 일과 기록의
+    `source_changed` 와 같은 규칙이다 — 초안과 연쇄로 따라간 문서는 stale 로 바꾸되 세지 않는다.
     """
     query = _sources(None).where(
         DocumentSource.source_kind == "observation",
@@ -72,7 +75,27 @@ def observation_changed(
         if domain_moved:
             differs.append(DocumentSource.domain.is_(None))
         query = query.where(or_(*differs))
-    _mark(session, set(session.scalars(query)))
+    document_ids = set(session.scalars(query))
+    impact = _confirmed_impact(session, document_ids)
+    _mark(session, document_ids)
+    return impact
+
+
+def _confirmed_impact(session: Session, document_ids: set[int], kinds=None) -> SourceImpact:
+    """직접 영향을 받은 확정 문서. 행 잠금 뒤 stale 을 읽는다 — 동시에 두 근거가 바뀌어도
+    새로 stale 이 된 문서를 둘 다 세지 않는다."""
+    query = select(Document).where(Document.id.in_(document_ids), Document.status == "CONFIRMED")
+    if kinds is not None:
+        query = query.where(Document.kind.in_(kinds))
+    confirmed = list(
+        session.scalars(
+            query.order_by(Document.id).with_for_update().execution_options(populate_existing=True)
+        ).all()
+    )
+    return SourceImpact(
+        affected_document_ids=tuple(doc.id for doc in confirmed),
+        newly_stale_document_ids=tuple(doc.id for doc in confirmed if not doc.stale),
+    )
 
 
 def source_changed(
@@ -99,26 +122,9 @@ def source_changed(
             or_(DocumentSource.text != text, DocumentSource.date.is_distinct_from(date))
         )
     document_ids = set(session.scalars(query))
-    # 행 잠금 뒤 상태를 읽는다. 동시에 두 근거가 바뀌어도 신규 stale을 둘 다 세지 않는다.
-    confirmed = list(
-        session.scalars(
-            select(Document)
-            .where(
-                Document.id.in_(document_ids),
-                # 일과 기록을 직접 인용하는 종류 둘이다 — 일일, 그리고 일일을 쓰지 않는
-                # 원의 주간. 연쇄로 stale 이 된 문서는 애초에 이 집합에 없다(§10-1).
-                Document.kind.in_(("dailyLog", "weeklyLog")),
-                Document.status == "CONFIRMED",
-            )
-            .order_by(Document.id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        ).all()
-    )
-    impact = SourceImpact(
-        affected_document_ids=tuple(sorted(doc.id for doc in confirmed)),
-        newly_stale_document_ids=tuple(sorted(doc.id for doc in confirmed if not doc.stale)),
-    )
+    # 일과 기록을 직접 인용하는 종류 둘이다 — 일일, 그리고 일일을 쓰지 않는
+    # 원의 주간. 연쇄로 stale 이 된 문서는 애초에 이 집합에 없다(§10-1).
+    impact = _confirmed_impact(session, document_ids, ("dailyLog", "weeklyLog"))
     _mark(session, document_ids, center_id=center_id)
     return impact
 

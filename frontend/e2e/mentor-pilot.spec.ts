@@ -349,6 +349,11 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
     .getByRole("button", { name: "가나다", exact: true })
     .click();
   await page.getByLabel("본 대로 적기").fill(fact);
+  // 영역은 기본값이 없다 — 교사가 골라야 저장된다(ADR-082).
+  await page
+    .getByRole("group", { name: "영역", exact: true })
+    .getByRole("button", { name: "사회관계", exact: true })
+    .click();
   await page.getByRole("button", { name: "기록하기", exact: true }).click();
   await expect(page.getByText("관찰 기록을 저장했어요.")).toBeVisible();
   // 할 일은 그 줄을 눌러야 나온다 — 줄마다 단추를 세 개씩 두지 않는다.

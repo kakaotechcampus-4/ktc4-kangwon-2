@@ -24,6 +24,7 @@ registerHooks({
 
 const documents = await import("../lib/api/documents.ts");
 const axis = await import("../lib/workspace/observation-axis.ts");
+const recordContext = await import("../lib/workspace/record-context.ts");
 const { ApiError, invalidFields } = await import("../lib/api/client.ts");
 
 const require = createRequire(import.meta.url);
@@ -212,7 +213,9 @@ function browser(t, search = "") {
 
 // ── 관찰 기록 (RecordsPage) ────────────────────────────────────────────────
 
-function recordsPage(t) {
+const NO_IMPACT = { affected: [], newlyStale: [] };
+
+function recordsPage(t, api = {}, { now = "08:00" } = {}) {
   browser(t);
   const app = host();
   const warned = [];
@@ -223,9 +226,15 @@ function recordsPage(t) {
     "@/lib/api/records": {
       listRecords: async () => [RECORD],
       addRecord: async () => ({}),
-      editRecord: async () => ({}),
-      removeRecord: async () => {},
+      editRecord: async () => ({ record: {}, impact: NO_IMPACT }),
+      removeRecord: async () => NO_IMPACT,
+      suggestRecordDomain: async () => null,
+      missingInRecord: async () => [],
+      dayRoutines: async () => [],
+      ...api,
     },
+    "@/lib/workspace/record-context": { ...recordContext, nowTime: () => now },
+    "@/lib/api/documents": { documentLocalId: (id) => `document:${id}` },
     "@/lib/workspace/child-mark": { markFor: () => 0 },
     "./WorkspaceUI": {
       WorkspacePage: "page",
@@ -294,21 +303,147 @@ test("F2 적던 글이 있으면 고치기 전에 화면 안에서 묻고, 버�
   assert.equal(view.fact().props.value, RECORD.fact);
 });
 
-test("F3 적던 글이 있으면 떠날 때 경고하고, 관찰일지 길도 먼저 묻는다", async (t) => {
+/**
+ * 화면을 떠나는 누르기를 흉내 낸다. 화면이 document 에 건 캡처 단계 click 을 붙잡아 둔다.
+ * `go(href)` 는 그 링크를 누른 것이고, 화면이 다시 누르면 `clicked` 에 남는다.
+ */
+function leaving() {
+  const listeners = [];
+  globalThis.document.addEventListener = (type, fn) => type === "click" && listeners.push(fn);
+  globalThis.document.removeEventListener = (type, fn) => {
+    const i = listeners.indexOf(fn);
+    if (i >= 0) listeners.splice(i, 1);
+  };
+  const clicked = [];
+  return {
+    clicked,
+    /** 링크를 누른다. 화면이 막았으면 true. */
+    go(href) {
+      const anchor = {
+        getAttribute: () => href,
+        closest: () => null,
+        click() {
+          clicked.push(href);
+          // 화면이 다시 누른 것도 같은 손잡이를 지난다 — 이번엔 막으면 안 된다.
+          for (const fn of [...listeners]) fn(event(anchor));
+        },
+      };
+      let stopped = false;
+      const event = (target) => ({
+        button: 0,
+        defaultPrevented: false,
+        target: { closest: () => target },
+        preventDefault: () => (stopped = true),
+        stopPropagation() {},
+      });
+      for (const fn of [...listeners]) fn(event(anchor));
+      return stopped;
+    },
+  };
+}
+
+test("A1 적은 게 없으면 그냥 떠나고, 적던 글이 있으면 브라우저 경고를 건다", async (t) => {
   const view = recordsPage(t);
+  const leave = leaving();
   await view.flush();
   assert.equal(view.warned.at(-1), false);
-  const journal = () => view.links().find((n) => textOf(n).includes("관찰일지 만들기"));
-  let stopped = false;
-  journal().props.onClick({ preventDefault: () => (stopped = true) });
-  assert.equal(stopped, false, "적은 게 없으면 그냥 간다");
+  assert.equal(leave.go("/routines"), false);
 
   view.type(view.fact(), "적던 새 글");
+  await view.flush();
   assert.equal(view.warned.at(-1), true);
-  journal().props.onClick({ preventDefault: () => (stopped = true) });
+});
+
+test("A1 아이 · 영역을 골랐으면 떠날 때 저장하고 이동하며 머리줄에 「저장됨」", async (t) => {
+  const saved = [];
+  const view = recordsPage(t, {
+    addRecord: async (body) => (saved.push(body), { ...RECORD, id: "observation:9" }),
+  });
+  const leave = leaving();
+  await view.flush();
+  await view.press("김하늘");
+  await view.press("사회관계");
+  view.type(view.fact(), "블록 세 개를 쌓았다.");
+  await view.flush();
+
+  assert.equal(leave.go("/routines"), true, "저장 전에 먼저 떠나지 않는다");
+  await view.flush();
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].domain, "사회관계");
+  assert.deepEqual(leave.clicked, ["/routines"]);
+  assert.match(view.text(), /저장됨/);
+});
+
+test("A1 떠나며 저장하는 중 다른 링크를 눌러도 떠나지 않고, 저장이 실패하면 글이 남는다 (#487 하민 점검)", async (t) => {
+  let fail;
+  const saved = [];
+  const view = recordsPage(t, {
+    addRecord: (body) => (
+      saved.push(body),
+      new Promise((_, reject) => {
+        fail = reject;
+      })
+    ),
+  });
+  const leave = leaving();
+  await view.flush();
+  await view.press("김하늘");
+  await view.press("사회관계");
+  view.type(view.fact(), "블록 세 개를 쌓았다.");
+  await view.flush();
+
+  assert.equal(leave.go("/routines"), true);
+  await view.flush();
+  assert.equal(saved.length, 1);
+  // 저장 응답 전에 두 번째 앱 링크를 누른다.
+  assert.equal(leave.go("/documents"), true, "저장 중에도 이동을 붙잡는다");
+  await view.flush();
+  assert.equal(saved.length, 1, "두 번째 누르기가 저장을 또 보내지 않는다");
+
+  fail(new Error("서버가 잠깐 못 받았어요."));
+  await view.flush();
+  assert.deepEqual(leave.clicked, []);
+  assert.equal(view.fact().props.value, "블록 세 개를 쌓았다.");
+});
+
+test("A1 아이를 안 골랐으면 쪽지를 띄우고, 「버리고 이동」을 눌러야 떠난다", async (t) => {
+  const saved = [];
+  const view = recordsPage(t, { addRecord: async (body) => (saved.push(body), {}) });
+  const leave = leaving();
+  await view.flush();
+  view.type(view.fact(), "적던 새 글");
+  await view.flush();
+
+  assert.equal(leave.go("/records/journal"), true);
   view.render();
-  assert.equal(stopped, true);
-  assert.ok(view.links().some((n) => textOf(n) === "버리고 나가기"));
+  assert.match(view.text(), /잠깐만요!/);
+  assert.match(view.text(), /누구 기록인지 골라야 저장돼요/);
+  assert.deepEqual(leave.clicked, []);
+
+  await view.press("아이 고르기");
+  assert.doesNotMatch(view.text(), /누구 기록인지/);
+  assert.ok(view.button("김하늘"), "아이 칩이 펼쳐져 있다");
+  assert.deepEqual(leave.clicked, []);
+
+  leave.go("/records/journal");
+  view.render();
+  await view.press("버리고 이동");
+  assert.deepEqual(leave.clicked, ["/records/journal"]);
+  assert.equal(saved.length, 0);
+});
+
+test("A1 아이만 고르고 영역이 비었으면 「영역 고르기」 쪽지다", async (t) => {
+  const view = recordsPage(t);
+  const leave = leaving();
+  await view.flush();
+  await view.press("김하늘");
+  view.type(view.fact(), "적던 새 글");
+  await view.flush();
+
+  leave.go("/routines");
+  view.render();
+  assert.match(view.text(), /영역을 골라야 저장돼요/);
+  assert.ok(view.button("영역 고르기"));
 });
 
 test("F11 관찰일지로 가는 길이 반을 들고 간다", async (t) => {
@@ -320,6 +455,213 @@ test("F11 관찰일지로 가는 길이 반을 들고 간다", async (t) => {
   view.open();
   const card = view.links().find((n) => textOf(n) === "이 기록으로 일지 만들기");
   assert.equal(card.props.href, "/records/journal?record=observation%3A1&class=class-a");
+});
+
+test("A5 고친 기록을 쓴 확정 일지가 있으면 「N건 다시 검토」와 그 일지 링크를 띄운다", async (t) => {
+  const impact = { affected: [7], newlyStale: [7] };
+  const view = recordsPage(t, { editRecord: async () => ({ record: {}, impact }) });
+  await view.flush();
+  view.open();
+  await view.press("고치기");
+  view.type(view.fact(), "개미를 5분 동안 보았다.");
+  await view
+    .nodes()
+    .find((n) => n.type === "form")
+    .props.onSubmit({ preventDefault() {} });
+  await view.flush();
+
+  assert.match(view.text(), /이 기록을 쓴 일지 1건이 다시 검토 대상이 되었어요/);
+  const link = view.links().find((n) => textOf(n).includes("일지 보기"));
+  assert.equal(link.props.href, "/documents?id=document%3A7");
+});
+
+test("A5 지워서 여러 일지가 다시 검토 대상이 되면 보관함으로 잇는다", async (t) => {
+  const impact = { affected: [7, 8], newlyStale: [7] };
+  const view = recordsPage(t, { removeRecord: async () => impact });
+  globalThis.window.confirm = () => true;
+  await view.flush();
+  view.open();
+  await view.press("지우기");
+  await view.flush();
+
+  assert.match(view.text(), /이 기록을 쓴 일지 1건이 다시 검토 대상이 되었어요/);
+  assert.match(view.text(), /이미 재검토 대상인 일지 1건도/);
+  const link = view.links().find((n) => textOf(n).includes("문서 보관함"));
+  assert.equal(link.props.href, "/documents");
+});
+
+/** 적고 멈추기를 기다리지 않는다 — 타이머를 바로 돌린다. */
+function instantTimers(t) {
+  const { setTimeout: later, clearTimeout: cancel } = globalThis;
+  globalThis.setTimeout = (fn) => (fn(), 0);
+  globalThis.clearTimeout = () => {};
+  t.after(() => {
+    globalThis.setTimeout = later;
+    globalThis.clearTimeout = cancel;
+  });
+}
+const submitForm = async (view) => {
+  await view
+    .nodes()
+    .find((n) => n.type === "form")
+    .props.onSubmit({ preventDefault() {} });
+  await view.flush();
+};
+
+test("A2 영역은 아무것도 안 눌린 채 시작하고, 안 고르면 저장하지 않는다", async (t) => {
+  const saved = [];
+  const view = recordsPage(t, { addRecord: async (body) => (saved.push(body), { id: "o:1" }) });
+  await view.flush();
+  assert.equal(view.pickedDomain(), undefined);
+
+  await view.press("김하늘");
+  view.type(view.fact(), "블록 세 개를 쌓았다.");
+  await submitForm(view);
+  assert.equal(saved.length, 0);
+  assert.match(view.text(), /영역을 골라/);
+
+  await view.press("사회관계");
+  await submitForm(view);
+  assert.equal(saved[0].domain, "사회관계");
+});
+
+test("A2 사실을 적고 멈추면 AI 가 영역 하나를 점선으로 제안만 하고, 눌러야 들어간다", async (t) => {
+  instantTimers(t);
+  const asked = [];
+  const view = recordsPage(t, {
+    suggestRecordDomain: async (...args) => (asked.push(args), "사회관계"),
+  });
+  await view.flush();
+  view.type(view.fact(), "친구에게 같이 만들자고 말했다.");
+  await view.flush();
+
+  assert.deepEqual(asked.at(-1), ["class-a", "친구에게 같이 만들자고 말했다.", ""]);
+  const chip = view.button("사회관계");
+  assert.equal(chip.props["data-suggested"], true);
+  assert.equal(chip.props["aria-pressed"], false);
+  assert.equal(view.pickedDomain(), undefined);
+
+  await view.press("사회관계");
+  assert.equal(textOf(view.pickedDomain()), "사회관계");
+});
+
+test("A2 글을 바꾸거나 저장한 뒤에는 옛 글의 영역 제안이 남지 않는다 (#487 하민 점검)", async (t) => {
+  instantTimers(t);
+  const asked = [];
+  const view = recordsPage(t, {
+    suggestRecordDomain: async (...args) => (asked.push(args), "사회관계"),
+    addRecord: async () => ({ ...RECORD, id: "observation:5" }),
+  });
+  const dotted = () =>
+    view
+      .nodes()
+      .filter((n) => n.props["data-suggested"])
+      .map(textOf);
+  await view.flush();
+  view.type(view.fact(), "친구에게 같이 만들자고 말했다.");
+  await view.flush();
+  assert.deepEqual(dotted(), ["사회관계"]);
+
+  // 다른 내용의 짧은 글로 바꾼다 — 다시 묻지 않는 길이라도 옛 제안은 사라져야 한다.
+  view.type(view.fact(), "울었다");
+  await view.flush();
+  assert.deepEqual(dotted(), []);
+  assert.equal(asked.length, 1);
+
+  // 제안을 받아 저장한 뒤, 다음 기록의 짧은 글에도 옛 제안이 붙지 않는다.
+  view.type(view.fact(), "친구에게 같이 만들자고 말했다.");
+  await view.flush();
+  await view.press("김하늘");
+  await view.press("사회관계");
+  await submitForm(view);
+  view.type(view.fact(), "울었다");
+  await view.flush();
+  assert.deepEqual(dotted(), []);
+});
+
+test("A2 제안이 없으면 점선도 없다", async (t) => {
+  instantTimers(t);
+  const view = recordsPage(t);
+  await view.flush();
+  view.type(view.fact(), "비 오는 소리를 듣고 톡톡 하고 따라 말했다.");
+  await view.flush();
+  assert.equal(
+    view.nodes().some((n) => n.props["data-suggested"]),
+    false,
+  );
+});
+
+test("A4 저장한 뒤 빠진 것이 있으면 쪽지 한 줄만 띄우고 막지 않는다", async (t) => {
+  const asked = [];
+  const view = recordsPage(t, {
+    addRecord: async () => ({ ...RECORD, id: "observation:5" }),
+    missingInRecord: async (id) => (asked.push(id), ["반응", "상황"]),
+  });
+  await view.flush();
+  await view.press("김하늘");
+  await view.press("사회관계");
+  view.type(view.fact(), "블록 세 개를 쌓았다.");
+  await submitForm(view);
+
+  assert.deepEqual(asked, ["observation:5"]);
+  assert.match(view.text(), /관찰 기록을 저장했어요/);
+  assert.match(view.text(), /아이 반응이 안 보여요/);
+  assert.doesNotMatch(view.text(), /어디서/);
+});
+
+const DAY = [
+  { name: "등원", start: "09:00", end: "" },
+  { name: "실내놀이", start: "10:00", end: "11:30" },
+  { name: "점심", start: "11:30", end: "" },
+  { name: "바깥놀이", start: "14:00", end: "" },
+];
+const slot = (view, name) =>
+  view.nodes().find((n) => n.type === "button" && textOf(n).endsWith(name) && n.props["data-slot"]);
+const context = (view) => view.nodes().find((n) => n.props.name === "context");
+
+test("A3 오늘이고 지금이 그 일과 시간이면 상황 칸을 미리 눌러 두고, 놀이면 「어디서」를 묻는다", async (t) => {
+  const asked = [];
+  const view = recordsPage(
+    t,
+    { dayRoutines: async (...args) => (asked.push(args), DAY) },
+    { now: "10:20" },
+  );
+  await view.flush();
+
+  assert.deepEqual(asked.at(-1), ["class-a", TODAY]);
+  assert.equal(context(view).props.value, "실내놀이");
+  assert.equal(slot(view, "실내놀이").props["aria-pressed"], true);
+  assert.equal(view.warned.at(-1), false, "미리 눌러 둔 상황만으로는 적던 글이 아니다");
+
+  await view.press("쌓기");
+  assert.equal(context(view).props.value, "실내놀이, 쌓기");
+  assert.equal(view.button("쌓기").props["aria-pressed"], true);
+
+  await slot(view, "바깥놀이").props.onClick();
+  view.render();
+  assert.equal(context(view).props.value, "바깥놀이");
+  assert.equal(view.button("쌓기"), undefined, "바깥놀이는 흥미 영역을 묻지 않는다");
+});
+
+test("A3 몰아서 적을 때(지난 날짜 · 일과 밖 시각)는 칩만 보이고 미리 누르지 않는다", async (t) => {
+  const view = recordsPage(t, { dayRoutines: async () => DAY }, { now: "16:00" });
+  await view.flush();
+  assert.equal(context(view).props.value, "");
+  assert.ok(slot(view, "점심"));
+
+  view.type(view.date(), "2026-11-05");
+  await view.flush();
+  assert.equal(context(view).props.value, "");
+});
+
+test("A3 그날 일과가 없으면 시간표 없이 지금처럼 적는다", async (t) => {
+  const view = recordsPage(t, {}, { now: "10:20" });
+  await view.flush();
+  assert.equal(
+    view.nodes().some((n) => n.props["data-slot"]),
+    false,
+  );
+  assert.equal(context(view).props.value, "");
 });
 
 // ── 관찰일지 만들기 (ObservationJournalPage) ──────────────────────────────
