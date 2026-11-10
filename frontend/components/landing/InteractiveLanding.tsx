@@ -134,7 +134,7 @@ export default function InteractiveLanding() {
             <figure className="hd-phone" style={{ margin: "0" }}>
               <Image
                 src="/landing/v2/phone-routines.webp"
-                alt="휴대폰에서 연 쌤플 일과 기록 화면. 달력에서 11월 4일을 골랐다."
+                alt="휴대폰에서 연 쌤플 보육일지 화면. 달력에서 11월 4일을 골랐다."
                 width={780}
                 height={1688}
                 sizes="210px"
@@ -715,7 +715,7 @@ export default function InteractiveLanding() {
                   src="/landing/v2/plan-annual.webp"
                   alt="쌤플에서 확정한 2026학년도 연간 보육계획안 실제 화면"
                   width={1600}
-                  height={1074}
+                  height={993}
                   sizes="(max-width: 900px) 92vw, 640px"
                 />
                 <Image
@@ -811,7 +811,7 @@ export default function InteractiveLanding() {
             <figure>
               <Image
                 src="/landing/v2/phone-routines.webp"
-                alt="휴대폰의 일과 기록 화면"
+                alt="휴대폰의 일일 보육일지 화면"
                 width={780}
                 height={1688}
                 sizes="240px"
@@ -820,7 +820,7 @@ export default function InteractiveLanding() {
             <figure>
               <Image
                 src="/landing/v2/phone-weekly.webp"
-                alt="휴대폰의 주간 기록 화면"
+                alt="휴대폰의 주간 보육일지 화면"
                 width={780}
                 height={1688}
                 sizes="240px"
