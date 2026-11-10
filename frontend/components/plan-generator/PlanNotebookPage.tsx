@@ -664,7 +664,7 @@ function Panel({
 }: {
   format: keyof typeof MODE;
   ready: AnnualPlanSummary | null;
-  /** 다른 방식 연간이 이미 있음 — 「연간부터 시작하기」를 끈다. */
+  /** 다른 방식 연간이 이미 있음 — 「연간부터 시작하기」 · 「월간부터 시작하기」를 끈다. */
   locked?: boolean;
   weekly?: MonthlyPlanSummary | null;
   skip: boolean;
@@ -829,7 +829,7 @@ function Panel({
           <button
             type="button"
             onClick={() => onSkip(true)}
-            disabled={!v1}
+            disabled={!v1 || locked}
             className={`${SECONDARY} ${OFF}`}
           >
             월간부터 시작하기
