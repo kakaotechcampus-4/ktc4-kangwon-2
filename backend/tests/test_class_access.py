@@ -61,7 +61,11 @@ def _extras(session, klass, tag):
     session.add_all([child, document, plan])
     session.flush()
     record = Observation(
-        class_id=klass.id, child_id=child.id, date=date(2026, 9, 1), domain="의사소통", fact="말했다"
+        class_id=klass.id,
+        child_id=child.id,
+        date=date(2026, 9, 1),
+        domain="의사소통",
+        fact="말했다",
     )
     session.add(record)
     session.flush()
