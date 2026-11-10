@@ -6,8 +6,10 @@
 **3층을 종이에서 합친다(ADR-024).** 화면과 검사에서는 사실 · 해석 · 지원이 나뉘어 있지만
 실물 양식에는 해석 칸과 지원 칸이 따로 없다. 꼬리 칸 하나에 해석, 빈 줄, 지원 순서로 잇는다.
 
-**근거가 바뀐(`stale`) 문서는 내보내지 않는다.** 일과 기록의 시간 · 일과 이름 · 활동계획과
-관찰 기록의 영역은 원본에서 읽는다. 근거가 바뀐 채로 내보내면 교사가 확정한 것과 다른 종이가 나간다.
+**근거가 바뀐(`stale`) 문서는 내보내지 않는다.** 일과 기록의 시간 · 일과 이름 · 활동계획은
+원본에서 읽는다. 근거가 바뀐 채로 내보내면 교사가 확정한 것과 다른 종이가 나간다.
+관찰 기록의 영역 · 상황과 영역 축은 문서가 만들 때 찍은 사본에서 읽는다(ADR-088). 사본이 없는
+옛 문서만 예전처럼 원본 영역과 원의 지금 축을 읽는다.
 """
 
 import re
@@ -18,7 +20,6 @@ from fastapi import APIRouter, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.features.centers.models import Center, Class
 from app.features.documents.models import Document, DocumentSection, DocumentSource
 from app.features.documents.router import (
     DbSession,
@@ -26,8 +27,9 @@ from app.features.documents.router import (
     _observation_domains,
     _own_document,
     _sources,
+    document_axis,
 )
-from app.features.observations.models import AXES, DEFAULT_AXIS, NURI_DOMAINS
+from app.features.observations.models import AXES
 from app.features.routines.models import RoutineRecord
 from app.features.routines.weather import day_weather
 from app.shared.auth.dependency import CurrentUser
@@ -147,23 +149,22 @@ def _observation(
 ) -> bytes:
     """영역 행에 근거 관찰 기록을, 「평가」 칸에 해석 + 지원을 넣는다.
 
-    행은 **그 원이 쓰는 축**이다 (observations/models.py AXES). 5영역 원은 5줄,
-    일상생활 · 놀이활동을 쓰는 원은 2줄짜리 양식으로 나간다.
+    행은 **문서를 만들 때의 축**이다 (observations/models.py AXES · ADR-088). 5영역은 5줄,
+    일상생활 · 놀이활동은 2줄짜리 양식으로 나간다. 원이 나중에 축을 바꿔도 이 문서 종이는 그대로다.
+    관찰 칸 한 줄은 `(9/5) (바깥놀이) 사실` 이다. 상황이 비었으면 괄호를 붙이지 않는다.
     """
     domains = _observation_domains(session, sources)
     _missing([f"sources.{s.source_id}" for s in sources if s.source_id not in domains])
 
-    classroom = session.get(Class, doc.class_id)
-    center = session.get(Center, classroom.center_id) if classroom else None
-    axis = center.observation_axis if center else DEFAULT_AXIS
-    names = AXES.get(axis, NURI_DOMAINS)
+    axis = document_axis(session, doc)
+    names = AXES[axis]
 
     # 영역 안에서는 날짜순이다. 같은 날이면 교사가 고른 순서를 지킨다(sorted 는 안정 정렬).
     by_domain: dict[str, list[str]] = {domain: [] for domain in names}
     for source in sorted(sources, key=lambda s: s.date):
         domain = domains[source.source_id]
-        # 원이 축을 바꾸기 전에 쓴 기록이다. 지금 양식에 그 줄이 없으니 내보낼 수 없다 —
-        # 조용히 버리면 교사가 고른 근거가 종이에서 사라진다.
+        # 축 사본이 없는 옛 문서에서, 원이 축을 바꾸기 전에 쓴 기록이다. 지금 양식에 그 줄이
+        # 없으니 내보낼 수 없다 — 조용히 버리면 교사가 고른 근거가 종이에서 사라진다.
         if domain not in by_domain:
             raise _error(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -171,7 +172,10 @@ def _observation(
                 f"「{domain}」은 지금 원이 쓰는 관찰 영역이 아니라 양식에 넣을 줄이 없습니다.",
                 [f"sources.{source.source_id}"],
             )
-        by_domain[domain].append(f"({source.date.month}/{source.date.day}) {source.text}")
+        situation = f"({source.context}) " if source.context else ""
+        by_domain[domain].append(
+            f"({source.date.month}/{source.date.day}) {situation}{source.text}"
+        )
     rows = [[domain, "\n".join(lines)] for domain, lines in by_domain.items()]
     rows.append([AXIS_TAIL[axis], evaluation])
     return fill_table(

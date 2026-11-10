@@ -92,6 +92,8 @@ from ssuksak.planning.application.place_monthly_safety import (  # 공개 창구
     PlaceMonthlySafetyCommand,
     monthly_safety_notices,
 )
+from ssuksak.planning.domain.monthly_template import RepeatBy
+from ssuksak.planning.domain.monthly_template_snapshot import ACTIVITY_DETAIL_SECTION_KEYS
 from ssuksak.planning.domain.play_monthly_plan import PLAY_MONTHLY_FORMAT  # 공개 창구에 없다
 from ssuksak.planning.domain.play_project_plan import PLAY_PROJECT_FORMAT  # 공개 창구에 없다
 from ssuksak.planning.domain.provenance import SplitAxis  # 공개 창구에 없다
@@ -1019,8 +1021,20 @@ def regenerate_monthly_cell(
     LLM 을 기다리는 동안 transaction 이 없다. 그 사이 누가 고쳤으면 결과를 버리고 409 다.
     """
     plan = _read_draft(session, user, plan_id, body.expected_revision)
-    # 칸 프롬프트에도 저장된 요청 사항이 실린다. 생성과 같이 가린다(ADR-060).
-    names = memo_name_table(session, int(plan.classroom_ref), plan.teacher_memo, REGEN_MASK_FAILED)
+    # 칸 프롬프트에는 저장된 요청 사항과 이 계획안의 다른 칸 값(month_snapshot · 교사가 고친 값
+    # 포함)이 실린다. 둘 다 생성과 같이 가린다(ADR-060).
+    # Core 가 싣는 칸만 넣는다 — 주 단위 칸, 숨은 설명 칸 제외(regenerate_monthly_plan_item
+    # `_month_snapshot`). 더 넣으면 안 실리는 글의 낱말 때문에 422 가 늘어난다.
+    cells = tuple(
+        cell.value
+        for section in plan.sections
+        if section.repeat_by is RepeatBy.WEEK
+        and section.section_key not in ACTIVITY_DETAIL_SECTION_KEYS.values()
+        for cell in section.cells
+        if cell.value
+    )
+    seen = "\n".join((plan.teacher_memo or "", *cells))
+    names = memo_name_table(session, int(plan.classroom_ref), seen, REGEN_MASK_FAILED)
     session.commit()  # 이름표 읽기까지 끝낸다. LLM 을 기다리는 동안 transaction 을 잡지 않는다
     try:
         provider = monthly_llm_provider()
@@ -1028,7 +1042,7 @@ def regenerate_monthly_cell(
         raise _UNAVAILABLE from error
     use_case = monthly_regeneration(
         plan_repository=_drafts(plan),
-        provider=with_masked_memo(provider, plan.teacher_memo, names),
+        provider=with_masked_memo(provider, plan.teacher_memo, names, cells),
         clock=SystemClock(),
     )
     try:

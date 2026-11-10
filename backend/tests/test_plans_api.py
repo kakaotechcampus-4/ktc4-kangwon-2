@@ -733,7 +733,7 @@ class _Request:
     system_prompt: str = ""
 
 
-def test_메모_속_아이_이름만_가명으로_나가고_답은_실명으로_돌아온다():
+def test_메모_속_아이_이름만_가명으로_나가고_답은_메모에_적힌_표기로_돌아온다():
     table = NameTable({"이가명": "도담"})
     memo = "가명이가 좋아하는 하나씩 쌓기"
     sent = []
@@ -750,7 +750,48 @@ def test_메모_속_아이_이름만_가명으로_나가고_답은_실명으로_
 
     assert "가명" not in sent[0] and "도담이가 좋아하는" in sent[0]
     assert '"rule": "하나씩"' in sent[0]  # 메모 밖은 건드리지 않는다
-    assert response.content == '{"v": "이가명이와 쌓기"}'
-    # 수리 요청이 앞 답(실명)을 다시 실으면 부르지 않는다.
+    # 답은 교사가 메모에 적은 표기(「가명」)로 돌아온다. 등록 실명으로 돌리지 않는다.
+    assert response.content == '{"v": "가명이와 쌓기"}'
+    # 수리 요청이 앞 답(실명)을 다시 실으면 부르지 않는다 — 등록 실명이든 되돌린 표기든.
     with pytest.raises(MemoMaskFailed):
         provider.generate_weekly(_Request(payload + " 이가명"))
+    with pytest.raises(MemoMaskFailed):
+        provider.generate_weekly(_Request(payload + " 가명이와"))
+
+
+def test_메모의_낱말이_다른_반_아이_이름과_겹쳐도_답에_그_아이_실명이_생기지_않는다():
+    # 원 전체 표라 다른 반 「김하늘」의 「하늘」이 메모 낱말과 겹쳐 가려진다.
+    # 등록 실명으로 되돌리면 반 단위 계획안에 「김하늘」이 들어간다.
+    table = NameTable({"김하늘": "하람"})
+    memo = "하늘 관찰 놀이를 넣어 주세요"
+
+    class Inner:
+        def generate_weekly(self, request):
+            return RawLlmResponse(content='{"v": "하람 관찰 놀이"}', model="m")
+
+    provider = with_masked_memo(Inner(), memo, table)
+    payload = json.dumps({"teacher_memo": {"text": memo}}, ensure_ascii=False)
+
+    response = provider.generate_weekly(_Request(payload))
+
+    assert response.content == '{"v": "하늘 관찰 놀이"}'
+
+
+def test_칸_재생성_답은_칸_값에_적힌_표기로_돌아온다():
+    # 메모가 비어도 맥락으로 싣는 칸 값의 이름을 가리고, 답은 그 칸에 적힌 표기로 되돌린다.
+    table = NameTable({"이가명": "도담"})
+    cell = "가명이가 개미를 관찰한다"
+    sent = []
+
+    class Inner:
+        def generate_weekly(self, request):
+            sent.append(request.user_content)
+            return RawLlmResponse(content='{"v": "도담이와 개미 길 찾기"}', model="m")
+
+    provider = with_masked_memo(Inner(), None, table, [cell])
+    payload = json.dumps({"current_plan": {"outdoor_play": cell}}, ensure_ascii=False)
+
+    response = provider.generate_weekly(_Request(payload))
+
+    assert "가명" not in sent[0] and "도담이가 개미를" in sent[0]
+    assert response.content == '{"v": "가명이와 개미 길 찾기"}'
