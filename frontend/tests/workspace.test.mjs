@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { registerHooks } from "node:module";
-import { fixtureSession, fixtureKey, fixtureAccount } from "./auth-fixture.mjs";
+import { fixtureSession, fixtureKey, fixtureAccount, fixtureEmail } from "./auth-fixture.mjs";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 registerHooks({
@@ -18,8 +18,9 @@ registerHooks({
   },
 });
 const { templatePlan, planPeriod } = await import("../lib/workspace/plans.ts");
-const { parseWorkspace, updateWorkspace, readWorkspace } =
+const { parseWorkspace, updateWorkspace, readWorkspace, moveLegacyImports, DROPPED_IMPORTS } =
   await import("../lib/workspace/store.ts");
+const { API_STORAGE_CONTEXT } = await import("../lib/api/storage-context.ts");
 import {
   validateDocument,
   compareEvidence,
@@ -262,11 +263,43 @@ test("February without a fifth week never duplicates the fourth week", () => {
   assert.deepEqual(planPeriod("weekly", period), { start: "2026-02-22", end: "2026-02-28" });
 });
 
-test("아동 실명 칸은 저장소에서 비우고 본문은 그대로 둔다", () => {
-  const stored = {
+function storedWorkspace(stored) {
+  const box = { value: JSON.stringify(stored) };
+  globalThis.window = {
+    sessionStorage: fixtureSession(),
+    localStorage: {
+      getItem: (key) => (key === fixtureKey ? fixtureAccount : box.value),
+      setItem: (_key, next) => {
+        box.value = next;
+      },
+    },
+    dispatchEvent: () => {},
+  };
+  return box;
+}
+
+test("브라우저 저장소에는 본문을 다시 쓰지 않는다 — 계획안 서버 ID 와 설정만 남는다 (ADR-013)", () => {
+  const meta = {
+    className: "햇살반",
+    childName: "",
+    createdAt: "2026-09-11T00:00:00.000Z",
+    updatedAt: "2026-09-11T00:00:00.000Z",
+    reviewNote: "",
+  };
+  const box = storedWorkspace({
     version: 1,
-    templates: [],
-    criteria: [],
+    templates: [
+      {
+        id: "t",
+        name: "한별찬 양식",
+        text: "한별찬",
+        headings: [],
+        style: "",
+        summary: "",
+        createdAt: "",
+      },
+    ],
+    criteria: [{ id: "c", label: "관찰", terms: "관찰", source: "기관 기준" }],
     observations: [
       {
         id: "o1",
@@ -281,36 +314,243 @@ test("아동 실명 칸은 저장소에서 비우고 본문은 그대로 둔다"
         createdAt: "2026-09-11T00:00:00.000Z",
       },
     ],
-    documents: [],
-  };
-  let value = JSON.stringify(stored);
-  globalThis.window = {
-    sessionStorage: fixtureSession(),
-    localStorage: {
-      getItem: (key) => (key === fixtureKey ? fixtureAccount : value),
-      setItem: (_key, next) => {
-        value = next;
+    documents: [
+      { ...document(), ...meta, id: "teacher", title: "한별찬 9월 관찰", origin: "teacher" },
+      {
+        ...document(),
+        ...meta,
+        id: "import",
+        title: "한별찬 관찰.hwp",
+        origin: "import",
+        sources: [],
+        sections: [{ heading: "첨부 원문", body: "한별찬이 웃었다.", sourceIds: [] }],
       },
-    },
-    dispatchEvent: () => {},
-  };
+      {
+        ...document(),
+        ...meta,
+        id: "plan",
+        kind: "annual",
+        childId: "",
+        title: "2026학년도 연간 보육계획안",
+        origin: "ai",
+        annualPlanId: 7,
+        annualApiSource: "api",
+      },
+    ],
+  });
+  // 예전 증빙(IMPORT)은 서버로 옮기기 전까지 저장소에 그대로 둔다(`moveLegacyImports`). 화면에는 주지 않는다.
+  const stored = () =>
+    JSON.parse(box.value).documents.map((d) => [d.id, d.sections.length, d.title]);
+  const waiting = ["import", 1, "한별찬 관찰.hwp"];
   try {
-    assert.equal(readWorkspace().observations[0].childName, "");
-    assert.equal(JSON.parse(value).observations[0].childName, "");
-    // 본문은 교사가 쓴 자료다. 임의로 지우지 않는다.
-    assert.equal(JSON.parse(value).observations[0].fact, "한별찬이 블록을 쌓았다.");
-    assert.equal(JSON.parse(value).observations[0].childId, "child-1");
-    updateWorkspace((data) => ({
-      ...data,
-      observations: [{ ...data.observations[0], childName: "문솔비" }],
+    const data = readWorkspace();
+    assert.deepEqual(data.observations, []);
+    assert.deepEqual(data.templates, []);
+    assert.equal(data.criteria.length, 1);
+    assert.deepEqual(
+      data.documents.map((d) => [d.id, d.annualPlanId, d.sections.length, d.sources.length]),
+      [["plan", 7, 0, 0]],
+    );
+    assert.deepEqual(stored(), [waiting, ["plan", 0, "2026학년도 연간 보육계획안"]]);
+    const bodies = JSON.parse(box.value);
+    assert.deepEqual(bodies.observations, []);
+    assert.deepEqual(bodies.templates, []);
+    // 다시 저장하는 길도 본문을 버린다.
+    updateWorkspace((prev) => ({
+      ...prev,
+      observations: [{ ...data.observations[0], id: "o2", fact: "문솔비가 웃었다." }],
+      documents: [
+        ...prev.documents,
+        { ...document(), ...meta, id: "again", title: "문솔비 관찰", origin: "import" },
+      ],
     }));
-    assert.equal(JSON.parse(value).observations[0].childName, "");
+    assert.equal(box.value.includes("문솔비"), false);
+    assert.deepEqual(
+      readWorkspace().documents.map((d) => d.id),
+      ["plan"],
+    );
+    // 다시 저장해도 옮기기를 기다리는 증빙은 지우지 않는다.
+    assert.deepEqual(
+      stored().find((d) => d[0] === "import"),
+      waiting,
+    );
   } finally {
     delete globalThis.window;
   }
 });
 
+test("예전 브라우저 증빙은 한 건씩 서버로 올리고, 못 올린 것도 지운 뒤 건수만 남긴다", async (t) => {
+  const workspaceKey = "saessak.workspace.v1:" + encodeURIComponent(fixtureEmail);
+  const linksKey =
+    "saessak.apiLinks.v1:" + API_STORAGE_CONTEXT + ":" + encodeURIComponent(fixtureEmail);
+  const legacy = (id, overrides = {}) => ({
+    ...document(),
+    id,
+    title: id + ".hwp",
+    className: "햇살반",
+    childName: "",
+    origin: "import",
+    sources: [],
+    sections: [{ heading: "첨부 원문", body: "한별찬이 웃었다.", sourceIds: [] }],
+    createdAt: "2026-09-11T00:00:00.000Z",
+    updatedAt: "2026-09-11T00:00:00.000Z",
+    reviewNote: "",
+    ...overrides,
+  });
+  const values = new Map([
+    [fixtureKey, fixtureAccount],
+    [linksKey, JSON.stringify({ classes: { c1: { id: 3 } }, children: { child1: 11 } })],
+    [
+      workspaceKey,
+      JSON.stringify({
+        version: 1,
+        observations: [],
+        templates: [],
+        criteria: [],
+        documents: [
+          legacy("ok"),
+          // 반 단위 문서는 아동 없이 보낸다.
+          legacy("daily", { kind: "dailyLog" }),
+          // 서버에 없는 반 — 옮기지 못한다.
+          legacy("lost", { classId: "c9" }),
+        ],
+      }),
+    ],
+  ]);
+  const session = fixtureSession();
+  globalThis.window = {
+    sessionStorage: session,
+    localStorage: {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+      removeItem: (key) => values.delete(key),
+    },
+  };
+  // 반 · 아동 서버 번호는 전역 localStorage 로 읽는다 (onboarding.ts).
+  globalThis.localStorage = window.localStorage;
+  const sent = [];
+  const fetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    // 올리는 순간 저장소에 남은 증빙 — 이미 올린 것은 빠져 있어야 끊겨도 두 번 올리지 않는다.
+    const left = JSON.parse(values.get(workspaceKey)).documents.map((d) => d.id);
+    sent.push([body.title, body.class_id, body.child_id, body.body, left]);
+    return Response.json(
+      {
+        id: sent.length,
+        kind: body.kind,
+        title: body.title,
+        class_id: 3,
+        child_id: body.child_id,
+        start: body.start,
+        end: body.end,
+        status: "CONFIRMED",
+        origin: "IMPORT",
+        stale: false,
+        sections: [],
+        sources: [],
+        review_note: "",
+        class_note: "",
+        generation: {},
+        created_at: "",
+        updated_at: "",
+      },
+      { status: 201 },
+    );
+  };
+  t.after(() => {
+    globalThis.fetch = fetch;
+    delete globalThis.window;
+    delete globalThis.localStorage;
+  });
+  window.dispatchEvent = () => {};
+  // 로그인한 채 새 버전을 열면 화면이 저장소를 먼저 읽는다. 읽기 · 저장이 증빙을 지우면 안 된다.
+  readWorkspace();
+  updateWorkspace((prev) => prev);
+  // 로그인 · 화면 진입이 겹쳐 두 번 불러도 한 건은 한 번만 올린다.
+  await Promise.all([moveLegacyImports(), moveLegacyImports()]);
+  assert.deepEqual(sent, [
+    ["ok.hwp", 3, 11, "한별찬이 웃었다.", ["ok", "daily", "lost"]],
+    // 반 단위 문서는 아동 없이 보낸다.
+    ["daily.hwp", 3, null, "한별찬이 웃었다.", ["daily", "lost"]],
+  ]);
+  assert.deepEqual(JSON.parse(values.get(workspaceKey)).documents, []);
+  assert.equal(values.get(workspaceKey).includes("한별찬"), false);
+  assert.equal(session.getItem(DROPPED_IMPORTS), "1");
+});
+
 const ROSTER = [{ id: "c1", children: [{ id: "child1", name: "한별찬" }] }];
+
+test("망이 끊기거나 서버가 잠깐 못 받으면 예전 증빙을 지우지 않고 다음에 다시 옮긴다", async (t) => {
+  const workspaceKey = "saessak.workspace.v1:" + encodeURIComponent(fixtureEmail);
+  const linksKey =
+    "saessak.apiLinks.v1:" + API_STORAGE_CONTEXT + ":" + encodeURIComponent(fixtureEmail);
+  const legacy = (id) => ({
+    ...document(),
+    id,
+    title: id + ".hwp",
+    className: "햇살반",
+    childName: "",
+    origin: "import",
+    sources: [],
+    sections: [{ heading: "첨부 원문", body: "한별찬이 웃었다.", sourceIds: [] }],
+    createdAt: "2026-09-11T00:00:00.000Z",
+    updatedAt: "2026-09-11T00:00:00.000Z",
+    reviewNote: "",
+  });
+  const values = new Map([
+    [fixtureKey, fixtureAccount],
+    [linksKey, JSON.stringify({ classes: { c1: { id: 3 } }, children: { child1: 11 } })],
+    [
+      workspaceKey,
+      JSON.stringify({
+        version: 1,
+        observations: [],
+        templates: [],
+        criteria: [],
+        documents: [legacy("a"), legacy("b")],
+      }),
+    ],
+  ]);
+  const session = fixtureSession();
+  globalThis.window = {
+    sessionStorage: session,
+    localStorage: {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+      removeItem: (key) => values.delete(key),
+    },
+  };
+  globalThis.localStorage = window.localStorage;
+  const fetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = fetch;
+    delete globalThis.window;
+    delete globalThis.localStorage;
+  });
+  const left = () => JSON.parse(values.get(workspaceKey)).documents.map((d) => d.id);
+  for (const fail of [
+    async () => {
+      throw new TypeError("Failed to fetch");
+    },
+    async () => Response.json({ error: { code: "INTERNAL", message: "" } }, { status: 503 }),
+  ]) {
+    globalThis.fetch = fail;
+    await moveLegacyImports();
+    assert.deepEqual(left(), ["a", "b"]);
+    assert.equal(session.getItem(DROPPED_IMPORTS), null);
+  }
+});
+
+test("이미 로그인한 교사도 서비스 화면에 들어오면 예전 증빙을 옮긴다", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const gate = await readFile(
+    new URL("../components/auth/DemoSessionGate.tsx", import.meta.url),
+    "utf8",
+  );
+  // 반 · 아동 서버 번호가 있어야 올릴 수 있다 — 원 · 반이 준비된 뒤에만 부른다.
+  assert.match(gate, /roomReady\(\)\)\s*void moveLegacyImports\(\)/);
+});
 
 test("저장된 childName이 비어 있어도 서버 명단에서 화면용 이름을 찾는다", () => {
   const stored = { ...document(), childName: "" };
@@ -320,51 +560,6 @@ test("저장된 childName이 비어 있어도 서버 명단에서 화면용 이�
   // 명단에서 못 찾으면 저장된 값으로 떨어진다.
   assert.equal(childDisplayName(ROSTER, { ...stored, classId: "c9" }), "");
   assert.equal(childDisplayName([], { ...stored, childName: "문솔비" }), "문솔비");
-});
-
-test("화면용으로 찾은 이름은 저장소에 다시 쓰이지 않는다", () => {
-  let value = JSON.stringify({
-    version: 1,
-    observations: [],
-    templates: [],
-    criteria: [],
-    documents: [
-      {
-        ...document(),
-        title: "9월 관찰",
-        className: "햇살반",
-        childName: "",
-        origin: "teacher",
-        createdAt: "2026-09-11T00:00:00.000Z",
-        updatedAt: "2026-09-11T00:00:00.000Z",
-        reviewNote: "",
-      },
-    ],
-  });
-  globalThis.window = {
-    sessionStorage: fixtureSession(),
-    localStorage: {
-      getItem: (key) => (key === fixtureKey ? fixtureAccount : value),
-      setItem: (_key, next) => {
-        value = next;
-      },
-    },
-    dispatchEvent: () => {},
-  };
-  try {
-    const [saved] = readWorkspace().documents;
-    assert.equal(saved.childName, "");
-    assert.equal(childDisplayName(ROSTER, saved), "한별찬");
-    updateWorkspace((data) => ({
-      ...data,
-      documents: [{ ...data.documents[0], reviewNote: "검토함" }],
-    }));
-    assert.equal(JSON.parse(value).documents[0].reviewNote, "검토함");
-    assert.equal(JSON.parse(value).documents[0].childName, "");
-    assert.equal(value.includes("한별찬"), false);
-  } finally {
-    delete globalThis.window;
-  }
 });
 
 test("증빙 등록은 아동 이름을 저장된 childName 이 아니라 서버 명단에서 그린다", async () => {

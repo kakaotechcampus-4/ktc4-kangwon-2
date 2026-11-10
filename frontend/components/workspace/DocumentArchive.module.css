@@ -528,6 +528,11 @@
   background: #f8fbf9;
   border-color: #b6d1c1;
 }
+/* 확정 · 다시 확인 필요 — 확정은 그대로, 다시 볼 것은 노랑(흙색 계열)으로. 빨강은 쓰지 않는다. */
+.docCard[data-state="stale"] {
+  background: var(--pg-sun-tint);
+  border-color: var(--pg-sun);
+}
 .docCard:hover {
   border-color: #9fcfb5;
 }
@@ -764,6 +769,10 @@
   background: #fdeee8;
   color: #8f503f;
 }
+.status[data-state="stale"] {
+  background: var(--pg-sun-tint);
+  color: var(--pg-sun-ink);
+}
 .status[data-state="none"] {
   background: #f3f5f3;
   color: #7f8d85;
@@ -933,6 +942,11 @@
   background: #fdf2ee;
   color: #8f503f;
 }
+.day .mark[data-state="stale"] {
+  border: 1.5px solid var(--pg-sun);
+  background: var(--pg-sun-tint);
+  color: var(--pg-sun-ink);
+}
 .day .mark[data-state="none"] {
   border: 1.5px solid #cad6cf;
   background: #fff;
@@ -964,6 +978,9 @@
 }
 .legend i[data-state="draft"] {
   background: #f2b8a8;
+}
+.legend i[data-state="stale"] {
+  background: var(--pg-sun);
 }
 .legend i[data-state="none"] {
   background: #fff;
@@ -1561,6 +1578,9 @@
 .journalPanel .legend i[data-state="draft"] {
   background: #f5b8ac;
 }
+.journalPanel .legend i[data-state="stale"] {
+  background: var(--pg-sun);
+}
 .journalPanel .legend i[data-state="none"] {
   background: #edf0eb;
   border-color: #dfe5de;
@@ -1646,6 +1666,11 @@
   border-color: #edb4a7;
   background: #fff0ea;
   color: #965a46;
+}
+.journalPanel .day .mark[data-state="stale"] {
+  border-color: var(--pg-sun);
+  background: var(--pg-sun-tint);
+  color: var(--pg-sun-ink);
 }
 .journalPanel .day .state {
   color: #4c5e72;
