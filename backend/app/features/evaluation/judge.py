@@ -145,7 +145,8 @@ def judge_4_1(
         log_days[log.class_id].add(log.day)
     weekdays = set(window.weekdays())
     # 기간에 걸친 달마다 따로 센다 — 두 달 중 한 달만 있으면 못 채운다(ADR-080).
-    # 폴더 검사(ADR-045 결정 3)와 같은 규칙이다.
+    # 폴더 검사(ADR-045 결정 3)와 세는 단위가 같다.
+    # 폴더는 주간 · 일일 계획안 파일도 그 달 1건으로 센다.
     plan_ok = {
         c
         for c in roster
