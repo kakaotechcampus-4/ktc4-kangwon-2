@@ -20,6 +20,13 @@ class SubstitutionError(Exception):
     """치환할 수 없다. 이 예외가 나면 LLM 을 호출하지 않는다 (ADR-004)."""
 
 
+class CallNameNeeded(SubstitutionError):
+    """글에 외자 한 글자가 낱말로 홀로 섰는데 그 아이의 부르는 이름이 없다.
+
+    메시지를 교사에게 그대로 보여준다 -- 고치는 방법이 들어 있다.
+    """
+
+
 _POOL_PATH = Path(__file__).resolve().parents[3] / "resources" / "pseudonyms.yaml"
 
 _HANGUL_START = 0xAC00

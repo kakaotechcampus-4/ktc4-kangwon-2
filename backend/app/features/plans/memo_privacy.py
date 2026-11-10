@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.features.centers.models import Child, Class
 from app.shared.childCode import (
+    CallNameNeeded,
     NameTable,
     SubstitutionError,
     load_pool,
@@ -59,13 +60,13 @@ def center_name_table(session: Session, class_id: int, text: str) -> NameTable |
         return None
     center_id = select(Class.center_id).where(Class.id == class_id).scalar_subquery()
     rows = session.execute(
-        select(Child.class_id, Child.name, Child.code)
+        select(Child.class_id, Child.name, Child.code, Child.call_name)
         .join(Class, Class.id == Child.class_id)
         .where(Class.center_id == center_id)
         .order_by(Child.id)
     ).all()
-    own = [(name, code) for owner, name, code in rows if owner == class_id]
-    others = [(name, code) for owner, name, code in rows if owner != class_id]
+    own = [(name, code, call) for owner, name, code, call in rows if owner == class_id]
+    others = [(name, code, call) for owner, name, code, call in rows if owner != class_id]
     return table_for_text(load_pool(), own, others, text)
 
 
@@ -75,6 +76,10 @@ def memo_name_table(
     """메모에 원 아이 이름이 있을 때만 표를 만든다. 바꾸지 못하면 LLM 을 부르기 전에 422."""
     try:
         return center_name_table(session, class_id, memo)
+    except CallNameNeeded as error:
+        # 고치는 방법(부르는 이름 · 낱말 바꾸기)을 그대로 보여준다.
+        detail = {**failure.detail, "message": str(error)}
+        raise HTTPException(failure.status_code, detail=detail) from error
     except SubstitutionError as error:
         raise failure from error
 
