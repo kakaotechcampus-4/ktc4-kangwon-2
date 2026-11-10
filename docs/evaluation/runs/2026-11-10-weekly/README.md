@@ -2,7 +2,7 @@
 
 주간계획안의 대·소집단 · 실내놀이 후보가 같은 주를 다시 만들 때, 그리고 같은 달 주끼리 반복되는 문제를 고친 기록이다.
 개선의 흐름은 [docs/techspec/improvement.md](../../../techspec/improvement.md) §2에, 측정 방법은 [evaluation.md](../../../techspec/evaluation.md)에 있다.
-코드는 브랜치 `feature/weekly-prior-week-dedup`(PR 대기)에 있다.
+코드는 #469로 develop에 머지됐다.
 
 **생성 글은 기대값(Golden)이 아니다.** 테스트는 이 문장을 비교하지 않는다(ADR-023).
 
