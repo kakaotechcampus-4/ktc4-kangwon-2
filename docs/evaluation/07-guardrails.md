@@ -42,7 +42,7 @@
 
 | 누가 정하나 | 무엇 | 코드 |
 |---|---|---|
-| Rule | 그 달 후보 주제 5개 — 승인된 훈련 주제 Reference(`emergency-drill-topics-v0.1.0`, 2026-10-29 `HUMAN_APPROVED` · `runtime_active: true`)에서만, 월 한정 주제 먼저 · 나머지는 목록 순서. Reference 가 없거나 승인 전 · 누리과정 판이 다르거나 · 내용 ID 가 없으면 LLM 호출 전에 중단 | `p0-planning/src/ssuksak/planning/application/drill_topics.py` |
+| Rule | 그 달 후보 주제 5개 — 승인된 훈련 주제 Reference(`emergency-drill-topics-v0.1.0`, 2026-10-29 `HUMAN_APPROVED` · `runtime_active: true`)에서만, 월 한정 주제 먼저 · 나머지 연중 주제는 목록 순서에서 학년도 달마다(3월 = 0) 시작점을 한 칸씩 옮김(2026-11-11 하민 결정). Reference 가 없거나 승인 전 · 누리과정 판이 다르거나 · 내용 ID 가 없으면 LLM 호출 전에 중단 | `p0-planning/src/ssuksak/planning/application/drill_topics.py` |
 | Rule | 후보의 누리과정 근거(`CURRICULUM` 하나, `nuri2019.1.3.4`) — LLM 이 근거를 달면 거절 | `planner/validation.py` `_drill_candidate_issues` · `domain/monthly_plan.py` `MonthlyDrillCandidate` · `domain/play_monthly_plan.py` `DrillCandidate` |
 | LLM | 주제마다 유아가 알아듣는 말로 한 문장(문장화만). 응답의 `topic_id` 가 Rule 이 준 목록과 다르거나 · 겹치거나 · 빠지면 거절 | `planner/play_monthly.py` `UNKNOWN_DRILL_TOPIC` · `DUPLICATE_DRILL_TOPIC` · `MISSING_DRILL_TOPIC` |
 | 검사 | 입력에 없는 날짜 · 시각 · 사람 이름(`UNSUPPORTED_FACT`), 내부 ID 노출, 두 문장 이상 · 주제끼리 같은 문장(v1) — 거절 | 같은 곳 · `planner/weekly.py` `unsupported_facts` |
