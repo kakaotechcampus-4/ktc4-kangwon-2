@@ -1,0 +1,45 @@
+{
+ "judged": 30,
+ "judge": 1,
+ "axes": [
+  "age",
+  "theme_link",
+  "useful"
+ ],
+ "groups": {
+  "yearly_theme": {
+   "n": 15,
+   "good": [
+    15,
+    15,
+    15
+   ]
+  },
+  "monthly_outdoor": {
+   "n": 10,
+   "good": [
+    10,
+    10,
+    10
+   ]
+  },
+  "monthly_safety_candidate": {
+   "n": 5,
+   "good": [
+    5,
+    5,
+    5
+   ]
+  },
+  "all": {
+   "n": 30,
+   "good": [
+    30,
+    30,
+    30
+   ]
+  }
+ },
+ "mid": 0,
+ "bad": 0
+}

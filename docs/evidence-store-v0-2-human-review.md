@@ -3,13 +3,14 @@
 - 승인일: 2026-11-02
 - 승인자: `reviewer_ai_lead_001`
 - 범위: 기존 처리 JSON에서 사람이 REMOVE로 판정한 기록 42개를 통째 제외. 남은 기록 12,325개와 출처 manifest는 그대로다. PDF 재추출은 없다. 2026-11-10 하민 결정으로 아동 이름이 든 행사 기록 1건을 더 뺐다(43개 제외 · 남은 기록 12,324개, ADR-079 10번).
-- 제외 사유: `PII_BIRTHDAY_LIST` 3개, `PII_PERSON_NAME` 39개. 일반 활동 `GENERAL_ACTIVITY` 32개는 KEEP이다. 새 기록·연간 주제·주간 추출 자료는 추가하지 않는다.
+- 제외 사유: 최초 심사는 `PII_BIRTHDAY_LIST` 3개, `PII_PERSON_NAME` 39개. 이후 삭제 1건은 `PII_PERSON_NAME`이며 총 사유는 43개다. 일반 활동 `GENERAL_ACTIVITY` 32개는 KEEP이다. 새 기록·연간 주제·주간 추출 자료는 추가하지 않는다.
+- 감사 메타 보완(2026-11-10): 최초 `privacy_review`의 74건 심사·판정 파일 SHA는 보존하고 추가 삭제 결정(ADR-079 10번 · `f1f3202b`)은 `privacy_review_addenda`에 분리했다. 기록 본문·content SHA·분류 결합은 그대로이며 파일 SHA만 메타데이터에 맞게 다시 고정했다.
 
 ## 승인한 파일
 
 | 파일 (`p0-planning/data/evidence/`) | 기록 또는 판정 수 | 파일 SHA-256 |
 |---|---:|---|
-| institution_evidence_v0_2_0.json | 12,324 | `3bbe06f8d7c6ae317d3cb7bc1649a4b6b3585d359716cbd8aff0beb66dccf569` |
+| institution_evidence_v0_2_0.json | 12,324 | `d680b955ce8efb39b0cd42107e2424af32c54dbf807b525ee5a7242657a5e562` |
 | monthly_evidence_semantic_classification_v0_2_0.json | 16 | `3e95638b0603873e41592317d8849d273e99bd324575f3884a1a6d986ad7216b` |
 | weekly_evidence_semantic_classification_v0_2_0.json | 179 | `2262793049e456a012075acb72a8cea623c6624abf97196718a5c6688d91c4d5` |
 | safety_evidence_classification_v0_3_0.json | 103 | `9ec4ed7af719bcb5c7764b1ee36f0a9f754bc2da1792b9c6a854729b54c25f8b` |

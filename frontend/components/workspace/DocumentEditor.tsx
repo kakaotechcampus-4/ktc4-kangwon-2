@@ -9,7 +9,7 @@ import {
   type Section,
   type Source,
 } from "@/lib/workspace/model";
-import { AIHint, Message, useAIStatus, ws } from "./WorkspaceUI";
+import { Message, ws } from "./WorkspaceUI";
 import { serverIssues } from "./document-selection";
 import { Icon } from "@/components/app/icons";
 import { invalidFields } from "@/lib/api/client";
@@ -116,13 +116,13 @@ export default function DocumentEditor({
   initial,
   onSave,
   server,
-  onDirty,
+  onEditStateChange,
 }: {
   initial: SavedDocument;
   onSave: (doc: SavedDocument, expected: SavedDocument) => boolean;
   server?: ServerDocumentActions;
-  /** 서버 문서에 저장 안 한 글이 생기고 사라질 때 알린다. 날짜 · 주를 옮기는 화면이 먼저 묻는다. */
-  onDirty?: (dirty: boolean) => void;
+  /** 서버 문서에 저장 안 한 글 · 요청 중을 알린다. 날짜 · 주를 옮기는 화면이 먼저 묻고 잠근다. */
+  onEditStateChange?: (state: { dirty: boolean; pending: boolean }) => void;
 }) {
   const [baseline, setBaseline] = useState(initial);
   const [doc, setDoc] = useState(initial);
@@ -140,7 +140,6 @@ export default function DocumentEditor({
   const [staleWrite, setStaleWrite] = useState(false);
   /** 사라진 근거 복구 화면이 떠 있나. 떠 있으면 초안용 「변경된 근거 반영하기」를 숨긴다. */
   const [recovering, setRecovering] = useState(false);
-  const available = useAIStatus();
   const annual = useRef<AnnualPlan | null>(null);
   const [annualError, setAnnualError] = useState(false);
   useEffect(() => {
@@ -206,11 +205,11 @@ export default function DocumentEditor({
     !!server &&
     editable &&
     (JSON.stringify(doc.sections) !== JSON.stringify(baseline.sections) ||
-      (doc.classNote ?? "") !== (baseline.classNote ?? ""));
+      (doc.classNote ?? "") !== (baseline.classNote ?? "") ||
+      doc.reviewNote !== baseline.reviewNote);
   useEffect(() => {
-    onDirty?.(dirty);
-    return () => onDirty?.(false);
-  }, [dirty, onDirty]);
+    onEditStateChange?.({ dirty, pending: working });
+  }, [dirty, working, onEditStateChange]);
   function change(index: number, body: string) {
     setDoc((prev) => ({
       ...prev,
@@ -338,7 +337,7 @@ export default function DocumentEditor({
       reviewNote: confirm
         ? imported
           ? "기존 증빙 원문·대상·기간 검토 완료 (공식 평가 판정 별도)"
-          : `${available && verified ? "AI 검증 + " : ""}교사 사실·해석·지원 검토 완료`
+          : `${verified ? "AI 검증 + " : ""}교사 사실·해석·지원 검토 완료`
         : "교사 검토 전",
     });
     if (!onSave(next, baseline)) return false;
@@ -683,7 +682,7 @@ export default function DocumentEditor({
               AI 검토는 아이 이름을 가명으로 바꾼 뒤 문장마다 기록과 대조해요. 확정은 선생님이 해요.
             </p>
           ) : (
-            <AIHint available={available} />
+            <p className={ws.hint}>이 문서는 AI 검토 대상이 아니에요. 기본 항목만 검사해요.</p>
           )}
           <button className={ws.secondary} disabled={working || stale} onClick={verify}>
             {busy

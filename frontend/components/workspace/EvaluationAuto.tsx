@@ -51,8 +51,9 @@ function Requirement({
   need: string;
   have: string;
   bar?: number;
-  href: string;
-  action: string;
+  /** 없으면 단추를 두지 않는다 — 4-2 는 위의 「예전 평가 올리기」 하나뿐이다. */
+  href?: string;
+  action?: string;
   primary?: boolean;
 }) {
   return (
@@ -65,9 +66,11 @@ function Requirement({
         <span>{have}</span>
         {bar !== undefined && <Bar value={bar} />}
       </div>
-      <Link href={href} className={primary ? ws.primary : ws.secondary}>
-        {action}
-      </Link>
+      {href && (
+        <Link href={href} className={primary ? ws.primary : ws.secondary}>
+          {action}
+        </Link>
+      )}
     </div>
   );
 }
@@ -91,7 +94,7 @@ function ClassRequirements({ item }: { item: AutoIndicator }) {
       </p>
       <Requirement
         done={full(planClasses)}
-        need="반마다 확정한 월간계획안 1건 이상"
+        need="반마다 검토 기간의 달마다 확정한 월간계획안 1건씩"
         have={`확정 월간계획안 ${plans}건 · ${planClasses.met}/${planClasses.total}반`}
         href="/plans/monthly"
         action="월간계획안 만들기"
@@ -118,9 +121,6 @@ function ChildRequirement({ item }: { item: AutoIndicator }) {
         need="아이마다 확정한 영유아 평가 2건 이상"
         have={`${children.total}명 중 ${children.met}명 채움 · 관찰일지는 평가로 치지 않아요`}
         bar={percent(children.met, children.total)}
-        href="/documents?kind=assessment"
-        action="영유아 평가 쓰기"
-        primary
       />
     </div>
   );
@@ -145,7 +145,10 @@ function notesFor(item: AutoIndicator) {
   ];
 }
 
-/** 4-1 은 일일 보육일지, 4-2 는 영유아 평가만 센다(§12). 올릴 수 있는 종류도 그것뿐이다. */
+/**
+ * 4-1 은 일일 보육일지, 4-2 는 영유아 평가만 센다(§12). 올릴 수 있는 종류도 그것뿐이다.
+ * 영유아 평가는 쌤플이 만들지 않는다 — 원에서 쓴 평가를 올리는 길만 있다(ADR-091).
+ */
 const IMPORT = {
   "4-1": { kind: "dailyLog", label: "예전 보육일지 올리기" },
   "4-2": { kind: "assessment", label: "예전 평가 올리기" },

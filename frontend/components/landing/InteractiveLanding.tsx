@@ -96,7 +96,7 @@ export default function InteractiveLanding() {
               계획안과 일지는 초안부터.
             </p>
             <p className="small">
-              관찰 · 일과 · 일지 · 평가, 그리고 계획안. 선생님의 문서 일을 한곳에 모았어요.
+              관찰부터 일과, 일지, 평가와 계획안까지. 선생님의 문서 업무를 한곳에 모았어요.
             </p>
             <div className="hero-cta">
               <Link className="btn" href="/signup" onClick={fadeTo}>
@@ -134,7 +134,7 @@ export default function InteractiveLanding() {
             <figure className="hd-phone" style={{ margin: "0" }}>
               <Image
                 src="/landing/v2/phone-routines.webp"
-                alt="휴대폰에서 연 쌤플 일과 기록 화면. 달력에서 11월 4일을 골랐다."
+                alt="휴대폰에서 연 쌤플 보육일지 화면. 달력에서 11월 4일을 골랐다."
                 width={780}
                 height={1688}
                 sizes="210px"
@@ -151,11 +151,11 @@ export default function InteractiveLanding() {
           <ul>
             <li>
               <strong>아이 이름은 가명으로</strong>
-              <span>AI에 보낼 때만 바꾸고, 초안에는 원래 이름이 보여요.</span>
+              <span>AI에 전달할 때는 가명으로 바꾸고, 초안에는 원래 이름을 보여줘요.</span>
             </li>
             <li>
               <strong>확정은 선생님이</strong>
-              <span>AI가 만든 건 초안이에요. 읽고 고친 뒤에야 문서가 돼요.</span>
+              <span>AI가 만든 건 초안이에요. 선생님이 읽고 수정한 뒤 확정해요.</span>
             </li>
             <li>
               <strong>한글 파일 그대로</strong>
@@ -461,14 +461,14 @@ export default function InteractiveLanding() {
                     <h3 className="doc-h">관찰일지 · 아이 A · 11월</h3>
                     <div className="picks" id="ojPicks">
                       <span>11.02 블록으로 다리 만들기</span>
-                      <span>11.03 도토리 크기별로 줄 세우기</span>
-                      <span>11.04 모래에 물길 파기</span>
+                      <span>11.03 모래에 물길 파기</span>
+                      <span>11.04 도토리 크기별로 줄 세우기</span>
                     </div>
                     <div className="r fact">
                       <b>관찰 내용</b>
                       <span>
-                        <em>선생님이 적은 기록 3건 그대로</em>블록으로 다리를 만들었다. 도토리를
-                        크기별로 줄 세웠다. 모래에 물길을 파고 「바다야」라고 말했다.
+                        <em>선생님이 적은 기록 3건 그대로</em>블록으로 다리를 만들었다. 모래에
+                        물길을 파고 「바다야」라고 말했다. 도토리를 크기별로 줄 세웠다.
                       </span>
                     </div>
                     <div className="r gen" id="oj1">
@@ -715,7 +715,7 @@ export default function InteractiveLanding() {
                   src="/landing/v2/plan-annual.webp"
                   alt="쌤플에서 확정한 2026학년도 연간 보육계획안 실제 화면"
                   width={1600}
-                  height={1074}
+                  height={993}
                   sizes="(max-width: 900px) 92vw, 640px"
                 />
                 <Image
@@ -747,8 +747,9 @@ export default function InteractiveLanding() {
             일지를 써 보세요.
           </h2>
           <p className="sub">
-            적은 문장은 일지의 사실 칸에 그대로 들어가요. 아래 두 줄은 쌤플이 만들어 주는 초안의
-            예시예요.
+            적은 문장은 일지의 사실 칸에 그대로 들어가요.
+            <br />
+            아래 두 줄은 쌤플이 만들어 주는 초안의 예시예요.
           </p>
           <div className="try-grid">
             <form className="try-card" id="tryForm">
@@ -810,7 +811,7 @@ export default function InteractiveLanding() {
             <figure>
               <Image
                 src="/landing/v2/phone-routines.webp"
-                alt="휴대폰의 일과 기록 화면"
+                alt="휴대폰의 일일 보육일지 화면"
                 width={780}
                 height={1688}
                 sizes="240px"
@@ -819,7 +820,7 @@ export default function InteractiveLanding() {
             <figure>
               <Image
                 src="/landing/v2/phone-weekly.webp"
-                alt="휴대폰의 주간 기록 화면"
+                alt="휴대폰의 주간 보육일지 화면"
                 width={780}
                 height={1688}
                 sizes="240px"

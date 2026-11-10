@@ -70,6 +70,13 @@ class Document(Base):
     generation_rule_id: Mapped[str | None] = mapped_column(String(80))
     generation_rule_version: Mapped[str | None] = mapped_column(String(20))
     review_note: Mapped[str] = mapped_column(Text, default="")
+    observation_axis: Mapped[str | None] = mapped_column(
+        String(20),
+        comment=(
+            "관찰 기록 근거 문서를 만들 때 원이 쓰던 영역 축(NURI_5 · DAILY_PLAY_2). "
+            "종이의 영역 행을 정한다. NULL 이면 옛 문서라 원의 지금 축을 쓴다 (ADR-088)"
+        ),
+    )
     class_note: Mapped[str] = mapped_column(
         Text,
         default="",
@@ -199,5 +206,19 @@ class DocumentSource(Base):
     )
     text: Mapped[str] = mapped_column(
         Text, comment="생성 시점 원문 복사본. 원본이 나중에 바뀌어도 이 값은 안 바뀐다"
+    )
+    domain: Mapped[str | None] = mapped_column(
+        String(20),
+        comment=(
+            "observation 근거일 때 생성 시점 영역 사본. 종이의 영역 행을 가른다. "
+            "그 밖의 근거와 옛 사본(「다시 확인」)은 NULL (ADR-088)"
+        ),
+    )
+    context: Mapped[str | None] = mapped_column(
+        String(50),
+        comment=(
+            "observation 근거일 때 생성 시점 상황 사본. 빈 문자열은 「상황 없음」, "
+            "NULL 은 그 밖의 근거와 옛 사본이다 (ADR-088)"
+        ),
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

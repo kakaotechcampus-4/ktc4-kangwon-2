@@ -18,6 +18,14 @@ export const RECORD_KINDS = ["dailyLog", "weeklyLog", "observation", "assessment
 export type RecordKind = (typeof RECORD_KINDS)[number];
 export const isRecordKind = (kind: string): kind is RecordKind =>
   (RECORD_KINDS as readonly string[]).includes(kind);
+/**
+ * AI 초안을 만드는 세 종류. 영유아 평가는 만들지 않고 올린 것만 받는다 (ADR-091) —
+ * 서버도 `POST /api/documents` 에 `assessment` 를 보내면 422 다.
+ */
+export const GENERATED_KINDS = ["dailyLog", "weeklyLog", "observation"] as const;
+export type GeneratedKind = (typeof GENERATED_KINDS)[number];
+export const isGeneratedKind = (kind: string): kind is GeneratedKind =>
+  (GENERATED_KINDS as readonly string[]).includes(kind);
 
 // 서버 id 는 테이블마다 1 부터 센다. 화면 id 와 섞이지 않게 접두사를 붙인다.
 const DOCUMENT_PREFIX = "document:";
@@ -279,7 +287,7 @@ export async function getRelatedDocuments(localId: string): Promise<RelatedDocum
 
 /** 반·아동·근거를 서버 id 로 옮기지 못하면 요청을 보내지 않는다. */
 export interface DocumentCreateInput {
-  kind: RecordKind;
+  kind: GeneratedKind;
   classId: string;
   childId: string;
   start: string;

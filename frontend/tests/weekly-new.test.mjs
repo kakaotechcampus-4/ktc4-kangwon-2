@@ -55,6 +55,7 @@ const { firstWeeklyMonth, firstOpenWeek, inheritWeek } = load(
     "@/lib/api/monthly": {},
     "@/lib/api/plans": {},
     "@/lib/api/weekly": {},
+    "@/lib/api/trends": {},
     "@/lib/api/onboarding": {},
     "@/lib/monthly/play-entry": {},
     "@/lib/monthly/section-labels": monthlyLabels,
