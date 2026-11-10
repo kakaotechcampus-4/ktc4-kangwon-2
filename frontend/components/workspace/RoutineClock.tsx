@@ -91,6 +91,55 @@ function movedTo(was: number, angle: number) {
   return Math.max(0, Math.min(LAST, next));
 }
 
+/** 시간 칸에 적는 글 — `오전 09:20 ~ 10:40`. 휴대폰에서 접은 일과 쪽지도 같은 글을 쓴다. */
+export function clockText(start: string, end: string) {
+  const from = minutesOf(start) ?? FALLBACK.start;
+  const to = minutesOf(end) ?? FALLBACK.end;
+  // 같은 반이면 뒤쪽의 「오전 · 오후」는 군더더기다 — 열 줄에 스무 번 나온다.
+  const sameHalf = Math.floor(from / 720) === Math.floor(to / 720);
+  if (start && end) return `${spokenOf(from)} ~ ${sameHalf ? dialText(to) : spokenOf(to)}`;
+  if (start) return `${spokenOf(from)} ~`;
+  if (end) return `~ ${spokenOf(to)}`;
+  return "시간 없음";
+}
+
+/**
+ * 오전 · 오후 바꾸기. 시계판은 12시간이라 손잡이로는 반을 못 넘기고, 시간 칸의 「오전」 자리는
+ * 눌러서 화살표로 바꿔야 해서 찾기 어려웠다(덕철 점검). 같은 시각에 12시간을 더하거나 뺀다.
+ */
+function HalfPick({
+  word,
+  at,
+  disabled,
+  onPick,
+}: {
+  word: string;
+  at: number;
+  disabled: boolean;
+  onPick: (value: string) => void;
+}) {
+  const pm = at >= SPAN;
+  return (
+    <div className={ws.clockHalf} role="group" aria-label={`${word} 오전 · 오후`}>
+      {(["오전", "오후"] as const).map((half) => (
+        <button
+          key={half}
+          type="button"
+          className="tap44"
+          aria-pressed={(half === "오후") === pm}
+          disabled={disabled}
+          onClick={() => {
+            if ((half === "오후") !== pm)
+              onPick(textOf(Math.min(LAST, pm ? at - SPAN : at + SPAN)));
+          }}
+        >
+          {half}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function RoutineClock({
   start,
   end,
@@ -124,6 +173,10 @@ export default function RoutineClock({
 
   useEffect(() => {
     if (!open) return;
+    // 휴대폰에서는 판이 아래 메뉴 밑으로 펴져 시계 아래쪽이 가려졌다. 판이 다 보이게 내린다 —
+    // 아래 메뉴 높이는 globals.css 의 scroll-padding 이 비운다. 시험의 가짜 창에는 matchMedia 가 없다.
+    if (globalThis.matchMedia?.("(max-width: 1023px)").matches)
+      box.current?.lastElementChild?.scrollIntoView({ block: "nearest" });
     const away = (e: MouseEvent) => {
       if (!box.current?.contains(e.target as Node)) setOpen(false);
     };
@@ -138,17 +191,8 @@ export default function RoutineClock({
 
   const from = minutesOf(start) ?? FALLBACK.start;
   const to = minutesOf(end) ?? FALLBACK.end;
-  // 같은 반이면 뒤쪽의 「오전 · 오후」는 군더더기다 — 열 줄에 스무 번 나온다.
-  const sameHalf = Math.floor(from / 720) === Math.floor(to / 720);
   const length = start && end && to > from ? lengthText(to - from) : "";
-  const shown =
-    start && end
-      ? `${spokenOf(from)} ~ ${sameHalf ? dialText(to) : spokenOf(to)}`
-      : start
-        ? `${spokenOf(from)} ~`
-        : end
-          ? `~ ${spokenOf(to)}`
-          : "시간 없음";
+  const shown = clockText(start, end);
 
   function drag(e: React.PointerEvent<SVGSVGElement>) {
     const which = dragging.current;
@@ -171,8 +215,8 @@ export default function RoutineClock({
     <div className={ws.clock} ref={box}>
       <button
         type="button"
-        className={ws.clockShown}
-        aria-label={`일과 시간 ${shown}, 눌러서 고치기`}
+        className={`${ws.clockShown} tap44`}
+        aria-label={`일과 시간 ${shown}, 눌러서 수정`}
         aria-expanded={open}
         disabled={disabled}
         onClick={() => setOpen((was) => !was)}
@@ -181,7 +225,7 @@ export default function RoutineClock({
       </button>
       <button
         type="button"
-        className={ws.clockOpen}
+        className={`${ws.clockOpen} tap44`}
         aria-label="시계로 시간 고르기"
         aria-expanded={open}
         disabled={disabled}
@@ -209,35 +253,39 @@ export default function RoutineClock({
           두었더니, 교사가 그 글자를 눌렀다. 누르면 고쳐지는 자리에 두는 것이 맞다.
         */}
         <div className={ws.clockFields}>
-          <label className={ws.clockFrom}>
-            <span>
-              <i className={ws.clockDot} aria-hidden="true" />
-              시작
-            </span>
-            <input
-              type="time"
-              aria-label="시작 시간"
-              disabled={disabled}
-              value={start}
-              onChange={(e) => onStart(e.target.value)}
-            />
-          </label>
-          <span className={ws.clockTilde} aria-hidden="true">
-            ~
-          </span>
-          <label className={ws.clockTo}>
-            <span>
-              <i className={ws.clockDot} aria-hidden="true" />
-              종료
-            </span>
-            <input
-              type="time"
-              aria-label="종료 시간"
-              disabled={disabled}
-              value={end}
-              onChange={(e) => onEnd(e.target.value)}
-            />
-          </label>
+          {/* 한 줄에 「● 시작 [시각] [오전|오후]」. 오전 · 오후는 칸 높이와 같은 납작한 두 칸이다(PM). */}
+          <div className={`${ws.clockRow} ${ws.clockFrom}`}>
+            <label>
+              <span>
+                <i className={ws.clockDot} aria-hidden="true" />
+                시작
+              </span>
+              <input
+                type="time"
+                aria-label="시작 시간"
+                disabled={disabled}
+                value={start}
+                onChange={(e) => onStart(e.target.value)}
+              />
+            </label>
+            <HalfPick word="시작" at={from} disabled={disabled} onPick={onStart} />
+          </div>
+          <div className={`${ws.clockRow} ${ws.clockTo}`}>
+            <label>
+              <span>
+                <i className={ws.clockDot} aria-hidden="true" />
+                종료
+              </span>
+              <input
+                type="time"
+                aria-label="종료 시간"
+                disabled={disabled}
+                value={end}
+                onChange={(e) => onEnd(e.target.value)}
+              />
+            </label>
+            <HalfPick word="종료" at={to} disabled={disabled} onPick={onEnd} />
+          </div>
         </div>
         <svg
           viewBox="0 0 200 200"
@@ -307,7 +355,7 @@ export default function RoutineClock({
 
         <p className={ws.clockLead}>
           동그란 손잡이를 끌어 고치세요.
-          <button type="button" className={ws.clockDone} onClick={() => setOpen(false)}>
+          <button type="button" className={`${ws.clockDone} tap44`} onClick={() => setOpen(false)}>
             닫기
           </button>
         </p>

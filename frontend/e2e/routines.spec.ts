@@ -416,7 +416,7 @@ test("D E F J — 어제 복사·검증 오류·실제 401 임시본 실패와 �
   await uploaded(page);
   await expect(rows(page)).toHaveCount(1); // 완전히 빈 두 번째 줄만 제외했다.
   note(page, "F", { realServerStatus: 401, noNavigation: true, retrySaved: true });
-  await rows(page).nth(0).getByRole("button", { name: "1번째 일과 지우기" }).click();
+  await rows(page).nth(0).getByRole("button", { name: "1번째 일과 삭제" }).click();
   expect(await dayRows(page, classId, date)).toHaveLength(1);
   await uploaded(page);
   expect(await dayRows(page, classId, date)).toEqual([]);
@@ -920,7 +920,7 @@ test("후속 #14 — 일과 줄: 이름 · 시간 · 지우기가 한 줄에 서
   const nameBox = (await card.getByLabel("일과 이름").boundingBox())!;
   // 시간은 「오전 09:16 ~ 10:40」 한 칸이다. 시작 · 종료 칸은 시계판과 함께 접혀 있다.
   const timeBox = (await card.getByRole("button", { name: /^일과 시간 / }).boundingBox())!;
-  const removeBox = (await card.getByLabel("1번째 일과 지우기").boundingBox())!;
+  const removeBox = (await card.getByLabel("1번째 일과 삭제").boundingBox())!;
   // 이름 · 시간 · 지우기는 같은 줄에 왼쪽부터 차례로 선다.
   for (const box of [timeBox, removeBox])
     expect(Math.abs(box.y + box.height / 2 - (nameBox.y + nameBox.height / 2))).toBeLessThan(
