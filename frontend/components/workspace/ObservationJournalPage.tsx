@@ -267,8 +267,8 @@ export default function ObservationJournalPage() {
                             <label>
                               <input
                                 type="checkbox"
-                                checked={!left.includes(r.id)}
                                 disabled={busy}
+                                checked={!left.includes(r.id)}
                                 onChange={(e) =>
                                   setLeft((prev) =>
                                     e.target.checked
@@ -322,7 +322,7 @@ export default function ObservationJournalPage() {
                 <ul className={ws.jrDocs}>
                   {mine.map((d) => (
                     <li key={d.id}>
-                      <button type="button" onClick={() => setOpenId(d.id)}>
+                      <button type="button" disabled={busy} onClick={() => setOpenId(d.id)}>
                         <b>{d.title}</b>
                         <small>
                           {d.start === d.end ? d.start : `${d.start} ~ ${d.end}`} · {statusLabel(d)}

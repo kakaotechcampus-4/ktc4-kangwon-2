@@ -4113,6 +4113,9 @@ assessment    observation · dailyLog
 
 **일일 보육일지의 행 순서는 일과 기록 화면과 같다**(§10-1 — `position` · 시작 시간 · id). 교사가 고른 `source_ids` 순서가 아니다.
 
+**일일 보육일지는 그 문서의 반 · 그날 일과 기록만 읽는다.** 만들 때와 같은 조건이다. 근거가 다른 반 · 다른 날의 일과를 가리키면 사라진 근거로 본다.
+**관찰 기록을 근거로 만든 예전 일일 보육일지는 내보내지 않는다**(ADR-024 「결과」). 관찰 번호를 일과 번호로 읽으면 번호가 우연히 같은 다른 반 · 다른 원의 일과가 종이에 찍힌다. 일과 기록으로 새로 만들어야 한다.
+
 **일일 보육일지는 제목 바로 아래에 날짜 · 날씨 줄이 있다**(ADR-089). 표 밖 문단이다.
 
 ```
@@ -4127,7 +4130,7 @@ assessment    observation · dailyLog
 
 | code | status | 언제 |
 |---|---|---|
-| `GATE_BLOCKED` | 409 | 확정 전이다 · `stale` 이다(`fields: ["stale"]`) · 근거 기록이 사라졌다(`fields` 에 `sources.{id}`) |
+| `GATE_BLOCKED` | 409 | 확정 전이다 · `stale` 이다(`fields: ["stale"]`) · 근거 기록이 사라졌다(`fields` 에 `sources.{id}`) · 일과가 아닌 근거로 만든 예전 `dailyLog` 다(`fields: ["source_kind"]`) |
 | `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` · `weeklyLog` 가 아니다.  `fields: ["kind"]` · `format` 이 `hwpx` · `hwp` · `pdf` 가 아니다.  `fields: ["format"]` · 사본이 없는 옛 관찰일지에 원의 지금 축에 없는 영역이 있다.  `fields` 에 `sources.{id}` |
 | `NOT_FOUND` | 404 | 없거나 남의 원 문서다 |
 | `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` · PDF 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |

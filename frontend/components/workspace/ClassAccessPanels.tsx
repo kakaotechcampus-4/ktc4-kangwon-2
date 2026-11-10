@@ -32,6 +32,7 @@ import {
 } from "@/lib/api/documents";
 import { downloadAnnualHwpx, listAnnualPlans } from "@/lib/api/plans";
 import { downloadMonthlyHwpx, listMonthlyPlans } from "@/lib/api/monthly";
+import { downloadPlayMonthlyHwpx, listPlayMonthly } from "@/lib/api/playMonthly";
 import { downloadWeeklyHwpx, listWeeklyPlans } from "@/lib/api/weekly";
 import { monthLabel, weekIdLabel } from "@/lib/workspace/document-archive";
 import { DOCUMENT_KINDS, localDate } from "@/lib/workspace/model";
@@ -306,9 +307,12 @@ function ApprovedList({ room, onLost }: { room: ApiClass; onLost: () => void }) 
       listAnnualPlans(room.id),
       listMonthlyPlans(room.id),
       listWeeklyPlans(room.id),
-    ]).then(([docs, annual, monthly, weekly]) => {
+      listPlayMonthly(room.id),
+    ]).then(([docs, annual, monthly, weekly, playMonthly]) => {
       if (!live) return;
-      const failed = [docs, annual, monthly, weekly].filter((r) => r.status === "rejected");
+      const failed = [docs, annual, monthly, weekly, playMonthly].filter(
+        (r) => r.status === "rejected",
+      );
       // 그 사이 승인이 거둬졌으면 목록이 아니라 상태를 다시 받아야 한다.
       if (failed.some((r) => errorCode(r.reason) === "CLASS_ACCESS_REQUIRED")) return onLost();
       const rows: Row[] = [];
@@ -364,6 +368,21 @@ function ApprovedList({ room, onLost }: { room: ApiClass; onLost: () => void }) 
             confirmed: p.status === "CONFIRMED",
             view: { plan: plan("weekly", p.id, `${period} 주간 계획안`, period, p.created_at) },
             hwp: () => downloadWeeklyHwpx(p.id),
+          });
+        }
+      if (playMonthly.status === "fulfilled")
+        for (const p of playMonthly.value.items) {
+          const period = monthLabel(p.target_month);
+          const title = `${period} 놀이 중심 월간 계획안`;
+          rows.push({
+            key: `play-monthly:${p.id}`,
+            order: p.target_month,
+            name: "놀이 중심 월간 계획안",
+            title,
+            period,
+            confirmed: p.status === "CONFIRMED",
+            view: { plan: { ...plan("monthly", p.id, title, period, p.created_at), play: true } },
+            hwp: () => downloadPlayMonthlyHwpx(p.id),
           });
         }
       rows.sort((a, b) => b.order.localeCompare(a.order));
