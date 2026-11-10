@@ -69,7 +69,21 @@ def test_틀린_비밀번호는_통과하지_못한다():
 
 
 def test_토큰은_발급한_사람을_되찾아_준다():
-    assert read(issue(7, "secret"), "secret") == 7
+    assert read(issue(7, "secret"), "secret") == (7, 0)
+
+
+def test_토큰은_계정의_토큰_버전을_싣는다():
+    assert read(issue(7, "secret", version=3), "secret") == (7, 3)
+
+
+def test_버전이_없는_옛_토큰은_0_으로_읽는다():
+    """배포 순간 이미 로그인해 있던 교사가 튕기지 않는다(ADR-091)."""
+    import json
+
+    from app.shared.auth.tokens import _b64, _sign
+
+    body = _b64(json.dumps({"sub": 7, "exp": int(time.time()) + 60}).encode())
+    assert read(f"{body}.{_sign(body, 'secret')}", "secret") == (7, 0)
 
 
 def test_다른_열쇠로_서명한_토큰은_거부한다():
@@ -263,11 +277,27 @@ def test_비밀번호를_바꾸면_새_것으로만_로그인된다(db_session):
         json={"current_password": ACCOUNT["password"], "new_password": "쌤플전용비번2026"},
         headers=bearer(token),
     )
-    assert response.status_code == 204, response.text
+    assert response.status_code == 200, response.text
 
     assert client.post("/api/auth/login", json=CREDENTIALS).status_code == 401
     바꾼뒤 = {**CREDENTIALS, "password": "쌤플전용비번2026"}
     assert client.post("/api/auth/login", json=바꾼뒤).status_code == 200
+
+
+def test_비밀번호를_바꾸면_그_전_토큰은_끊기고_새_토큰으로_이어_간다(db_session):
+    """다른 곳에 들어와 있던 사람이 바꾼 뒤에도 12시간 머물지 못한다(ADR-091)."""
+    old = signup(db_session)
+    elsewhere = client.post("/api/auth/login", json=CREDENTIALS).json()["token"]
+    response = client.patch(
+        "/api/auth/password",
+        json={"current_password": ACCOUNT["password"], "new_password": "쌤플전용비번2026"},
+        headers=bearer(old),
+    )
+    new = response.json()["token"]
+
+    assert client.get("/api/auth/me", headers=bearer(old)).status_code == 401
+    assert client.get("/api/auth/me", headers=bearer(elsewhere)).status_code == 401
+    assert client.get("/api/auth/me", headers=bearer(new)).status_code == 200
 
 
 def test_지금_비밀번호가_틀리면_바꾸지_못한다(db_session):
