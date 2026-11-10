@@ -1887,6 +1887,8 @@ function quickRecordsPage(
       ws: {},
     },
     "@/components/app/icons": { Icon: "icon" },
+    "@/lib/workspace/journal-day": journalDay,
+    "@/components/app/DomainTag": { DomainTag: "domain-tag" },
     "@/components/app/Posty": { Posty: "posty" },
     // 이번 주 주간 일지 칸은 따로 테스트한다. 여기서는 자리만 둔다.
     "./WeeklyJournalCard": {
@@ -2141,6 +2143,8 @@ function homePage(
     "next/link": { default: "link" },
     "@/components/app/AppLayout": { PageContainer: "container" },
     "@/components/app/icons": { Icon: "icon" },
+    "@/lib/workspace/journal-day": journalDay,
+    "@/components/app/DomainTag": { DomainTag: "domain-tag" },
     "@/components/workspace/WorkspaceUI": { useClasses: () => box.classes },
     "@/components/workspace/domain-look": domainLook,
     "@/lib/api/records": records.api,
@@ -2354,7 +2358,7 @@ test("기록이 한 건도 없는 반에서는 빈 칸을 칠하지 않는다", 
   await view.flush();
   view.button("누구 기록인지 고르기").props.onClick();
   await view.flush();
-  assert.ok(view.text().includes("한 줄씩 쌓이면"), view.text());
+  assert.ok(!view.text().includes("연노랑 칸은"), view.text());
 
   await pickChild(view, "김하늘");
   await pickDomain(view);
@@ -2409,7 +2413,7 @@ test("홈 빠른 기록 — 영역은 아무것도 안 고른 채 열리고, 고
 
   assert.deepEqual(view.checkedDomains(), [], "영역 칸은 비어 있는 채로 열린다");
   assert.equal(view.saveButton(), undefined, "영역을 고르기 전에는 눌리지 않는다");
-  assert.ok(view.text().includes("영역을 골라야 남길 수 있어요"), view.text());
+  assert.ok(view.text().includes("영역을 고르면 남길 수 있어요"), view.text());
 
   await pickDomain(view, "사회관계");
   assert.deepEqual(view.checkedDomains(), ["사회관계"]);

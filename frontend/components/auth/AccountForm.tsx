@@ -152,7 +152,7 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
               aria-label={visible ? "비밀번호 숨기기" : "비밀번호 보기"}
               aria-pressed={visible}
               onClick={() => setVisible(!visible)}
-              className="absolute bottom-0.5 right-0 h-10 min-w-[52px] rounded px-2.5 font-body text-[13px] font-medium tracking-normal text-ink-soft hover:bg-primary-tint hover:text-primary-ink"
+              className="tap44 absolute bottom-0.5 right-0 h-10 min-w-[52px] rounded px-2.5 font-body text-[13px] font-medium tracking-normal text-ink-soft hover:bg-primary-tint hover:text-primary-ink"
             >
               {visible ? "숨기기" : "보기"}
             </button>

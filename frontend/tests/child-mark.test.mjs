@@ -103,3 +103,16 @@ test("한 주 넘게 비면 눈에 띄게 한다", () => {
   assert.ok(!mark.isStale(mark.tallyFor(rows, "a", "2026-10-29"))); // 6일 전
   assert.ok(mark.isStale(mark.tallyFor(rows, "a", "2026-10-30"))); // 7일 전
 });
+
+test("표식 글자가 반 안에서 겹치면 두 글자로 쓴다 (점검 O-E1)", () => {
+  const names = ["가상도윤", "가상하람", "가온"];
+  // 넉 자 이름 둘이 모두 「상」 이 되던 자리
+  assert.equal(mark.markLetter("가상도윤", names), "도윤");
+  assert.equal(mark.markLetter("가상하람", names), "하람");
+  // 안 겹치는 아이는 한 글자 그대로
+  assert.equal(mark.markLetter("가온", names), "가");
+  assert.equal(mark.markLetter("정하린", ["정하린", "김하늘"]), "하린");
+  assert.equal(mark.markLetter("김하늘", ["정하린", "김하늘"]), "하늘");
+  // 반 명단을 안 주면 예전과 같다
+  assert.equal(mark.markLetter("김하늘"), "하");
+});

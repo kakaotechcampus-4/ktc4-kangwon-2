@@ -238,8 +238,8 @@ function AnsweredRow({ item }: { item: Answered }) {
           <button
             type="button"
             onClick={item.onEdit}
-            aria-label={`${item.label} 고치기`}
-            title={`${item.label} 고치기`}
+            aria-label={`${item.label} 수정`}
+            title={`${item.label} 수정`}
             className="inline-flex h-11 w-11 flex-none items-center justify-center squircle [--r:12px] text-ink-soft hover:bg-primary-tint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
           >
             <EditIcon />
