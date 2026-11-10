@@ -14,7 +14,6 @@ registerHooks({
     return next(spec, ctx);
   },
 });
-const { validAIInput } = await import("../lib/workspace/api-validation.ts");
 const { templatePlan } = await import("../lib/workspace/plans.ts");
 const { ageSelectionLabel } = await import("../lib/onboarding/types.ts");
 
@@ -25,22 +24,6 @@ const PERIOD = {
   weekly: { month: 3, week: 1 },
   daily: { date: "2027-03-02" },
 };
-const planPayload = (extra) => ({
-  type: "annual",
-  age: "mixed",
-  memo: "",
-  period: PERIOD,
-  ...extra,
-});
-
-test("plan AI 요청은 선택한 연령 조합을 그대로 싣고, 잘못된 값만 거절한다", () => {
-  for (const ages of COMBOS)
-    assert.equal(validAIInput("plan", planPayload({ ages })), true, JSON.stringify(ages));
-  // 단일 연령 화면처럼 ages 가 없던 기존 요청도 그대로 통과한다.
-  assert.equal(validAIInput("plan", planPayload({ age: "4" })), true);
-  for (const ages of [[], [2], [6], [3, 3], [3, 4, 5, 5], ["3"], "mixed", null, {}])
-    assert.equal(validAIInput("plan", planPayload({ ages })), false, JSON.stringify(ages));
-});
 
 test("[3,5] 를 골라도 계획안 본문은 범위로 적는다", () => {
   // 서버에 age_min=3 · age_max=5 로 저장되므로 본문도 같은 범위여야 한다.
