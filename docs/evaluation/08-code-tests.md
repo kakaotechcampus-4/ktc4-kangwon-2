@@ -48,7 +48,7 @@ e2e (playwright)               실제 DB 로
 - 같은 PR 에 연달아 push 하면 이전 실행을 취소한다 (`concurrency`)
 - E2E 를 CI 에 넣은 이유 — ADR-028
 - CI 로 무엇을 검증하고 무엇을 안 하는지 — ADR-011
-- 7번째 잡 `backend (rollback compat)` 는 develop 으로 가는 PR 에서 마이그레이션이 바뀔 때만 돈다 — 머지 전 코드가 새 스키마에서도 도나 본다. 아직 필수 검사가 아니다 (`ci.yml:271`)
+- 7번째 잡 `backend (rollback compat)` 는 main · develop 으로 가는 PR 에서 마이그레이션이 바뀔 때만 돈다(ADR-094) — 머지 전 코드가 새 스키마에서도 도나 본다. 아직 필수 검사가 아니다 (`ci.yml:271`)
 
 ## 머지 전에 CI 를 통과해야 한다 — develop 규칙 (2026-11-10 부터)
 
