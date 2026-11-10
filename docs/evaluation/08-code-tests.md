@@ -13,7 +13,7 @@
 | 백엔드 테스트 파일 | 85 → **98** | `ls backend/tests \| grep -c '^test_'` |
 | 계획 코어 테스트 파일 | 74 → **78** | `find p0-planning/tests -name 'test_*.py' \| wc -l` |
 | 프런트 테스트 파일 | 65 → **71** | `ls frontend/tests/*.test.mjs \| wc -l` |
-| E2E 시나리오 파일 | 5 → **7** | `ls frontend/e2e/*.spec.ts \| wc -l` — 무엇을 덮는지는 아래 「화면 경로 E2E」 |
+| E2E 시나리오 파일 | 5 → **8** | `ls frontend/e2e/*.spec.ts \| wc -l` — 무엇을 덮는지는 아래 「화면 경로 E2E」 |
 | ADR | 58 → **78** | `ls docs/adr/*.md \| grep -v README \| wc -l` |
 
 **통과 건수 (파일 수 아님)** — develop CI 2026-11-10 (run 42754752760, `e532701b`)
@@ -22,7 +22,7 @@
 backend         1,558 → 1,885 passed
 planning core   1,601 → 1,759 passed · 1 skipped · 19 xfailed
 frontend          909 →   934 pass · 0 fail
-e2e                        35 passed   실제 Postgres · FastAPI · Next 빌드본, MSW 끔, LLM 은 mock
+e2e                        36 passed   실제 Postgres · FastAPI · Next 빌드본, MSW 끔, LLM 은 mock (위 run 35 + 놀이 중심형 1)
 ```
 
 **CI 한 번 평균 8.8분 → 4.0분** — 최근 완료 25회, 같은 세는 법 (`gh run list --workflow ci.yml --status completed --limit 25`, 시작~끝).
@@ -115,6 +115,7 @@ e2e (playwright)               실제 DB 로
 | 무엇 | 화면에서 하는 것 | 어디 |
 |---|---|---|
 | 계획안 연간 → 월간 → 주간 (월별 주제형) | 생성 · 칸 수정 · 새로고침 뒤 유지 · 확정 · 한글 받기 · 보관함에서 다시 열기 | `mentor-pilot.spec.ts:60` · PR #402 |
+| 계획안 연간 → 월간 (놀이 중심형) | 생성 · 놀이 고르기(계절마다 5개) · 칸 수정 · 새로고침 뒤 유지 · 확정 · 한글 받기, 월간은 활동 고르기(5 + 5) 뒤 같은 흐름 · 연간에서 고친 놀이를 월간이 이어받음 · 주간 링크 없음(ADR-046 §4) | `play-plans.spec.ts:58` |
 | 일일 보육일지 | 일과 입력 → 생성 · 확정 · 한글 받기 · 평가 점검 4-1 에 집계 | `mentor-pilot.spec.ts:284` · `routines.spec.ts:205` |
 | 주간 보육일지 | 근거 두 갈래(확정 일일 · 일과 기록) → 생성 · 편집 · 확정 · 한글 받기 | `routines.spec.ts:1056` · PR #427 |
 | 관찰일지 | 관찰 기록 → 생성 · 수정 · 확정 · 한글 받기 · 근거를 고치면 바뀐 근거 반영 후 재확정 | `mentor-pilot.spec.ts:340` |
@@ -135,7 +136,7 @@ e2e (playwright)               실제 DB 로
 
 - 커버리지를 재지 않는다
 - 프런트 테스트가 가짜 `useState` 하네스라 실제 렌더 경로를 전부 안 지난다
-- 영유아 평가 · 놀이 프로젝트형 연간 · 월간은 화면 경로 E2E 가 없다. 영유아 평가는 만든 문서를 보관함에서 열 길부터 없다 — `frontend/components/workspace/DocumentArchiveView.tsx` 의 `ArchiveType` 에 종류가 없음 · 이슈 #496
+- 영유아 평가는 화면 경로 E2E 가 없다. 만든 문서를 보관함에서 열 길부터 없다 — `frontend/components/workspace/DocumentArchiveView.tsx` 의 `ArchiveType` 에 종류가 없음 · 이슈 #496
 
 ## 더 모을 근거
 
