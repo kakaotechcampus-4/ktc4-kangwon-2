@@ -234,7 +234,7 @@ def _squash(value: str) -> str:
 def _mock_answer(source: str) -> str:
     """mock 모드. 「N월」 칸 바로 다음 줄을 그 달 주제로 놓는다 — 결정적이고 원문 안에 있다."""
     lines = source.split("\n")
-    months = []
+    months = []  # type: ignore[var-annotated]
     for month in ACADEMIC_MONTHS:
         index = next((i for i, line in enumerate(lines) if line == f"{month}월"), None)
         theme = lines[index + 1] if index is not None and index + 1 < len(lines) else None

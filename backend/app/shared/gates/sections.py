@@ -47,9 +47,15 @@ NURI_DOMAIN_COUNT = 5
 
 
 class SectionLike(Protocol):
-    heading: str
-    body: str
-    source_ids: Sequence[int]
+    # 읽기 전용이다. `heading: str` 로 적으면 Literal 칸이 있는 pydantic 모델을 mypy 가 안 받는다.
+    @property
+    def heading(self) -> str: ...
+
+    @property
+    def body(self) -> str: ...
+
+    @property
+    def source_ids(self) -> Sequence[int]: ...
 
 
 def join_facts(source_texts: Iterable[str]) -> str:

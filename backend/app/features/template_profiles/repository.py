@@ -241,7 +241,7 @@ class PostgresTemplateProfileRepository:
             )
         )
         # 버전 행은 지우지 않으므로 개수가 곧 마지막 번호다. 동시 파생은 유일 제약이 막는다.
-        new_ref = TemplateProfileRef(row.profile_id, f"v{family + 1}")
+        new_ref = TemplateProfileRef(row.profile_id, f"v{family + 1}")  # type: ignore[operator]
         document = {**row.body, "profile_ref": to_jsonable(new_ref)}
         self._insert(
             new_ref, document, status="DRAFT", parent_version=row.profile_version, actor_id=actor_id
@@ -496,6 +496,7 @@ class PostgresTemplateProfileRepository:
             "changed_by": actor_id,
             "changed_at": func.now(),
         }
+        statement: typing.Any
         if expected is None:
             statement = insert(model).values(**key, **extra, **target).on_conflict_do_nothing()
         else:

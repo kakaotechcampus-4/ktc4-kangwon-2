@@ -158,12 +158,12 @@ def list_routines(
     one_day = class_id is not None and date_from is not None and date_from == date_to
     if not one_day:
         return RoutineListResponse(items=items)
-    draft = find_draft(session, class_id, date_from)
+    draft = find_draft(session, class_id, date_from)  # type: ignore[arg-type]
     return RoutineListResponse(
         items=items,
-        weather=_weather(day_weather(session, class_id, date_from)),
+        weather=_weather(day_weather(session, class_id, date_from)),  # type: ignore[arg-type]
         draft=_draft(draft) if draft else None,
-        preset=None if items else day_preset(session, class_id, date_from),
+        preset=None if items else day_preset(session, class_id, date_from),  # type: ignore[arg-type]
     )
 
 
@@ -194,7 +194,7 @@ def put_template(body: TemplateSave, session: DbSession, user: CurrentUser) -> T
         )
     )
     session.commit()
-    return get_template(body.class_id, session, user)
+    return get_template(body.class_id, session, user)  # type: ignore[return-value]
 
 
 @router.put("/draft", response_model=DraftSaveResponse)
@@ -273,7 +273,7 @@ def update_routine(
     # 자리만 고친 요청은 근거 변경이 아니다. 계획은 확정 때 박은 사본과 비교한다(ADR-086).
     before, before_marks = fact_key(record), paper_marks(record)
     _apply(record, body)
-    impact = mark_if_changed(session, record, before, user.center_id, before_marks)
+    impact = mark_if_changed(session, record, before, user.center_id, before_marks)  # type: ignore[arg-type]
     session.commit()
     result = _response(_own(session, user, record_id))
     if include_impact:

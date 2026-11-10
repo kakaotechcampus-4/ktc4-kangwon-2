@@ -71,7 +71,8 @@ for _name in (
 
 def _one_line(value: str) -> str:
     return value.translate(
-        str.maketrans({"\n": r"\n", "\r": r"\r", "\u2028": r"\u2028", "\u2029": r"\u2029"})
+        # str.maketrans 의 인자 모양을 typeshed 가 dict[str, str] 로 받지 않는다.
+        str.maketrans({"\n": r"\n", "\r": r"\r", "\u2028": r"\u2028", "\u2029": r"\u2029"})  # type: ignore[arg-type]
     )
 
 
@@ -83,7 +84,7 @@ def _request_context(scope: Scope) -> str:
     )
 
 
-def _exception_class(exc: Exception) -> str:
+def _exception_class(exc: BaseException) -> str:
     return _one_line(f"{type(exc).__module__}.{type(exc).__name__}")
 
 

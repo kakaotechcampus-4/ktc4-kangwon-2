@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Protocol
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -36,10 +37,20 @@ def _confirmed_at(body: dict) -> datetime | None:
 def _class_snapshot(session: Session, classroom_ref: str) -> dict[str, str]:
     """확정하는 순간의 반 이름 · 담임 이름. 이후 반을 고쳐도 확정본은 이 값을 쓴다(ADR-062)."""
     klass = session.get(Class, int(classroom_ref))
-    return {"class_name": klass.name, "teacher_name": klass.teacher_name}
+    return {"class_name": klass.name, "teacher_name": klass.teacher_name}  # type: ignore[union-attr]
 
 
-class PostgresPlanRepository[TPlan]:
+class _PlanKeys(Protocol):
+    """연간 · 월간 · 주간 · 놀이형 계획안이 모두 가진 두 칸. 저장소가 읽는 것은 이 둘뿐이다."""
+
+    @property
+    def school_year(self) -> int: ...
+
+    @property
+    def classroom_ref(self) -> str: ...
+
+
+class PostgresPlanRepository[TPlan: _PlanKeys]:
     """한 원의 계획안을 읽고 쓴다.
 
     `plan_type` 은 되돌릴 때 필요하다 — JSONB 에는 어떤 클래스였는지가 없다.

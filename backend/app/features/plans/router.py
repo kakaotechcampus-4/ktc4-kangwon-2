@@ -7,7 +7,7 @@
 """
 
 import logging
-from typing import Annotated
+from typing import Annotated, Any, cast
 
 import anyio
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
@@ -146,7 +146,10 @@ _STOPPED = {"code": "GENERATION_STOPPED", "message": "생성을 멈췄습니다.
 
 def _repo(session: Session, user: User) -> PostgresPlanRepository[YearlyPlan]:
     return PostgresPlanRepository(
-        session, center_id=user.center_id, kind="annual", plan_type=YearlyPlan
+        session,
+        center_id=user.center_id,  # type: ignore[arg-type]
+        kind="annual",
+        plan_type=YearlyPlan,
     )
 
 
@@ -312,7 +315,7 @@ def _generation_error(error: YearlyApplicationError) -> HTTPException:
 
 def _exception_chain(error: Exception):
     seen = set()
-    current = error
+    current: BaseException | None = error
     while current is not None and id(current) not in seen:
         seen.add(id(current))
         yield current
@@ -403,7 +406,10 @@ def _play_project_plan(session: Session, user: User, klass, memo: str, names, st
     if duplicate is not None:
         raise _ALREADY_EXISTS
     repo = PostgresPlanRepository(
-        session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+        session,
+        center_id=user.center_id,  # type: ignore[arg-type]
+        kind="annual",
+        plan_type=PlayProjectYearlyPlan,
     )
     try:
         repo.save(plan.plan_id, plan)
@@ -413,7 +419,7 @@ def _play_project_plan(session: Session, user: User, klass, memo: str, names, st
             raise _ALREADY_EXISTS from error
         raise
     row = session.scalar(select(Plan).where(Plan.plan_ref == plan.plan_id.value))
-    detail = play_project.to_out(row, plan)
+    detail = play_project.to_out(row, plan)  # type: ignore[arg-type]
     session.commit()
     return detail
 
@@ -536,7 +542,7 @@ def create_annual_plan(
             sub_themes, applied, notices = generate_subthemes_with_memo(
                 plan, mask_memo(body.memo, names)
             )
-            row.sub_themes = {
+            row.sub_themes = {  # type: ignore[union-attr]
                 month: [unmask_text(text, names, body.memo) for text in texts]
                 for month, texts in sub_themes.items()
             }
@@ -545,9 +551,9 @@ def create_annual_plan(
             )
             plan = with_yearly_memo(plan, body.memo, applied, notices)
             # Core 가 이미 저장한 행을 고쳐 쓴다. 저장소 save 는 revision 을 올리므로 쓰지 않는다.
-            row.body = to_jsonable(plan)
+            row.body = to_jsonable(plan)  # type: ignore[union-attr]
         else:
-            row.sub_themes = generate_subthemes(plan)
+            row.sub_themes = generate_subthemes(plan)  # type: ignore[union-attr]
     except (LlmUnavailable, LlmBudgetExceeded, LlmFailed) as error:
         # Core 가 이미 flush 했다. 실패한 생성에서 부분 계획안을 남기지 않는다.
         session.rollback()
@@ -570,8 +576,8 @@ def create_annual_plan(
         ) from error
     # 어느 양식에서 나왔는지 남긴다. 도메인은 양식을 모르므로 서버가 칸에 넣는다.
     timing.phase("save")
-    row.form_id = body.form_id
-    detail = _detail(row, plan)
+    row.form_id = body.form_id  # type: ignore[union-attr]
+    detail = _detail(row, plan)  # type: ignore[arg-type]
     session.commit()
     return detail
 
@@ -615,10 +621,13 @@ def get_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
     row = _row(session, user, plan_id, read_only=True)
     if format_of(row) == PLAY_PROJECT_FORMAT:
         repo = PostgresPlanRepository(
-            session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+            session,
+            center_id=user.center_id,  # type: ignore[arg-type]
+            kind="annual",
+            plan_type=PlayProjectYearlyPlan,
         )
-        return play_project.to_out(row, repo.get(PlanId(row.plan_ref)))
-    return _detail(row, _repo(session, user).get(PlanId(row.plan_ref)))
+        return play_project.to_out(row, repo.get(PlanId(row.plan_ref)))  # type: ignore[arg-type]
+    return _detail(row, _repo(session, user).get(PlanId(row.plan_ref)))  # type: ignore[arg-type]
 
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -724,7 +733,7 @@ def update_month(
         raise _error(409, "GATE_BLOCKED", "놀이 프로젝트형은 칸 편집으로 고칩니다.", [])
     repo = _repo(session, user)
     plan = repo.get(PlanId(row.plan_ref))
-    period = next((p for p in plan.periods if p.period.calendar_month == month), None)
+    period = next((p for p in plan.periods if p.period.calendar_month == month), None)  # type: ignore[union-attr]
     if period is None:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
@@ -733,7 +742,7 @@ def update_month(
     try:
         updated = EditYearlyPlanItem(plan_repository=repo, clock=SystemClock()).execute(
             EditYearlyPlanItemCommand(
-                plan_id=plan.plan_id,
+                plan_id=plan.plan_id,  # type: ignore[union-attr]
                 item_id=period.theme.item_id,
                 new_value=body.theme,
                 actor_id=ActorId(f"user_{user.id}"),
@@ -797,7 +806,7 @@ def confirm_annual_plan(
     plan = repo.get(PlanId(row.plan_ref))
     mismatched = [
         str(period.period.calendar_month)
-        for period in plan.periods
+        for period in plan.periods  # type: ignore[union-attr]
         if len(subthemes_for_month(row.sub_themes, period.period.calendar_month))
         != len(canonical_week_periods(period.period))
     ]
@@ -844,8 +853,8 @@ def get_audit(plan_id: int, session: DbSession, user: CurrentUser):
             ),
         )
 
-    items = [out(event) for event in plan.audit.events]
-    for period in plan.periods:
+    items = [out(event) for event in plan.audit.events]  # type: ignore[union-attr]
+    for period in plan.periods:  # type: ignore[union-attr]
         items += [out(event, period.period.calendar_month) for event in period.theme.audit.events]
     # 시간순. 어느 쪽에 담겼는지가 아니라 언제 일어났는지로 읽어야 한다.
     items.sort(key=lambda item: item.occurred_at)
@@ -880,12 +889,12 @@ def _play_project_error(error: Exception) -> HTTPException:
         return _NOT_FOUND
     if code == "selection_incomplete":
         # problems 는 "m09_m11: 3 kept, needs 5" 꼴이다. 접두사 없는 구간 키를 구간 순서대로.
-        keys = dict.fromkeys(p.split(":")[0] for p in error.problems if ":" in p)
+        keys = dict.fromkeys(p.split(":")[0] for p in cast(Any, error).problems if ":" in p)
         return _invalid(list(keys))
     if code == "invalid_selection":
         # problems 는 "m03_m05: unknown candidate" 꼴이다. 구간을 못 뽑으면 selections 전체.
-        keys = {f"selections.{p.split(':')[0]}" for p in error.problems if ":" in p}
-        return _invalid(sorted(keys) or ["selections"])
+        fields = {f"selections.{p.split(':')[0]}" for p in cast(Any, error).problems if ":" in p}
+        return _invalid(sorted(fields) or ["selections"])
     if code in (
         "invalid_item_id",
         "play_project_item_not_found",
@@ -901,7 +910,10 @@ def _play_project_error(error: Exception) -> HTTPException:
 
 def _play_plan(session: Session, user: User, row: Plan) -> PlayProjectYearlyPlan:
     plan = PostgresPlanRepository(
-        session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+        session,
+        center_id=user.center_id,  # type: ignore[arg-type]
+        kind="annual",
+        plan_type=PlayProjectYearlyPlan,
     ).get(PlanId(row.plan_ref))
     if plan is None:  # _row 와 get 사이에 지워졌다
         raise _NOT_FOUND
@@ -918,7 +930,10 @@ def _play_read(session: Session, user: User, plan_id: int, expected_revision: in
     if row.revision != expected_revision:
         raise _STALE_WRITE
     repo = PostgresPlanRepository(
-        session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+        session,
+        center_id=user.center_id,  # type: ignore[arg-type]
+        kind="annual",
+        plan_type=PlayProjectYearlyPlan,
     )
     plan = repo.get(PlanId(row.plan_ref))
     if plan is None:  # _row 와 get 사이에 지워졌다
@@ -1051,7 +1066,10 @@ def unconfirm_annual_plan(
             plan_repository=_drafts(plan), clock=SystemClock()
         ).execute(UnconfirmPlayProjectPlanCommand(plan.plan_id, actor))
         repo = PostgresPlanRepository(
-            session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+            session,
+            center_id=user.center_id,  # type: ignore[arg-type]
+            kind="annual",
+            plan_type=PlayProjectYearlyPlan,
         )
         plan_id = row.id  # rollback 이 row 를 만료시킨다
         written = repo.update_if_revision(
@@ -1069,12 +1087,12 @@ def unconfirm_annual_plan(
         return detail
     # 월별 주제형은 확정처럼 잠그고 다시 읽는다. revision 을 받지 않는다.
     row = _row(session, user, plan_id, lock=True)
-    repo = _repo(session, user)
+    theme_repo = _repo(session, user)
     if row.status != "CONFIRMED":
-        return _detail(row, repo.get(PlanId(row.plan_ref)))
-    changed = UnconfirmYearlyPlan(plan_repository=repo, clock=SystemClock()).execute(
+        return _detail(row, theme_repo.get(PlanId(row.plan_ref)))  # type: ignore[arg-type]
+    theme_changed = UnconfirmYearlyPlan(plan_repository=theme_repo, clock=SystemClock()).execute(
         UnconfirmYearlyPlanCommand(plan_id=PlanId(row.plan_ref), actor_id=actor)
     )
-    detail = _detail(row, changed)
+    theme_detail = _detail(row, theme_changed)
     session.commit()
-    return detail
+    return theme_detail

@@ -197,7 +197,7 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
     names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-060)
     school_year = klass.school_year
     month = _target_month(school_year, body.month)
-    if _existing(session, center_id, class_id, month) is not None:
+    if _existing(session, center_id, class_id, month) is not None:  # type: ignore[arg-type]
         raise _ALREADY_EXISTS
     parent_row = session.scalar(
         select(Plan).where(
@@ -215,7 +215,10 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
         raise _gate("연간계획안을 먼저 확정해주세요.")
     parent_id = parent_row.id
     parent = PostgresPlanRepository(
-        session, center_id=center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+        session,
+        center_id=center_id,  # type: ignore[arg-type]
+        kind="annual",
+        plan_type=PlayProjectYearlyPlan,
     ).get(PlanId(parent_row.plan_ref))
     try:
         provider = monthly_llm.play_monthly_provider()
@@ -232,7 +235,7 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
     # ── B. Core 실행 — DB 없음 ────────────────────────────────────────────
     # 부모 확정 기록 · 강조 · 자료 승인은 Core 가 본다. 자료 판은 조립부가 정한다(ADR-046 질문 4).
     parents: InMemoryPlanRepository[PlayProjectYearlyPlan] = InMemoryPlanRepository()
-    parents.save(parent.plan_id, parent)
+    parents.save(parent.plan_id, parent)  # type: ignore[arg-type, union-attr]
     use_case = play_monthly_generation(
         parent_repository=parents,
         plan_repository=InMemoryPlanRepository(),  # 운영 저장은 C 에서 한다
@@ -244,7 +247,7 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
     try:
         plan = use_case.execute(
             play_monthly_command(
-                parent_plan_id=parent.plan_id,
+                parent_plan_id=parent.plan_id,  # type: ignore[union-attr]
                 classroom_ref=str(class_id),
                 school_year=school_year,
                 target_month=month,
@@ -267,7 +270,7 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
     timing.phase("save")
     _lock_parent(session, parent_id, "연간계획안을 먼저 만들어 확정해주세요.")
-    if _existing(session, center_id, class_id, month) is not None:
+    if _existing(session, center_id, class_id, month) is not None:  # type: ignore[arg-type]
         raise _ALREADY_EXISTS
     try:
         _repo(session, user).save(plan.plan_id, plan)
@@ -279,7 +282,7 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
     row = session.scalar(select(Plan).where(Plan.plan_ref == plan.plan_id.value))
     # **응답을 다 만든 뒤에 확정한다**(기존 월간과 같다). 저장소가 flush 해 두어 commit 전에도
     # 읽힌다.
-    detail = _detail(row, plan, parent_id)
+    detail = _detail(row, plan, parent_id)  # type: ignore[arg-type]
     session.commit()
     return detail
 
@@ -300,7 +303,7 @@ def list_play_monthly_plans(session: DbSession, user: CurrentUser, class_id: int
                 id=row.id,
                 class_id=int(row.classroom_ref),
                 school_year=row.school_year,
-                month=int(row.target_month[5:]),
+                month=int(row.target_month[5:]),  # type: ignore[index]
                 target_month=row.target_month,
                 status=row.status,
                 revision=row.revision,
@@ -316,7 +319,7 @@ def list_play_monthly_plans(session: DbSession, user: CurrentUser, class_id: int
 @router.get("/{plan_id}", response_model=s.PlayMonthlyPlanOut)
 def get_play_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser):
     row = _own_row(session, user, plan_id, read_only=True)
-    return _out(session, user, row, _repo(session, user).get(PlanId(row.plan_ref)))
+    return _out(session, user, row, _repo(session, user).get(PlanId(row.plan_ref)))  # type: ignore[arg-type]
 
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -324,7 +327,8 @@ def delete_play_monthly_plan(plan_id: int, session: DbSession, user: CurrentUser
     """초안이든 확정본이든 지운다(ADR-064, Human Decision 2026-11-05 하민). revision 을 받지
     않는다 — 기존 월간 삭제와 같다. 놀이 월간 아래에는 주간을 만들 수 없어 자식 검사가 없다."""
     row = _own_row(session, user, plan_id)
-    deleted = session.execute(
+    # DML 문의 결과는 CursorResult(rowcount 있음)인데 session.execute 는 Result 로 적혀 있다.
+    deleted = session.execute(  # type: ignore[attr-defined]
         delete(Plan).where(
             Plan.id == row.id, Plan.center_id == user.center_id, Plan.kind == "monthly"
         )
@@ -820,7 +824,7 @@ def export_play_monthly_plan(
         raise _UNAVAILABLE
     require_own_class(session, user, int(plan.classroom_ref), read_only=True)
     # 제목과 문서 머리 반 이름이 같은 값(확정 때 찍은 것)이어야 한다.
-    document = replace(play_monthly_document(plan, daily_life), class_name=row.class_name)
+    document = replace(play_monthly_document(plan, daily_life), class_name=row.class_name)  # type: ignore[arg-type]
     content = fill_play_monthly(PLAY_MONTHLY_TEMPLATE.read_bytes(), document)
     title = f"{plan.target_month.calendar_month}월 놀이계획안 - {row.class_name}"
     return download(content, f"play-monthly-{row.id}", title, format)
@@ -965,8 +969,8 @@ def _timetable_part(node: TimetableNode) -> s.TimetablePartOut:
     if node.cell is not None:
         return s.TimetablePartOut(cell=_cell(node.cell))
     return s.TimetablePartOut(
-        split_id=node.split_id.value,
-        axis=node.axis.value,
+        split_id=node.split_id.value,  # type: ignore[union-attr]
+        axis=node.axis.value,  # type: ignore[union-attr]
         ratio=node.ratio,
         children=[_timetable_part(c) for c in node.children],
     )
@@ -979,7 +983,7 @@ def _activity(activity: PlayActivity) -> s.ActivityOut:
         name=_cell(activity.cell),
         description=_cell(activity.description),
         content_ids=list(activity.content_ids),
-        parent_item_id=None if parent is None else parent.parent_item_id.value,
+        parent_item_id=None if parent is None else parent.parent_item_id.value,  # type: ignore[union-attr]
         # ADR-072: 표시용. 그 후보 칸 Evidence 에 TREND 가 있는가.
         trend_applied=any(
             e.source_type is EvidenceSourceType.TREND for e in activity.cell.evidence

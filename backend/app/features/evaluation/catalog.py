@@ -115,7 +115,7 @@ def _elements(source: Mapping[str, Any], version: str) -> tuple[Element, ...]:
         if key in seen:
             raise CatalogError(f"{number}: 평가요소 중복: {key}")
         seen.add(key)
-        elements.append(Element(key, text))
+        elements.append(Element(key, text))  # type: ignore[arg-type]
     return tuple(elements)
 
 
