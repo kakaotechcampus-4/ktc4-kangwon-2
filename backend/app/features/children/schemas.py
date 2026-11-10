@@ -52,7 +52,8 @@ class ChildResponse(BaseModel):
     call_name: str | None
     created_at: datetime
 
-    @computed_field
+    # pydantic 은 @computed_field 를 @property 위에 얹으라고 하는데 mypy 는 이 순서를 막는다.
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def needs_call_name(self) -> bool:
         """외자 아이인가. 화면이 이 값으로 「부르는 이름」 칸을 띄운다 — 판별은 서버 한 곳."""

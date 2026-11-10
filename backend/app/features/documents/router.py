@@ -254,7 +254,7 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
         kind=doc.kind,
         title=doc.title,
         class_id=doc.class_id,
-        class_name=klass.name,
+        class_name=klass.name,  # type: ignore[union-attr]
         child_id=doc.child_id,
         child_name=child.name if child else None,
         start=doc.start_date,
@@ -309,9 +309,9 @@ def _review_states(session: Session, docs: list[Document]) -> dict[int, str]:
     ):
         bodies.setdefault(section.document_id, []).append(section)
     return {
-        doc_id: doc.ai_review["state"]
+        doc_id: doc.ai_review["state"]  # type: ignore[index]
         for doc_id, doc in reviewed.items()
-        if doc.ai_review.get("hash") == review_hash(bodies.get(doc_id, []))
+        if doc.ai_review.get("hash") == review_hash(bodies.get(doc_id, []))  # type: ignore[union-attr]
     }
 
 
@@ -432,7 +432,7 @@ def import_document(
 
     notices = check_evidence(
         session,
-        center_id=user.center_id,
+        center_id=user.center_id,  # type: ignore[arg-type]
         kind=body.kind,
         class_id=body.class_id,
         child_id=body.child_id,
@@ -648,7 +648,7 @@ def _create_document(
                 )
             )
     elif body.kind == "weeklyLog":
-        by_id = {
+        daily_by_id = {
             d.id: d
             for d in session.scalars(
                 select(Document)
@@ -657,18 +657,18 @@ def _create_document(
             )
         }
         for source_id in body.source_ids:
-            source = by_id.get(source_id)
-            if source is None or source.kind != "dailyLog":
+            daily_log = daily_by_id.get(source_id)
+            if daily_log is None or daily_log.kind != "dailyLog":
                 fields.append(f"sources.{source_id}")
                 continue
-            if source.status != "CONFIRMED":
+            if daily_log.status != "CONFIRMED":
                 raise _error(
                     status.HTTP_409_CONFLICT,
                     "GATE_BLOCKED",
                     "확정된 일일 보육일지만 근거로 쓸 수 있습니다.",
                     [f"sources.{source_id}"],
                 )
-            if source.stale:
+            if daily_log.stale:
                 # 근거가 바뀐 일일 보육일지다. 그대로 받으면 낡은 사실로 만든 주간이
                 # stale=False 로 확정 · 출력된다.
                 raise _error(
@@ -677,14 +677,14 @@ def _create_document(
                     "근거가 바뀐 일일 보육일지예요. 먼저 바뀐 근거를 반영하고 다시 확정해주세요.",
                     [f"sources.{source_id}"],
                 )
-            if source.class_id != body.class_id or not (
-                body.start <= source.start_date <= body.end
+            if daily_log.class_id != body.class_id or not (
+                body.start <= daily_log.start_date <= body.end
             ):
                 fields.append(f"sources.{source_id}")
                 continue
             fact = session.scalar(
                 select(DocumentSection.body).where(
-                    DocumentSection.document_id == source.id, DocumentSection.heading == "사실"
+                    DocumentSection.document_id == daily_log.id, DocumentSection.heading == "사실"
                 )
             )
             if fact is None:
@@ -693,11 +693,11 @@ def _create_document(
             copies.append(
                 DocumentSource(
                     source_kind="document",
-                    source_id=source.id,
-                    class_id=source.class_id,
-                    child_id=source.child_id,
-                    date=source.start_date,
-                    source_status=source.status,
+                    source_id=daily_log.id,
+                    class_id=daily_log.class_id,
+                    child_id=daily_log.child_id,
+                    date=daily_log.start_date,
+                    source_status=daily_log.status,
                     text=fact,
                 )
             )
@@ -735,7 +735,7 @@ def _create_document(
     else:
         # 문서는 원이 지금 쓰는 축으로 만든다. 종이 양식이 축마다 다르다 (ADR-088).
         axis = center_axis(session, body.class_id)
-        by_id = {
+        observation_by_id = {
             o.id: o
             for o in session.scalars(
                 select(Observation)
@@ -744,28 +744,28 @@ def _create_document(
             )
         }
         for source_id in body.source_ids:
-            source = by_id.get(source_id)
+            observation = observation_by_id.get(source_id)
             if (
-                source is None
-                or source.class_id != body.class_id
-                or (body.child_id is not None and source.child_id != body.child_id)
-                or not (body.start <= source.date <= body.end)
+                observation is None
+                or observation.class_id != body.class_id
+                or (body.child_id is not None and observation.child_id != body.child_id)
+                or not (body.start <= observation.date <= body.end)
                 # 원이 축을 바꾸기 전에 쓴 기록이다. 이 문서의 양식에 그 영역 줄이 없다.
-                or source.domain not in AXES[axis]
+                or observation.domain not in AXES[axis]
             ):
                 fields.append(f"sources.{source_id}")
                 continue
-            domains.add(source.domain)
+            domains.add(observation.domain)
             copies.append(
                 DocumentSource(
                     source_kind="observation",
-                    source_id=source.id,
-                    class_id=source.class_id,
-                    child_id=source.child_id,
-                    date=source.date,
-                    domain=source.domain,
-                    context=source.context,
-                    text=source.fact,
+                    source_id=observation.id,
+                    class_id=observation.class_id,
+                    child_id=observation.child_id,
+                    date=observation.date,
+                    domain=observation.domain,
+                    context=observation.context,
+                    text=observation.fact,
                 )
             )
     if fields:
@@ -784,7 +784,7 @@ def _create_document(
             session, body.class_id, "\n".join([*facts, *(c.context or "" for c in copies)])
         )
         examples = (
-            teacher_examples(session, user, body.class_id, body.child_id)
+            teacher_examples(session, user, body.class_id, body.child_id)  # type: ignore[arg-type]
             if body.kind == "observation"
             else []
         )
@@ -1197,7 +1197,7 @@ def verify_document(
                 sentence=i.sentence,
                 code=i.code,
                 source_id=i.source_id,
-                source_text=texts.get(i.source_id),
+                source_text=texts.get(i.source_id),  # type: ignore[arg-type]
                 reason=i.reason,
                 fix=i.fix,
             )
@@ -1353,7 +1353,7 @@ def refresh_document(
                 missing_ids.add(copy.source_id)
                 fresh.append(None)
             else:
-                if observation.domain not in AXES[axis]:
+                if observation.domain not in AXES[axis]:  # type: ignore[index]
                     # 다른 축의 영역으로 옮긴 기록이다. 이 문서의 양식에 그 줄이 없다 (ADR-088).
                     off_axis.append(field)
                 fresh.append(

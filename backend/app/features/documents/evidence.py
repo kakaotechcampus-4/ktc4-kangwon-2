@@ -45,7 +45,7 @@ def check_evidence(
     # 아동을 안 고른 영유아 평가는 여기까지 오지 않는다 — 라우터가 422 로 먼저 막는다(§11).
     if kind == "assessment" and child_id is not None:
         rule = load_catalog().get("4-2").rule
-        period = judge.window_for(rule["window"], judge.today_kst(now))
+        period = judge.window_for(rule["window"], judge.today_kst(now))  # type: ignore[index]
         if not period.contains(end):
             notices.append(
                 {

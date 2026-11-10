@@ -119,6 +119,7 @@ def _name_words(row: dict) -> tuple[str, ...]:
 
 def _require_unique(values: list[str], label: str) -> None:
     seen = set()
-    duplicated = sorted({v for v in values if v in seen or seen.add(v)})
+    # mypy 는 set.add 의 None 을 값으로 쓴다고 본다 — 처음 본 값만 남기는 관용구다.
+    duplicated = sorted({v for v in values if v in seen or seen.add(v)})  # type: ignore[func-returns-value]
     if duplicated:
         raise ApprovalError(f"{label} 가 중복됐다: {', '.join(duplicated)}")

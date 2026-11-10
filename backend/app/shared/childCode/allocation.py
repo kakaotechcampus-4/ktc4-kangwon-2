@@ -73,7 +73,8 @@ def _refuse_bare_syllables(found: dict[str, str | None]) -> None:
         how = "아이 명단에서 부르는 이름을 적어 주세요"
     else:
         forms = " · ".join(
-            f"「{call}{'이' if has_final(call) else '가'}」" for call in (found[s] for s in named)
+            f"「{call}{'이' if has_final(call) else '가'}」"  # type: ignore[arg-type]
+            for call in (found[s] for s in named)
         )
         how = f"{forms}처럼 붙여 적어 주세요"
     raise CallNameNeeded(

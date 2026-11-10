@@ -98,14 +98,14 @@ class RunRecorder:
 
     def __init__(self, run_id: uuid.UUID | None = None) -> None:
         self.id = run_id or uuid.uuid4()
-        self._kind = self._stage = None
+        self._kind = self._stage = ""  # begin 전에는 빈 값
         self._live = False  # 첫 줄을 썼고 아직 실패하지 않았다
 
     def begin(self, klass) -> None:
         """반 확인 직후 한 번. ORM 객체는 들지 않고 번호만 읽는다."""
         try:
             run = timing.current()
-            if run is None or self._kind is not None:
+            if run is None or self._kind:
                 return
             self._kind, self._stage = run.kind, STAGES[run.kind][0]
             self._live = True

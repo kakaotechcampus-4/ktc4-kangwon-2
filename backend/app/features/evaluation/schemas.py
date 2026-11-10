@@ -36,7 +36,7 @@ class ChecksRequest(BaseModel):
         try:
             return handler(value)
         except ValidationError as exc:
-            errors = exc.errors(include_url=False)
+            errors: list[Any] = exc.errors(include_url=False)
             for error in errors:
                 loc = error["loc"]
                 if loc and isinstance(loc[0], int):
@@ -102,13 +102,15 @@ class SelfCheckItem(IndicatorItem):
 # 키는 화면 frontend/lib/workspace/evaluation-files.ts 의 TEACHER_DOCS · DIRECTOR_ITEMS id 와 같다.
 # 목록에 없는 키는 스키마가 422 로 막는다.
 DocKey = Literal["journal", "plan", "assessment", "parent", "training", "iep"]
-DOC_KEYS: tuple[str, ...] = DocKey.__args__
+# Literal 별칭의 __args__ 를 mypy 가 모른다. 실행 때는 값 튜플이다.
+DOC_KEYS: tuple[str, ...] = DocKey.__args__  # type: ignore[attr-defined]
 # 직접확인은 쌤플이 만들지 않는 서류만 받는다 — 쌤플 서류는 확정 문서로만 찍힌다(ADR-074 결정 3).
 TeacherDocKey = Literal["parent", "training", "iep"]
 DirectorKey = Literal[
     "operation-plan", "annual-plan", "interaction-record", "duty-training", "day-papers"
 ]
-DIRECTOR_KEYS: tuple[str, ...] = DirectorKey.__args__
+# Literal 별칭의 __args__ 를 mypy 가 모른다. 실행 때는 값 튜플이다.
+DIRECTOR_KEYS: tuple[str, ...] = DirectorKey.__args__  # type: ignore[attr-defined]
 FolderStatus = Literal["found", "partial", "missing"]
 # 건수 칸은 Integer 다. 그 상한(2^31 - 1)만 막는다 — 교사 폴더 크기에 지어낸 상한을 두지 않는다.
 Count = Annotated[int, Field(strict=True, ge=0, le=2_147_483_647)]

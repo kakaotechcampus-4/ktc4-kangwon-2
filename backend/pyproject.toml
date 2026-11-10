@@ -36,7 +36,8 @@ dependencies = [
 ssuksak-planning = { path = "../p0-planning", editable = true }
 
 [project.optional-dependencies]
-dev = ["ruff==0.16.6", "pytest"]
+# mypy 와 stub 은 CI(backend (ruff) job)가 쓰는 버전으로 고정한다(ADR-095).
+dev = ["ruff==0.16.6", "pytest", "mypy==2.4.1", "types-lxml==2026.2.16"]
 
 [build-system]
 requires = ["hatchling"]
@@ -66,3 +67,30 @@ indent-style = "space"
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
 known-third-party = ["alembic"]
+
+# 타입 검사(ADR-095). 2026-11-11 도입 때 있던 None 진단은 동작을 바꾸지 않고 그 줄에 `# type: ignore[코드]` 로 묶었다.
+# 이유는 줄마다 쓰지 않고 여기 한 번 — 대부분은 앞에서 이미 확인한 값이라 지금 동작은 멀쩡하지만 타입에 적혀 있지 않다.
+# 양식 구조를 믿고 바로 쓰는 곳(hwpx 의 find 결과 등)도 섞여 있다.
+# 고치면 warn_unused_ignores 가 남은 표시를 알린다. 새 코드에는 표시를 붙이지 말고 고친다.
+[tool.mypy]
+python_version = "3.12"
+# tests 는 범위 밖(ADR-095)
+files = ["app"]
+# pydantic 의 alias(from_) · Settings 필수값을 mypy 가 읽게
+plugins = ["pydantic.mypy"]
+# 표기 없는 함수 본문도 본다
+check_untyped_defs = true
+# 고쳐진 줄의 `# type: ignore` 를 알린다 — 표시가 줄어들기만 하게
+warn_unused_ignores = true
+# Core(ssuksak-planning)는 py.typed 가 없어 설치본으로는 타입을 못 읽는다 — 원본 폴더로 읽는다
+mypy_path = "$MYPY_CONFIG_FILE_DIR/../p0-planning/src"
+
+[[tool.mypy.overrides]]
+module = ["ssuksak", "ssuksak.*"]
+# Core 타입은 쓰되 Core 안의 오류는 보고하지 않는다(범위는 backend/app)
+follow_imports = "silent"
+
+[[tool.mypy.overrides]]
+module = ["yaml", "yaml.*", "reportlab", "reportlab.*"]
+# yaml 은 stub 을 깔아도 safe_load 가 Any 라 얻는 것이 없고, reportlab stub 은 오탐만 늘었다(ADR-095)
+ignore_missing_imports = true

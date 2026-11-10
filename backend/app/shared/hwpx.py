@@ -69,7 +69,7 @@ def fill_table(
 
     def fill(table: etree._Element) -> None:
         cells = _cells(table)
-        height, width = int(table.get("rowCnt")), int(table.get("colCnt"))
+        height, width = int(table.get("rowCnt")), int(table.get("colCnt"))  # type: ignore[arg-type]
         if height != header_rows + len(rows):
             raise TemplateMismatch(
                 f"양식 표는 {height}줄인데 머리행 뒤로 {len(rows)}줄을 채우려 한다."
@@ -127,7 +127,7 @@ def fill_grid(
                 _set_text(cells[address], text)
 
         prototype, tail = trs[header_rows], trs[header_rows + 1 :]
-        width = int(table.get("colCnt"))
+        width = int(table.get("colCnt"))  # type: ignore[arg-type]
         if len(prototype.findall("hp:tc", NS)) != width:
             raise TemplateMismatch("본문 원형 줄에 병합된 칸이 있다.")
 
@@ -135,7 +135,7 @@ def fill_grid(
         for tr in tail:
             for tc in tr.findall("hp:tc", NS):
                 addr = tc.find("hp:cellAddr", NS)
-                addr.set("rowAddr", str(int(addr.get("rowAddr")) + extra))
+                addr.set("rowAddr", str(int(addr.get("rowAddr")) + extra))  # type: ignore[arg-type, union-attr]
 
         # 복제는 채우기 전의 빈 원형에서 뜬다 — 채운 줄을 복제하면 앞 줄 서식이 번진다.
         blank = copy.deepcopy(prototype)
@@ -150,13 +150,13 @@ def fill_grid(
                 anchor.addnext(tr)
                 anchor = tr
             for tc, text in zip(tr.findall("hp:tc", NS), row, strict=True):
-                tc.find("hp:cellAddr", NS).set("rowAddr", str(header_rows + i))
+                tc.find("hp:cellAddr", NS).set("rowAddr", str(header_rows + i))  # type: ignore[union-attr]
                 _set_text(tc, text)
 
-        table.set("rowCnt", str(int(table.get("rowCnt")) + extra))
+        table.set("rowCnt", str(int(table.get("rowCnt")) + extra))  # type: ignore[arg-type]
         size = table.find("hp:sz", NS)
-        row_height = max(int(sz.get("height")) for sz in blank.iterfind("hp:tc/hp:cellSz", NS))
-        size.set("height", str(int(size.get("height")) + extra * row_height))
+        row_height = max(int(sz.get("height")) for sz in blank.iterfind("hp:tc/hp:cellSz", NS))  # type: ignore[arg-type]
+        size.set("height", str(int(size.get("height")) + extra * row_height))  # type: ignore[arg-type, union-attr]
 
         for tr, texts in zip(tail, footer, strict=True):
             tcs = tr.findall("hp:tc", NS)
@@ -267,7 +267,7 @@ def _cells(table: etree._Element) -> dict[tuple[int, int], etree._Element]:
     for tr in table.findall("hp:tr", NS):
         for tc in tr.findall("hp:tc", NS):
             addr = tc.find("hp:cellAddr", NS)
-            cells[(int(addr.get("rowAddr")), int(addr.get("colAddr")))] = tc
+            cells[(int(addr.get("rowAddr")), int(addr.get("colAddr")))] = tc  # type: ignore[arg-type, union-attr]
     return cells
 
 
@@ -289,10 +289,10 @@ def _set_outside(section: etree._Element, placeholder: str, text: str) -> None:
 def _set_text(tc: etree._Element, text: str) -> None:
     """칸의 글자를 통째로 바꾼다. 서식은 칸의 첫 문단 · 첫 글자 모양을 그대로 물려받는다."""
     sub_list = tc.find("hp:subList", NS)
-    paragraphs = sub_list.findall("hp:p", NS)
+    paragraphs = sub_list.findall("hp:p", NS)  # type: ignore[union-attr]
     prototype = paragraphs[0]
     for p in paragraphs:
-        sub_list.remove(p)
+        sub_list.remove(p)  # type: ignore[union-attr]
 
     for line in _clean(text).split("\n"):
         p = copy.deepcopy(prototype)
@@ -304,7 +304,7 @@ def _set_text(tc: etree._Element, text: str) -> None:
         if line:
             etree.SubElement(run, f"{{{HP}}}t").text = line
         _drop_layout(p)
-        sub_list.append(p)
+        sub_list.append(p)  # type: ignore[union-attr]
 
 
 def _drop_layout(p: etree._Element) -> None:
@@ -337,7 +337,7 @@ def _preview(section: etree._Element, title: str) -> bytes:
     """
     lines = [_clean(title)]
     table = section.find(".//hp:tbl", NS)
-    for tr in table.findall("hp:tr", NS):
+    for tr in table.findall("hp:tr", NS):  # type: ignore[union-attr]
         texts = [
             " ".join("".join(t.itertext()) for t in tc.iterfind(".//hp:t", NS))
             for tc in tr.findall("hp:tc", NS)
