@@ -68,7 +68,7 @@ from app.shared.auth.ownership import (
     require_own_child,
     require_own_class,
 )
-from app.shared.childCode import SubstitutionError
+from app.shared.childCode import CallNameNeeded, SubstitutionError
 from app.shared.gates.judge import JUDGED_KINDS, MAX_SENTENCES, TooLong
 from app.shared.gates.sections import check_sections, join_facts
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
@@ -591,6 +591,11 @@ def create_document(
         # 교사는 옆 반 아이 이름도 적는다. 검증 · 계획안 메모와 같게 원 전체 아이로 표를 만든다.
         table = name_table(session, body.class_id, "\n".join(facts))
         drafted = draft_sections(body.kind, facts, body.source_ids, table, sorted(domains))
+    except CallNameNeeded as exc:
+        # 교사가 고칠 수 있다 — 부르는 이름을 적거나 낱말을 바꾼다. 다시 시도해도 안 된다.
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "VALUE_INVALID", str(exc), ["source_ids"]
+        ) from exc
     except SubstitutionError as exc:
         raise _error(
             status.HTTP_500_INTERNAL_SERVER_ERROR, "GENERATION_FAILED", NAME_MASK_FAILED, []
@@ -863,6 +868,10 @@ def verify_document(
         raise _invalid(fields)
     try:
         issues, judge_name = verify_sections(session, doc, sections, sources)
+    except CallNameNeeded as exc:
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "VALUE_INVALID", str(exc), ["sections"]
+        ) from exc
     except SubstitutionError as exc:
         raise _error(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
