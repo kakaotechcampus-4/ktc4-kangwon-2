@@ -220,3 +220,15 @@ test("확정 도장은 대조 체크 뒤에만 눌리고, 누르면 저장과 �
   assert.ok(view.button("다시 수정"));
   assert.equal(view.buttons("일지 삭제").length, 0, "확정본은 지울 수 없다 — 확정 취소가 먼저다");
 });
+
+test("휴대폰 한 장은 안쪽 대화상자(근거 반영 확인)의 닫힘 · 취소를 제 것으로 받지 않는다", () => {
+  const card = readFileSync(
+    new URL("../components/workspace/DailyJournalCard.tsx", import.meta.url),
+    "utf8",
+  );
+  const sheet = card.slice(card.indexOf("function JournalSheet"));
+  // React 는 안쪽 <dialog> 의 cancel · close 를 바깥 <dialog> 처리기까지 올린다.
+  // 거르지 않으면 「취소」만 눌러도 한 장이 닫히고 저장 안 한 글이 사라졌다.
+  assert.match(sheet, /onCancel=\{\(e\) => \{\s*if \(e\.target !== e\.currentTarget\) return;/);
+  assert.match(sheet, /onClose=\{\(e\) => \{\s*if \(e\.target !== e\.currentTarget\) return;/);
+});
