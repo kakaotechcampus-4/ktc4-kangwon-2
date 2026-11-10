@@ -6,7 +6,7 @@ ADR-068 §6 의 옛 반 주인 채우기와 같은 규칙이다.
 옛 양식은 올린 교사를 모른다. NULL 로 두고, 원을 만든 교사만 지운다.
 
 Revision ID: 8c924b13d7c4
-Revises: 257732bf88ab
+Revises: f6181059cfea
 Create Date: 2026-11-10 02:07:06.754998
 
 """
@@ -18,7 +18,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "8c924b13d7c4"
-down_revision: str | None = "257732bf88ab"
+down_revision: str | None = "f6181059cfea"  # #490 의 반영 표기 사본 다음 (한 줄로 잇는다)
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
