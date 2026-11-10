@@ -27,12 +27,18 @@ URL = "https://github.com/o/r/actions/runs/1"
 # 인자는 FAKE_ARGS 에 적는다.
 FAKE_GH = f"""#!{sys.executable}
 import os, sys
+with open(os.environ["FAKE_ARGS"], "a") as f:
+    f.write(" ".join(sys.argv[1:]) + "\\n")
+if sys.argv[1] == "api":  # 브랜치 끝 조회 — FAKE_TIP 을 준다
+    tip = os.environ["FAKE_TIP"]
+    if tip == "ERR":
+        sys.exit(1)
+    print(tip)
+    sys.exit(0)
 lines = open(os.environ["FAKE_LINES"]).read().splitlines()
 count_file = os.environ["FAKE_COUNT"]
 n = int(open(count_file).read()) if os.path.exists(count_file) else 0
 open(count_file, "w").write(str(n + 1))
-with open(os.environ["FAKE_ARGS"], "a") as f:
-    f.write(" ".join(sys.argv[1:]) + "\\n")
 line = lines[min(n, len(lines) - 1)]
 if line == "ERR":
     sys.exit(1)
@@ -50,7 +56,7 @@ def run(tmp_path):
     output = tmp_path / "github-output"
     args = tmp_path / "gh-args"
 
-    def go(*lines: str, tries: int = 10):
+    def go(*lines: str, tries: int = 10, tip: str = "f" * 40):
         (tmp_path / "lines").write_text("\n".join(lines) + "\n")
         proc = subprocess.run(
             ["bash", str(WAIT_CI_SH), SHA],
@@ -58,6 +64,8 @@ def run(tmp_path):
                 **os.environ,
                 "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
                 "GITHUB_REPOSITORY": "o/r",
+                "GITHUB_REF_NAME": "main",
+                "FAKE_TIP": tip,
                 "GITHUB_OUTPUT": str(output),
                 "WAIT_TRIES": str(tries),
                 "WAIT_INTERVAL": "0",
@@ -72,6 +80,7 @@ def run(tmp_path):
         written = output.read_text().splitlines() if output.exists() else []
         outputs = dict(line.split("=", 1) for line in written)
         calls = args.read_text().splitlines() if args.exists() else []
+        calls = [c for c in calls if not c.startswith("api ")]  # run list 호출만 센다
         return proc, outputs, calls
 
     return go
@@ -89,6 +98,7 @@ def test_같은_커밋의_push_CI_만_본다(run):
     _, _, calls = run(f"completed|success|{URL}")
 
     assert f"--commit {SHA}" in calls[0]
+    assert "--branch main" in calls[0]
     assert "--event push" in calls[0]
     assert "--workflow ci.yml" in calls[0]
 
@@ -104,11 +114,21 @@ def test_성공도_취소도_아니면_막는다(run, conclusion):
     assert out["url"] == URL  # 알림에 실패한 CI 주소를 싣는다
 
 
-def test_취소된_CI_는_조용히_건너뛴다(run):
-    # 더 새 push 가 CI 를 취소했다 — 실패가 아니다. 뒤 배포 run 이 올린다
-    proc, out, _ = run(f"completed|cancelled|{URL}")
+def test_더_새_push_가_취소한_CI_는_조용히_건너뛴다(run):
+    # 브랜치 끝이 이미 다른 커밋이다 — 실패가 아니다. 뒤 배포 run 이 올린다
+    proc, out, _ = run(f"completed|cancelled|{URL}", tip="f" * 40)
 
     assert proc.returncode == 0
+    assert out["ok"] == "false"
+
+
+@pytest.mark.parametrize("tip", [SHA, "ERR"])
+def test_뒤따를_배포가_없는_취소는_막는다(run, tip):
+    # 손으로 취소했거나 job 시간 초과 — 브랜치 끝이 아직 이 커밋이거나 끝을 못 읽었다.
+    # 건너뛰면 아무도 올리지 않고 알림도 없다
+    proc, out, _ = run(f"completed|cancelled|{URL}", tip=tip)
+
+    assert proc.returncode == 1
     assert out["ok"] == "false"
 
 

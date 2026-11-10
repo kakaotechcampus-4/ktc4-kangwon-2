@@ -33,11 +33,6 @@ on:
         type: boolean
         default: false
 
-# 같은 서버에 두 배포가 겹치면 컨테이너가 반쯤 바뀐 상태가 된다. 서버 안의 잠금(deploy.sh)이 손 배포와의 겹침을 한 번 더 막는다.
-concurrency:
-  group: deploy-production
-  cancel-in-progress: false
-
 # 이 블록을 쓰는 순간 명시하지 않은 권한은 전부 none 이 된다.
 permissions:
   id-token: write # 빠지면 OIDC 인증이 실패한다
@@ -87,6 +82,13 @@ jobs:
     needs: wait-ci
     # 손 배포는 wait-ci 가 건너뛰어져도 돈다. push 는 CI 가 성공했을 때(ok=true)만.
     if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.wait-ci.outputs.ok == 'true') }}
+    # 같은 서버에 두 배포가 겹치면 컨테이너가 반쯤 바뀐 상태가 된다. 서버 안의 잠금(deploy.sh)이 손 배포와의 겹침을 한 번 더 막는다.
+    # 잠금은 run 이 아니라 이 job 에 건다 — run 에 걸면 CI 를 기다리는 push run 이 최대 45분 잠금을 쥐어 급한 손 배포(되감기)가
+    # 그 뒤에 서고, 그 사이 push 가 또 오면 대기 중인 손 배포가 취소된다. 그래서 「CI 기다리기」는 잠금 밖에서 돈다.
+    # 손으로 되감은 뒤에도 CI 를 기다리던 push 배포가 이어서 나갈 수 있다 — 되감은 상태를 지키려면 그 run 을 취소한다.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     environment: production
     steps:
