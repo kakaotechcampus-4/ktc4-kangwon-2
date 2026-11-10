@@ -1138,7 +1138,16 @@ def verify_document(
             [],
         ) from exc
     # 검토한 글에 묶어 둔다. 아직 저장 안 한 글이면 그 글이 저장될 때 보인다(ADR-083).
-    doc.ai_review = review_record(sections, issues, judge_name)
+    # `updated_at` 은 교사가 글을 고친 시각(PUT 의 STALE_WRITE 판정 값)이라 그대로 둔다 —
+    # onupdate 로 바뀌면 편집기가 들고 있던 값으로 이어 저장할 때 409 가 난다.
+    session.execute(
+        update(Document)
+        .where(Document.id == doc.id)
+        .values(
+            ai_review=review_record(sections, issues, judge_name),
+            updated_at=Document.updated_at,
+        )
+    )
     session.commit()
     texts = {s.source_id: s.text for s in sources}
     return DocumentVerifyResponse(
