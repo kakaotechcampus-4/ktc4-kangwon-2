@@ -374,10 +374,13 @@ function JournalSheet({
       ref={ref}
       className={dj.phoneSheet}
       aria-label={title}
+      // 안쪽 대화상자(근거 반영 확인)의 cancel · close 도 React 에서는 여기까지 올라온다 — 이 한 장 것만 받는다.
       onCancel={(e) => {
+        if (e.target !== e.currentTarget) return;
         if (!canLeave()) e.preventDefault();
       }}
-      onClose={() => {
+      onClose={(e) => {
+        if (e.target !== e.currentTarget) return;
         onClose();
         // 「오늘 일지 만들기」로 열면 그 단추가 만드는 동안 잠겨 커서를 잃는다 — 브라우저가 돌려줄 곳이
         // 없으면 요약 칸 단추로 둔다.
