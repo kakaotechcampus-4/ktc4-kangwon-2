@@ -25,6 +25,21 @@ const inWeek = (doc: DocumentSummary, start: string, end: string) =>
   doc.start >= start && doc.start <= end;
 
 /**
+ * 서버가 주간 근거로 받지 않는 일일 일지면 그 까닭과 고치러 가는 말. 받으면 `null`.
+ *
+ * 서버는 확정 · 최신이고 `사실` 칸이 있는 일일만 받는다(api-spec §11). 하나라도 섞어 보내면
+ * 같은 주의 멀쩡한 일일까지 함께 거절돼 주간 일지를 못 만든다. 그래서 AI 로 만든 · 확정한 ·
+ * 근거가 안 바뀐 일일만 고르고, 나머지는 줄마다 까닭을 보여 준다.
+ */
+export function dailyBlock(d: DocumentSummary): { why: string; fix: string } | null {
+  if (d.origin === "import") return { why: "올린 서류", fix: "그날 일지 쓰러 가기 →" };
+  if (d.origin !== "ai") return { why: "AI 초안이 아님", fix: "그날 일지 쓰러 가기 →" };
+  if (d.status !== "confirmed") return { why: "초안", fix: "확정하러 가기 →" };
+  if (d.stale) return { why: "근거가 바뀜", fix: "바뀐 근거 반영하러 가기 →" };
+  return null;
+}
+
+/**
  * 이번 주 주간 보육일지 — 주간 기록 화면 안에서 만들고 연다.
  *
  * 주간 일지의 단위는 한 주다. 그 주를 펴 놓은 화면이 이 일지의 주인이고, 문서 보관함은
@@ -49,18 +64,17 @@ export function useWeeklyJournal({
   /** 그 주 일과 기록. 주간 기록 화면이 이미 받아 둔 것을 그대로 쓴다. */
   routines: ApiRoutine[];
 }) {
+  /** 이 반 · 이 주. 조회 결과 · 펴 놓은 일지 · 오류를 모두 여기에 묶는다 (일일 칸과 같다). */
   const scope = `${classId}|${weekStart}|${weekEnd}`;
-  // 그 주 일일 보육일지 전부. 근거로는 확정본만 쓰지만, 초안도 보여 줘야 무엇을 확정할지 안다.
   const [loaded, setLoaded] = useState<{
     scope: string;
     doc: DocumentSummary | null;
+    /** 그 주 일일 보육일지 전부. 근거로 못 쓰는 것도 보여 줘야 무엇을 고칠지 안다. */
     dailies: DocumentSummary[];
   }>();
-  const journal = loaded?.scope === scope ? loaded.doc : undefined;
-  const weekDailies = loaded?.scope === scope ? loaded.dailies : [];
   const [from, setFrom] = useState<From>("dailyLog");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [failed, setFailed] = useState<{ scope: string; text: string } | null>(null);
   const [reload, setReload] = useState(0);
   // 펴 놓은 일지. 만들면 바로 펴고, 교사가 접으면 주간 띠가 다시 올라온다.
   const editor = useJournalEditor(scope, busy);
@@ -83,21 +97,26 @@ export function useWeeklyJournal({
             .filter((d) => inWeek(d, weekStart, weekEnd))
             .sort((a, b) => a.start.localeCompare(b.start)),
         });
-        setError("");
+        setFailed(null);
       })
       .catch((e) => {
         if (!live) return;
         setLoaded({ scope, doc: null, dailies: [] });
-        setError(e instanceof Error ? e.message : "주간 일지를 불러오지 못했습니다.");
+        setFailed({
+          scope,
+          text: e instanceof Error ? e.message : "주간 일지를 불러오지 못했습니다.",
+        });
       });
     return () => {
       live = false;
     };
   }, [serverClass, weekStart, weekEnd, scope, reload]);
 
-  const dailyLogs = weekDailies.filter((d) => d.status === "confirmed");
-  /** 확정하지 않은 일일 일지. 근거가 되지 못하므로 「확정하러 가기」로 보낸다(멘토 12주차 리뷰). */
-  const draftDailies = weekDailies.filter((d) => d.status !== "confirmed");
+  const week = loaded?.scope === scope ? loaded : null;
+  const weekDailies = week?.dailies ?? [];
+  const dailyLogs = weekDailies.filter((d) => !dailyBlock(d));
+  /** 근거로 못 쓰는 일일 일지. 줄마다 까닭과 고치러 가는 길을 준다(멘토 12주차 리뷰). */
+  const blockedDailies = weekDailies.filter((d) => dailyBlock(d));
   // 활동실행이 빈 일과는 서버가 근거로 받지 않는다 (§11).
   const routineSources = routines.filter((r) => r.execution).map((r) => routineLocalId(r.id));
   const sources = from === "routine" ? routineSources : dailyLogs.map((d) => d.id);
@@ -105,7 +124,8 @@ export function useWeeklyJournal({
   async function make() {
     if (busy || !sources.length) return;
     setBusy(true);
-    setError("");
+    setFailed(null);
+    // 이 렌더의 `scope`(만들기를 누른 주)에 묶는다. 늦게 온 응답은 다른 주에 열지 않는다.
     try {
       const made = await createDocument({
         kind: "weeklyLog",
@@ -120,25 +140,26 @@ export function useWeeklyJournal({
       setReload((n) => n + 1);
       setBusy(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "초안을 만들지 못했습니다.");
+      setFailed({ scope, text: e instanceof Error ? e.message : "초안을 만들지 못했습니다." });
       setBusy(false);
     }
   }
 
   return {
     /** 그 주 일지. `undefined` 는 아직 불러오는 중, `null` 은 없다. */
-    doc: journal,
+    doc: week ? week.doc : undefined,
     from,
     setFrom,
     dailyLogs,
-    draftDailies,
+    blockedDailies,
     weekDailies,
     classId,
     routineSources,
     sources,
     busy,
-    error,
+    error: failed?.scope === scope ? failed.text : "",
     make,
+    // openId · open · close(=leave, 저장 안 한 글이면 묻는다) · pending · dismiss
     ...editor,
     retry: () => setReload((n) => n + 1),
     /** 반을 서버에서 못 찾으면 이 화면에서 할 수 있는 일이 없다. */
@@ -176,7 +197,7 @@ export default function WeeklyJournalCard({
   weekEnd: string;
 }) {
   const { doc: journal, from, setFrom, dailyLogs, routineSources, sources, busy, error } = state;
-  const { weekDailies, draftDailies } = state;
+  const { weekDailies, blockedDailies } = state;
   if (state.off) return null;
   const open = !!state.openId;
   const mood = journalMood(journal);
@@ -217,8 +238,8 @@ export default function WeeklyJournalCard({
               {sources.length
                 ? "화면 맨 위 「주간 일지 만들기」를 누르세요."
                 : from === "dailyLog"
-                  ? draftDailies.length
-                    ? `이 주 일일 보육일지 ${draftDailies.length}건이 아직 초안이에요. 확정해야 근거로 쓸 수 있어요.`
+                  ? blockedDailies.length
+                    ? `이 주 일일 보육일지 ${blockedDailies.length}건은 아직 근거로 쓸 수 없어요. 아래 줄에서 까닭을 보고 고쳐 주세요.`
                     : "이 주에 확정한 일일 보육일지가 없습니다. 일일 보육일지를 쓰지 않는 원이면 근거를 「일과 기록」으로 바꿔 주세요."
                   : "이 주 일과 기록에 「실제로 한 것」이 하나도 없습니다. 일과 기록을 먼저 적어 주세요."}
             </p>
@@ -226,19 +247,21 @@ export default function WeeklyJournalCard({
         </div>
       </div>
 
-      {/* 그 주 일일 일지를 날마다 한 줄로. 초안은 주황으로 칠하고 그날 일과 기록으로 보낸다 —
-          일일 일지는 그 화면에서 쓰고 확정한다. */}
+      {/* 그 주 일일 일지를 날마다 한 줄로. 근거로 못 쓰는 줄은 까닭을 달고 그날 일과 기록으로
+          보낸다 — 일일 일지는 그 화면에서 쓰고 확정한다. */}
       {journal === null && from === "dailyLog" && weekDailies.length > 0 && (
         <ul className={ws.journalDays} aria-label="이 주 일일 보육일지">
           {weekDailies.map((d) => {
-            const href = d.status === "confirmed" ? null : routinesPath(state.classId, d.start);
+            const block = dailyBlock(d);
+            const href = block && routinesPath(state.classId, d.start);
             return (
-              <li key={d.id} data-state={d.status}>
+              // 칠하는 색은 「쓸 수 있나」로 가른다. 확정했어도 근거로 못 쓰면 주황이다.
+              <li key={d.id} data-state={block ? "draft" : "confirmed"}>
                 <span>{dayLabel(d.start)}</span>
-                <b>{d.status === "confirmed" ? "확정" : "초안"}</b>
+                <b>{block ? block.why : "확정"}</b>
                 {href && (
                   <Link href={href} className={ws.link}>
-                    확정하러 가기 →
+                    {block.fix}
                   </Link>
                 )}
               </li>

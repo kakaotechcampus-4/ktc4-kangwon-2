@@ -619,7 +619,7 @@ test("서버 문서는 서버로만 확정을 되돌리고 AI 검증을 확정 �
   const local = editor.indexOf('setDoc({ ...doc, status: "draft" })');
   assert.ok(local > -1 && editor.lastIndexOf("!annualPlanId && (", local) > -1);
   const open = editor.indexOf("if (server) {");
-  const branch = editor.slice(open, editor.indexOf("\n      return;\n    }\n", open));
+  const branch = editor.slice(open, editor.indexOf("\n      return false;\n    }\n", open));
   assert.ok(branch.length > 0);
   assert.equal(branch.includes("verified"), false);
   // 서버 문서는 backend 와 같은 기준만 본다 — 로컬 휴리스틱을 겹쳐 걸지 않는다.
@@ -631,7 +631,7 @@ test("서버 문서는 서버로만 확정을 되돌리고 AI 검증을 확정 �
 });
 
 // ── 선택과 서버 응답 순서 ────────────────────────────────────────────────
-const { createSelection, serverIssues, BUSY, MOVED } =
+const { createSelection, serverIssues, BUSY, MOVED, LEFT } =
   await import("../components/workspace/document-selection.ts");
 const workspaceModel = await import("../lib/workspace/model.ts");
 const privacy = await import("../lib/privacy/browser-storage.ts");
@@ -1492,6 +1492,7 @@ function editorHarness(selection, onEditStateChange) {
       all(tree).find((node) => node.type === "textarea" && node.props["aria-label"] === label),
     button: (label) => all(tree).find((node) => node.type === "button" && content(node) === label),
     links: () => all(tree).filter((node) => node.type === "link"),
+    anchors: () => all(tree).filter((node) => node.type === "a"),
     checks: () =>
       all(tree).filter((node) => node.type === "input" && node.props.type === "checkbox"),
     text: () => content(tree),
@@ -1599,7 +1600,7 @@ test("실제 편집기는 STALE_WRITE와 reload 실패 때 입력을 보존하�
   assert.equal(selection.get().detail.updatedAt, "t2");
   assert.equal(editor.textarea().props.value, "최신 문서에서 다시 작성한 해석");
   const page = read("DocumentsPage.tsx");
-  assert.match(page, /reload:\s*selection\.reload/);
+  assert.match(page, /reload:\s*pinned\.reload/);
 });
 
 // ── 확정 취소 · 변경된 근거 반영 ──────────────────────────────────────────
@@ -1784,7 +1785,11 @@ test("GATE_BLOCKED 는 서버 문장을 그대로 보여주고 작성 중인 입
   );
   editor.textarea().props.onChange({ target: { value: "버리면 안 되는 해석 입력" } });
   editor.render();
-  await editor.button("변경된 근거 반영하기").props.onClick();
+  const pressed = editor.button("변경된 근거 반영하기").props.onClick();
+  editor.render();
+  // 고친 글이 있어 먼저 묻는다. 버리기로 해도 반영이 실패하면 글은 남는다.
+  editor.button("편집 버리고 반영").props.onClick();
+  await pressed;
   editor.render();
   assert.equal(editor.textarea().props.value, "버리면 안 되는 해석 입력");
   assert.match(editor.text(), /근거 일일 보육일지를 먼저 확정해주세요/);
@@ -1942,8 +1947,8 @@ test("확정 취소·근거 반영 성공 뒤에는 문서 목록도 다시 읽�
   const page = read("DocumentsPage.tsx");
   // 근거 반영은 사라진 근거 처리를 함께 보낼 수 있어 인자를 받는다.
   for (const [action, call] of [
-    ["unconfirm", "selection.unconfirm()"],
-    ["refresh", "selection.refresh(resolutions)"],
+    ["unconfirm", "pinned.unconfirm()"],
+    ["refresh", "pinned.refresh(resolutions)"],
   ]) {
     const start = page.indexOf(`        ${action}: async (`);
     assert.ok(start > -1, action);
@@ -1952,7 +1957,7 @@ test("확정 취소·근거 반영 성공 뒤에는 문서 목록도 다시 읽�
     assert.ok(body.includes("reloadList()"), `${action} 뒤 목록 갱신`);
   }
   // 동시 수정 복구용 reload 를 근거 반영으로 대체하지 않는다.
-  assert.match(page, /reload:\s*selection\.reload/);
+  assert.match(page, /reload:\s*pinned\.reload/);
 });
 test("후속 #6 v1-mock은 본문 밖 표식으로 매핑하고 일반 버전은 그대로 읽는다", () => {
   const mock = documents.toDocument({
@@ -2159,6 +2164,177 @@ test("AI 검토 결과는 한 문장에 한 줄, 어긋난 기록 원문을 같�
   assert.match(lines[0], /^\[해석\] 「아이가 퍼즐만 했다\.」 — /);
   assert.match(lines[0], /기록에는 「아이가 블록을 쌓았다\.」로 적혀 있어요\./);
   assert.match(lines[0], / \/ 단정하는 표현이 있어요\./);
+});
+
+// ── 3차 점검 8 · 9 · 12 ───────────────────────────────────────────────
+
+test("3차-8 주간 근거 종류를 화면 모델까지 들고 간다 — 일과 근거는 일과 id 다", async () => {
+  browser();
+  const routineWeekly = {
+    ...WEEKLY_DETAIL,
+    sections: WEEKLY_DETAIL.sections.map((s) => ({ ...s, source_ids: [31] })),
+    sources: [{ ...WEEKLY_DETAIL.sources[0], id: 31, source_kind: "routine" }],
+  };
+  const doc = documents.toDocument(routineWeekly);
+  assert.equal(doc.sources[0].id, "routine:31");
+  assert.equal(doc.sources[0].kind, "routine");
+  assert.deepEqual(doc.sections[0].sourceIds, ["routine:31"]);
+  // 종류를 모르는 서버(옛 응답)면 지금처럼 문서로 읽는다.
+  const legacy = documents.toDocument(WEEKLY_DETAIL);
+  assert.equal(legacy.sources[0].id, "document:5");
+  assert.equal(legacy.sources[0].kind, "document");
+
+  // 저장할 때 일과 id 를 그대로 서버 번호로 되돌린다.
+  const { calls, restore } = serve(() => json(routineWeekly));
+  try {
+    await documents.updateDocument("document:21", {
+      kind: "weeklyLog",
+      sections: doc.sections,
+      reviewNote: "",
+      updatedAt: "t0",
+    });
+  } finally {
+    restore();
+  }
+  assert.deepEqual(calls[0].body.sections[0].source_ids, [31]);
+});
+
+test("3차-12 상세의 영역 축 · 상황 사본을 화면 모델에 싣는다", () => {
+  const doc = documents.toDocument({
+    ...DETAIL,
+    observation_axis: "DAILY_PLAY_2",
+    sources: [{ ...DETAIL.sources[0], domain: "놀이활동", context: "바깥놀이" }],
+  });
+  assert.equal(doc.observationAxis, "DAILY_PLAY_2");
+  assert.equal(doc.sources[0].context, "바깥놀이");
+  // 사본이 없는 옛 문서는 칸을 지어내지 않는다.
+  const old = documents.toDocument(DETAIL);
+  assert.equal("observationAxis" in old, false);
+  assert.equal("context" in old.sources[0], false);
+});
+
+test("3차-8 주간 일지의 일과 근거 「원본 보기」는 그 반 · 날짜의 일과 화면을 연다", async () => {
+  const { editor } = await editing({
+    kind: "weeklyLog",
+    childId: "",
+    sections: SECTIONS.map((s) => ({ ...s, sourceIds: ["routine:31"] })),
+    sources: [
+      {
+        id: "routine:31",
+        kind: "routine",
+        date: "2026-09-22",
+        text: "블록 길",
+        classId: "class-abc",
+        childId: "",
+      },
+    ],
+  });
+  const hrefs = editor.anchors().map((a) => a.props.href);
+  assert.ok(hrefs.length > 0);
+  for (const href of hrefs) assert.equal(href, "/routines?date=2026-09-22&class_id=3");
+});
+
+test("3차-9 저장 안 한 글이 있으면 근거 반영 전에 묻는다 — 취소하면 아무것도 보내지 않는다", async () => {
+  const { editor, calls } = await editing({ stale: true });
+  editor
+    .textarea()
+    .props.onChange({ target: { value: "고치던 해석 문장입니다. 스무 자를 넘깁니다." } });
+  editor.render();
+  const asked = editor.button("변경된 근거 반영하기").props.onClick();
+  editor.render();
+  assert.deepEqual(calls, [], "묻기 전에는 반영하지 않는다");
+  editor.button("취소").props.onClick();
+  await asked;
+  editor.render();
+  assert.deepEqual(calls, []);
+  assert.equal(editor.textarea().props.value, "고치던 해석 문장입니다. 스무 자를 넘깁니다.");
+});
+
+test("3차-9 저장하고 반영 · 버리고 반영", async () => {
+  const saved = [];
+  const kept = await editing(
+    { stale: true },
+    {
+      update: async (_id, input) => {
+        saved.push(input.sections.find((s) => s.heading === "해석").body);
+        return doc(1, { stale: true, sections: input.sections, updatedAt: "t1" });
+      },
+    },
+  );
+  kept.editor
+    .textarea()
+    .props.onChange({ target: { value: "고치던 해석 문장입니다. 스무 자를 넘깁니다." } });
+  kept.editor.render();
+  const run = kept.editor.button("변경된 근거 반영하기").props.onClick();
+  kept.editor.render();
+  kept.editor.button("저장하고 반영").props.onClick();
+  await run;
+  assert.deepEqual(saved, ["고치던 해석 문장입니다. 스무 자를 넘깁니다."]);
+  assert.deepEqual(kept.calls, ["refresh"]);
+
+  const dropped = await editing({ stale: true });
+  dropped.editor.textarea().props.onChange({ target: { value: "버릴 해석" } });
+  dropped.editor.render();
+  const again = dropped.editor.button("변경된 근거 반영하기").props.onClick();
+  dropped.editor.render();
+  dropped.editor.button("편집 버리고 반영").props.onClick();
+  await again;
+  assert.deepEqual(dropped.calls, ["refresh"]);
+});
+
+test("「저장하고 반영」 중 다른 문서를 열면 반영을 새 문서로 보내지 않는다 (#476 하민 점검)", async () => {
+  const put = deferred();
+  const calls = [];
+  const selection = createSelection(
+    {
+      get: async (id) => doc(Number(id.slice("document:".length))),
+      update: (id) => {
+        calls.push("update " + id);
+        return put.promise;
+      },
+      confirm: async () => doc(1),
+      refresh: async (id) => {
+        calls.push("refresh " + id);
+        return doc(Number(id.slice("document:".length)));
+      },
+      remove: async () => {},
+    },
+    describe,
+  );
+  selection.select("document:1", 1);
+  await tick();
+  // 편집기 A 가 받은 작업. 저장이 끝나면 같은 작업 묶음으로 반영을 잇는다.
+  const editorA = selection.pin();
+  const saving = editorA.save(SECTIONS, "교사 검토 전");
+  await tick();
+  // 저장 응답 전에 A 를 닫고 B 를 연다.
+  selection.select("document:2", 2);
+  await tick();
+  put.resolve(doc(1, { updatedAt: "t1" }));
+  await saving;
+
+  await assert.rejects(editorA.refresh(), (e) => e.message === LEFT);
+  assert.deepEqual(calls, ["update document:1"]);
+  assert.equal(selection.get().detail.id, "document:2");
+
+  // A → B → A 로 돌아와도 예전 편집기의 작업은 나가지 않는다 — 새로 연 편집기만 쓴다.
+  selection.select("document:1", 1);
+  await tick();
+  await assert.rejects(editorA.refresh(), (e) => e.message === LEFT);
+  await selection.pin().refresh();
+  assert.deepEqual(calls, ["update document:1", "refresh document:1"]);
+});
+
+test("편집기에는 지금 연 문서에 묶인 작업만 준다", () => {
+  for (const name of ["DocumentsPage.tsx", "use-server-document.ts"]) {
+    const src = readFileSync(new URL(`../components/workspace/${name}`, import.meta.url), "utf8");
+    assert.ok(src.includes("selection.pin()"), name);
+    assert.doesNotMatch(
+      src,
+      /selection\.(save|saveAndConfirm|refresh|reload|unconfirm|reconfirm|remove)\b/,
+      name,
+    );
+  }
 });
 
 test("영유아 평가는 만들지 않고 올린 것만 받는다 (ADR-091)", () => {

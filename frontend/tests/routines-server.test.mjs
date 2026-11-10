@@ -682,6 +682,7 @@ function page(
         error: "",
         make: async (ids) => void journals.push(ids),
         off: true,
+        leave: () => true,
         ...journalState,
       }),
     },
@@ -1981,7 +1982,7 @@ function quickRecordsPage(
         pending: false,
         doc: null,
         sources: [],
-        draftDailies: [],
+        blockedDailies: [],
         busy: false,
         off: false,
         make: () => {},
@@ -2830,7 +2831,16 @@ test("기록 모아보기 — 활동실행이 빈 일과는 계획을 실행처�
 // ── 이번 주 주간 보육일지 칸 ──────────────────────────────────────────
 // 주간 일지의 근거는 관찰 기록이 아니다 (api-spec §11). 확정한 일일 보육일지가 기본이고,
 // 일일을 쓰지 않는 원만 그 주 일과 기록을 바로 받는다. 고른 쪽이 그대로 서버로 가야 한다.
-function journalCard(t, { weeklies = [], dailies = [], routineRows = [] } = {}) {
+function journalCard(
+  t,
+  {
+    weeklies = [],
+    dailies = [],
+    routineRows = [],
+    week = { start: "2026-11-02", end: "2026-11-08" },
+    create,
+  } = {},
+) {
   const calls = [];
   const app = host();
   t.after(() => app.cleanup());
@@ -2871,18 +2881,20 @@ function journalCard(t, { weeklies = [], dailies = [], routineRows = [] } = {}) 
       },
       createDocument: async (input) => {
         calls.push({ op: "create", ...input });
-        return { id: "doc-99" };
+        return create ? create(input) : { id: "doc-99" };
       },
     },
   });
+  let current;
   // 화면과 같은 짝으로 띄운다 — 머리의 「주간 일지 만들기」와 아래 칸이 한 상태를 본다.
   const view = app.mount(() => {
     const state = Card.useWeeklyJournal({
       classId: "class-1",
-      weekStart: "2026-11-02",
-      weekEnd: "2026-11-08",
+      weekStart: week.start,
+      weekEnd: week.end,
       routines: routineRows,
     });
+    current = state;
     return jsx("div", {
       children: [
         jsx("button", {
@@ -2893,15 +2905,15 @@ function journalCard(t, { weeklies = [], dailies = [], routineRows = [] } = {}) 
         Card.default({
           state,
           className: "햇살반",
-          weekStart: "2026-11-02",
-          weekEnd: "2026-11-08",
+          weekStart: week.start,
+          weekEnd: week.end,
         }),
         // 펴 놓은 일지는 오른쪽 칠판 밑에 따로 선다. 화면과 같이 둘 다 띄운다.
         Card.WeeklyJournalEditor({ state }),
       ],
     });
   });
-  return { view, calls, text: () => deepText(view.tree()) };
+  return { view, calls, state: () => current, text: () => deepText(view.tree()) };
 }
 
 /** 머리의 「주간 일지 만들기」. 칸에는 이제 단추가 없다. */
@@ -2958,7 +2970,7 @@ test("근거를 일과 기록으로 고르면 활동실행이 있는 일과만 �
 
 test("만든 일지는 문서 보관함으로 보내지 않고 이 화면에서 편집기를 연다", async (t) => {
   const card = journalCard(t, {
-    dailies: [{ id: "doc-1", start: "2026-11-03", status: "confirmed" }],
+    dailies: [{ id: "doc-1", start: "2026-11-03", status: "confirmed", origin: "ai" }],
   });
   await card.view.flush();
   makeButton(card.view).props.onClick();
@@ -2984,8 +2996,8 @@ test("근거가 하나도 없으면 만들기를 막고 무엇이 없는지 말�
 test("초안인 일일 일지는 근거로 세지 않고, 확정하러 갈 길을 준다", async (t) => {
   const card = journalCard(t, {
     dailies: [
-      { id: "doc-1", start: "2026-11-03", status: "confirmed" },
-      { id: "doc-2", start: "2026-11-04", status: "draft" },
+      { id: "doc-1", start: "2026-11-03", status: "confirmed", origin: "ai" },
+      { id: "doc-2", start: "2026-11-04", status: "draft", origin: "ai" },
     ],
   });
   await card.view.flush();
@@ -2996,12 +3008,174 @@ test("초안인 일일 일지는 근거로 세지 않고, 확정하러 갈 길�
 });
 
 test("확정한 일일 일지가 없고 초안만 있으면 초안이라고 말하고 그날로 보낸다", async (t) => {
-  const card = journalCard(t, { dailies: [{ id: "doc-2", start: "2026-11-04", status: "draft" }] });
+  const card = journalCard(t, {
+    dailies: [{ id: "doc-2", start: "2026-11-04", status: "draft", origin: "ai" }],
+  });
   await card.view.flush();
   assert.equal(makeButton(card.view).props.disabled, true);
-  assert.ok(card.text().includes("아직 초안이에요"), card.text());
+  assert.ok(card.text().includes("근거로 쓸 수 없어요"), card.text());
+  assert.ok(card.text().includes("초안"), card.text());
   const links = all(card.view.tree())
     .filter((n) => n?.props?.href)
     .map((n) => n.props.href);
   assert.ok(links.includes("/routines?date=2026-11-04"), links.join(" , "));
+});
+
+// ── 3차 점검 4 · 7 — 주간 · 일일 일지 칸 ─────────────────────────────
+
+const editorOpen = (view) => all(view.tree()).find((n) => n?.type === "document-editor");
+
+test("3차-7 서버가 거절할 일일(올린 서류 · 근거 바뀜 · 초안)은 근거에서 빼고 이유와 고칠 길을 준다", async (t) => {
+  const card = journalCard(t, {
+    dailies: [
+      { id: "doc-1", start: "2026-11-03", status: "confirmed", origin: "ai", stale: false },
+      { id: "doc-2", start: "2026-11-04", status: "confirmed", origin: "import", stale: false },
+      { id: "doc-3", start: "2026-11-05", status: "confirmed", origin: "ai", stale: true },
+      { id: "doc-4", start: "2026-11-06", status: "draft", origin: "ai", stale: false },
+    ],
+  });
+  await card.view.flush();
+  makeButton(card.view).props.onClick();
+  await card.view.flush();
+  assert.deepEqual(card.calls.find((c) => c.op === "create").sourceIds, ["doc-1"]);
+  // 만들기 전 화면으로 다시 본다.
+  const before = journalCard(t, {
+    dailies: [
+      { id: "doc-2", start: "2026-11-04", status: "confirmed", origin: "import", stale: false },
+      { id: "doc-3", start: "2026-11-05", status: "confirmed", origin: "ai", stale: true },
+    ],
+  });
+  await before.view.flush();
+  assert.equal(makeButton(before.view).props.disabled, true);
+  const text = before.text();
+  assert.ok(text.includes("올린 서류"), text);
+  assert.ok(text.includes("근거가 바뀜"), text);
+  const links = all(before.view.tree())
+    .filter((n) => n?.props?.href)
+    .map((n) => n.props.href);
+  assert.ok(links.includes("/routines?date=2026-11-04"), links.join(" , "));
+  assert.ok(links.includes("/routines?date=2026-11-05"), links.join(" , "));
+});
+
+test("3차-4 주를 바꾸면 이전 주 일지 편집기를 닫는다", async (t) => {
+  const week = { start: "2026-11-02", end: "2026-11-08" };
+  const card = journalCard(t, { weeklies: [draftWeekly], week });
+  await card.view.flush();
+  card.state().open(draftWeekly.id);
+  await card.view.flush();
+  assert.ok(editorOpen(card.view), "이번 주 일지를 폈다");
+
+  week.start = "2026-11-09";
+  week.end = "2026-11-15";
+  await card.view.flush();
+  assert.equal(editorOpen(card.view), undefined, "다른 주에는 이전 편집기가 없다");
+  assert.equal(card.state().openId, "");
+});
+
+test("3차-4 주를 바꾼 뒤 늦게 온 생성 응답은 새 주에 편집기를 열지 않는다", async (t) => {
+  const week = { start: "2026-11-02", end: "2026-11-08" };
+  let answer;
+  const card = journalCard(t, {
+    week,
+    dailies: [{ id: "doc-1", start: "2026-11-03", status: "confirmed", origin: "ai" }],
+    create: () => new Promise((resolve) => (answer = resolve)),
+  });
+  await card.view.flush();
+  makeButton(card.view).props.onClick();
+  week.start = "2026-11-09";
+  week.end = "2026-11-15";
+  await card.view.flush();
+  answer({ id: "doc-99" });
+  await card.view.flush();
+  assert.equal(editorOpen(card.view), undefined);
+  assert.equal(card.state().openId, "");
+});
+
+test("3차-4 저장 안 한 일지 글이 있으면 주를 옮기기 전에 묻는다", async (t) => {
+  const card = journalCard(t, { weeklies: [draftWeekly] });
+  await card.view.flush();
+  card.state().open(draftWeekly.id);
+  await card.view.flush();
+  assert.equal(card.state().leave(), true, "고친 것이 없으면 묻지 않는다");
+  // 옮겨도 되면 편집기가 닫힌다. 다시 펴고 고친다.
+  card.state().open(draftWeekly.id);
+  await card.view.flush();
+  editorOpen(card.view).props.onEditStateChange({ dirty: true, pending: false });
+  await card.view.flush();
+  const asked = [];
+  globalThis.window = { confirm: (q) => (asked.push(q), false) };
+  t.after(() => delete globalThis.window);
+  assert.equal(card.state().leave(), false, "교사가 취소하면 옮기지 않는다");
+  assert.equal(asked.length, 1);
+});
+
+function dailyCard(t, { dailies = [], day, create } = {}) {
+  const calls = [];
+  const app = host();
+  t.after(() => app.cleanup());
+  const Card = compile("../components/workspace/DailyJournalCard.tsx", {
+    "./use-journal-editor": compile("../components/workspace/use-journal-editor.ts", {
+      react: app.react,
+      "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning() {} },
+    }),
+    "react/jsx-runtime": runtime,
+    react: app.react,
+    "./WorkspaceUI": { Message: "message", ws: {} },
+    "@/components/app/Posty": { Posty: "posty" },
+    "./DocumentEditor": { __esModule: true, default: "document-editor" },
+    "./use-server-document": {
+      useServerDocument: (id) => ({
+        doc: id ? { id, sections: [] } : null,
+        status: "ready",
+        error: "",
+        server: undefined,
+      }),
+    },
+    "@/lib/api/onboarding": { classServerId: (id) => (id === "class-1" ? 7 : null) },
+    "@/lib/onboarding/settings": { loadClassSettings: () => ({ classes: [{ id: "class-1" }] }) },
+    "@/lib/api/documents": {
+      listDocuments: async () => dailies,
+      createDocument: async (input) => {
+        calls.push({ op: "create", ...input });
+        return create ? create(input) : { id: "doc-99" };
+      },
+    },
+  });
+  let current;
+  const view = app.mount(() => {
+    const state = Card.useDailyJournal({ classId: 7, date: day.date });
+    current = state;
+    return jsx("div", { children: [Card.DailyJournalEditor({ state, day: day.date })] });
+  });
+  return { view, calls, state: () => current };
+}
+
+test("3차-4 날짜를 바꾸면 이전 날 일지 편집기를 닫고, 늦은 생성 응답도 새 날에 열지 않는다", async (t) => {
+  const day = { date: "2026-11-03" };
+  const made = { id: "doc-1", start: "2026-11-03", status: "draft", origin: "ai" };
+  const card = dailyCard(t, { dailies: [made], day });
+  await card.view.flush();
+  card.state().open(made.id);
+  await card.view.flush();
+  assert.ok(editorOpen(card.view));
+  day.date = "2026-11-04";
+  await card.view.flush();
+  assert.equal(editorOpen(card.view), undefined);
+  assert.equal(card.state().doc, null, "새 날에는 일지가 없다");
+
+  let answer;
+  const lateDay = { date: "2026-11-05" };
+  const late = dailyCard(t, {
+    day: lateDay,
+    create: () => new Promise((resolve) => (answer = resolve)),
+  });
+  await late.view.flush();
+  const making = late.state().make(["routine:1"]);
+  lateDay.date = "2026-11-06";
+  await late.view.flush();
+  answer({ id: "doc-77" });
+  await making;
+  await late.view.flush();
+  assert.equal(late.state().openId, "", "만들던 날이 아니면 열지 않는다");
+  assert.equal(editorOpen(late.view), undefined);
 });

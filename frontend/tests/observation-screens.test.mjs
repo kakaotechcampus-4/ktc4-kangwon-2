@@ -23,6 +23,7 @@ registerHooks({
 });
 
 const documents = await import("../lib/api/documents.ts");
+const axis = await import("../lib/workspace/observation-axis.ts");
 const { ApiError, invalidFields } = await import("../lib/api/client.ts");
 
 const require = createRequire(import.meta.url);
@@ -450,6 +451,7 @@ function editor(t, { initial = DOC, save, refresh } = {}) {
     },
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     "./document-selection": { serverIssues: () => [] },
+    "@/lib/workspace/observation-axis": axis,
     "./WorkspaceViewState": compile("../components/workspace/WorkspaceViewState.tsx", modules),
   }).default;
   const server = {
@@ -518,4 +520,27 @@ test("F13 서버가 짚은 공책(sections.해석)을 표시한다", async (t) =
   // 고치면 표시가 풀린다.
   view.type(view.pad("해석"), "개미를 오래 보았다.");
   assert.equal(view.pad("해석").props["aria-invalid"], undefined);
+});
+
+test("3차-12 확정본 미리보기는 문서 사본의 축 · 상황으로 그린다 — 원 설정이 바뀌어도", async (t) => {
+  // 원은 지금 5영역(DOMAINS)이지만, 이 문서는 2축으로 만들었다.
+  const view = editor(t, {
+    initial: {
+      ...DOC,
+      status: "confirmed",
+      observationAxis: "DAILY_PLAY_2",
+      sources: [{ ...DOC.sources[0], domain: "놀이활동", context: "바깥놀이" }],
+    },
+  });
+  const heads = view
+    .nodes()
+    .filter((n) => n.type === "th" && n.props.scope === "row")
+    .map((n) => textOf(n));
+  assert.deepEqual(heads, ["일상생활", "놀이활동", "총평"]);
+  const row = view.nodes().find((n) => n.type === "tr" && textOf(n).startsWith("놀이활동"));
+  assert.match(textOf(row), /\(11\/2\) \(바깥놀이\) 개미를 오래 보았다\./);
+
+  // 사본이 없는 옛 문서만 지금 원 설정을 쓴다.
+  const old = editor(t, { initial: { ...DOC, status: "confirmed" } });
+  assert.ok(old.nodes().some((n) => n.type === "th" && textOf(n) === "종합해석"));
 });
