@@ -105,6 +105,8 @@ def _answers(questions, *, conflict_on="s1", conflict_rec="r1"):
             }
         elif name.endswith(".근거"):
             out[name] = {"type": "choice", "choice": conflict_rec if key == conflict_on else "없음"}
+        elif name.endswith((".때", ".기준")):
+            out[name] = {"type": "choice", "choice": "없음"}
         elif name == "지원.구체":
             out[name] = {"type": "noul", "noul": 0.95}
         else:
@@ -165,6 +167,28 @@ def test_weekday_is_part_of_the_record_line(db_session, real):
     assert "11/3(화)" in real[0]
 
 
+def test_judge_sees_the_same_snapshot_fields_as_the_draft(db_session, real):
+    """초안 모델은 사실마다 날짜 · 영역 · 상황을 받는다(ADR-088). 검토 근거도 같아야 한다.
+
+    상황에만 나온 아이 이름도 가려져야 한다 — 이름 표를 만드는 글에 상황이 빠지면 실명이 나간다.
+    """
+    doc = _document(db_session)
+    friend = Child(class_id=doc.class_id, name="최누리", code="보라")
+    db_session.add(friend)
+    first = db_session.query(DocumentSource).filter_by(document_id=doc.id, source_id=200).one()
+    first.domain = "자연탐구"
+    first.context = "최누리와 실외 모래놀이에서"
+    db_session.flush()
+
+    res = client.post(f"/api/documents/{doc.id}/verify")
+
+    assert res.status_code == 200, res.text
+    sent = json.loads(real[0])["state"]["기록"]["r1"]
+    assert "실외 모래놀이에서" in sent and "자연탐구" in sent
+    assert "최누리" not in real[0]
+    assert "보라" in sent
+
+
 def test_unsaved_sections_are_judged_but_not_saved(db_session, real):
     doc = _document(db_session)
     edited = "이가명은 블록으로 탑을 쌓으며 높이를 세어 보았다. 이가명은 무너져도 다시 쌓았다."
@@ -173,6 +197,15 @@ def test_unsaved_sections_are_judged_but_not_saved(db_session, real):
     assert "높이를 세어 보았다" in real[0]
     stored = db_session.query(DocumentSection).filter_by(document_id=doc.id, heading="해석").one()
     assert stored.body == INTERPRETATION
+
+
+def test_class_age_in_interpretation_passes_gate_two(db_session, real):
+    """#85 — 「만 4세」는 사실에 없어도 반 연령이면 2단에 걸리지 않는다. 반은 만 4세다."""
+    doc = _document(db_session)
+    edited = "만 4세답게 이가명은 블록 대신 퍼즐 놀이만 했다. 이가명은 끈기 있게 놀이에 머물렀다."
+    res = client.post(f"/api/documents/{doc.id}/verify", json={"sections": _sections(edited)})
+    assert res.status_code == 200, res.text
+    assert real  # 2단을 지나 3단까지 갔다
 
 
 def test_gate_one_and_two_run_first(db_session, real):
@@ -247,6 +280,17 @@ def test_daily_log_record_line_has_no_weekday_prefix():
     src = J.Source(1, date(2026, 11, 3), "[바깥놀이 10:00~10:40] 모래놀이")
     assert J.record_line(src, "dailyLog") == "[바깥놀이 10:00~10:40] 모래놀이"
     assert J.record_line(src, "weeklyLog").startswith("11/3(화) ")
+
+
+def test_record_line_carries_domain_and_context_when_present():
+    src = J.Source(1, date(2026, 11, 3), "블록을 세웠다.", "자연탐구", "실외 모래놀이에서")
+    line = J.record_line(src, "observation")
+    assert line.startswith("11/3(화) ")
+    assert "실외 모래놀이에서" in line and "자연탐구" in line and "블록을 세웠다." in line
+    # 상황이 비었으면 붙이지 않는다 — 옛 사본(NULL)도 같다.
+    assert J.record_line(J.Source(1, None, "블록을 세웠다.", None, ""), "observation") == (
+        "블록을 세웠다."
+    )
 
 
 def test_long_text_is_judged_in_chunks_not_cut():
@@ -394,6 +438,7 @@ def test_chosen_conflict_is_reported_even_below_half():
         "choice": J.CONFLICT,
         "probabilities": {J.CONFLICT: 0.4, J.SAME: 0.2, J.NEW_FACT: 0.2, J.INTERPRETATION: 0.2},
     }
+    answers["s1.근거"]["choice"] = "r1"
     assert [i.code for i in J.read_issues(sentences, answers, {"r1": 1}, None)] == [
         "CONTRADICTS_SOURCE"
     ]

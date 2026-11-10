@@ -135,16 +135,20 @@ DAY_CELL_PROMPT = " 이번에는 days 의 요일 하나만 쓰고, current_plan 
 # ADR-072 결정 10: 칸마다 쓸 수 있는 트렌드는 Rule 이 이 표로 정한다. 대·소집단 후보는 activity_type
 # 낱말(「동요·음률」이면 둘 다)로, 실내놀이 후보는 영역으로 — 일반 놀이 자료는 모든 실내놀이 후보에, 역할 자료는
 # 역할놀이 영역에만(Human Decision 2026-11-08 하민). 표에 없는 유형의 칸에는 붙이지 않는다.
+# 동화(그림책)는 이야기나누기 후보 · 언어놀이 영역에도(2026-11-10 하민) — 근거에 동화 · 동극 유형이 거의 없다.
 TREND_KINDS_BY_ACTIVITY_TYPE = {
     "동요": TrendKind.SONG, "새노래": TrendKind.SONG, "음률": TrendKind.SONG, "음악": TrendKind.SONG,
-    "동화": TrendKind.STORY, "동극": TrendKind.STORY,
+    "동화": TrendKind.STORY, "동극": TrendKind.STORY, "이야기나누기": TrendKind.STORY,
     "게임": TrendKind.GAME,
     "신체": TrendKind.MOVEMENT,
     "미술": TrendKind.CRAFT,
 }
 INDOOR_PLAY_TREND_KINDS = frozenset({TrendKind.PLAY})
 # 실내놀이 후보의 영역은 indoor_play_type 이 한 표기로 맞춘다(역할 · 역할 놀이 · 역할영역 → 「역할놀이」).
-INDOOR_AREA_TREND_KINDS = {"역할놀이": frozenset({TrendKind.ROLE, TrendKind.PLAY})}
+INDOOR_AREA_TREND_KINDS = {
+    "역할놀이": frozenset({TrendKind.ROLE, TrendKind.PLAY}),
+    "언어놀이": frozenset({TrendKind.STORY, TrendKind.PLAY}),
+}
 TREND_NAME_REPAIR = "채널 · 프로그램 · 캐릭터 이름을 빼고 놀이 내용만 다시 쓴다"  # ADR-072 결정 11
 TREND_LYRICS_REPAIR = "노래 가사를 옮겨 적지 말고 노래 제목과 놀이 방법만 쓴다"  # ADR-072 결정 12
 WEEKLY_TREND_PROMPT = (
@@ -767,6 +771,7 @@ _ROLE_WORDS = frozenset({
     "고운", "정다운", "정겨운", "강한", "소중한", "조용한", "성실한", "유쾌한", "차분한", "명랑한",
     "용감한", "편안한", "인자한", "엄격한", "공손한", "현명한", "진지한", "모든", "여러", "어느",
     "유능한", "공평한", "오신", "계신", "고우신",
+    "도서관", "안전",
 })
 # Endings that are not given names (좋아하는 · 즐거웠던 · 예쁜 · 다른 · 우리의 …): words, not names.
 _MODIFIER_TAILS = frozenset("는던된쁜른의")

@@ -170,7 +170,7 @@ def test_모든_달과_연령을_소주제_호출_한번에_보낸다(monkeypatc
 
     def complete(system, user, **kwargs):
         calls.append(json.loads(user))
-        assert calls[-1]["prompt_version"] == "annual-subthemes-v3+teacher-venues-v2"
+        assert calls[-1]["prompt_version"] == "annual-subthemes-v4+teacher-venues-v2"
         assert "월 주제가 담은 주요 대상과 경험을 목록 전체에서 유지" in system
         return json.dumps(
             {
@@ -219,3 +219,104 @@ def test_생성_소주제가_주차보다_적으면_성공으로_저장하지_�
     )
     with pytest.raises(LlmFailed, match="주차 수"):
         annual_content.generate_subthemes(plan)
+
+
+@pytest.mark.parametrize("count", [0, 1, 3, 6])
+def test_count_repair_batches_only_wrong_months_and_preserves_memo(monkeypatch, count):
+    from types import SimpleNamespace
+
+    from ssuksak.planning.domain.year_month import YearMonth
+
+    from app.features.plans import annual_content
+
+    plan = SimpleNamespace(
+        target_ages=frozenset({3, 4}),
+        periods=tuple(
+            SimpleNamespace(
+                period=YearMonth(2026 if m >= 3 else 2027, m),
+                theme=SimpleNamespace(value="월별 주제"),
+            )
+            for m in MONTHS
+        ),
+    )
+    calls = []
+    original = {}
+
+    def complete(system, user, **kwargs):
+        payload = json.loads(user)
+        calls.append(payload)
+        items = [
+            {"month": m["month"], "sub_themes": [f"경험 {i}" for i in range(m["week_count"])]}
+            for m in payload["months"]
+        ]
+        if len(calls) == 1:
+            original.update({str(item["month"]): list(item["sub_themes"]) for item in items})
+            for item in items:
+                if item["month"] in (9, 10):
+                    item["sub_themes"] = [f"다른 경험 {i}" for i in range(count)]
+            return json.dumps(
+                {
+                    "months": items,
+                    "memo_applied": ["3", "9"],
+                    "memo_skipped": [
+                        {"summary": "시간 요청은 반영하지 않았어요", "reason": "RULE_CONFLICT"}
+                    ],
+                },
+                ensure_ascii=False,
+            )
+        assert [item["month"] for item in payload["months"]] == [9, 10]
+        assert set(payload["previous_subthemes"]) == {"9", "10"}
+        assert payload["prompt_version"] == annual_content.ANNUAL_SUBTHEMES_REPAIR_PROMPT_VERSION
+        assert payload["teacher_memo"]["text"] == "요청 사항 예시"
+        assert payload["memo_decision"]["applied"] == ["3", "9"]
+        return json.dumps({"months": items}, ensure_ascii=False)
+
+    monkeypatch.setattr(annual_content, "is_mock", lambda: False)
+    monkeypatch.setattr(annual_content, "complete_json", complete)
+    result, applied, notices = annual_content.generate_subthemes_with_memo(plan, "요청 사항 예시")
+    assert len(calls) == 2
+    assert result == original
+    assert applied == frozenset({3, 9})
+    assert len(notices) == 1 and notices[0].reason.value == "RULE_CONFLICT"
+
+
+@pytest.mark.parametrize("fault", ["count", "extra_month", "venue"])
+def test_count_repair_rejects_bad_second_answer_without_third_call(monkeypatch, fault):
+    from types import SimpleNamespace
+
+    from ssuksak.planning.domain.year_month import YearMonth
+
+    from app.features.plans import annual_content
+
+    plan = SimpleNamespace(
+        target_ages=frozenset({3}),
+        periods=tuple(
+            SimpleNamespace(
+                period=YearMonth(2026 if m >= 3 else 2027, m),
+                theme=SimpleNamespace(value="월별 주제"),
+            )
+            for m in MONTHS
+        ),
+    )
+    calls = []
+
+    def complete(system, user, **kwargs):
+        payload = json.loads(user)
+        calls.append(payload)
+        items = [
+            {"month": m["month"], "sub_themes": [f"경험 {i}" for i in range(m["week_count"])]}
+            for m in payload["months"]
+        ]
+        if len(calls) == 1 or fault == "count":
+            items[0]["sub_themes"] = items[0]["sub_themes"][:2]
+        elif fault == "extra_month":
+            items.append({"month": 2, "sub_themes": ["다른 달", "추가 값"]})
+        else:
+            items[0]["sub_themes"][0] = "배산유아숲터 숲 체험"
+        return json.dumps({"months": items}, ensure_ascii=False)
+
+    monkeypatch.setattr(annual_content, "is_mock", lambda: False)
+    monkeypatch.setattr(annual_content, "complete_json", complete)
+    with pytest.raises(LlmFailed):
+        annual_content.generate_subthemes(plan)
+    assert len(calls) == 2

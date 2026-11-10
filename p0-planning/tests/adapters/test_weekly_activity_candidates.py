@@ -375,6 +375,10 @@ def test_trend_goes_only_to_fitting_candidates_and_leaves_trend_evidence():
     assert trend_options((WeeklyTarget("indoor_play.candidate.1", activity_type="역할놀이"),
                           WeeklyTarget("indoor_play.candidate.2", activity_type="쌓기놀이")), (role, play)) == (
         ("indoor_play.candidate.1", (role.trend_id, play.trend_id)), ("indoor_play.candidate.2", (play.trend_id,)))
+    story = next(i for i in request.trends if i.kind.value == "동화")  # 그림책: 언어놀이 영역 · 이야기나누기에도 (2026-11-10)
+    assert trend_options((WeeklyTarget("indoor_play.candidate.1", activity_type="언어놀이"),
+                          WeeklyTarget("group_activity.candidate.1", activity_type="이야기나누기")), (story, play)) == (
+        ("indoor_play.candidate.1", (story.trend_id, play.trend_id)), ("group_activity.candidate.1", (story.trend_id,)))
 
 
 def test_trend_not_allowed_for_that_candidate_is_rejected_and_nothing_saved():

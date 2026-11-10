@@ -101,6 +101,7 @@
       "ev_946b37e84a28_p01_r00337_c03_i01": "PII_PERSON_NAME",
       "ev_946b37e84a28_p01_r00601_c02_i02": "PII_PERSON_NAME",
       "ev_9978c92f9fc8_p02_r00440_c02_i06": "PII_PERSON_NAME",
+      "ev_9cf92d8a7f01_p01_r00678_c04_i02": "PII_PERSON_NAME",
       "ev_a3e193b3c5e2_p01_r00406_c03_i04": "PII_PERSON_NAME",
       "ev_b7ece5115a77_p01_r00207_c04_i01": "PII_PERSON_NAME",
       "ev_c1f8de2456fd_p01_r00637_c10_i02": "PII_PERSON_NAME",
@@ -128,6 +129,19 @@
         "GENERAL_ACTIVITY": "Human reviewed non-identifying activity; retain unchanged."
       }
     },
+    "privacy_review_addenda": [
+      {
+        "reviewer_id": "reviewer_ai_lead_001",
+        "decision_date": "2026-11-10",
+        "decision_ref": "ADR-079 section 10",
+        "source_commit": "f1f3202bd38ae2184a6c9a43748bd8daa1ad2aac",
+        "removed_records": 1,
+        "removed_record_ids": [
+          "ev_9cf92d8a7f01_p01_r00678_c04_i02"
+        ],
+        "reason_code": "PII_PERSON_NAME"
+      }
+    ],
     "pii_rule_version": "evidence-privacy-context-scan-v1"
   },
   "disclaimer": "이 Artifact는 Corpus 관찰값이며 사람이 승인한 canonical Reference가 아니다. Activity Reference를 대체하지 않고 Plan Item의 값이 되지 않는다. LLM Grounding Context로만 사용한다.",
