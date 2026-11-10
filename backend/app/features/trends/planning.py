@@ -71,9 +71,42 @@ def trend_items(raw: list[RawItem], week: str) -> list[TrendItem]:
     return items
 
 
+# 제목 대조에서 빼는 일반어 — 「우리 집 …」 「… 놀이」처럼 아무 책에나 걸린다.
+_BOOK_STOPWORDS = frozenset(
+    {"우리", "함께", "놀이", "활동", "이야기", "친구들", "알아보기", "주제"}
+)
+# 낱말 끝 조사. 떼고도 2자 이상일 때만 뗀다(「가을과」 → 「가을」, 「열매를」 → 「열매」).
+# ponytail: 형태소 분석이 아니다 — 「고양이」 → 「고양」처럼 짧아져도
+# 부분 문자열 대조라 제목은 그대로 걸린다.
+_PARTICLES = (
+    "에서",
+    "으로",
+    "과",
+    "와",
+    "의",
+    "을",
+    "를",
+    "은",
+    "는",
+    "이",
+    "가",
+    "에",
+    "도",
+    "랑",
+)
+
+
+def _strip_particle(word: str) -> str:
+    for p in _PARTICLES:
+        if word.endswith(p) and len(word) - len(p) >= 2:
+            return word[: -len(p)]
+    return word
+
+
 def theme_words(text: str) -> tuple[str, ...]:
-    """주 주제 글의 한글 · 영숫자 낱말 중 2자 이상. 그림책 제목과 대조하는 Rule 의 낱말이다."""
-    return tuple(dict.fromkeys(w for w in re.findall(r"[가-힣A-Za-z0-9]+", text) if len(w) >= 2))
+    """주 주제 글의 낱말(조사 뗌) 중 2자 이상, 일반어 뺌. 그림책 제목과 대조하는 Rule 낱말."""
+    words = (_strip_particle(w) for w in re.findall(r"[가-힣A-Za-z0-9]+", text))
+    return tuple(dict.fromkeys(w for w in words if len(w) >= 2 and w not in _BOOK_STOPWORDS))
 
 
 def book_items(raw: list[RawItem], words: tuple[str, ...], today: date) -> list[TrendItem]:

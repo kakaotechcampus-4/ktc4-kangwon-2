@@ -86,7 +86,7 @@ def test_books_matching_a_week_theme_word_come_first_in_the_story_queue(tmp_path
         enabled=True,
         today=TODAY,
         directory=tmp_path,
-        book_words=theme_words("낙엽 · 산 놀이"),
+        book_words=theme_words("낙엽을 · 산 놀이"),
         books_file=path,
     ).fetch("trend")
     stories = [i for i in result.value if i.kind is TrendKind.STORY]
@@ -94,6 +94,8 @@ def test_books_matching_a_week_theme_word_come_first_in_the_story_queue(tmp_path
     first = stories[0]
     assert first.source_name == "도서관 정보나루" and first.week == "2026-W45"
     assert first.summary.startswith("첫 줄 소개") and len(first.summary) == 200
+    # 조사는 떼고 일반어 · 한 글자는 뺀다
+    assert theme_words("우리 동네와 가을과 열매를 · 산 놀이") == ("동네", "가을", "열매")
 
 
 def test_books_need_words_and_never_break_generation(tmp_path):
