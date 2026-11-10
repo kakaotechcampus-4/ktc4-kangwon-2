@@ -269,7 +269,6 @@ export default function ObservationJournalPage() {
                                 type="checkbox"
                                 disabled={busy}
                                 checked={!left.includes(r.id)}
-                                disabled={busy}
                                 onChange={(e) =>
                                   setLeft((prev) =>
                                     e.target.checked
