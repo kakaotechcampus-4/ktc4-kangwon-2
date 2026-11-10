@@ -77,7 +77,7 @@ def _checklist(
     checks = read_checks(session, center_id, school_year)
     director = read_director_checks(session, center_id, school_year)
     auto = judge_auto(session, center_id, now)
-    items = []
+    items: list[AutoItem | SelfCheckItem] = []
     for indicator in load_catalog().indicators:
         if indicator.kind == "EXCLUDED":
             continue

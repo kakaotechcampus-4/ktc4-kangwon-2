@@ -208,7 +208,7 @@ def rewrite_sentence(
                 sentence=i.sentence,
                 code=i.code,
                 source_id=i.source_id,
-                source_text=texts.get(i.source_id),
+                source_text=texts.get(i.source_id),  # type: ignore[arg-type]
                 reason=i.reason,
                 fix=i.fix,
             )

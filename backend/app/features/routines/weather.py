@@ -386,7 +386,7 @@ def _mean(items: list[dict], field: str) -> float | None:
     values = []
     for item in items:
         try:
-            values.append(float(item.get(field)))
+            values.append(float(item.get(field)))  # type: ignore[arg-type]
         except (TypeError, ValueError):
             continue
     return mean(values) if values else None

@@ -26,16 +26,16 @@ def fill_weekly_activity_grid(content, plan):
     models = body.findall("hp:tc", NS)
     if not models or "".join(t.text or "" for t in models[0].iter(f"{{{NS['hp']}}}t")) != "활동":
         raise TemplateMismatch("주간 양식의 대소집단 활동 줄이 맞지 않는다.")
-    cells = _cells(table)
-    physical = _grid_lines(table, list(cells.values()))
+    cells = _cells(table)  # type: ignore[arg-type]
+    physical = _grid_lines(table, list(cells.values()))  # type: ignore[arg-type]
     spans = {
-        tc: (physical[col], physical[col] + int(tc.find("hp:cellSz", NS).get("width")))
+        tc: (physical[col], physical[col] + int(tc.find("hp:cellSz", NS).get("width")))  # type: ignore[arg-type, union-attr]
         for (_, col), tc in cells.items()
     }
     label = copy.deepcopy(models[0])
     label_span = spans[models[0]]
-    height = int(models[0].find("hp:cellSz", NS).get("height"))
-    leaves = []
+    height = int(models[0].find("hp:cellSz", NS).get("height"))  # type: ignore[arg-type, union-attr]
+    leaves: list[tuple[str, int, int, Fraction, Fraction]] = []
 
     def part(node):
         if node.cell is not None:
@@ -52,32 +52,32 @@ def fill_weekly_activity_grid(content, plan):
     ys = _grid([y for *_, a, b in leaves for y in (a, b)], 0, height)
     indices = {y: i for i, y in enumerate(sorted(ys.values()))}
     new_rows = [etree.Element(body.tag, body.attrib) for _ in range(len(ys) - 1)]
-    label.find("hp:cellSpan", NS).set("rowSpan", str(len(new_rows)))
+    label.find("hp:cellSpan", NS).set("rowSpan", str(len(new_rows)))  # type: ignore[union-attr]
     new_rows[0].append(label)
     for model in models:
         del spans[model]
     spans[label] = label_span
     for text, x0, x1, y0, y1 in leaves:
-        y0, y1 = ys[y0], ys[y1]
+        top, bottom = ys[y0], ys[y1]
         tc = copy.deepcopy(models[1])
-        tc.find("hp:cellSz", NS).attrib.update({"width": str(x1 - x0), "height": str(y1 - y0)})
-        tc.find("hp:cellSpan", NS).set("rowSpan", str(indices[y1] - indices[y0]))
+        tc.find("hp:cellSz", NS).attrib.update({"width": str(x1 - x0), "height": str(bottom - top)})  # type: ignore[union-attr]
+        tc.find("hp:cellSpan", NS).set("rowSpan", str(indices[bottom] - indices[top]))  # type: ignore[union-attr]
         _set_text(tc, text)
-        new_rows[indices[y0]].append(tc)
+        new_rows[indices[top]].append(tc)
         spans[tc] = (x0, x1)
-    at = list(table).index(body)
-    table.remove(body)
+    at = list(table).index(body)  # type: ignore[arg-type]
+    table.remove(body)  # type: ignore[union-attr]
     for i, row in enumerate(new_rows):
         for tc in sorted(list(row), key=lambda c: spans[c][0]):
             row.remove(tc)
             row.append(tc)
-        table.insert(at + i, row)
-    rows = table.findall("hp:tr", NS)
+        table.insert(at + i, row)  # type: ignore[union-attr]
+    rows = table.findall("hp:tr", NS)  # type: ignore[union-attr]
     for row_no, row in enumerate(rows):
         for tc in row.findall("hp:tc", NS):
             tc.find("hp:cellAddr", NS).set("rowAddr", str(row_no))
-    table.set("rowCnt", str(len(rows)))
-    _renumber_columns(table, spans)
+    table.set("rowCnt", str(len(rows)))  # type: ignore[union-attr]
+    _renumber_columns(table, spans)  # type: ignore[arg-type]
     parts[SECTION], parts[PREVIEW] = _dump(section), _preview(section)
     result = io.BytesIO()
     with zipfile.ZipFile(result, "w") as archive:

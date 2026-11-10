@@ -240,7 +240,7 @@ def time_claim(sentence: str, sources: Sequence[Source]) -> TimeClaim | None:
     return None if claim == TimeClaim(from_first=claim.from_first) else claim
 
 
-def _one_or_any(found: list[tuple[object, int]], sentence: str) -> tuple[object, frozenset]:
+def _one_or_any[T](found: list[tuple[T, int]], sentence: str) -> tuple[T | None, frozenset[T]]:
     """날 말 [(값, 끝 위치)] → (문장이 말하는 일의 날, 있기만 하면 되는 날들).
 
     날 말이 하나이고 견주는 쪽(`_COMPARE_AFTER`)이 아닐 때만 문장의 일의 날로 본다.
@@ -290,7 +290,7 @@ def time_conflict(
             return blame
     if claim.gap is not None and target is not None and target.date is not None:
         dated = [src for src in sources if src.date is not None]
-        start = min(dated, key=lambda src: src.date) if claim.from_first and dated else anchor
+        start = min(dated, key=lambda src: src.date) if claim.from_first and dated else anchor  # type: ignore[arg-type, return-value]
         if start is not None and start is not target and start.date is not None:
             if (target.date - start.date).days != claim.gap:
                 return target
@@ -623,7 +623,7 @@ def judge(
         state, questions = build_questions(kind_label, part, records, part_claims)
         first = start == 0 and support is not None
         if first:
-            questions["지원.구체"] = support_question(support)
+            questions["지원.구체"] = support_question(support)  # type: ignore[arg-type]
         answers = decide(state, questions)
         check_answers(questions, answers)
         issues += read_issues(

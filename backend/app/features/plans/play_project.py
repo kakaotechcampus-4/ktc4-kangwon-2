@@ -134,7 +134,7 @@ def _final(error: BaseException, kinds: tuple[type, ...] = _FINAL) -> bool:
         if isinstance(error, kinds):
             return True
         seen.add(id(error))
-        error = error.__cause__ or error.__context__
+        error = error.__cause__ or error.__context__  # type: ignore[assignment]
     return False
 
 
@@ -220,7 +220,7 @@ def generate(
                 for k in keys
             ]
         )
-        by_period = {}
+        by_period: dict[str, list[int]] = {}
         for j, i in targets:
             by_period.setdefault(keys[j], []).append(i)
         if by_period:
@@ -411,4 +411,4 @@ class EditItemIn(RevisionIn):
 class ConfirmIn(RevisionIn):
     # 월별 주제형은 본문을 안 읽으므로 `{}` 도 받아야 한다.
     # 놀이형의 「없음」은 라우터가 422 로 막고, 타입이 틀린 값은 여기서 먼저 422 다.
-    expected_revision: Annotated[int, Field(ge=1, strict=True)] | None = None
+    expected_revision: Annotated[int, Field(ge=1, strict=True)] | None = None  # type: ignore[assignment]

@@ -38,7 +38,7 @@ def fill_annual_v1(
             raise TemplateMismatch("연간 주차 양식은 좌우 4열씩이어야 합니다")
         samples = [copy.deepcopy(original[(0, col)]) for col in range(8)]
         body = [copy.deepcopy(original[(1, col)]) for col in range(4)]
-        widths = [int(cell.find("hp:cellSz", NS).get("width")) for cell in samples]
+        widths = [int(cell.find("hp:cellSz", NS).get("width")) for cell in samples]  # type: ignore[arg-type, union-attr]
         row_height = min(2500, 65000 // height)
         header_height = 3000
         for row in table.findall("hp:tr", NS):
