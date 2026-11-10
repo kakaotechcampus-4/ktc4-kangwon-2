@@ -42,8 +42,10 @@ from .teacher_memo import (
 from .trend import (
     TREND_PROMPT,
     TREND_PROMPT_TAG,
+    TREND_LYRICS_IN_TEXT,
     TREND_NAME_IN_TEXT,
     TREND_SHARE_EXCEEDED,
+    lyric_hits,
     split_trend_applied,
     trend_payload,
     trend_properties,
@@ -133,17 +135,22 @@ DAY_CELL_PROMPT = " 이번에는 days 의 요일 하나만 쓰고, current_plan 
 # ADR-072 결정 10: 칸마다 쓸 수 있는 트렌드는 Rule 이 이 표로 정한다. 대·소집단 후보는 activity_type
 # 낱말(「동요·음률」이면 둘 다)로, 실내놀이 후보는 영역으로 — 일반 놀이 자료는 모든 실내놀이 후보에, 역할 자료는
 # 역할놀이 영역에만(Human Decision 2026-11-08 하민). 표에 없는 유형의 칸에는 붙이지 않는다.
+# 동화(그림책)는 이야기나누기 후보 · 언어놀이 영역에도(2026-11-10 하민) — 근거에 동화 · 동극 유형이 거의 없다.
 TREND_KINDS_BY_ACTIVITY_TYPE = {
     "동요": TrendKind.SONG, "새노래": TrendKind.SONG, "음률": TrendKind.SONG, "음악": TrendKind.SONG,
-    "동화": TrendKind.STORY, "동극": TrendKind.STORY,
+    "동화": TrendKind.STORY, "동극": TrendKind.STORY, "이야기나누기": TrendKind.STORY,
     "게임": TrendKind.GAME,
     "신체": TrendKind.MOVEMENT,
     "미술": TrendKind.CRAFT,
 }
 INDOOR_PLAY_TREND_KINDS = frozenset({TrendKind.PLAY})
 # 실내놀이 후보의 영역은 indoor_play_type 이 한 표기로 맞춘다(역할 · 역할 놀이 · 역할영역 → 「역할놀이」).
-INDOOR_AREA_TREND_KINDS = {"역할놀이": frozenset({TrendKind.ROLE, TrendKind.PLAY})}
+INDOOR_AREA_TREND_KINDS = {
+    "역할놀이": frozenset({TrendKind.ROLE, TrendKind.PLAY}),
+    "언어놀이": frozenset({TrendKind.STORY, TrendKind.PLAY}),
+}
 TREND_NAME_REPAIR = "채널 · 프로그램 · 캐릭터 이름을 빼고 놀이 내용만 다시 쓴다"  # ADR-072 결정 11
+TREND_LYRICS_REPAIR = "노래 가사를 옮겨 적지 말고 노래 제목과 놀이 방법만 쓴다"  # ADR-072 결정 12
 WEEKLY_TREND_PROMPT = (
     " trend_ids가 있는 후보 target만 트렌드를 쓸 수 있고, 그 칸에 허용된 trend_id만 쓴다. "
     "트렌드를 쓴 후보는 activity_basis 대신 그 자료의 title · summary를 원문 활동으로 삼는다 — "
@@ -179,6 +186,7 @@ class WeeklyIssueCode(str, Enum):
     TREND_SHARE_EXCEEDED = TREND_SHARE_EXCEEDED  # ADR-072: a third trend candidate in one list
     TREND_GROUNDING_MIXED = "TREND_GROUNDING_MIXED"  # ADR-072: a trend candidate also cited an institution record
     TREND_NAME_IN_TEXT = TREND_NAME_IN_TEXT  # ADR-072 결정 11: a channel or character name in a candidate
+    TREND_LYRICS_IN_TEXT = TREND_LYRICS_IN_TEXT  # ADR-072 결정 12: song lyrics copied into a candidate
 
 
 # Same idea as the monthly REPAIRABLE_CODES: wording or a ref choice inside a fixed slot.
@@ -186,6 +194,7 @@ REPAIRABLE = frozenset({
     WeeklyIssueCode.TREND_SHARE_EXCEEDED,
     WeeklyIssueCode.TREND_GROUNDING_MIXED,
     WeeklyIssueCode.TREND_NAME_IN_TEXT,
+    WeeklyIssueCode.TREND_LYRICS_IN_TEXT,
     WeeklyIssueCode.ACTIVITY_CANDIDATE_INVALID,
     WeeklyIssueCode.TEXT_POLICY,
     WeeklyIssueCode.SOURCE_TEXT_COPY,
@@ -863,6 +872,7 @@ def validate_weekly(
             WeeklyIssue(WeeklyIssueCode.TREND_NAME_IN_TEXT, address)
             for address in trend_name_hits(texts, request.trends, request.teacher_memo)
         ]
+        issues += [WeeklyIssue(WeeklyIssueCode.TREND_LYRICS_IN_TEXT, address) for address in lyric_hits(texts)]
     return tuple(issues)
 
 
@@ -1003,7 +1013,8 @@ class WeeklyPlanner:
                     "fix_sections": [
                         {"section_key": i.section_key, "issue": i.code.value, **({"day": i.day} if i.day else {}),
                          **({"reason": "UNREQUESTED_VENUE"} if "UNREQUESTED_VENUE" in i.detail else {}),
-                         **({"reason": TREND_NAME_REPAIR} if i.code is WeeklyIssueCode.TREND_NAME_IN_TEXT else {})}
+                         **({"reason": TREND_NAME_REPAIR} if i.code is WeeklyIssueCode.TREND_NAME_IN_TEXT else {}),
+                         **({"reason": TREND_LYRICS_REPAIR} if i.code is WeeklyIssueCode.TREND_LYRICS_IN_TEXT else {})}
                         for i in issues
                     ],
                 }, ensure_ascii=False, sort_keys=True),

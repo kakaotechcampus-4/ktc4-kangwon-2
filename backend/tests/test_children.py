@@ -52,6 +52,10 @@ class _FakeSession:
     def scalars(self, statement):
         return _Rows(self.children)
 
+    def scalar(self, statement):
+        # 아이를 가리키는 관찰 기록 · 문서를 찾는 질의다. 이 스텁에는 없다.
+        return None
+
     def add(self, obj):
         assert self.locked, "allocation must hold the class lock before writing"
         obj.id = len(self.children) + 1

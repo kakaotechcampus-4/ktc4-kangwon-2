@@ -3,8 +3,9 @@
 실시간 수집이 아니다. 저장소에 머지된 주 파일을 읽는다(ADR-016). 원이 껐거나 · 파일이 없거나 ·
 깨졌으면 트렌드 없이 만든다 — 결과 객체로 알리고 예외를 내지 않는다(CLAUDE.md §7).
 
-넘기는 것: 지금도 승인 목록에 있는 유튜브 채널 자료. 다시 거르지 않는다 — 머지된 파일은 사람이
-수집 PR 에서 2단 위험 표시 · 3단 판정을 보고 지운 뒤 승인한 것이다(트렌드 화면과 같다, ADR-016).
+넘기는 것: 지금도 승인 목록에 있는 유튜브 채널 자료. 노래는 채널 종류가 동요인 채널 것만.
+다시 거르지 않는다 — 머지된 파일은 사람이 수집 PR 에서 2단 위험 표시 · 3단 판정을 보고 지운 뒤
+승인한 것이다(트렌드 화면과 같다, ADR-016).
 기사는 놀이 서술이 아니라 넘기지 않는다(ADR-016 「소재 발굴 · 확인용」).
 링크 · 조회수도 넘기지 않는다.
 
@@ -57,7 +58,9 @@ def trend_items(raw: list[RawItem], week: str) -> list[TrendItem]:
         if row.source != "youtube" or channel is None or channel.kind == "제외":
             continue
         kind = trend_kind(row.title, TrendKind(channel.kind) if channel.kind else None)
-        if kind is None:
+        # ADR-072 결정 12: 노래는 승인 파일에서 종류가 동요인 채널 것만.
+        # 다른 채널의 노래 영상은 넘기지 않는다.
+        if kind is None or (kind is TrendKind.SONG and channel.kind != TrendKind.SONG.value):
             continue
         items.append(
             TrendItem(
@@ -136,12 +139,26 @@ def book_words_for(text: str, related_file: Path | None = None) -> tuple[str, ..
     return tuple(dict.fromkeys((*words, *extra)))
 
 
-def book_items(raw: list[RawItem], words: tuple[str, ...], today: date) -> list[TrendItem]:
-    """제목에 주제 낱말이 있는 승인 그림책 → 동화 트렌드.
+BOOK_LIMIT = 6
 
+
+def book_items(raw: list[RawItem], words: tuple[str, ...], today: date) -> list[TrendItem]:
+    """제목에 주제 낱말이 있는 승인 그림책 → 동화 트렌드, 앞 낱말에 걸린 책부터 BOOK_LIMIT 권.
+
+    words 는 주 주제 낱말이 앞, 관련 낱말 묶음이 뒤다 — 주제 낱말에 바로 걸린 책이
+    「지구」 → 「지구촌」 같은 넓은 묶음 낱말에 걸린 책보다 먼저 뽑힌다. 같은 순위는 ISBN 순.
     수집 주 · 게시일을 오늘로 두어 최근 4주 안에 들고, 동화 줄에서 유튜브보다 앞에 선다(새것부터).
-    ponytail: 오늘 올라온 유튜브 동화와는 trend_id 순으로 유튜브가 앞선다 — 주 1회 수집이라 드물다.
+    ponytail: 관련도 = 걸린 낱말의 순서뿐. 오늘 올라온 유튜브 동화와는 trend_id 순으로
+    유튜브가 앞선다 — 드물다.
     """
+
+    def rank(row: RawItem) -> int:
+        return next((i for i, word in enumerate(words) if word in row.title), len(words))
+
+    books = sorted(
+        (row for row in raw if row.source == "data4library" and rank(row) < len(words)),
+        key=lambda row: (rank(row), row.source_id),
+    )[:BOOK_LIMIT]
     return [
         TrendItem(
             trend_id=f"{row.source}:{row.source_id}",
@@ -152,8 +169,7 @@ def book_items(raw: list[RawItem], words: tuple[str, ...], today: date) -> list[
             week=week_label(today),
             published_on=today,
         )
-        for row in raw
-        if row.source == "data4library" and any(word in row.title for word in words)
+        for row in books
     ]
 
 

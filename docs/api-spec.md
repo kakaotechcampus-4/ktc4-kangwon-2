@@ -43,8 +43,12 @@ login    { "email": "a@b.kr", "password": "여덟자이상" }                   
 me       GET /api/auth/me                                               → 200  위 user 모양
 
 비밀번호 PATCH /api/auth/password
-         { "current_password": "지금 것", "new_password": "여덟자이상" }      → 204
+         { "current_password": "지금 것", "new_password": "여덟자이상" }      → 200  위 응답 모양(새 토큰)
 ```
+
+**비밀번호를 바꾸면 그 전에 나간 토큰은 모두 401 이다**([ADR-092](adr/092-token-version-and-kakao-link-reset.md)).
+다른 기기 · 다른 사람이 쥔 토큰도 끊긴다. 바꾼 브라우저는 응답의 새 토큰으로 갈아 끼운다 —
+안 바꾸면 다음 요청이 401 이다.
 
 **비밀번호를 바꿀 자리가 있어야 한다.** 다른 곳에서 쓰던 비밀번호로 가입한 교사가
 바꿀 길이 없으면 계정을 새로 만드는 수밖에 없다. 크롬은 자기가 저장해 둔 비밀번호가
@@ -83,6 +87,10 @@ me       GET /api/auth/me                                               → 200 
 
 **처음이면 계정을 만들고, 같은 이메일 계정이 있으면 거기에 잇는다.** 응답은 늘 200 이다 —
 `center_id` 가 null 이면 온보딩으로 간다(§0 과 같다).
+
+**이을 때 그 계정의 비밀번호와 그 전 토큰을 끊는다**([ADR-092](adr/092-token-version-and-kakao-link-reset.md)).
+이메일 가입은 메일 주인인지 확인하지 않아서, 그 비밀번호를 누가 만들었는지 서버는 모른다.
+이은 뒤에는 카카오로만 들어온다. 이미 이어진 계정이 다시 카카오로 들어올 때는 끊지 않는다.
 
 | code | HTTP | 언제 |
 |---|---|---|
@@ -154,7 +162,7 @@ me       GET /api/auth/me                                               → 200 
 | `TRENDS_DISABLED` | 403 | 그 원이 트렌드봇을 껐다 (§3-1 · FR-808) |
 | `CLASS_ACCESS_REQUIRED` | 403 | 같은 원 다른 반이다. 그 반 주인의 승인이 필요하다(§2-2) |
 | `CLASS_READ_ONLY` | 403 | 승인받아 보기만 된다. 고치기 · 확정 · 삭제는 주인만(§2-2) |
-| `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§9-3 월간 `expected_revision` · §6-1 · §7 놀이 프로젝트형 연간 `expected_revision` · §9-7 놀이 중심 월간 `expected_revision` · §9-4 포인터 `expected_profile_ref` · §11 문서 `updated_at`) |
+| `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§9-3 월간 `expected_revision` · §6-1 · §7 놀이 프로젝트형 연간 `expected_revision` · §9-7 놀이 중심 월간 `expected_revision` · §9-4 포인터 `expected_profile_ref` · §11 문서 `updated_at` · §11 문서 생성 중 근거가 거듭 바뀜) |
 | `RATE_LIMITED` | 429 | 같은 IP 에서 요청이 너무 잦다. **앱이 아니라 nginx 가 낸다**(`nginx/app-routes.conf`). 로그인 · 가입 · 카카오 · 비밀번호 바꾸기는 분당 10번, 생성 POST(연간 · 월간 · 주간 · 칸 재생성 · 연간 가져오기 추출 · 일지 초안 · 일지 검증)는 합쳐서 분당 6번이고, 둘 다 한꺼번에 10번까지 먼저 받는다. 같은 주소의 목록 GET 은 세지 않는다. 1분쯤 뒤 다시 |
 
 **409 가 넷이다.** 상태 코드가 같아도 FE 가 띄울 문구가 다르므로 `code` 로 갈라 본다 —
@@ -724,12 +732,12 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 ## 3-1. 원 설정 — `GET·PUT /api/centers/{center_id}/settings`
 
 켜고 끄는 값만 모은다. **성품인사(§3)는 여기 넣지 않는다** — 12개월 문구를 들고 있어서
-요청 모양이 아예 다르다. 여기는 **참/거짓만** 담는다.
+요청 모양이 아예 다르다. 여기는 **참/거짓 토글과 관찰 기록 영역 축(`observation_axis`)** 을 담는다.
 
 **GET Response**
 
 ```json
-{ "trends_enabled": false, "weekly_saturday_enabled": false }
+{ "trends_enabled": false, "weekly_saturday_enabled": false, "observation_axis": "NURI_5" }
 ```
 
 설정한 적 없으면 기본값을 채워 내려준다. 빈 객체를 주지 않는다.
@@ -737,8 +745,8 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 **`trends_enabled` 기본값은 `false` 다.** 세 가지 이유다.
 
 ```
-키가 없다      YOUTUBE_API_KEY · NAVER_CLIENT_ID 가 비어 있다.
-              켜짐이 기본이면 모든 원에서 「수집 실패」만 쌓인다
+키가 없다      YOUTUBE_API_KEY · NAVER_CLIENT_ID 가 비어 있으면 그 주 수집이 0건이다.
+              수집은 원과 상관없이 주 1회 한 번 돌아서, 켜도 보여 줄 자료가 없다
 부가 기능      CLAUDE.md 「부가 기능이 죽어도 본 기능은 돌아간다」.
               원하는 원이 켜는 것이 맞다
 원장이 꺼릴 수 있다   평가제 서류에 외부 유튜브 소재가 섞이는 것을 원치 않을 수 있다
@@ -758,6 +766,7 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 
 ```
 멈춘다    GET /api/trends 가 403 이다.  트렌드 화면이 「꺼져 있어요」로 바뀐다
+          주간계획안 · 놀이 중심 월간계획안 생성의 트렌드 반영(ADR-072)
 안 멈춘다  서버의 수집.  원 단위가 아니라 운영 설정이다
           이미 만든 계획안.  evidence 에 TREND 가 남은 채로 둔다
 ```
@@ -765,9 +774,11 @@ enabled: false 면 items 를 무시하고 enabled 만 갱신한다.
 **사이드바에는 트렌드 메뉴가 없다.** `/trends` 는 주소로만 들어간다(2026-10-17 확인) —
 숨길 메뉴가 없어서 화면에서 막는다. 계획안 메뉴 안에 들어가게 되면 그때 숨긴다.
 
-**계획안 생성은 아직 트렌드를 자동으로 참고하지 않는다.** 교사가 트렌드 화면에서
-[계획안에 활용하기]를 눌러 제목·요약을 메모 칸에 옮기는 길뿐이고, 그 화면은 꺼져 있으면
-못 들어간다. 생성이 트렌드를 스스로 읽게 되면 그때 이 칸에 「멈춘다」로 적는다.
+**주간계획안(후보)과 놀이 중심 월간계획안은 만들 때 트렌드를 스스로 읽는다**(ADR-072). 원이 켰을 때만
+그 주 수집 파일을 읽어 후보에 반영하고, 연간 · 기존 월간은 읽지 않는다. 그 밖에 교사가 트렌드 화면에서
+[계획안에 활용하기]를 누르는 길이 있다 — 주간계획안 만들기(`/plans/weekly?topic=…`)로 가서 그 자료의 제목 · 요약이
+요청 사항 칸(§4 `memo`)에 미리 들어간다. 놀이 중심형은 주간이 없어 그 화면의 [월간계획안으로 가기]가 요청 사항을
+들고 월간 만들기로 넘긴다. 링크는 넣지 않고 300자에서 자른다. 트렌드 화면은 꺼져 있으면 못 들어간다.
 
 **이미 만든 계획안을 고치지 않는다.** 끈다고 과거 문서가 바뀌면, 교사가 확정해서 제출한
 문서의 내용이 뒤에서 달라진다. 출처는 **그때 그랬다는 기록**이다.
@@ -824,6 +835,8 @@ PM 결정(ADR-030 WQ-01): 주간계획안은 기본 5일이고, 토요일을 운
 `week` 를 같이 준다. **두 달 전 자료를 이번 주 유행으로 읽으면 안 된다.**
 `summary` 는 설명 앞 두 줄이다 — 교사 화면은 제목 아래 두 줄이 전부다.
 새것부터 20건까지 준다.
+**지금 승인 목록에 없는 출처는 빼고 준다**(ADR-016 4단) — 유튜브는 채널 이름, 기사는 언론사 도메인을
+`approved-sources.yaml` 과 대조한다. 머지 뒤에 목록에서 뺀 곳의 지난 주 자료가 남지 않게 한다. 생성 쪽과 같은 대조다.
 
 | code | status | 언제 |
 |---|---|---|
@@ -3331,11 +3344,16 @@ RESIZE_HEIGHT    null            null        null          null          [24] �
 
 **`child_code` 도 같이 준다.** 화면에 배지로 보여준다 — 교사가 "LLM 에는 이 이름이 나간다"를 안다.
 
-**`domain` 은 5영역 중 하나다.**
+**`domain` 은 그 원이 쓰는 영역 축의 값 하나다.** 축은 원 설정 `centers.observation_axis` 가 정한다(§3-1).
 
 ```
-신체운동·건강 · 의사소통 · 사회관계 · 예술경험 · 자연탐구
+NURI_5        신체운동·건강 · 의사소통 · 사회관계 · 예술경험 · 자연탐구   (기본)
+DAILY_PLAY_2  일상생활 · 놀이활동
 ```
+
+- 저장 · 수정 때 **지금 원의 축**이 아닌 값이면 `VALIDATION_FAILED` 422, `fields: ["domain"]`.
+- DB 는 두 축의 값을 모두 받는다. 원이 축을 바꿔도 전에 쌓은 기록은 그대로 읽힌다.
+- **문서는 만들 때의 축을 사본으로 갖는다**(§11 `observation_axis`, ADR-088). 원이 나중에 축을 바꿔도 이미 만든 관찰일지의 종이는 그 축이다.
 
 **`context` 는 선택이다.** 빈 문자열을 허용한다 — 상황을 안 적고 사실만 남기는 교사가 있다.
 
@@ -3468,21 +3486,23 @@ POST /api/documents
 ## 11. 문서 — `/api/documents`   ★ 7주차
 
 **§10 의 기록을 모아 초안을 만든다.** 일지 계열 4종이다.
+**AI 로 초안을 만드는 것은 앞의 셋이다. `assessment` 는 만들지 않고 「증빙 등록」으로 올린 것만 받는다**(2026-11-10 ADR-091).
 
 ```
 dailyLog     일일 보육일지    반 단위    하루     종이 한 장 = 반 1개 × 하루 × 일과 격자
 weeklyLog    주간 보육일지    반 단위    한 주
 observation  관찰일지        아동 단위   기간     종이 한 장 = 아이 1명 × 기간 × 5영역
-assessment   영유아 평가      아동 단위   기간
+assessment   영유아 평가      아동 단위   기간     만들지 않는다 — 증빙 등록만 (ADR-091)
 ```
 
-**문서 1개가 교사가 제출하는 종이 1장이다.** 종이 위 배치는 아래 「종이 한 장」에 적었다. `assessment` 의 배치는 이번 개정 범위 밖이다.
+**문서 1개가 교사가 제출하는 종이 1장이다.** 종이 위 배치는 아래 「종이 한 장」에 적었다. `assessment` 는 만들지 않아 배치가 없다 — 올린 원문은 원래 파일을 쓴다(ADR-091).
 
 **계획안(`annual` · `monthly`)은 이 엔드포인트가 아니다.** §4 ~ §7 이 다룬다.
 같은 「문서」라는 말을 쓰지만 근거가 다르다 — 계획안은 참조자료에서, 일지는 교사 기록에서 나온다.
 
-**`assessment`(영유아 평가) 문서와 「평가제 대조」는 다른 것이다.** 전자는 여기서 만드는 문서고,
+**`assessment`(영유아 평가) 문서와 「평가제 대조」는 다른 것이다.** 전자는 원에서 쓴 평가를 올린 문서고,
 후자는 기관 평가 지표에 문서를 대보는 기능이다(§12). 평가제 대조의 지표 4-2 가 확정된 `assessment` 문서를 센다.
+(2026-11-10 전에는 전자를 「여기서 만드는 문서」로 적었다. ADR-091 이 생성 길을 뺐다.)
 
 **Request** `POST /api/documents`
 
@@ -3491,6 +3511,9 @@ assessment   영유아 평가      아동 단위   기간
   "start": "2026-09-01", "end": "2026-09-30",
   "source_ids": [12, 15, 19] }
 ```
+
+**관찰 기록 근거(`observation` · `assessment`)는 원의 지금 영역 축의 기록만 받는다.** 축이 다른 영역의 기록이면
+`VALIDATION_FAILED` 422, `fields: ["sources.{id}"]` — 이 문서의 양식에 그 영역 줄이 없다. 문서는 그 축을 `observation_axis` 로 찍는다(ADR-088).
 
 **`source_kind` 는 주간 보육일지에서만 고른다.** 생략하면 `"dailyLog"` 다.
 
@@ -3517,9 +3540,11 @@ source_kind   값                받는 kind      근거
     { "heading": "지원", "body": "...", "source_ids": [15] }
   ],
   "sources": [
-    { "id": 12, "date": "2026-09-22", "domain": "자연탐구", "text": "...", "class_id": 1, "child_id": 5 }
+    { "id": 12, "source_kind": "observation", "date": "2026-09-22", "domain": "자연탐구",
+      "context": "바깥놀이", "text": "...", "class_id": 1, "child_id": 5 }
   ],
-  "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v1" },
+  "observation_axis": "NURI_5",
+  "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v5" },
   "review_note": "", "class_note": "",
   "created_at": "...", "updated_at": "..."
 }
@@ -3532,6 +3557,10 @@ source_kind   값                받는 kind      근거
 해석   관찰에서 가능한 의미.  LLM
 지원   앞으로의 제안.  LLM
 ```
+
+**`sources[].source_kind` 는 `id` 가 가리키는 곳이다** — `observation`(관찰 기록) · `document`(일일 보육일지) ·
+`routine`(일과 기록). 주간은 `document` 도 `routine` 도 될 수 있어 번호만으로는 가를 수 없다. 만들 때 요청의 `source_kind: "dailyLog"` 는 응답에서 `document` 다.
+화면의 「원본 보기」는 이 값으로 문서 · 일과 · 관찰 화면을 고른다.
 
 **`사실` 은 `sources` 의 `text` 를 `\n\n` 으로 이은 것과 **정확히 같아야 한다**.**
 한 글자라도 다르면 `VALIDATION_FAILED` 422. **문자열 비교이고 모델이 판정하지 않는다.**
@@ -3566,7 +3595,12 @@ source_kind   값                받는 kind      근거
 ```
 
 - **영역 행은 `sources[].domain` 으로 서버가 나눈다.** 모델이 배치하지 않는다. 그래서 `observation` 의 `sources` 는 `domain` 을 같이 준다.
+- **`sources[].domain` · `context` 와 문서의 `observation_axis` 는 만들 때 찍은 사본이다**(ADR-088). 종이 · 미리보기 · `stale` 이 이것만 본다.
+  `context` 의 빈 글은 「상황 없음」이다. 관찰 기록이 아닌 근거는 `domain` · `context` 가 `null` 이다.
+  **사본이 없는 옛 문서(「다시 확인」)** 는 `context` · `observation_axis` 가 `null` 이고, `domain` 은 지금 원본 영역 · 행은 원의 지금 축이다.
+- 행은 문서의 축이다 — `NURI_5` 는 아래 5줄, `DAILY_PLAY_2` 는 일상생활 · 놀이활동 2줄(꼬리 이름 「총평」).
 - **순서는 위 5영역 고정이다.** 한 영역 안에서는 `date` 오름차순, 기록마다 `(9/22)` 를 앞에 붙인다.
+  상황이 있으면 그 뒤에 괄호로 붙인다 — `(9/22) (바깥놀이) 개미를 …`.
 - **기록이 없는 영역은 빈 칸으로 둔다. 막지 않는다.** 화면이 「이 영역 관찰이 없어요」로 알린다. [판단]
 - **양식의 성별 · 생년월일 칸은 비운다.** 우리는 받지 않는다(CLAUDE.md 개인정보).
 - 실물 양식에는 「기본생활습관」 행이 하나 더 있다. §10 `domain` 에 없어서 비워 둔다 — 다음 개정.
@@ -3623,7 +3657,6 @@ documents.class_note   TEXT  기본 ""     3층(sections) 밖이다
 ```
 dailyLog      일과 기록 id           §10-1            ← 관찰 기록이 아니다
 observation   관찰 기록 id           §10
-assessment    관찰 기록 id           §10
 weeklyLog     확정된 일일 보육일지 id   §11   source_kind: "dailyLog" (기본)
 weeklyLog     일과 기록 id           §10-1   source_kind: "routine"
 ```
@@ -3650,10 +3683,12 @@ weeklyLog     일과 기록 id           §10-1   source_kind: "routine"
 ### 거절 규칙
 
 ```
-observation · assessment 인데 child_id 가 없다     아동별 문서다
+kind 가 assessment 다                            만들지 않는다 — fields ["kind"] (ADR-091)
+observation 인데 child_id 가 없다                  아동별 문서다
 dailyLog 인데 start != end                        하루짜리다
 source_ids 가 비었다                              교사 기록 없이 만들지 않는다
 source_ids 에 중복이 있다
+source_ids 가 60개를 넘는다                        입력 상한. 모델을 부르기 전에 막는다
 source 의 class_id 가 문서와 다르다
 child_id 가 있는데 source 의 child_id 가 다르다
 source 의 date 가 start ~ end 밖이다
@@ -3694,7 +3729,7 @@ true    근거가 수정·삭제됐다.  교사가 다시 봐야 한다
       ↓
 그 일일 보육일지를 근거로 쓴 주간 보육일지  stale
       ↓
-그 기록을 근거로 쓴 영유아 평가          stale
+그 기록을 근거로 쓴 영유아 평가          stale   (2026-11-10 전에 만든 것만 — ADR-091)
 ```
 
 **멈출 때까지 따라간다.** 화면의 `invalidateDependents()` 가 이미 그렇게 돈다.
@@ -3702,11 +3737,14 @@ true    근거가 수정·삭제됐다.  교사가 다시 봐야 한다
 **판정 기준 — 하나라도 다르면 `stale`**
 
 ```
-근거가 관찰 기록일 때    fact · date · class_id · child_id
+근거가 관찰 기록일 때    fact · date · domain · context · class_id · child_id
 근거가 일과 기록일 때    활동실행 · 시간 · 일과 · date · class_id
 근거가 문서일 때         사실 항목 · class_id · child_id · start · status
 근거가 사라졌을 때       "원본 없음"
 ```
+
+**관찰 기록의 영역 · 상황만 고쳐도 `stale` 이다**(ADR-088). 영역은 종이의 행과 배움 칸의 누리과정 근거를,
+상황은 관찰 칸의 글과 AI 입력을 바꾼다. 사본이 없는 옛 문서는 상황을 보지 않고, 원본 영역이 실제로 바뀔 때만 `stale` 이다.
 
 **`stale` 이면 확정할 수 없다.** `POST .../confirm` 이 `GATE_BLOCKED` 409 를 낸다.
 **문서를 지우지 않는다** — 교사가 보고 판단한다.
@@ -3725,6 +3763,8 @@ true    근거가 수정·삭제됐다.  교사가 다시 봐야 한다
 - **초안에서만 된다.** 확정본은 `ALREADY_CONFIRMED` 409 — 먼저 `unconfirm` 한다. 확정본의 사실이 조용히 바뀌면 교사가 확인한 것과 저장된 것이 달라진다
 - **원본이 하나라도 사라졌으면 `GATE_BLOCKED` 409.** `fields` 에 `sources.{id}`. 빼고 이으면 교사가 고른 근거가 조용히 줄어든다 — 지우고 새로 만든다
 - **근거 일일 보육일지가 초안이면 `GATE_BLOCKED` 409.** 만들 때와 같은 규칙이다
+- **관찰 기록의 영역 · 상황 사본도 새로 뜬다.** 원본 영역이 이 문서의 축(`observation_axis`)에 없으면 `GATE_BLOCKED` 409,
+  `fields` 에 `sources.{id}` — 그 양식에 넣을 줄이 없다. 문서는 `stale` 그대로다. 축 사본이 없는 옛 문서는 원의 지금 축으로 보고 그 축을 찍는다(ADR-088)
 
 ### 상태와 출처
 
@@ -3847,7 +3887,7 @@ ALREADY_REGISTERED       같은 아동 · 종류 · 겹치는 기간의 증빙�
 ```
 1  스키마      위 거절 규칙                      서버.  모델 없음
 2  추출 대조   사실 == sources 원문              서버.  문자열 비교.  모델 없음
-               해석의 숫자 ⊂ 사실의 숫자
+               해석의 숫자 ⊂ 사실 · 근거 날짜 · 상황의 숫자 (반 연령 · 영역 수 표현은 뺌)
 3  LLM Judge   미관찰 내용 · 근거 없는 해석 검사    LLM
 4  교사 확인    UI 체크 하나 → API checks 세 필드    사람
 ```
@@ -3866,6 +3906,8 @@ ALREADY_REGISTERED       같은 아동 · 종류 · 겹치는 기간의 증빙�
 ```
 
 - `issues` 가 비고 `judge` 가 `jev` 면 통과다. 각 항목이 **이유와 수정 지시**를 담는다.
+- **jev 가 받는 근거는 초안 모델이 받은 사본 칸과 같다** — 사실 · 날짜 · 영역 · 상황(ADR-088). 상황에 적은 장소 ·
+  함께한 사람을 해석이 쓰면 그것도 기록이다. 가명 처리도 사실 · 상황 둘 다 하고, 이름 표는 사실 · 상황 · 해석 · 지원 글로 만든다.
 - `judge: "mock"` 은 판정하지 않았다는 뜻이다(`LLM_MODE=mock`). 화면은 통과로 보이면 안 된다.
 - **판정 못 하면 빈 목록이 아니라 오류다.** 1·2단에 걸리면 422 `VALIDATION_FAILED`(jev 를 부르지 않는다),
   가명 처리 실패 422 `VALUE_INVALID`, 주소 없음 503 `DEPENDENCY_UNAVAILABLE`, 한도 503 `LLM_BUDGET_EXCEEDED`,
@@ -3949,6 +3991,13 @@ GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?f
 고칠 수 없는 문서를 지울 수 있으면 확정이 의미가 없다.
 
 **해석에 사실에 없는 숫자가 있으면 `sections.해석` 으로 거절한다.**
+상황에 든 숫자는 사실과 같이 친다. 근거 날짜(연 · 월 · 일)는 **날짜 표현 안의 숫자에만** 쓴다 —
+「11월 4일」 「11/4」의 4 는 교사가 준 날짜라 통과지만, 같은 문서의 「블록 4개」는 사실에 4 가 없으면 거절이다(ADR-088).
+기간은 날짜가 아니다 — 「4일 동안」 「4일간」 「4일째」 「4일 만에」의 4 는 근거 날짜가 4일이어도 사실과 견준다.
+소수는 한 숫자다 — 사실에 「1.5일」이 있으면 해석의 「1.5일」은 통과다.
+문서 바깥에서 오는 값 둘도 **그 표현 안의 그 값만** 통과다 — 「만 N세」 「N세반」 「N세」의 N 이 반 연령(`age_min`~`age_max`)일 때,
+「5개 영역」 「5영역」(누리과정 영역 수)일 때. 「만 3세」를 만 4세 반 문서에 쓰거나 「3개 영역」처럼 다른 수를 쓰면 그대로 대조한다(#85).
+「3세트」는 나이가 아니라 개수다.
 지원은 앞으로의 계획이라 새 숫자가 나와도 된다.
 
 **`PUT` 이 `사실` 을 바꾸면 거절한다.** 원본과 일치해야 한다는 규칙이 그대로 적용된다.
@@ -3967,7 +4016,7 @@ GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?f
 | loading | 생성 중 — 수 초 걸린다. 진행 표시 필수 |
 | empty | "아직 만든 문서가 없어요" |
 | success | 편집 화면으로 이동 |
-| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `ALREADY_EXISTS` 409 (같은 날 일일 보육일지) · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 |
+| error | `VALIDATION_FAILED` 422 · `GATE_BLOCKED` 409 · `ALREADY_CONFIRMED` 409 · `ALREADY_EXISTS` 409 (같은 날 일일 보육일지) · `STALE_WRITE` 409 (생성 중 근거가 바뀌어 최신 기록으로 한 번 더 만들었는데 또 바뀜 — 잠시 뒤 다시 만들기) · `GENERATION_FAILED` 500 · `LLM_BUDGET_EXCEEDED` 503 |
 
 ### 겹치는 문서를 찾아준다 — `/compare` 화면
 
@@ -4019,16 +4068,22 @@ assessment    observation · dailyLog
 **미리보기 그림(`Preview/PrvImage.png`)은 다시 만들지 않는다.** 그래서 양식 파일은 빈 양식이어야 한다.
 `.hwp` 에도 이 그림이 그대로 들어간다.
 
-**관찰일지의 영역, 일일 보육일지의 시간 · 일과 · 활동계획은 지금의 원본 기록에서 읽는다.**
-영역 · 활동계획만 고치면 `stale` 이 아니므로 고친 값이 나간다. **`stale` 인 문서는 내보내지 않는다** —
+**관찰일지의 영역 · 상황 · 영역 축은 문서의 사본에서 읽는다**(ADR-088). 영역 · 상황을 고치면 `stale` 이 되어 내보내지 않는다.
+원이 축을 바꿔도 만들 때의 양식으로 나간다. 사본이 없는 옛 문서만 지금 원본 영역 · 원의 지금 축을 읽는다 —
+그 축에 없는 영역이면 `VALIDATION_FAILED` 422(`fields` 에 `sources.{id}`), 원본이 사라졌으면 `GATE_BLOCKED` 409 다.
+**일일 보육일지의 시간 · 일과 · 활동계획은 지금의 원본 기록에서 읽는다.**
+활동계획만 고치면 `stale` 이 아니므로 고친 값이 나간다. **`stale` 인 문서는 내보내지 않는다** —
 근거가 바뀐 채로 내보내면 교사가 확정한 것과 다른 종이가 나간다. 근거 기록이 사라졌으면 그 사실을 빼고 내보내지 않는다.
 
 **일일 보육일지의 행 순서는 일과 기록 화면과 같다**(§10-1 — `position` · 시작 시간 · id). 교사가 고른 `source_ids` 순서가 아니다.
 
+**일일 보육일지는 그 문서의 반 · 그날 일과 기록만 읽는다.** 만들 때와 같은 조건이다. 근거가 다른 반 · 다른 날의 일과를 가리키면 사라진 근거로 본다.
+**관찰 기록을 근거로 만든 예전 일일 보육일지는 내보내지 않는다**(ADR-024 「결과」). 관찰 번호를 일과 번호로 읽으면 번호가 우연히 같은 다른 반 · 다른 원의 일과가 종이에 찍힌다. 일과 기록으로 새로 만들어야 한다.
+
 | code | status | 언제 |
 |---|---|---|
-| `GATE_BLOCKED` | 409 | 확정 전이다 · `stale` 이다(`fields: ["stale"]`) · 근거 기록이 사라졌다(`fields` 에 `sources.{id}`) |
-| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` · `weeklyLog` 가 아니다.  `fields: ["kind"]` · `format` 이 `hwpx` · `hwp` · `pdf` 가 아니다.  `fields: ["format"]` |
+| `GATE_BLOCKED` | 409 | 확정 전이다 · `stale` 이다(`fields: ["stale"]`) · 근거 기록이 사라졌다(`fields` 에 `sources.{id}`) · 일과가 아닌 근거로 만든 예전 `dailyLog` 다(`fields: ["source_kind"]`) |
+| `VALIDATION_FAILED` | 422 | `observation` · `dailyLog` · `weeklyLog` 가 아니다.  `fields: ["kind"]` · `format` 이 `hwpx` · `hwp` · `pdf` 가 아니다.  `fields: ["format"]` · 사본이 없는 옛 관찰일지에 원의 지금 축에 없는 영역이 있다.  `fields` 에 `sources.{id}` |
 | `NOT_FOUND` | 404 | 없거나 남의 원 문서다 |
 | `DEPENDENCY_UNAVAILABLE` | 503 | `.hwp` · PDF 로 바꾸지 못했다. hwpx 로는 받을 수 있다 |
 
@@ -4044,7 +4099,9 @@ assessment    observation · dailyLog
 ### `document_sources` 에 원문을 복사해 둔다
 
 `observations` 를 참조만 하면 원본이 수정될 때 문서의 `사실` 이 조용히 바뀐다.
-**무효 판정을 하려면 만들 당시의 원문이 남아 있어야 한다.**
+**무효 판정을 하려면 만들 당시의 원문이 남아 있어야 한다.** 관찰 기록 근거는 원문과 함께 날짜 · 영역 · 상황을,
+문서는 영역 축을 사본으로 둔다(ADR-088). AI 초안은 사본만 받는다 — 사실마다 `{fact, date, domain, context}`,
+`fact` · `context` 둘 다 가명으로 바꾼 뒤다(`rule_version` `v5`).
 필요한 테이블은 맨 아래 「채워야 할 곳 — BE」 에 적었다.
 
 ---
@@ -4243,10 +4300,9 @@ NONE           없음        뒷받침 문서가 0건
 영유아 평가는 표준보육과정 기반으로 관찰 기록 · 놀이 결과물을 누적해 특성과 변화를 서술로 종합(총평)한다(p.120 · #342).
 공식 문서도 「영유아 발달 평가 기록」이라는 말을 쓴다. 건강검진 발달선별검사(K-DST)와는 무관하다.
 
-**4-2 와 ADR-007 의 문서 동일 여부는 PM 확인 대기다.** **PRD 47행 · ADR-007 이 「발달평가」를 스펙아웃했다.**
-그것이 §11 의 `assessment` 와 같은 것인지 아직 확인하지 않았다.
-뺀 이유는 「반기 문서라 파일럿 4주에 작성 시점이 오지 않는다」였고 영유아 평가도 연 2회라 같은 문서일 가능성이 커졌다.
-**같다면 4-2 는 IMPORT 로만 셀 수 있다. 계약 모양은 바뀌지 않는다.**
+**4-2 의 영유아 평가는 ADR-007 이 스펙아웃한 「발달평가」와 같은 문서다**(2026-11-10 PM 확인 · ADR-091).
+쌤플은 만들지 않는다. **4-2 는 「증빙 등록」(§11, IMPORT)으로 올린 평가로 센다. 계약 모양은 바뀌지 않는다.**
+(전에는 「PM 확인 대기 — 같다면 IMPORT 로만 센다」로 적었다.)
 
 **문서가 아직 거의 없어서 AUTO 결과가 대부분 `NONE` 이다. 정상이다** — 화면이 그 상태를 제대로 그리는지가 중요하다.
 
@@ -4396,7 +4452,7 @@ item    operation-plan · annual-plan · interaction-record · duty-training · 
 ```
 □  지표 파일 v2 — 평가요소 19개 나누기 · 1 2 3 4 5 정리   승석
 ■  plans 조회 함수 — 반 · 대상 달 · 확정 여부로 월간계획안을 찾는다   완료 — 승석 #156
-□  4-2 와 ADR-007 「발달평가 스펙아웃」             승석 · PM    PM 확인 대기. assessment 와 같은 것인지
+■  4-2 와 ADR-007 「발달평가 스펙아웃」             완료 — 같은 문서. 만들지 않고 올린 것만 센다(ADR-091, 11-10)
 □  새 학년도에 아동 행을 옮기나 새로 만드나 — 4-2 가 지난 학년도 평가를 찾는지가 갈린다   반 · 아동 담당 · PM
 □  달력 테이블(특일정보 API) — 생기면 4-1 의 평일에서 공휴일을 뺀다   승석
 ```

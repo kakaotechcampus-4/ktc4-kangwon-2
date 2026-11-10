@@ -6,8 +6,10 @@
 **3층을 종이에서 합친다(ADR-024).** 화면과 검사에서는 사실 · 해석 · 지원이 나뉘어 있지만
 실물 양식에는 해석 칸과 지원 칸이 따로 없다. 꼬리 칸 하나에 해석, 빈 줄, 지원 순서로 잇는다.
 
-**근거가 바뀐(`stale`) 문서는 내보내지 않는다.** 일과 기록의 시간 · 일과 이름 · 활동계획과
-관찰 기록의 영역은 원본에서 읽는다. 근거가 바뀐 채로 내보내면 교사가 확정한 것과 다른 종이가 나간다.
+**근거가 바뀐(`stale`) 문서는 내보내지 않는다.** 일과 기록의 시간 · 일과 이름 · 활동계획은
+원본에서 읽는다. 근거가 바뀐 채로 내보내면 교사가 확정한 것과 다른 종이가 나간다.
+관찰 기록의 영역 · 상황과 영역 축은 문서가 만들 때 찍은 사본에서 읽는다(ADR-088). 사본이 없는
+옛 문서만 예전처럼 원본 영역과 원의 지금 축을 읽는다.
 """
 
 import re
@@ -18,7 +20,6 @@ from fastapi import APIRouter, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.features.centers.models import Center, Class
 from app.features.documents.models import Document, DocumentSection, DocumentSource
 from app.features.documents.router import (
     DbSession,
@@ -26,8 +27,9 @@ from app.features.documents.router import (
     _observation_domains,
     _own_document,
     _sources,
+    document_axis,
 )
-from app.features.observations.models import AXES, DEFAULT_AXIS, NURI_DOMAINS
+from app.features.observations.models import AXES
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.dependency import CurrentUser
 from app.shared.hwpx import Format, download, fill_grid, fill_table
@@ -144,23 +146,22 @@ def _observation(
 ) -> bytes:
     """영역 행에 근거 관찰 기록을, 「평가」 칸에 해석 + 지원을 넣는다.
 
-    행은 **그 원이 쓰는 축**이다 (observations/models.py AXES). 5영역 원은 5줄,
-    일상생활 · 놀이활동을 쓰는 원은 2줄짜리 양식으로 나간다.
+    행은 **문서를 만들 때의 축**이다 (observations/models.py AXES · ADR-088). 5영역은 5줄,
+    일상생활 · 놀이활동은 2줄짜리 양식으로 나간다. 원이 나중에 축을 바꿔도 이 문서 종이는 그대로다.
+    관찰 칸 한 줄은 `(9/5) (바깥놀이) 사실` 이다. 상황이 비었으면 괄호를 붙이지 않는다.
     """
     domains = _observation_domains(session, sources)
     _missing([f"sources.{s.source_id}" for s in sources if s.source_id not in domains])
 
-    classroom = session.get(Class, doc.class_id)
-    center = session.get(Center, classroom.center_id) if classroom else None
-    axis = center.observation_axis if center else DEFAULT_AXIS
-    names = AXES.get(axis, NURI_DOMAINS)
+    axis = document_axis(session, doc)
+    names = AXES[axis]
 
     # 영역 안에서는 날짜순이다. 같은 날이면 교사가 고른 순서를 지킨다(sorted 는 안정 정렬).
     by_domain: dict[str, list[str]] = {domain: [] for domain in names}
     for source in sorted(sources, key=lambda s: s.date):
         domain = domains[source.source_id]
-        # 원이 축을 바꾸기 전에 쓴 기록이다. 지금 양식에 그 줄이 없으니 내보낼 수 없다 —
-        # 조용히 버리면 교사가 고른 근거가 종이에서 사라진다.
+        # 축 사본이 없는 옛 문서에서, 원이 축을 바꾸기 전에 쓴 기록이다. 지금 양식에 그 줄이
+        # 없으니 내보낼 수 없다 — 조용히 버리면 교사가 고른 근거가 종이에서 사라진다.
         if domain not in by_domain:
             raise _error(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -168,7 +169,10 @@ def _observation(
                 f"「{domain}」은 지금 원이 쓰는 관찰 영역이 아니라 양식에 넣을 줄이 없습니다.",
                 [f"sources.{source.source_id}"],
             )
-        by_domain[domain].append(f"({source.date.month}/{source.date.day}) {source.text}")
+        situation = f"({source.context}) " if source.context else ""
+        by_domain[domain].append(
+            f"({source.date.month}/{source.date.day}) {situation}{source.text}"
+        )
     rows = [[domain, "\n".join(lines)] for domain, lines in by_domain.items()]
     rows.append([AXIS_TAIL[axis], evaluation])
     return fill_table(
@@ -183,11 +187,27 @@ def _daily_log(
     session: Session, doc: Document, sources: list[DocumentSource], evaluation: str
 ) -> bytes:
     """일과 기록마다 한 줄씩, 꼬리 칸에 해석 + 지원을 넣는다. 줄 수는 그날 일과 수다."""
+    # 옛 일일 보육일지는 관찰 기록을 근거로 만들었다(ADR-024). 그 번호는 일과 번호가 아니다 —
+    # 일과 테이블에서 찾으면 번호가 우연히 같은 다른 반 · 다른 원의 일과가 종이에 찍힌다.
+    # 일과 줄을 채울 원본이 없으니 내보내지 않는다. 재확정 · refresh 도 같은 문서를 막는다.
+    if any(s.source_kind != "routine" for s in sources):
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "GATE_BLOCKED",
+            "관찰 기록으로 만든 예전 일일 보육일지는 한글 파일로 내보낼 수 없습니다. "
+            "일과 기록으로 새로 만들어주세요.",
+            ["source_kind"],
+        )
     ids = [s.source_id for s in sources]
     # 일과 기록 화면과 같은 순서다 — 종이의 행 순서다(routines/router.py).
+    # 이 문서의 반 · 그날 일과만 읽는다. 만들 때와 같은 조건이다(router.py 일일 근거 검사).
     routines = session.scalars(
         select(RoutineRecord)
-        .where(RoutineRecord.id.in_(ids))
+        .where(
+            RoutineRecord.id.in_(ids),
+            RoutineRecord.class_id == doc.class_id,
+            RoutineRecord.date == doc.start_date,
+        )
         .order_by(
             RoutineRecord.position,
             RoutineRecord.start_time.asc().nulls_last(),

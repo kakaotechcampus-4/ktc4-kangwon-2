@@ -11,6 +11,7 @@ import { Message, ws } from "./WorkspaceUI";
 import { journalMood } from "./DailyJournalCard";
 import DocumentEditor from "./DocumentEditor";
 import { useServerDocument } from "./use-server-document";
+import { useJournalEditor } from "./use-journal-editor";
 
 type From = "dailyLog" | "routine";
 
@@ -48,15 +49,21 @@ export function useWeeklyJournal({
   /** 그 주 일과 기록. 주간 기록 화면이 이미 받아 둔 것을 그대로 쓴다. */
   routines: ApiRoutine[];
 }) {
-  const [journal, setJournal] = useState<DocumentSummary | null | undefined>(undefined);
+  const scope = `${classId}|${weekStart}|${weekEnd}`;
   // 그 주 일일 보육일지 전부. 근거로는 확정본만 쓰지만, 초안도 보여 줘야 무엇을 확정할지 안다.
-  const [weekDailies, setWeekDailies] = useState<DocumentSummary[]>([]);
+  const [loaded, setLoaded] = useState<{
+    scope: string;
+    doc: DocumentSummary | null;
+    dailies: DocumentSummary[];
+  }>();
+  const journal = loaded?.scope === scope ? loaded.doc : undefined;
+  const weekDailies = loaded?.scope === scope ? loaded.dailies : [];
   const [from, setFrom] = useState<From>("dailyLog");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
   // 펴 놓은 일지. 만들면 바로 펴고, 교사가 접으면 주간 띠가 다시 올라온다.
-  const [openId, setOpenId] = useState("");
+  const editor = useJournalEditor(scope, busy);
 
   const serverClass = classServerId(classId);
 
@@ -69,23 +76,24 @@ export function useWeeklyJournal({
     ])
       .then(([weeklies, dailies]) => {
         if (!live) return;
-        setJournal(weeklies.find((d) => inWeek(d, weekStart, weekEnd)) ?? null);
-        setWeekDailies(
-          dailies
+        setLoaded({
+          scope,
+          doc: weeklies.find((d) => inWeek(d, weekStart, weekEnd)) ?? null,
+          dailies: dailies
             .filter((d) => inWeek(d, weekStart, weekEnd))
             .sort((a, b) => a.start.localeCompare(b.start)),
-        );
+        });
         setError("");
       })
       .catch((e) => {
         if (!live) return;
-        setJournal(null);
+        setLoaded({ scope, doc: null, dailies: [] });
         setError(e instanceof Error ? e.message : "주간 일지를 불러오지 못했습니다.");
       });
     return () => {
       live = false;
     };
-  }, [serverClass, weekStart, weekEnd, reload]);
+  }, [serverClass, weekStart, weekEnd, scope, reload]);
 
   const dailyLogs = weekDailies.filter((d) => d.status === "confirmed");
   /** 확정하지 않은 일일 일지. 근거가 되지 못하므로 「확정하러 가기」로 보낸다(멘토 12주차 리뷰). */
@@ -108,7 +116,7 @@ export function useWeeklyJournal({
         sourceIds: sources,
         sourceKind: from,
       });
-      setOpenId(made.id);
+      editor.open(made.id);
       setReload((n) => n + 1);
       setBusy(false);
     } catch (e) {
@@ -131,9 +139,7 @@ export function useWeeklyJournal({
     busy,
     error,
     make,
-    openId,
-    open: (id: string) => setOpenId(id),
-    close: () => setOpenId(""),
+    ...editor,
     retry: () => setReload((n) => n + 1),
     /** 반을 서버에서 못 찾으면 이 화면에서 할 수 있는 일이 없다. */
     off: serverClass === null || !weekStart,
@@ -282,7 +288,7 @@ export function WeeklyJournalEditor({ state }: { state: WeeklyJournal }) {
   const edit = useServerDocument(state.openId, {
     onChanged: state.retry,
     // 지운 문서를 편집기에 남겨 두면 저장할 수 없는 칸만 보인다.
-    onRemoved: state.close,
+    onRemoved: state.dismiss,
   });
   if (state.off || !state.openId) return null;
 
@@ -295,6 +301,7 @@ export function WeeklyJournalEditor({ state }: { state: WeeklyJournal }) {
           key={edit.doc.id}
           initial={edit.doc}
           server={edit.server}
+          onEditStateChange={state.onEditStateChange}
           /* 서버 문서는 편집기가 서버에 바로 쓴다. 브라우저 저장소로 가는 길은 쓰지 않는다. */
           onSave={() => true}
         />

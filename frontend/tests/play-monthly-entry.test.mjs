@@ -49,6 +49,7 @@ const {
   "@/lib/api/monthly": {},
   "@/lib/api/playMonthly": {},
   "@/lib/api/plans": {},
+  "@/lib/api/trends": {},
   "@/lib/api/onboarding": {},
   "@/lib/api/templateProfiles": {},
   "@/lib/monthly/section-labels": monthlyLabels,

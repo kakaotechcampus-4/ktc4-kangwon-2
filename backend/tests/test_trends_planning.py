@@ -6,7 +6,12 @@ from ssuksak.planning.application.ports import OptionalContextStatus
 from ssuksak.planning.domain.trend import TrendKind
 
 from app.features.trends.item import RawItem, save
-from app.features.trends.planning import TrendContextProvider, book_words_for, theme_words
+from app.features.trends.planning import (
+    TrendContextProvider,
+    book_items,
+    book_words_for,
+    theme_words,
+)
 
 TODAY = date(2026, 11, 8)  # W45 — W44 파일이 4주 안이다
 
@@ -62,6 +67,29 @@ def test_disabled_missing_or_broken_files_fall_back_without_raising(tmp_path):
     assert broken.fetch("trend").status is OptionalContextStatus.ERROR
 
 
+def test_songs_only_from_song_channels(tmp_path):
+    """ADR-072 결정 12: 노래는 승인 파일에서 채널 종류가 동요인 채널 것만 노래로 넘긴다.
+
+    제목 낱말로 정하지 않는다.
+    """
+    result = provider(
+        tmp_path,
+        [
+            raw("a", "가을 동요 부르기"),  # 꼬미쌤TV — 종류 없음
+            raw("b", "신나는 노래 놀이", origin="EBS 키즈"),
+            raw("c", "동요 메들리", origin="꿈꾸는미술 DreamingArts"),  # 종류 만들기
+            raw("d", "상어 가족 동요", origin="핑크퐁"),  # 종류 동요
+            raw("e", "숫자 송", origin="핑크퐁"),  # 제목 낱말 없음 → 채널 종류
+            raw("f", "가을 율동 체조"),  # 율동은 신체다 — 노래가 아니다
+        ],
+    ).fetch("trend")
+    assert {(i.trend_id, i.kind) for i in result.value} == {
+        ("youtube:d", TrendKind.SONG),
+        ("youtube:e", TrendKind.SONG),
+        ("youtube:f", TrendKind.MOVEMENT),
+    }
+
+
 def book(isbn: str, title: str, description: str = "가짜 소개") -> RawItem:
     return RawItem("data4library", isbn, title, description, "", "2001-01-01", "도서관 정보나루")
 
@@ -101,6 +129,11 @@ def test_books_matching_a_week_theme_word_come_first_in_the_story_queue(tmp_path
     assert first.summary.startswith("첫 줄 소개") and len(first.summary) == 200
     # 조사는 떼고 일반어 · 한 글자는 뺀다
     assert theme_words("우리 동네와 가을과 열매를 · 산 놀이") == ("동네", "가을", "열매")
+    # 앞 낱말(주 주제)에 걸린 책부터 6권 — 뒤 낱말(넓은 묶음)에 걸린 책은 자리가 남을 때만
+    many = [book(f"97800000001{n:02d}", f"가짜 지구촌 그림책 {n}") for n in range(5)]
+    many += [book(f"97800000002{n:02d}", f"가짜 낙엽 그림책 {n}") for n in range(3)]
+    picked = book_items(many, ("낙엽", "지구"), TODAY)
+    assert [i.trend_id[-3:] for i in picked] == ["200", "201", "202", "100", "101", "102"]
 
 
 def test_books_need_words_and_never_break_generation(tmp_path):
