@@ -72,7 +72,7 @@ DNS · 인증서 · secret 에 흔들린다(2026-10-11 에 서버는 멀쩡한�
 판정       up -d · nginx reload 뒤, image prune 전에 서버 안 nginx 에 묻는다
            http://127.0.0.1/health/ready (backend · DB)  와  http://127.0.0.1/ (화면)  둘 다 200
            2초마다 30번 (빠른 실패는 약 60초)
-되돌리기   up -d 실패 · nginx reload 와 restart 둘 다 실패 · 서버 안 확인 실패 → 기록된 커밋의 scripts/deploy.sh 를 git show 로 꺼내
+되돌리기   up -d 실패 · nginx 상태 조회 실패 · 떠 있는 nginx 의 reload 가 끝내 실패 · 떠 있지 않던 nginx 의 restart 실패 · 서버 안 확인 실패 → 기록된 커밋의 scripts/deploy.sh 를 git show 로 꺼내
            DEPLOY_REF=<그 SHA> AUTO_ROLLBACK=0 으로 자식으로 돌린다.  F 의 deploy.sh 가 망가졌어도 되돌릴 수 있다.
            L 의 스크립트가 서버 잠금을 직접 잡는 것이면(이 기능 이후 스크립트) 돌리기 전에 잠금을 풀고 자식이 다시 잡는다.
            잠금을 모르는 옛 스크립트면 부모가 잠금을 쥔 채 돌린다.  자식의 stderr 는 stdout 으로 합쳐 흐른다 — stderr 에는 부모의 결과 줄만 남는다
@@ -284,7 +284,8 @@ nginx -t            build · 교체 전에 nginx 설정을 검사한다.  깨졌
 build               이미지를 먼저 만든다
 alembic upgrade     마이그레이션이 앱보다 먼저.  반대면 새 코드가 없는 컬럼을 읽는다.  한 칸 롤백이면 건너뛴다
 up -d               그다음에 교체
-nginx reload        nginx 는 다시 만들지 않으면 새 설정을 안 읽는다.  reload 는 접속을 안 끊는다
+nginx reload        nginx 는 다시 만들지 않으면 새 설정을 안 읽는다.  배포 때 reload 로 읽힌다.  접속은 안 끊기고, 떠 있는 nginx 는 다시 시작하지 않는다
+                    이 스크립트에서 그렇다.  직전 성공 커밋의 옛 deploy.sh 로 되돌릴 때는 그 스크립트가 restart 할 수 있다
 서버 안 확인         127.0.0.1 로 /health/ready 와 / 를 물어 둘 다 200 이어야 넘어간다.  안 되면 직전 성공 커밋으로 되돌린다 (ADR-078)
 기록                 서버 안 확인을 통과한 커밋을 「마지막 성공」으로 적는다
 image prune         t3.medium 이 50GB 고정이라 옛 이미지가 쌓이면 디스크가 찬다.  살아난 판에서만 지운다.  실패해도 결과는 안 바뀐다

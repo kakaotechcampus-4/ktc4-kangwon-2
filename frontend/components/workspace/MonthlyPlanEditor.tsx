@@ -509,9 +509,6 @@ export default function MonthlyPlanEditor({
               />
             </div>
           ))}
-          {candidate && (
-            <p className="m-0 text-[13px] text-[#5c5243]">이 문장을 둔 다른 주도 같이 바뀌어요.</p>
-          )}
         </>
       )}
       {tableCell && (
