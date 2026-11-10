@@ -614,7 +614,7 @@ test("후속 #6~11 — 실제 근거 비교·편집·단일 확인·원자적 �
     end: date,
     source_ids: routines.map((r) => r.id),
   });
-  expect(doc.generation.rule_version).toBe("v4-mock");
+  expect(doc.generation.rule_version).toBe("v6-mock");
   expect(doc.sections.every((s: { body: string }) => !s.body.startsWith("[mock]"))).toBe(true);
   const noteText = "교사가 이전에 작성한 검토 메모";
   await api(page, `/api/documents/${doc.id}`, "PUT", {
@@ -1006,7 +1006,7 @@ test("후속 #15 — 확정 취소된 초안에서 삭제된 근거를 처리하
   expect(applied.sections[0].body).not.toContain("없어질 일과 시간에 있었던 일");
 
   // 7) 교사가 읽고 확정한다.
-  for (const check of await page.getByRole("checkbox").all()) await check.check();
+  await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
   await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
   // 8) 새로고침해도 9) 문서 id · 근거 · 확정 상태가 그대로다.
