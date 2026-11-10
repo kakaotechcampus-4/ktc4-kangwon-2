@@ -43,7 +43,7 @@ def test_load_catalog_preserves_policy_and_order(documents):
     assert sum(item.kind == "SELF_CHECK" for item in loaded.indicators) == 7
     assert sum(item.kind == "EXCLUDED" for item in loaded.indicators) == 6
     assert loaded.get("4-2").rule["min_per_child"] == 2
-    assert loaded.get("4-1").rule["plan"]["min_per_class"] == 1
+    assert loaded.get("4-1").rule["plan"]["min_per_month"] == 1
     assert sum(len(item.elements) for item in loaded.indicators) == 19
     assert all(item.rule is None for item in loaded.indicators if item.kind != "AUTO")
 
@@ -53,9 +53,9 @@ def test_catalog_is_immutable_and_detached(documents):
     with pytest.raises(FrozenInstanceError):
         loaded.get("4-1").kind = "EXCLUDED"
     with pytest.raises(TypeError):
-        loaded.get("4-1").rule["plan"]["min_per_class"] = 9
-    documents[1]["indicators"]["4-1"]["plan"]["min_per_class"] = 9
-    assert loaded.get("4-1").rule["plan"]["min_per_class"] == 1
+        loaded.get("4-1").rule["plan"]["min_per_month"] = 9
+    documents[1]["indicators"]["4-1"]["plan"]["min_per_month"] = 9
+    assert loaded.get("4-1").rule["plan"]["min_per_month"] == 1
 
 
 @pytest.mark.parametrize("unknown", [False, True])
@@ -85,7 +85,7 @@ _KIND, _MINIMUM, _UNIT = "알 수 없는 kind", "AUTO 조절값이", "AUTO unit 
         (("4-2", "min_per_child"), True, _MINIMUM),
         (("4-2", "min_per_child"), 0, _MINIMUM),
         (("4-2", "document_kind"), " ", _MINIMUM),
-        (("4-1", "plan", "min_per_class"), True, _MINIMUM),
+        (("4-1", "plan", "min_per_month"), True, _MINIMUM),
         (("4-1", "plan", "plan_kind"), 1, _MINIMUM),
         (("4-1", "plan", "plan_kind"), "", _MINIMUM),
         (("4-1", "daily_log", "document_kind"), 1, _MINIMUM),
