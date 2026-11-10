@@ -6,8 +6,8 @@ import { getMe } from "./auth";
 import { createCenter, getCenter } from "./centers";
 import { createClass, getClasses, isMyClass, updateClass } from "./classes";
 import { listAnnualPlans } from "./plans";
-import type { Center, ClassUpdate } from "./types";
-import { createChild, getChildren, deleteChild } from "./children";
+import type { ApiChild, Center, ClassUpdate } from "./types";
+import { createChild, getChildren, deleteChild, updateChild } from "./children";
 import { finishedSettings } from "../onboarding/flow";
 import { normalizeProvince } from "../onboarding/regions";
 import { loadClassSettings, saveClassSettings } from "../onboarding/settings";
@@ -460,11 +460,10 @@ export async function loadServerChildren(c: ClassroomEntry): Promise<ClassroomEn
   }
   if (readAccountStorageKey(LINKS_KEY) !== account) throw new Error("계정이 변경되었습니다.");
   const children = items.map((child) => ({
+    ...childEntry(child),
     id:
       Object.keys(links.children).find((k) => links.children[k] === child.id) ||
       CHILD_PREFIX + child.id,
-    name: child.name,
-    code: child.code,
   }));
   for (let i = 0; i < items.length; i++) links.children[children[i].id] = items[i].id;
   saveLinks(links);
@@ -480,6 +479,13 @@ export async function hydrateClassChildren(settings: ClassSettings): Promise<Cla
   for (const classroom of settings.classes) classes.push(await loadServerChildren(classroom));
   return classes;
 }
+const childEntry = (child: ApiChild): ChildEntry => ({
+  id: CHILD_PREFIX + child.id,
+  name: child.name,
+  code: child.code,
+  callName: child.call_name,
+  needsCallName: child.needs_call_name,
+});
 export async function addServerChild(c: ClassroomEntry, name: string): Promise<ChildEntry> {
   const links = readLinks(),
     id = links.classes[c.id]?.id;
@@ -488,7 +494,14 @@ export async function addServerChild(c: ClassroomEntry, name: string): Promise<C
     localId = CHILD_PREFIX + child.id;
   links.children[localId] = child.id;
   saveLinks(links);
-  return { id: localId, name: child.name, code: child.code };
+  return { ...childEntry(child), id: localId };
+}
+/** 외자 아이의 부르는 이름을 적는다. 빈 값이면 지운다. */
+export async function saveServerCallName(child: ChildEntry, callName: string): Promise<ChildEntry> {
+  const serverId = readLinks().children[child.id];
+  if (!serverId) throw new Error("아이 정보를 먼저 저장해주세요.");
+  const saved = await updateChild(serverId, { call_name: callName.trim() || null });
+  return { ...child, callName: saved.call_name, needsCallName: saved.needs_call_name };
 }
 export async function removeServerChild(id: string) {
   const links = readLinks(),

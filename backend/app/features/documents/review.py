@@ -28,7 +28,7 @@ from app.features.documents.stale import document_changed
 from app.features.observations.models import Observation
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.ownership import require_own_class
-from app.shared.gates.sections import check_sections, join_facts
+from app.shared.gates.sections import check_sections, input_extras, join_facts
 
 
 def fail(code: str, message: str, fields: list[str], status: int = 409):
@@ -186,6 +186,12 @@ def resolution_trail(copies, plan):
         for copy in copies
         if copy.source_id in plan
     ]
+
+
+def class_ages(session: Session, class_id: int) -> range:
+    """반 연령. 해석의 「만 N세」를 숫자 대조에서 빼는 데만 쓴다 (`input_extras`, #85)."""
+    klass = session.get(Class, class_id)
+    return range(klass.age_min, klass.age_max + 1) if klass else range(0)
 
 
 def locked_review(session: Session, user: User, document_id: int, *, read_only: bool = False):
@@ -392,7 +398,13 @@ def reconfirm(session: Session, user: User, document_id: int, body: DocumentReco
             survivors.append((copy, copy.source_id, row.after))
     texts = [text for _, _, text in survivors]
     ids = [new_id for _, new_id, _ in survivors]
-    fields = check_sections(body.sections, texts, set(ids), stage="reconfirm")
+    fields = check_sections(
+        body.sections,
+        texts,
+        set(ids),
+        stage="reconfirm",
+        extras=input_extras((copy for copy, _, _ in survivors), class_ages(session, doc.class_id)),
+    )
     if fields:
         fail("VALIDATION_FAILED", "입력값을 확인해주세요.", fields, 422)
 

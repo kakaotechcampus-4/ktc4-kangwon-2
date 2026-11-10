@@ -12,6 +12,11 @@ export interface TeacherDoc {
   title: string;
   /** 공백을 뺀 소문자. 이 중 하나가 파일 이름에 있으면 그 서류로 본다. */
   keywords: string[];
+  /**
+   * 화면에 보일 이름 규칙 — 「파일 이름에 날짜와 ○○ 넣어 주세요」의 ○○.
+   * keywords 는 부분 일치 · 소문자라 그대로 보이면 「계획안」 하나가 넷을 덮고 「iep」처럼 코드 값이 보였다(11-09 문구 토론).
+   */
+  naming: string;
   /** 이 단어가 있으면 키워드가 맞아도 빼낸다. 「연간 보육계획안」은 원장 몫, 「개별화교육계획안」은 다른 서류다. */
   exclude?: string[];
   rule: Rule;
@@ -28,43 +33,50 @@ export const TEACHER_DOCS: TeacherDoc[] = [
     id: "journal",
     title: "보육일지",
     keywords: ["보육일지"],
+    naming: "「보육일지」를",
     rule: { kind: "weekdays" },
     basis: "4-1 · 지난달 1일부터 어제까지 평일마다",
-    example: "2026-10-15_보육일지.hwp · 주간이면 2026-10-13_주간보육일지.hwp",
-    caveat:
-      "공휴일 · 방학도 빈 날로 보여요. 주간 일지는 이름에 「주간」과 그 주 월요일 날짜를 넣어 주세요.",
+    // 주간 예시는 그 주 월요일. 코드(coveredDays)는 그 주 아무 날짜나 받는다.
+    example: "2026-10-15_보육일지.hwp · 주간이면 2026-10-12_주간보육일지.hwp",
+    caveat: "공휴일 · 방학도 빈 날로 보여요.",
   },
   {
     id: "plan",
     title: "보육계획안 (월간 · 주간 · 일일)",
     keywords: ["보육계획안", "월간계획안", "주간계획안", "일일계획안", "계획안"],
+    naming: "「계획안」을",
     exclude: ["연간", "개별화"],
     rule: { kind: "months" },
-    basis: "4-1 · 지난달과 이번 달에 1건 이상",
+    basis: "4-1 · 지난달부터 달마다 1건씩",
     example: "2026-10_월간계획안.hwp",
   },
   {
     id: "assessment",
     title: "영유아 평가 기록",
     keywords: ["영유아평가", "유아평가", "발달평가"],
+    naming: "「영유아평가」나 「발달평가」를",
     rule: { kind: "count", min: 1 },
     basis: "4-2 · 1년 이내 · 아이마다 연 2회",
     example: "2026-09_영유아평가_1학기.hwp",
-    caveat: "아이마다 2번 했는지는 이름으로 알 수 없어요. 건수만 세요.",
+    caveat: "아이마다 2번 했는지는 파일 이름으로 알 수 없어요. 찾은 건수만 보여 줘요.",
   },
   {
     id: "parent",
     title: "부모 개별면담 기록",
     keywords: ["부모면담", "개별면담", "학부모면담", "부모상담"],
+    naming: "「부모면담」 · 「개별면담」 · 「부모상담」 중 하나를",
     rule: { kind: "count", min: 1 },
-    basis: "5-2 · 1년 이내 · 연 2회",
+    // 아이(가정)마다 연 2회 — 진흥원 현장평가 FAQ(5-2): 「현장평가월 기준 1년 이내 2회 이상」, 기록 항목에 「대상」.
+    // 개정 전 지표 [2-4-2-②]는 「모든 영유아의 부모와 연 2회 이상」(11-09 문구 토론 D3 · 사용자 결정).
+    basis: "5-2 · 1년 이내 · 아이마다 연 2회",
     example: "2026-04_부모면담.hwp",
-    caveat: "아이마다 2번 했는지는 이름으로 알 수 없어요. 건수만 세요.",
+    caveat: "아이마다 2번 했는지는 파일 이름으로 알 수 없어요. 찾은 건수만 보여 줘요.",
   },
   {
     id: "training",
     title: "교육 이수증 · 수료증",
     keywords: ["이수증", "수료증"],
+    naming: "「이수증」이나 「수료증」을",
     rule: { kind: "count", min: 1 },
     basis: "5-3 · 1년 이내 · 연 1회 이상",
     example: "2026-05_놀이지원교육_수료증.pdf",
@@ -73,6 +85,7 @@ export const TEACHER_DOCS: TeacherDoc[] = [
     id: "iep",
     title: "개별화교육계획",
     keywords: ["개별화교육계획", "iep"],
+    naming: "「개별화교육계획」이나 「IEP」를",
     rule: { kind: "count", min: 1 },
     optional: true,
     basis: "4-1 · 장애영유아를 맡은 반만",
@@ -96,7 +109,8 @@ export const DIRECTOR_ITEMS = [
   },
   {
     id: "day-papers",
-    title: "평가 당일 서류 — 원아명단 · 실내외 배치도 · 하루일과표 · 경력 서류",
+    // 「평가 당일 서류 —」 앞머리는 아래 「현장평가 당일 제출」과 「당일」이 겹쳐 뺐다(11-09 문구 토론).
+    title: "원아명단 · 실내외 배치도 · 하루일과표 · 경력 서류",
     basis: "현장평가 당일 제출",
   },
 ];
@@ -358,10 +372,11 @@ export function sourceLines(
     const state = made.done ? "on" : made.some ? "short" : "none";
     lines.push({ source: "ssample", state, text: made.text });
   }
-  if (!folder)
-    lines.push({ source: "folder", state: "none", text: "폴더를 고르면 이름으로 찾아봐요" });
+  // 폴더를 고르기 전에는 「—」만 둔다. 안내는 폴더 쪽지에서 한 번만 한다(a91ea8d9 11-04 결정, 11-09 다시 맞춤).
+  // 「파일」을 붙여야 아이 이름으로 찾은 것으로 읽히지 않는다. 파일 수는 화면 어디서나 「개」(11-09 문구 토론).
+  if (!folder) lines.push({ source: "folder", state: "none", text: "—" });
   else if (folder.status === "found")
-    lines.push({ source: "folder", state: "on", text: `이름으로 찾음 · ${folder.files}건` });
+    lines.push({ source: "folder", state: "on", text: `파일 이름으로 찾음 · ${folder.files}개` });
   else if (folder.status === "partial")
     lines.push({
       source: "folder",

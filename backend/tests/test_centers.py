@@ -28,7 +28,7 @@ def _logged_in(teacher):
 
 
 VALID = {
-    "name": "서충주어린이집",
+    "name": "햇살어린이집",
     "director_name": "김원장",
     "region_sido": "충청북도",
     "region_sigungu": "충주시",
@@ -46,7 +46,7 @@ VALID_CLASS = {
 def test_center_create_strips_surrounding_whitespace():
     body = CenterCreate(**{k: f"  {v}  " for k, v in VALID.items()})
 
-    assert body.name == "서충주어린이집"
+    assert body.name == "햇살어린이집"
     assert body.director_name == "김원장"
     assert body.region_sido == "충청북도"
     assert body.region_sigungu == "충주시"

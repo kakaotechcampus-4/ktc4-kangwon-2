@@ -384,7 +384,7 @@ def _play_project_plan(session: Session, user: User, klass, memo: str, names, st
             stopped,
         )
     except play_project.GenerationStopped as stop:
-        # 받는 쪽이 없다. 남은 구간의 Sol 을 부르지 않고 저장하지 않는다(다시 만들어도 409 가 없다).
+        # 받는 쪽이 없다. 다음 단계의 Sol 을 부르지 않고 저장하지 않는다(다시 만들어도 409 가 없다).
         _log.info("annual play-project generation stopped before=%s", stop)
         raise HTTPException(499, detail=_STOPPED) from None
     except Exception as error:
@@ -537,10 +537,12 @@ def create_annual_plan(
                 plan, mask_memo(body.memo, names)
             )
             row.sub_themes = {
-                month: [unmask_text(text, names) for text in texts]
+                month: [unmask_text(text, names, body.memo) for text in texts]
                 for month, texts in sub_themes.items()
             }
-            notices = tuple(MemoNotice(unmask_text(n.summary, names), n.reason) for n in notices)
+            notices = tuple(
+                MemoNotice(unmask_text(n.summary, names, body.memo), n.reason) for n in notices
+            )
             plan = with_yearly_memo(plan, body.memo, applied, notices)
             # Core 가 이미 저장한 행을 고쳐 쓴다. 저장소 save 는 revision 을 올리므로 쓰지 않는다.
             row.body = to_jsonable(plan)

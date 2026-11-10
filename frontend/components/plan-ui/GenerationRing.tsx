@@ -60,6 +60,8 @@ export default function GenerationRing({
   kind,
   expect,
   done = false,
+  spin = false,
+  cancelLabel = "생성 멈추기",
   onCancel,
 }: {
   title?: string;
@@ -70,6 +72,9 @@ export default function GenerationRing({
   expect: number;
   /** 다 만들었다 — 링을 끝까지 채우고 단계를 모두 끝낸 것으로 보인다. */
   done?: boolean;
+  /** 진행률 대신 짧은 호가 휙 돌고 쉬기를 되풀이한다(globals.css `.ringSweep`) — 연간 파일 가져오기 대기. */
+  spin?: boolean;
+  cancelLabel?: string;
   onCancel?: () => void;
 }) {
   const [t, setT] = useState(0);
@@ -104,7 +109,7 @@ export default function GenerationRing({
             width="280"
             height="280"
             aria-hidden="true"
-            className="absolute inset-0 -rotate-90"
+            className={`absolute inset-0 ${spin ? "ringSweep" : "-rotate-90"}`}
           >
             <circle cx="140" cy="140" r={R} fill="none" stroke="var(--pg-cream)" strokeWidth="14" />
             <circle
@@ -116,8 +121,12 @@ export default function GenerationRing({
               strokeWidth="14"
               strokeLinecap="round"
               strokeDasharray={C}
-              strokeDashoffset={C * (1 - p)}
-              className={`transition-[stroke-dashoffset] motion-reduce:transition-none ${done ? "duration-500 ease-out" : "duration-300 ease-linear"}`}
+              strokeDashoffset={C * (1 - (spin ? 0.28 : p))}
+              className={
+                spin
+                  ? undefined
+                  : `transition-[stroke-dashoffset] motion-reduce:transition-none ${done ? "duration-500 ease-out" : "duration-300 ease-linear"}`
+              }
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
@@ -153,7 +162,7 @@ export default function GenerationRing({
             className="flex min-h-[44px] items-center gap-2 rounded-md border border-line bg-paper px-4 text-sm text-ink-soft hover:bg-cream hover:text-ink"
           >
             <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] bg-current" />
-            생성 멈추기
+            {cancelLabel}
           </button>
         )}
       </section>

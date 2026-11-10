@@ -295,6 +295,8 @@ test("legacy privacy: hydrate once, preserve links, and repeated save/load never
         class_id: 8,
         name: child.name,
         code: child.code,
+        call_name: null,
+        needs_call_name: false,
         created_at: "2026-10-01T00:00:00Z",
       })),
     });
@@ -305,7 +307,11 @@ test("legacy privacy: hydrate once, preserve links, and repeated save/load never
   const loaded = settings.loadClassSettings();
   assert.deepEqual(loaded.classes[0].children, []);
   const hydrated = await onboarding.hydrateClassChildren(loaded);
-  assert.deepEqual(hydrated[0].children, children);
+  // 서버가 주는 부르는 이름 · 외자 여부도 화면 상태로만 받는다(ADR-013).
+  assert.deepEqual(
+    hydrated[0].children,
+    children.map((c) => ({ ...c, callName: null, needsCallName: false })),
+  );
   assert.equal(requests.length, 1);
   assert.equal(values.get(LINKS), links);
   assert.equal(onboarding.classServerId("class-local-1"), 8);
