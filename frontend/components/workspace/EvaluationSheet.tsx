@@ -408,7 +408,7 @@ export function StampBoard({
   );
 }
 
-/** 줄 맨 앞 작은 동그라미 — 찍힌 서류는 도장판과 같은 보라 이중 원에 포스티, 빈 서류는 점선. */
+/** 줄 맨 앞 작은 동그라미 — 찍힌 서류는 도장판과 같은 빨간 이중 원에 포스티, 빈 서류는 점선. */
 function Mini({ state }: { state: "done" | "empty" | "opt" }) {
   return (
     <span className={styles.mini} data-state={state} aria-hidden="true">
