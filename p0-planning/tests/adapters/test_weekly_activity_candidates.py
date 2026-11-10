@@ -144,8 +144,9 @@ def test_bad_candidate_format_repairs_once_and_records_the_repair_version(indoor
         assert "설명의 대상과 실제 행동을 남겨 문서용 활동명을 쓴다" in request.system_prompt
         assert "유형과 활동명만 읽어도 할 일이 떠올라야 한다" in request.system_prompt
         assert "서로 섞어 새 활동을 만들지 않는다" in request.system_prompt
-        assert "+activity-candidates-v5" in request.prompt_version
-        assert "+activity-candidates-v5" in request.repair_prompt_version
+        assert "따옴표째 제목으로 옮기고" in request.system_prompt
+        assert "+activity-candidates-v6" in request.prompt_version
+        assert "+activity-candidates-v6" in request.repair_prompt_version
         assert request.system_prompt.count(NATURAL_PLAY_GUIDANCE) == 1
         assert request.system_prompt.count(CANDIDATE_DESCRIPTION_TONE) == 1
         assert "소리는 듣는 대상이며" not in request.system_prompt
