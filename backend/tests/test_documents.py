@@ -776,7 +776,8 @@ def _capture_generation(monkeypatch, interpretation=DEFAULT_INTERPRETATION):
     seen = {}
 
     def fake_generate(kind, masked_facts, curriculum=()):
-        seen["facts"] = masked_facts
+        # 사실마다 {fact, date, domain, context} 로 간다 (ADR-088).
+        seen["facts"] = [f["fact"] for f in masked_facts]
         return interpretation, "도담 지원입니다. 다음 활동에서 교사가 할 방법을 적습니다."
 
     monkeypatch.setattr("app.features.documents.draft._generate", fake_generate)
