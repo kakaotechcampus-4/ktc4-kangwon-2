@@ -2,6 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { verifyHwpx } from "./hwpx";
 import { completeOnboarding } from "./onboarding";
 
+/** 문서 편집기의 「확정」 단추. 보관함 거르개에도 같은 이름의 칩(aria-pressed)이 있어 가른다. */
+const confirmButton = (page: Page) =>
+  page.getByRole("button", { name: "확정", exact: true }).and(page.locator(":not([aria-pressed])"));
+
 /**
  * 보관함은 **반 → 관찰일지 → 아이 → 날짜** 로만 탐색한다.
  * 예전의 전체 문서 목록은 없앴으므로 제목만으로 바로 누르지 않는다.
@@ -382,8 +386,8 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await page
     .getByRole("textbox", { name: "지원 내용", exact: true })
     .fill("다음 놀이에는 함께 쌓을 수 있는 블록과 넓은 공간을 제공한다.");
-  await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
-  await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
+  await page.getByRole("checkbox", { name: /원본 기록과 사실이/ }).check();
+  await confirmButton(page).click();
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "한글 파일로 내려받기", exact: true }).click();
@@ -403,7 +407,7 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await page.screenshot({ path: info.outputPath("observation-confirmed.png"), fullPage: true });
 
   // Read-only facts must lead back to a usable correction/review path.
-  await page.getByRole("link", { name: "관찰 기록에서 고쳐 주세요 →", exact: true }).click();
+  await page.getByRole("link", { name: "관찰 기록에서 고치기 →", exact: true }).click();
   await page.locator("article button").first().click();
   await page.getByRole("button", { name: "수정", exact: true }).click();
   const updatedFact = fact + " 놀이를 마친 뒤 블록을 바구니에 담았다.";
@@ -415,11 +419,11 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await expect(
     page.getByText("이 문서의 근거로 사용된 관찰 기록이 변경되었습니다.", { exact: false }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "확정 취소", exact: true }).click();
+  await page.getByRole("button", { name: "다시 수정", exact: true }).click();
   await page.getByRole("button", { name: "변경된 근거 반영하기", exact: true }).click();
   await expect(page.getByText(updatedFact, { exact: true }).first()).toBeVisible();
-  await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
-  await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
+  await page.getByRole("checkbox", { name: /원본 기록과 사실이/ }).check();
+  await confirmButton(page).click();
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
 });
 

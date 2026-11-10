@@ -3,6 +3,10 @@ import { completeOnboarding } from "./onboarding";
 import { verifyHwpx } from "./hwpx";
 import { execFileSync } from "node:child_process";
 
+/** 문서 편집기의 「확정」 단추. 보관함 거르개에도 같은 이름의 칩(aria-pressed)이 있어 가른다. */
+const confirmButton = (page: Page) =>
+  page.getByRole("button", { name: "확정", exact: true }).and(page.locator(":not([aria-pressed])"));
+
 /** TASK 2: 실제 Next → FastAPI → PostgreSQL. 응답을 fulfill하거나 MSW로 대체하지 않는다. */
 type Routine = {
   id: number;
@@ -1008,8 +1012,8 @@ test("후속 #15 — 확정 취소된 초안에서 삭제된 근거를 처리하
   expect(applied.sections[0].body).not.toContain("없어질 일과 시간에 있었던 일");
 
   // 7) 교사가 읽고 확정한다.
-  await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
-  await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
+  await page.getByRole("checkbox", { name: /원본 기록과 사실이/ }).check();
+  await confirmButton(page).click();
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
   // 8) 새로고침해도 9) 문서 id · 근거 · 확정 상태가 그대로다.
   await page.reload();
@@ -1130,8 +1134,8 @@ for (const sourceKind of ["dailyLog", "routine"] as const) {
     ).toBeVisible();
     const support = "다음 놀이에는 블록을 준비해 함께 길을 만들도록 지원한다.";
     await page.getByRole("textbox", { name: "지원 내용", exact: true }).fill(support);
-    await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
-    await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
+    await page.getByRole("checkbox", { name: /원본 기록과 사실이/ }).check();
+    await confirmButton(page).click();
     await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
     const saved = await api(page, `/api/documents/${doc.id}`);
     expect(saved).toMatchObject({ id: doc.id, status: "CONFIRMED", child_id: null });
@@ -1158,7 +1162,7 @@ for (const sourceKind of ["dailyLog", "routine"] as const) {
     await expect(
       page.getByRole("heading", { name: doc.title, exact: true, level: 2 }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "다시 수정", exact: true })).toBeVisible();
   });
 }
 

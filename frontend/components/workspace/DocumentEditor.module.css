@@ -1,0 +1,315 @@
+/* 문서 보관함 편집기(기록 문서: 일일 · 주간 보육일지, 관찰일지, 영유아 평가) — 종이 한 장(PM 11-10).
+ * 손글씨 칸 제목 · 왼쪽 여백 색 탭 · 시간 줄 사실 · 맨 아래 검증 띠와 도장.
+ * 기본 편집기 규칙(.document > header 처럼 요소를 집는 것)을 이기도록 요소 + 클래스로 집는다. 색은 토큰만. */
+
+.paper .layer {
+  --tone: var(--pg-line-strong);
+}
+.paper .layer[data-layer="사실"] {
+  --tone: var(--pg-sun);
+}
+.paper .layer[data-layer="해석"] {
+  --tone: var(--pg-primary-tint-line);
+}
+.paper .layer[data-layer="지원"] {
+  --tone: var(--pg-sage-line);
+}
+.paper .layer[data-layer="반 운영"] {
+  --tone: var(--pg-sky-line);
+}
+.paper .marks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.paper .head h2 {
+  margin: 14px 0 4px;
+  font-size: 24px;
+  line-height: 1.35;
+}
+.paper .quiet {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--pg-ink-soft);
+}
+.paper .status {
+  display: inline-block;
+  padding: 0 10px 1px;
+  border: 2px dashed var(--pg-ink-soft);
+  border-radius: 6px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--pg-ink-soft);
+  white-space: nowrap;
+  rotate: -4deg;
+}
+.paper .status[data-done="true"] {
+  border: 3px double var(--pg-alert-strong-line);
+  color: var(--pg-alert-strong-line);
+}
+.paper .alertTag {
+  padding: 2px 10px;
+  border: 1px solid var(--pg-alert-soft-line);
+  border-radius: 999px;
+  background: var(--pg-alert-soft);
+  color: var(--pg-alert-ink);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.paper .origin {
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+/* 「근거 3건」 — 칸마다 되풀이하던 날짜 줄 자리. 누르면 아래 원본 기록을 편다. */
+.paper .count {
+  margin-left: auto;
+  padding: 3px 12px;
+  border: 1px dashed var(--pg-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pg-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.paper .count:hover {
+  border-style: solid;
+}
+/* .card h3 (15px) 를 이기도록 요소까지 집는다 */
+.paper .layer > h3.layerName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.paper .layerName svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.paper .readOnly {
+  padding: 1px 8px;
+  border: 1px dashed currentColor;
+  border-radius: 999px;
+  font-family: var(--font-body), sans-serif;
+  font-size: 11.5px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+.paper .field {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+.paper .field textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 136px;
+  padding: 0 12px;
+  resize: vertical;
+  font: inherit;
+  font-size: 15px;
+  line-height: 34px;
+  color: var(--pg-ink);
+}
+.paper .factLine {
+  --tone: var(--pg-sun);
+  margin-top: 12px;
+}
+.paper .factLine p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.7;
+  word-break: keep-all;
+}
+.paper .factPlain,
+.paper .done {
+  margin: 10px 0 0;
+  font-size: 15px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.paper .empty {
+  margin: 10px 0 0;
+  color: var(--pg-ink-hint);
+}
+.paper .sourceItem {
+  margin: 10px 0 0;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.paper .sourceItem a {
+  margin-left: 6px;
+}
+.paper .check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 15px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.paper .check input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  accent-color: var(--pg-primary);
+}
+.paper .verify > h3 {
+  margin: 0;
+}
+
+/* 머리는 상자 없이 종이 위에 바로 쓰고, 두 줄 선으로 본문과 가른다. */
+.paper > header.head {
+  margin-bottom: 8px;
+  padding: 0 0 18px;
+  border: 0;
+  border-bottom: 3px double var(--pg-line-strong);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+/* 칸마다 왼쪽 여백에 색 탭 하나. 칸 사이는 점선 한 줄. */
+.paper section.layer {
+  position: relative;
+  margin-block: 0;
+  padding: 22px 0 24px;
+  border-bottom: 1px dashed var(--pg-line);
+}
+.paper .layerName {
+  position: relative;
+  color: var(--pg-ink);
+}
+.paper .layerName::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * clamp(20px, 4vw, 56px) - 1px);
+  top: 50%;
+  width: 9px;
+  height: 30px;
+  border-radius: 0 3px 3px 0;
+  background: var(--tone);
+  transform: translateY(-50%);
+}
+.paper .readOnly {
+  color: var(--pg-ink-soft);
+}
+/* 쓰는 칸은 공책 줄 — 글줄(34px)과 줄 간격이 같아 글자가 줄에 앉는다. 테는 아래 한 줄만. */
+.paper .field textarea {
+  border: 0;
+  border-bottom: 2px solid var(--tone);
+  border-radius: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 33px,
+    var(--pg-paper-warm-line) 33px 34px
+  );
+}
+.paper .field textarea:focus-visible {
+  outline: 2px solid var(--tone);
+  outline-offset: 4px;
+}
+.paper > details.sources {
+  margin-block: 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.paper > details.sources > summary {
+  padding-block: 12px;
+  font-size: 14px;
+}
+.paper .sourceItem {
+  border-left: 3px solid var(--pg-sun);
+  background: var(--pg-ivory);
+}
+/* 검증은 맨 아래 띠 하나 — 왼쪽 말, 오른쪽 단추 · 결과 도장. 체크는 띠 아랫줄. */
+.paper .verify {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px 18px;
+  margin-top: 26px;
+  padding: 16px 20px;
+  border-block: 2px solid var(--pg-ink);
+  background: var(--pg-ivory);
+}
+.paper .verify > h3 {
+  grid-column: 1;
+  font-family: var(--font-display), sans-serif;
+  font-size: 22px;
+}
+.paper .verify > p:first-of-type {
+  grid-column: 1;
+  grid-row: 2;
+  margin: 0;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.paper .verify > button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.paper .verify > .stamp {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+}
+.paper .verify > :is([role="status"], [role="alert"]),
+.paper .verify > .check {
+  grid-column: 1 / -1;
+}
+.paper .verify > .check {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--pg-line-strong);
+}
+.stamp {
+  display: inline-grid;
+  place-items: center;
+  min-width: 82px;
+  padding: 6px 12px;
+  border: 3px double var(--ink);
+  border-radius: 8px;
+  --ink: var(--pg-success);
+  color: var(--ink);
+  font-family: var(--font-display), sans-serif;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  rotate: -8deg;
+}
+.stamp[data-ok="false"] {
+  --ink: var(--pg-peach-ink);
+}
+@media (max-width: 640px) {
+  .paper .verify {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 14px 16px;
+  }
+  .paper .verify > button {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
+  }
+  .paper .verify > .stamp {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+  }
+  .paper .layerName::before {
+    left: -19px;
+  }
+}
