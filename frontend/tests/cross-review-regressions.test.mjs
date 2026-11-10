@@ -200,6 +200,8 @@ test("#392: 아이·기간·근거는 생성 완료까지 잠기고 올바른 �
     "@/lib/hooks/use-observation-domains": { useObservationDomains: () => [] },
     "./use-server-document": { useServerDocument: () => ({}) },
     "./RecordsPage": { openPicker() {} },
+    "./ObservationClassDrafts": { __esModule: true, default: "class-drafts" },
+    "./ObservationJournal.module.css": { __esModule: true, default: {} },
   });
   let tree = h.render();
   await settle();
