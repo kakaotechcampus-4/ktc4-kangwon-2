@@ -6,14 +6,11 @@ import {
   today,
   validPeriod,
   validDate,
-  compareEvidence,
-  invalidateDependents,
-  assertDocumentUnchanged,
   type SavedDocument,
   type Section,
 } from "@/lib/workspace/model";
-import { useWorkspace } from "@/lib/workspace/store";
 import { invalidFields } from "@/lib/api/client";
+import { DROPPED_IMPORTS, onLegacyImportsMoved } from "@/lib/workspace/store";
 import { listRecords } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import {
@@ -78,8 +75,16 @@ type Candidate = { id: string; date: string; label: string };
 /** 렌더마다 새 배열이 생기면 useMemo 가 매번 다시 돈다. */
 const NO_ROUTINES: RoutineLine[] = [];
 
+/** 서버로 옮기지 못하고 지운 예전 증빙 건수(`moveLegacyImports`). */
+function readDropped() {
+  try {
+    return Number(window.sessionStorage.getItem(DROPPED_IMPORTS)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 export default function DocumentsPage() {
-  const { data, error, save } = useWorkspace();
   const [entry] = useClientState(
     () => {
       const blank = {
@@ -113,6 +118,13 @@ export default function DocumentsPage() {
       docId: "",
     },
   );
+  // 서버로 옮기지 못하고 지운 예전 증빙 건수(`moveLegacyImports`). 한 번만 알린다.
+  const [dropped, setDropped] = useClientState(readDropped, 0);
+  useEffect(() => {
+    try {
+      window.sessionStorage.removeItem(DROPPED_IMPORTS);
+    } catch {}
+  }, []);
   const [mode, setMode] = useState<"library" | "create">("library");
   const [editingId, setEditingId] = useState("");
   const [kind, setKind] = useState<GeneratedKind>("observation");
@@ -232,6 +244,21 @@ export default function DocumentsPage() {
     }
   }
 
+  // 보관함은 예전 증빙 옮기기를 기다리지 않고 먼저 열린다. 옮기기가 끝나면 목록과 안내를 다시 읽는다.
+  // 의존성 없이 매번 다시 건다 — 늘 지금의 reloadList · classId 를 부른다.
+  useEffect(() =>
+    onLegacyImportsMoved(() => {
+      const count = readDropped();
+      if (count) {
+        setDropped(count);
+        try {
+          window.sessionStorage.removeItem(DROPPED_IMPORTS);
+        } catch {}
+      }
+      void reloadList();
+    }),
+  );
+
   // 마운트할 때 한 번. 일지를 고치거나 만들어도 계획안 목록은 바뀌지 않는다.
   useEffect(() => {
     const mine = ++latestPlans.current;
@@ -342,10 +369,8 @@ export default function DocumentsPage() {
       ? selected.flatMap((id) => candidates.filter((s) => s.id === id))
       : candidates.filter((s) => selected.includes(s.id));
 
-  // 새로 등록하는 증빙은 서버로 간다 (§11 「증빙 등록」) — 아래 서버 목록에 섞여 온다.
-  // 이 줄은 그 길이 열리기 전에 브라우저에 쌓인 증빙을 계속 보여 주기 위한 것이다.
-  // 브라우저에 남은 옛 계획안은 읽지 않는다. 계획안은 이제 서버 목록에서 온다.
-  const localDocs = data.documents.filter((d) => d.origin === "import");
+  // 보관함은 서버 목록만 그린다. 올린 서류(§11 「증빙 등록」)도 서버 목록에 섞여 온다 —
+  // 브라우저에 남았던 예전 증빙은 로그인 · 서비스 화면 진입 때 서버로 옮기고 지운다(`moveLegacyImports`).
   // 목록에는 sections · sources 가 없다 — 제목 · 종류 · 날짜 · 상태만 그린다 (§11).
   const entries = [
     ...serverDocs.map((d) => ({
@@ -359,18 +384,6 @@ export default function DocumentsPage() {
       status: d.status,
       createdAt: d.createdAt,
       stale: d.stale,
-    })),
-    ...localDocs.map((d) => ({
-      id: d.id,
-      source: "document" as const,
-      serverId: null,
-      title: d.title,
-      className: d.className,
-      childName: d.childName,
-      kind: d.kind,
-      status: d.status,
-      createdAt: d.createdAt,
-      stale: false,
     })),
     ...(plans?.items ?? []).map((p) => ({
       id: `annual:${p.id}`,
@@ -398,17 +411,7 @@ export default function DocumentsPage() {
       childId: d.childId,
       start: d.start,
       status: d.status,
-      createdAt: d.createdAt,
-      updatedAt: d.updatedAt,
-    })),
-    ...localDocs.map((d) => ({
-      id: d.id,
-      kind: d.kind,
-      title: d.title,
-      classId: d.classId,
-      childId: d.childId,
-      start: d.start,
-      status: d.status,
+      stale: d.stale,
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
     })),
@@ -428,10 +431,9 @@ export default function DocumentsPage() {
   }
 
   const activeServerId = documentServerId(active);
-  const localCurrent = data.documents.find((d) => d.id === active);
   // 서버 문서는 `active` 와 같은 문서일 때만 화면에 올린다.
   const serverCurrent = chosen.detail?.id === active ? chosen.detail : null;
-  const current = activeServerId === null ? localCurrent : serverCurrent;
+  const current = serverCurrent;
   // 첫 목록이 비어 있어도 조회가 끝나기 전에는 로딩임을 알린다.
   const journalsPending = listStatus === "loading";
 
@@ -613,30 +615,8 @@ export default function DocumentsPage() {
           key={current.id}
           initial={current}
           server={serverActions}
-          onSave={(doc, expected) =>
-            save((prev) => {
-              assertDocumentUnchanged(
-                prev.documents.find((d) => d.id === doc.id),
-                expected,
-              );
-              if (
-                doc.status === "confirmed" &&
-                compareEvidence(doc, prev.documents, prev.observations).linked.some(
-                  (r) => r.state !== "일치",
-                )
-              )
-                throw new Error(
-                  "원본이 변경되었거나 없어졌어요. 최신 기록으로 초안을 다시 생성해주세요.",
-                );
-              return {
-                ...prev,
-                documents: invalidateDependents(
-                  prev.documents.map((d) => (d.id === doc.id ? doc : d)),
-                  doc.id,
-                ),
-              };
-            })
-          }
+          /* 서버 문서는 편집기가 서버에 바로 쓴다. 브라우저 저장소로 가는 길은 쓰지 않는다. */
+          onSave={() => true}
         />
       ) : null}
     </WorkspaceViewState>
@@ -658,7 +638,10 @@ export default function DocumentsPage() {
   );
   const notices = (
     <>
-      <Message error>{error}</Message>
+      <Message>
+        {dropped > 0 &&
+          `이 브라우저에만 있던 예전 증빙 ${dropped}건을 서버로 옮기지 못해 지웠어요. 원본 파일을 평가 점검에서 다시 등록해주세요.`}
+      </Message>
       <Message>{message}</Message>
     </>
   );
