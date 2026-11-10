@@ -105,6 +105,8 @@ def _answers(questions, *, conflict_on="s1", conflict_rec="r1"):
             }
         elif name.endswith(".근거"):
             out[name] = {"type": "choice", "choice": conflict_rec if key == conflict_on else "없음"}
+        elif name.endswith((".때", ".기준")):
+            out[name] = {"type": "choice", "choice": "없음"}
         elif name == "지원.구체":
             out[name] = {"type": "noul", "noul": 0.95}
         else:
@@ -436,6 +438,7 @@ def test_chosen_conflict_is_reported_even_below_half():
         "choice": J.CONFLICT,
         "probabilities": {J.CONFLICT: 0.4, J.SAME: 0.2, J.NEW_FACT: 0.2, J.INTERPRETATION: 0.2},
     }
+    answers["s1.근거"]["choice"] = "r1"
     assert [i.code for i in J.read_issues(sentences, answers, {"r1": 1}, None)] == [
         "CONTRADICTS_SOURCE"
     ]
