@@ -10,6 +10,8 @@
 
 ## 아동 개인정보
 
+- 근거 기록 추가 삭제는 원래 74건 심사 결과와 구분하고, 제외 ID 전체에 사유를 연결한다 — `build.privacy_review_addenda` · `p0-planning/tests/evidence/test_evidence_store.py` · ADR-079 10번
+
 | 막는 것 | 어떻게 | 근거 |
 |---|---|---|
 | 실명이 LLM 프롬프트·응답·로그에 남는 것 | 호출 직전 아동 코드로 치환. `backend/app/shared/childCode/` 한 곳에서만 | ADR-004 · `test_child_code.py` |
