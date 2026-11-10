@@ -1,43 +1,9 @@
 {
-  "status": "PENDING_HUMAN_REVIEW",
-  "note": "도서관 정보나루 제목 검색 그림책 후보(ADR-072 그림책 보완). Actions run 42775776659 수집. 제목 · 지은이 · 출판사 · 연도 · ISBN · 걸린 주제 낱말만 담는다(소개글 · 표지 · 링크 · 대출 수 없음). 사람이 초등용 · 이상한 책을 지운 뒤 승인한다.",
+  "status": "APPROVED",
+  "note": "도서관 정보나루 제목 검색 그림책 후보(ADR-072 그림책 보완). Actions run 42775776659 수집. 제목 · 지은이 · 출판사 · 연도 · ISBN · 걸린 주제 낱말만 담는다(소개글 · 표지 · 링크 · 대출 수 없음). 2026-11-10 사람 검토: 초등용 · 캐릭터 · 예전 판 등 16권을 지우고 승인했다.",
   "collected_on": "2026-11-10",
-  "count": 250,
+  "count": 234,
   "items": [
-    {
-      "source": "data4library",
-      "source_id": "9791163270232",
-      "title": "우리가 만든 나라 이름은 '전쟁'",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "에마 루이스 글·그림 ;김배경 옮김",
-        "publisher": "책속물고기",
-        "publication_year": "2019",
-        "words": [
-          "우리나라"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
-      "source_id": "9788911030033",
-      "title": "멋쟁이 낸시의 학교생활 100일",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "제인 오코너 글 ;김영선 옮김",
-        "publisher": "국민서관",
-        "publication_year": "2012",
-        "words": [
-          "생활"
-        ]
-      }
-    },
     {
       "source": "data4library",
       "source_id": "9788984286269",
@@ -194,23 +160,6 @@
     },
     {
       "source": "data4library",
-      "source_id": "9791164139880",
-      "title": "흔한남매 겨울밤 대소동 :흔한남매 스페셜 에디션 겨울",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "원작: 흔한남매 ;그림: 유난희",
-        "publisher": "미래엔",
-        "publication_year": "2021",
-        "words": [
-          "겨울"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
       "source_id": "9788936455965",
       "title": "겨울 이불 :안녕달 그림책",
       "description": "",
@@ -292,24 +241,6 @@
         "publication_year": "2018",
         "words": [
           "동물"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
-      "source_id": "9788984140493",
-      "title": "동물원",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "앤서니 브라운 글·그림;장미란 옮김",
-        "publisher": "논장",
-        "publication_year": "2002",
-        "words": [
-          "동물",
-          "동물원"
         ]
       }
     },
@@ -421,23 +352,6 @@
     },
     {
       "source": "data4library",
-      "source_id": "9788975606236",
-      "title": "솔이의 추석 이야기",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "이억배 글 그림",
-        "publisher": "길벗어린이",
-        "publication_year": "1995",
-        "words": [
-          "추석"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
       "source_id": "9791158361174",
       "title": "하얀 하루",
       "description": "",
@@ -535,23 +449,6 @@
         "publication_year": "2019",
         "words": [
           "지구"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
-      "source_id": "9788934994237",
-      "title": "(미래의) 미라이 :애니메이션 그림책",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "호소다 마모루 원작 ;오선이 옮김",
-        "publisher": "김영사",
-        "publication_year": "2019",
-        "words": [
-          "미래"
         ]
       }
     },
@@ -893,23 +790,6 @@
         "publication_year": "2026",
         "words": [
           "곤충"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
-      "source_id": "9788956180342",
-      "title": "인사를 나눠 드립니다 :이한재 그림책",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "지은이: 이한재",
-        "publisher": "킨더랜드",
-        "publication_year": "2021",
-        "words": [
-          "나눔"
         ]
       }
     },
@@ -1324,23 +1204,6 @@
     },
     {
       "source": "data4library",
-      "source_id": "9788964961261",
-      "title": "발견! 우리 학교 이곳저곳 :초등 1학년을 위한 학교생활 길잡이",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "이시즈 치히로 글 ;김윤정 옮김",
-        "publisher": "토토북",
-        "publication_year": "2013",
-        "words": [
-          "초등학교"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
       "source_id": "9788970942810",
       "title": "오빠한테 질 수 없어 :원숭이 오누이 겨울 이야기",
       "description": "",
@@ -1392,23 +1255,6 @@
     },
     {
       "source": "data4library",
-      "source_id": "9791190077415",
-      "title": "정치가 소피아의 놀라운 도전",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "글: 안드레아 비티 ;옮김: 김혜진",
-        "publisher": "천개의바람",
-        "publication_year": "2020",
-        "words": [
-          "도전"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
       "source_id": "9791158365158",
       "title": "생쥐 모이의 101번째 도전 :김세진 그림책",
       "description": "",
@@ -1438,23 +1284,6 @@
         "publication_year": "2004",
         "words": [
           "동물원"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
-      "source_id": "9788991742857",
-      "title": "만남",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "백지원",
-        "publisher": "봄봄",
-        "publication_year": "2017",
-        "words": [
-          "만남"
         ]
       }
     },
@@ -1529,23 +1358,6 @@
     },
     {
       "source": "data4library",
-      "source_id": "9788959761678",
-      "title": "바다탐험대 옥토넛 :외톨이 괴물",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "메오미 지음 ;고정아 옮김",
-        "publisher": "문학수첩리틀북",
-        "publication_year": "2015",
-        "words": [
-          "바다"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
       "source_id": "9791171258352",
       "title": "이건 어떻게 버려요? :쓰레기 분리배출을 배운 날",
       "description": "",
@@ -1614,23 +1426,6 @@
     },
     {
       "source": "data4library",
-      "source_id": "9788952723925",
-      "title": "괴물들이 사는 나라",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "모리스 샌닥 글·그림 ;강무홍 옮김",
-        "publisher": "시공주니어",
-        "publication_year": "2002",
-        "words": [
-          "여러나라"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
       "source_id": "9788962471656",
       "title": "말들이 사는 나라",
       "description": "",
@@ -1675,23 +1470,6 @@
         "authors": "권민조 글·그림",
         "publisher": "천개의바람",
         "publication_year": "2020",
-        "words": [
-          "여행"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
-      "source_id": "9791169794183",
-      "title": "(타키·포오의) 이세계 여행사",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "원작: 캐릭온TV ;그림: 이지운",
-        "publisher": "대원키즈",
-        "publication_year": "2023",
         "words": [
           "여행"
         ]
@@ -2891,23 +2669,6 @@
     },
     {
       "source": "data4library",
-      "source_id": "9791173111402",
-      "title": "(처음 읽는) 삼국지",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "원작: 나관중 ;그림: 한현동",
-        "publisher": "미래엔",
-        "publication_year": "2024",
-        "words": [
-          "처음"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
       "source_id": "9788949111902",
       "title": "마녀 위니의 생일 파티",
       "description": "",
@@ -3521,23 +3282,6 @@
     },
     {
       "source": "data4library",
-      "source_id": "9788991126428",
-      "title": "플라스틱 섬",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "이명애 지음",
-        "publisher": "Sang(상출판사)",
-        "publication_year": "2014",
-        "words": [
-          "플라스틱"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
       "source_id": "9788911129058",
       "title": "플라스틱 인간",
       "description": "",
@@ -3582,23 +3326,6 @@
         "authors": "맥스 루카도 지음 ;아기장수의 날개 옮김",
         "publisher": "고슴도치",
         "publication_year": "2003",
-        "words": [
-          "나무"
-        ]
-      }
-    },
-    {
-      "source": "data4library",
-      "source_id": "9788972976189",
-      "title": "초등학생을 위한 나의 라임 오렌지나무 (초등용)",
-      "description": "",
-      "url": "",
-      "published_at": "2026-11-10",
-      "origin": "도서관 정보나루",
-      "facts": {
-        "authors": "J. M. 데 바스콘셀로스",
-        "publisher": "동녘주니어",
-        "publication_year": "2010",
         "words": [
           "나무"
         ]

@@ -1,6 +1,6 @@
 {
   "version": "book-related-words-v0.1.0",
-  "status": "PENDING_HUMAN_REVIEW",
+  "status": "APPROVED",
   "note": "그림책 제목 대조용 관련 낱말 묶음(ADR-072 그림책 보완). 그 주 주제 낱말이 묶음의 낱말 하나와 같으면 그 묶음 낱말을 모두 제목 대조에 쓴다. 2자 이상만. status 가 APPROVED 일 때만 쓰고, 그 전에는 주제 낱말 그대로만 대조한다. 낱말을 바꾸면 version 을 올린다.",
   "groups": [
     {"name": "봄", "words": ["봄맞이", "봄비", "새싹", "꽃밭", "꽃씨", "씨앗", "나비", "개나리", "진달래", "벚꽃", "민들레"]},
