@@ -1017,16 +1017,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
-/* 오른쪽 끝 페이지 스크롤바를 숨긴다(사용자 결정 11-10). 안쪽 높이 800 에서 화면이 44~74px 넘치지만 휠 · 키보드로는 스크롤된다.
-   두 칸으로 설 때만 — 한 줄로 쌓이는 좁은 창은 페이지가 훨씬 길어 스크롤바가 있어야 한다. */
-@media (min-width: 1261px) {
-  :global(html):has(.layout) {
-    scrollbar-width: none;
-  }
-  :global(html):has(.layout)::-webkit-scrollbar {
-    display: none;
-  }
-}
 /* 페이지와 같이 스크롤한다. `ws.side` 처럼 따로 스크롤하면 노트북 높이에서 접힌 칸이 안쪽 밑으로 숨었다. */
 .aside {
   display: grid;
@@ -1035,7 +1025,7 @@
   min-width: 0;
 }
 /* 내 컴퓨터 폴더 — 테이프로 붙인 노란 쪽지(시안 ③). 사이드바 쪽지 · 시작 설정 쪽지와 같은 색이다.
-   제목 · 안내는 왼쪽, 단추는 오른쪽에 둔다 — 아래 서랍 단추 셋과 폴더를 고른 뒤의 결과 줄까지 도장판 아래 한 화면(900px)에 들어와야 한다. */
+   제목 · 안내는 왼쪽, 단추는 오른쪽에 둔다 — 아래 서랍 단추 셋과 폴더를 고른 뒤의 결과 줄까지 도장판 아래 한 화면(안쪽 800px)에 들어와야 한다. */
 .folderNote {
   position: relative;
   display: grid;
@@ -1090,6 +1080,48 @@
   font-size: 13px;
   line-height: 1.5;
   color: var(--pg-ink-soft);
+}
+/* 두 칸으로 설 때는 안쪽 1440×800 한 화면에 들어온다(사용자 결정 11-10) — 빈 여백만 줄였고 글자 · 도장 · 단추 크기는 그대로다.
+   가장 긴 때는 폴더를 고른 뒤 파일 이름이 100개를 넘어 결과가 두 줄일 때로, 그때 아래에 11px 남는다. 이 화면에 줄을 더하면 다시 잰다.
+   한 줄로 쌓이는 좁은 창(1260 아래)은 페이지가 훨씬 길어 그대로 스크롤된다. 위 칸들보다 뒤에 둬야 덮어쓴다. */
+@media (min-width: 1261px) {
+  :global(main):has(.layout) {
+    padding-bottom: 16px;
+  }
+  /* 페이지 머리(WorkspacePage 의 pageHead) */
+  :global(main):has(.layout) > :first-child {
+    margin-bottom: 16px;
+  }
+  /* 도장판과 아래 두 칸 사이(ws.stack) */
+  :global(div):has(> .layout) {
+    gap: 14px;
+  }
+  .stampCard {
+    padding-top: 22px;
+    padding-bottom: 20px;
+  }
+  .stampHead {
+    margin-bottom: 16px;
+  }
+  .aside {
+    gap: 4px;
+  }
+  .folderNote {
+    row-gap: 2px;
+    margin: 4px 4px 2px;
+    padding: 12px 18px 8px;
+  }
+  .scanStat {
+    margin-top: 2px;
+    padding: 4px 10px;
+  }
+  /* 페이지 스크롤바를 숨긴다(#505). 한 화면에 들어오면 생기지 않지만, 맨 위 오류 줄이 뜬 동안처럼 잠깐 넘칠 때를 위해 남긴다. */
+  :global(html):has(.layout) {
+    scrollbar-width: none;
+  }
+  :global(html):has(.layout)::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* 서랍 단추 — 평소에는 수만 보이고, 누르면 오른쪽에서 서랍이 나온다(시안 ④). 접어 두는 칸이 아니다. */
