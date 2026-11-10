@@ -766,7 +766,7 @@ def test_draft_does_not_put_other_class_full_name_where_a_word_was(db_session, m
     fact = "이가명이 하늘을 보며 구름 모양을 이야기했다."
     record = _observation(db_session, klass, child, 5, fact)
 
-    def fake_generate(kind, masked_facts, curriculum=()):
+    def fake_generate(kind, masked_facts, curriculum=(), examples=()):
         # 받은 글을 그대로 다시 싣는다 — 실제로 발급된 가명이 답에 들어가게.
         # 사실은 {fact, date, domain, context} 로 간다 (ADR-088).
         return (
