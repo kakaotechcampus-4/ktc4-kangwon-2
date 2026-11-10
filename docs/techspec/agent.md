@@ -57,7 +57,7 @@ Rule   검사         계약 · 근거 · 연령 · 법정 기준을 어겼는�
 | 다시 불러도 같은 실패 (한도 · 키 없음 · 설정 오류 · Reference 미승인 · 메모 가명 실패) | 다시 부르지 않고 바로 그 오류를 낸다 | ADR-077 §3 |
 | 놀이 연간 구간끼리 후보 겹침 | 겹친 후보만 다시 만든다. 나머지 39개를 피할 목록으로 넘기고, 같은 자리 · 같은 `row_key`에 넣는다. 교사 요청을 반영한 후보는 바꾸지 않는다 | ADR-077 §4 |
 | 교사가 「생성 멈추기」 | 동시 호출 전 · 다시 부르기 전 · 저장 전에 끊김을 보고, 끊겼으면 저장하지 않는다 | ADR-077 §5 |
-| 저장 전 어디서든 실패 | 모든 단계가 통과한 뒤에 한 번만 저장한다. 반쯤 된 계획안은 없다 | ADR-077 · `test_create_document_saves_nothing_when_generation_fails` |
+| 저장 전 어디서든 실패 | 모든 단계가 통과한 뒤에 한 번만 저장한다. 반쯤 된 계획안은 없다 | ADR-077 · `backend/tests/test_plans_error_mapping.py`(500 `GENERATION_FAILED` · 저장 안 됨) · `test_weekly_generation.py::test_verifier_failure_saves_nothing` |
 | 주간을 다시 만듦 | 매번 새 seed로 근거를 다시 뽑아 다른 후보가 나온다. seed는 서버 로그에만 남고 계획안 본문에는 저장하지 않는다(하민 11-10). 실제로 쓴 근거는 칸 근거에 남는다 | PR 대기 · [improvement.md](improvement.md) §2 |
 
 **하지 않은 것:** 구간별 저장 · 작업 큐로 이어서 하기. 동시 생성으로 38초가 됐고, 반쯤 저장된 상태를 다루는 비용이 더 크다.

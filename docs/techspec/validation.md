@@ -23,7 +23,7 @@
 
 | 계획안 | 무엇을 막나 | code (일부) |
 |---|---|---|
-| 연간 · 월별 주제형 | 정확히 12개월 · 3월 → 2월 순서 · 빈 주제 · Catalog에 없는 `theme_id` · 판 불일치 · 그 달 · 연령에 안 맞는 주제 · LLM이 `theme_id`를 바꿈 | `golden/yearly.json`의 `failure_category` |
+| 연간 · 월별 주제형 | 정확히 12개월 · 3월 → 2월 순서 · 빈 주제 · Catalog에 없는 `theme_id` · 판 불일치 · 그 달 · 연령에 안 맞는 주제 · LLM이 `theme_id`를 바꿈 | `tests/application/test_yearly_application.py`(12개월 · 미승인 Catalog · 연령 범위 · 빈 수정 거부) |
 | 연간 · 놀이 프로젝트형 | 같은 이름 후보 · 힌트로 준 누리과정 내용을 배움 칸 근거에 안 씀 · 카탈로그에 없는 내용 id · 배움 개수 | `DUPLICATE_PLAY_NAME` · `SEED_CONTENT_MISSING` · `UNKNOWN_CONTENT_ID` · `DUPLICATE_CONTENT_ID` · `LEARNING_COUNT` |
 | 월간 | 법정 안전교육 원문 대조 · 근거 id · 장소 · 안전 내용이 다른 칸에 샘 | `STATUTORY_SAFETY_EDUCATION` · `SAFETY_CONTENT_LEAKAGE` · `UNREQUESTED_VENUE` |
 | 주간 | 넘기지 않은 근거 id · 다른 칸 근거 인용 · 근거에 없는 사실 · 원문 그대로 베낌 · 후보 형식(「활동명: 설명」 · 합니다체) · 요일 불일치 · 트렌드 비율 · 캐릭터 이름 | `UNKNOWN_GROUNDING_REF` · `WRONG_SOURCE_GROUNDING` · `UNSUPPORTED_FACT` · `SOURCE_TEXT_COPY` · `ACTIVITY_CANDIDATE_INVALID` · `DAY_MISMATCH` · `TREND_SHARE_EXCEEDED` · `TREND_NAME_IN_TEXT` |
@@ -43,7 +43,7 @@
 |---|---|---|
 | Golden — 가짜 LLM | `p0-planning/tests/finalization/golden/` (`yearly` · `monthly_rule` · `monthly_llm` · `weekly_rule` · `weekly_llm` · `cell_regeneration` · `weekly_cell_regeneration` · `play_project_selection`) | 고정한 LLM 답에 대해 **Application이 무엇을 하나**. 통과 · 수리 · 반려 · 저장 안 함. 모델 문장은 기대값으로 굳히지 않는다(ADR-023) |
 | 승인 자료 동결 | `p0-planning/tests/finalization/test_freeze.py` | Template · 근거 창고 · Catalog · 법정 Rule의 SHA. 자료가 바뀌면 Golden이 통과해도 여기서 먼저 실패한다 |
-| 실패 시 저장 안 함 | `backend/tests/` (`test_create_document_saves_nothing_when_generation_fails` 등) | 생성이 실패하면 DB에 아무것도 남지 않는다 |
+| 실패 시 저장 안 함 | `backend/tests/test_plans_error_mapping.py`(생성기 결과가 계약을 어기면 500 `GENERATION_FAILED` · 저장 안 됨) · `p0-planning/tests/application/test_weekly_generation.py::test_verifier_failure_saves_nothing` | 생성이 실패하면 DB에 아무것도 남지 않는다 |
 | 놀이 연간 재개 | `p0-planning/tests/application/test_play_project_generation.py` | 실패 구간만 한 번 · 겹친 후보만 한 번 · 같은 `row_key` · 요청 반영 후보는 안 바꿈 · 멈추면 저장 안 함 |
 | 겹침 검사기의 한계 | `p0-planning/tests/planner/test_play_dup_pairs.py` | 사람이 라벨한 같은 놀이 24짝 · 다른 놀이 18짝. 지금 선이 못 잡는 짝은 xfail로 남겨, 검사기를 바꾸면 바로 보이게 했다 |
 | 주간 근거 뽑기 | `p0-planning/tests/retrieval/test_weekly_retrieval.py` | 앞 주 근거는 뒤로 · seed가 없으면 고정 상위 10 · 같은 seed는 같은 결과 · 정확 연령 기록을 따로 먼저 채우지 않음 · 혼합연령 반은 요청 연령마다 1건 (PR 대기) |
@@ -56,9 +56,9 @@ CI가 PR마다 backend + planning core pytest · ruff · alembic · docker build
 
 | 날짜 | 무엇 | 어떻게 찾았나 | 고친 것 |
 |---|---|---|---|
-| 11-09 | 주간 5주차 500 — 「[절기놀이]」처럼 태그뿐인 제목이 후보 근거로 올라옴 | 앞 주 근거 빼기 실측. 풀 깊은 곳이 처음 드러남 | 태그뿐인 글은 활동 제목이 아니다(정규식) |
-| 11-10 | 12월 5주차 500 `ACTIVITY_CANDIDATE_INVALID` — 추출이 잘린 기록 2건(「…퍼즐 -」 · 「…키보」) | 섞어 뽑기 실측 → 그 주의 풀을 호출 없이 다시 계산 | 검토 목록에 2건 추가. 다시 돌려 5주 모두 201 |
-| 11-10 | seed 로그가 버려짐 — 그 주의 근거를 되살릴 수 없었음 | 위 실패를 재현하려다 발견 | logger 연결 (seed는 로그에만 둔다 — 본문 저장은 하지 않기로 함, 하민 11-10) |
+| 11-09 (PR 대기 #469) | 주간 5주차 500 — 「[절기놀이]」처럼 태그뿐인 제목이 후보 근거로 올라옴 | 앞 주 근거 빼기 실측. 풀 깊은 곳이 처음 드러남 | 태그뿐인 글은 활동 제목이 아니다(정규식) |
+| 11-10 (PR 대기 #469) | 12월 5주차 500 `ACTIVITY_CANDIDATE_INVALID` — 추출이 잘린 기록 2건(「…퍼즐 -」 · 「…키보」) | 섞어 뽑기 실측 → 그 주의 풀을 호출 없이 다시 계산 | 검토 목록에 2건 추가. 다시 돌려 5주 모두 201 |
+| 11-10 (PR 대기 #469) | seed 로그가 버려짐 — 그 주의 근거를 되살릴 수 없었음 | 위 실패를 재현하려다 발견 | logger 연결 (seed는 로그에만 둔다 — 본문 저장은 하지 않기로 함, 하민 11-10) |
 
 ## 6. 아직 아닌 것
 
