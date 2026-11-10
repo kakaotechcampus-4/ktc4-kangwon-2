@@ -216,8 +216,8 @@ function browser(t, search = "") {
 
 const NO_IMPACT = { affected: [], newlyStale: [] };
 
-function recordsPage(t, api = {}, { now = "08:00" } = {}) {
-  browser(t);
+function recordsPage(t, api = {}, { now = "08:00", search = "" } = {}) {
+  browser(t, search);
   const app = host();
   const warned = [];
   const Page = compile("../components/workspace/RecordsPage.tsx", {
@@ -445,6 +445,21 @@ test("A1 아이만 고르고 영역이 비었으면 「영역 고르기」 쪽�
   view.render();
   assert.match(view.text(), /영역을 골라야 저장돼요/);
   assert.ok(view.button("영역 고르기"));
+});
+
+test("F16 관찰일지 쪽지의 「고치기」로 오면 그 기록을 고치는 칸에 연다", async (t) => {
+  const view = recordsPage(t, {}, { search: "?class=class-a&record=observation%3A1" });
+  await view.flush();
+  assert.equal(view.fact().props.value, RECORD.fact);
+  assert.equal(view.date().props.value, RECORD.date);
+  assert.ok(view.button("그만두기"), "고치는 중이다");
+});
+
+test("F16 주소의 기록이 목록에 없으면 비워 두고 알린다", async (t) => {
+  const view = recordsPage(t, {}, { search: "?class=class-a&record=observation%3A99" });
+  await view.flush();
+  assert.equal(view.fact().props.value, "");
+  assert.match(view.text(), /그 관찰 기록을 찾지 못했어요/);
 });
 
 test("F11 관찰일지로 가는 길이 반을 들고 간다", async (t) => {
@@ -767,6 +782,29 @@ test("F11 주소의 class 로 그 반을 연다", async (t) => {
   assert.ok(view.button("이달기록 없음"), "그 반 아이가 나온다");
 });
 
+test("F17 뒤로 가는 단추는 일지를 펴도 「← 관찰 기록」이고, 설명은 고른 아이 · 반 전체를 따른다", async (t) => {
+  const view = journalPage(t, { docs: [SUMMARY], opened: { ...DOC, classId: "class-a" } });
+  await view.flush();
+  const page = () => view.nodes().find((n) => n.type === "page");
+  const back = () => page().props.action;
+  assert.equal(textOf(back()), "← 관찰 기록");
+  assert.equal(back().props.href, "/records");
+  assert.match(page().props.description, /반 아이들의 관찰일지 초안을 한 번에/);
+  assert.doesNotMatch(page().props.description, /한 아이의/);
+
+  await view.press("김하늘기록 없음");
+  assert.match(page().props.description, /김하늘의 관찰일지 초안/);
+  // 일지를 펴도 뒤로 가는 단추는 같다.
+  view
+    .nodes()
+    .find((n) => n.type === "button" && textOf(n).includes("김하늘 관찰일지"))
+    .props.onClick();
+  view.render();
+  assert.equal(view.editors.length > 0, true, "일지가 열렸다");
+  assert.equal(textOf(back()), "← 관찰 기록");
+  assert.equal(back().props.href, "/records");
+});
+
 test("F15 확정본이 stale 이면 목록에 둘 다 보인다", async (t) => {
   const view = journalPage(t, {
     search: "?child=kid-1",
@@ -857,6 +895,15 @@ test("F9 편집 버리고 반영 · 고친 게 없으면 바로 반영", async (
 
   await view.press("바뀐 근거 반영하기");
   assert.deepEqual(view.calls, ["refresh", "refresh"]);
+});
+
+test("F16 근거 쪽지마다 그 관찰 기록을 여는 「고치기」가 있다 — 관찰 기록 첫 화면이 아니다", async (t) => {
+  const view = editor(t, { initial: { ...DOC, classId: "class-a" } });
+  const fix = view
+    .nodes()
+    .filter((n) => n.type === "link")
+    .map((n) => n.props.href);
+  assert.deepEqual(fix, ["/records?class=class-a&record=observation%3A1"]);
 });
 
 test("F12 근거 쪽지와 출력 미리보기가 서버가 준 영역을 쓴다", async (t) => {

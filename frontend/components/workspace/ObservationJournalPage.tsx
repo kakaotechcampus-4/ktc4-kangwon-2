@@ -206,17 +206,17 @@ export default function ObservationJournalPage() {
     }
   }
 
-  // 뒤로 가는 단추는 하나 — 일지를 펴 두었으면 목록으로, 아니면 관찰 기록으로.
-  // 펴 둔 일지에 고친 것이 있으면 `data-leave` 를 편집기가 잡아 한 번 묻는다.
-  const back = openId ? (
-    <button type="button" className={ws.secondary} data-leave onClick={() => setOpenId("")}>
-      ← 관찰일지 목록
-    </button>
-  ) : (
+  // 뒤로 가는 단추는 하나, 늘 「← 관찰 기록」이다(PM 11-10) — 일지를 펴 두었어도 같다.
+  // 펴 둔 일지에 고친 것이 있으면 편집기가 링크 누르기를 잡아 한 번 묻는다.
+  const back = (
     <Link href="/records" className={ws.secondary}>
       ← 관찰 기록
     </Link>
   );
+  // 아이를 고르지 않으면 반 전체 초안이다(ObservationClassDrafts). 설명도 그 동작을 따른다.
+  const description = child
+    ? `쌓인 관찰 기록으로 ${child.name}의 관찰일지 초안을 만들고, 이 화면에서 바로 고칩니다.`
+    : "쌓인 관찰 기록으로 반 아이들의 관찰일지 초안을 한 번에 만들고, 이 화면에서 바로 고칩니다. 한 아이만 만들려면 아이를 고르세요.";
   if (classError)
     return (
       <WorkspacePage title="관찰일지 만들기" description="" action={back}>
@@ -225,11 +225,7 @@ export default function ObservationJournalPage() {
     );
 
   return (
-    <WorkspacePage
-      title="관찰일지 만들기"
-      description="쌓인 관찰 기록으로 한 아이의 관찰일지 초안을 만들고, 이 화면에서 바로 고칩니다."
-      action={back}
-    >
+    <WorkspacePage title="관찰일지 만들기" description={description} action={back}>
       <Message error>{error}</Message>
       {/* 일지를 펴면 화면 전체를 쓴다 — 칠판 위 쪽지 · 공책과 출력 미리보기가 좁은 칸에 안 들어간다. */}
       {openId ? (
