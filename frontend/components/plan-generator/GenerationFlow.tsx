@@ -190,12 +190,9 @@ export default function GenerationFlow({
         childId: "",
         childName: "",
         ...planPeriod(active, request.period),
+        // 브라우저에는 계획안 서버 ID 와 설정만 남긴다. 본문은 남기지 않는다 (ADR-013).
         sources: [],
-        sections: drafts[active].map((r) => ({
-          heading: `${r.label} · ${r.title}`,
-          body: r.detail,
-          sourceIds: [],
-        })),
+        sections: [],
         status: active === "annual" && confirmed ? "confirmed" : "draft",
         origin: contents[active]?.origin || "ai",
         createdAt: previous?.createdAt || now,

@@ -12,6 +12,7 @@ import {
 } from "@/lib/auth/local-account";
 import { restoreFromServer } from "@/lib/api/onboarding";
 import { startDemoSession } from "@/lib/auth/demo-session";
+import { moveLegacyImports } from "@/lib/workspace/store";
 import AuthFrame, { ErrorNote } from "./AuthFrame";
 import KakaoStart from "./KakaoStart";
 import { Posty } from "@/components/app/Posty";
@@ -151,7 +152,7 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
               aria-label={visible ? "비밀번호 숨기기" : "비밀번호 보기"}
               aria-pressed={visible}
               onClick={() => setVisible(!visible)}
-              className="absolute bottom-0.5 right-0 h-10 min-w-[52px] rounded px-2.5 font-body text-[13px] font-medium tracking-normal text-ink-soft hover:bg-primary-tint hover:text-primary-ink"
+              className="tap44 absolute bottom-0.5 right-0 h-10 min-w-[52px] rounded px-2.5 font-body text-[13px] font-medium tracking-normal text-ink-soft hover:bg-primary-tint hover:text-primary-ink"
             >
               {visible ? "숨기기" : "보기"}
             </button>
@@ -214,6 +215,8 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
 export async function restoreRoom(centerId: number) {
   try {
     if (await restoreFromServer(centerId)) completeAccountOnboarding();
+    // 반 · 아동 서버 번호가 채워진 뒤라야 예전 증빙을 올릴 수 있다. 원 복구가 실패하면 다음 로그인에 한다.
+    await moveLegacyImports();
   } catch {}
 }
 

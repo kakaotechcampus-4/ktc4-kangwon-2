@@ -10,6 +10,7 @@ import { Posty } from "./Posty";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { accountName } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { teacherTitle } from "@/lib/greeting";
 import {
   chosenClassFor,
   loadClassSettings,
@@ -57,7 +58,7 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         // (13주차 멘토 리뷰 — 메뉴 이름은 선생님이 쓰는 말로 · 주간 기록 메뉴는 합친다).
         key: "routines",
         label: "보육일지",
-        short: "일지",
+        short: "보육",
         href: "/routines",
         icon: "edit",
         match: (p) => p.startsWith("/routines") || p.startsWith("/weekly-records"),
@@ -392,7 +393,7 @@ export default function AppSidebar() {
             </span>
             <div className="min-w-0">
               <p className="truncate text-[13px] font-medium text-rail-ink">
-                {teacher ? `${teacher} 선생님` : "선생님"}
+                {teacherTitle(teacher)}
               </p>
             </div>
           </div>

@@ -60,3 +60,12 @@ test("모르는 코드와 빈 코드도 조용히 넘기지 않는다", () => {
     assert.match(whyFailed(code), /받아쓰기를 못 했어요/);
   }
 });
+
+test("받아쓰기 음성이 브라우저 회사 서버로 간다는 것을 개인정보 안내와 받아쓰기 자리에 알린다", async () => {
+  // 크롬의 Web Speech API 는 소리를 구글 서버로 보낸다. 안내가 「실명은 밖으로 나가지 않는다」뿐이면
+  // 교사가 아이 이름을 말해도 되는 줄 안다 (#114).
+  const { readFileSync } = await import("node:fs");
+  const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+  assert.match(read("../app/privacy/page.tsx"), /받아쓰기[\s\S]*브라우저\s+회사[\s\S]*서버/);
+  assert.match(read("../components/dashboard/HomePage.tsx"), /DICTATION_NOTICE/);
+});

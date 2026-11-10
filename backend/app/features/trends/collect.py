@@ -53,7 +53,7 @@ def collect(
     naver_secret: str | None,
     per_channel: int = 20,
 ) -> CollectResult:
-    """소스를 하나씩 돈다. 하나가 죽어도 나머지는 계속한다.
+    """소스를 하나씩 돈다. 하나가 죽어도 나머지는 계속한다. 채널 · 검색어 하나도 같다.
 
     트렌드는 부가 기능이다. 유튜브 한도가 터졌다고 뉴스까지 못 모을 이유가 없다.
     대신 무엇이 죽었는지는 failures 로 남겨 사람이 본다 — 조용히 0건이 되면
@@ -67,7 +67,13 @@ def collect(
             failures.append("youtube: 키가 없다 (YOUTUBE_API_KEY)")
         else:
             try:
-                items += sources.youtube_uploads(fetch, youtube_key, approved.channels, per_channel)
+                items += sources.youtube_uploads(
+                    fetch,
+                    youtube_key,
+                    approved.channels,
+                    per_channel,
+                    on_error=lambda name, e: failures.append(f"youtube {name}: {_safe(e)}"),
+                )
             except Exception as error:
                 failures.append(f"youtube: {_safe(error)}")
 
@@ -77,7 +83,14 @@ def collect(
         else:
             try:
                 items += sources.naver_news(
-                    fetch, naver_id, naver_secret, approved.news_queries, approved.outlets
+                    fetch,
+                    naver_id,
+                    naver_secret,
+                    approved.news_queries,
+                    approved.outlets,
+                    on_error=lambda query, e: failures.append(
+                        f"naver_news 「{query}」: {_safe(e)}"
+                    ),
                 )
             except Exception as error:
                 failures.append(f"naver_news: {_safe(error)}")

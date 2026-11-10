@@ -144,8 +144,9 @@ def test_bad_candidate_format_repairs_once_and_records_the_repair_version(indoor
         assert "설명의 대상과 실제 행동을 남겨 문서용 활동명을 쓴다" in request.system_prompt
         assert "유형과 활동명만 읽어도 할 일이 떠올라야 한다" in request.system_prompt
         assert "서로 섞어 새 활동을 만들지 않는다" in request.system_prompt
-        assert "+activity-candidates-v5" in request.prompt_version
-        assert "+activity-candidates-v5" in request.repair_prompt_version
+        assert "따옴표째 제목으로 옮기고" in request.system_prompt
+        assert "+activity-candidates-v6" in request.prompt_version
+        assert "+activity-candidates-v6" in request.repair_prompt_version
         assert request.system_prompt.count(NATURAL_PLAY_GUIDANCE) == 1
         assert request.system_prompt.count(CANDIDATE_DESCRIPTION_TONE) == 1
         assert "소리는 듣는 대상이며" not in request.system_prompt
@@ -317,7 +318,7 @@ class _Trends:
         return OptionalContextResult(name, OptionalContextStatus.AVAILABLE, self.items)
 
 
-def _trend_generate(provider, trends, memo=""):
+def _trend_generate(provider, trends, memo="", seed=None):
     from ssuksak.adapters.monthly_reference_repositories import JsonMonthlyTemplateRepository
     from ssuksak.adapters.weekly_composition import weekly_generation
 
@@ -330,7 +331,7 @@ def _trend_generate(provider, trends, memo=""):
             paths=(Path(__file__).parents[2] / "data/templates/weekly_template_a_v0_2_0.json",)),
     )
     command = replace(_day_command(parent), activity_candidates=True, indoor_play_candidates=True, teacher_memo=memo,
-                      optional_context_names=() if trends is None else ("trend",))
+                      optional_context_names=() if trends is None else ("trend",), candidate_sample_seed=seed)
     return harness, use_case.execute(command).plan
 
 
@@ -379,6 +380,70 @@ def test_trend_goes_only_to_fitting_candidates_and_leaves_trend_evidence():
     assert trend_options((WeeklyTarget("indoor_play.candidate.1", activity_type="언어놀이"),
                           WeeklyTarget("group_activity.candidate.1", activity_type="이야기나누기")), (story, play)) == (
         ("indoor_play.candidate.1", (story.trend_id, play.trend_id)), ("group_activity.candidate.1", (story.trend_id,)))
+
+
+@pytest.mark.parametrize("case", ["written", "repaired", "fallback"])
+def test_picture_book_is_assigned_to_one_story_candidate_and_repaired_once_or_kept_without_it(case):
+    from datetime import date
+
+    from ssuksak.planning.domain.trend import TrendItem, TrendKind
+    from ssuksak.planning.planner.contracts import RawLlmResponse
+    from ssuksak.planning.planner.weekly import BOOK_SLOT_TAG, WEEKLY_BOOK_PROMPT, book_slot
+
+    book = TrendItem("data4library:9790000000001", TrendKind.STORY, "숲속 친구들 :겨울 이야기", "", "도서관 정보나루",
+                     "2026-W44", date(2026, 10, 28))
+
+    class NoTitle(RequestAwareWeeklyLlm):
+        def generate_weekly(self, request):
+            response = super().generate_weekly(request)
+            if case == "written" or (request.repair_targets and case == "repaired"):
+                return response
+            answer = json.loads(response.content)
+            slot = self.requests[0].trend_required[0]
+            section = next(s for s in answer["sections"] if s["section_key"] == slot)
+            section["value"] = "겨울 이야기: 겨울 이야기를 나눕니다."
+            if request.repair_targets:  # fallback: the repair writes the slot from its own institution basis
+                section["grounding_refs"] = list(request.target(slot).allowed_grounding_refs[:1])
+            return RawLlmResponse(json.dumps(answer, ensure_ascii=False), response.model)
+
+    provider = NoTitle()
+    _, plan = _trend_generate(provider, _Trends((*_trend_items(), book)))
+    first = provider.requests[0]
+    slot, assigned = first.trend_required
+    assert assigned == book and dict(first.trend_options)[slot] == (book.trend_id,)
+    group_fits = [a for a, _ in first.trend_options if a.startswith("group_activity.") and first.target(a).activity_type
+                  and {"이야기나누기", "동화", "동극"} & set(first.target(a).activity_type.split("·"))]
+    assert group_fits and slot == group_fits[0]  # 대·소집단 동화 자리가 실내놀이 언어놀이보다 먼저
+    indoor, group = ("indoor_play.candidate.1", (book.trend_id,)), ("group_activity.candidate.2", (book.trend_id,))
+    assert book_slot((indoor, group), book.trend_id) == group[0] and book_slot((indoor,), book.trend_id) == indoor[0]
+    assert BOOK_SLOT_TAG in first.prompt_version and WEEKLY_BOOK_PROMPT in first.system_prompt
+    target = next(t for t in json.loads(first.user_content)["targets"] if t["section_key"] == slot)
+    assert target["trend_required"] == {"trend_id": book.trend_id, "title": "숲속 친구들"}  # subtitle off: no 「:」 clash
+    assert len(provider.requests) == (1 if case == "written" else 2)
+    if case != "written":
+        fix = json.loads(provider.requests[1].user_content)["fix_sections"]
+        assert [(f["section_key"], f["issue"]) for f in fix] == [(slot, "TREND_REQUIRED_MISSING")]
+        assert "『숲속 친구들』" in fix[0]["reason"]
+    books = [s for c in plan.activity_candidates for s in _trend_source(c.cell) if s.source_id == book.trend_id]
+    assert len(books) == (0 if case == "fallback" else 1)  # §7: a missing book never fails the generation
+
+
+def test_generation_seed_picks_the_picture_book_at_random_and_repeats_it():
+    from datetime import date
+
+    from ssuksak.planning.domain.trend import TrendItem, TrendKind
+
+    shelf = tuple(TrendItem(f"data4library:979000000000{n}", TrendKind.STORY, f"그림책 {n}", "", "도서관 정보나루",
+                            "2026-W44", date(2026, 10, 28)) for n in range(4))
+
+    def picked(seed):
+        provider = RequestAwareWeeklyLlm()
+        _trend_generate(provider, _Trends((*_trend_items(), *shelf)), seed=seed)
+        return provider.requests[0].trend_required[1].trend_id
+
+    assert picked(None) == shelf[0].trend_id  # no seed: the first passed book, as before
+    by_seed = {seed: picked(seed) for seed in range(6)}
+    assert by_seed[3] == picked(3) and len(set(by_seed.values())) > 1
 
 
 def test_trend_not_allowed_for_that_candidate_is_rejected_and_nothing_saved():

@@ -30,6 +30,8 @@ export interface Database {
       trends_enabled: boolean;
       weekly_saturday_enabled?: boolean;
       observation_axis?: "NURI_5" | "DAILY_PLAY_2";
+      /** 어제 지원을 반영한 줄에 종이가 붙이는 글자 (ADR-086). 빈 글은 「붙이지 않음」. */
+      reflect_mark?: "(반영)" | "(놀이반영)" | "";
     }
   >;
   monthlyPlans: MonthlyPlan[];

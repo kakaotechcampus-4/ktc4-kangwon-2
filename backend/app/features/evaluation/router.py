@@ -36,7 +36,7 @@ from app.features.evaluation.service import (
     save_doc_marks,
 )
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_center
+from app.shared.auth.ownership import require_center_creator, require_own_center
 from app.shared.school_year import school_year_of
 
 router = APIRouter(prefix="/centers", tags=["evaluation"])
@@ -207,8 +207,12 @@ def put_documents(
 def put_director(
     center_id: int, body: DirectorRequest, session: DbSession, user: CurrentUser
 ) -> EvaluationChecklist:
-    """원장 서류 체크 — 같은 원 교사 누구나 같은 체크를 본다(ADR-074 결정 4)."""
+    """원장 서류 체크 — 같은 원 교사 누구나 같은 체크를 본다(ADR-074 결정 4).
+
+    바꾸기는 원을 만든 교사만이다 (ADR-087). 읽기(GET)는 그대로 누구나다.
+    """
     require_own_center(user, center_id)
+    require_center_creator(session, user, center_id)
     now = datetime.now(UTC)
     save_director_checks(session, center_id, now, [(c.item, c.checked) for c in body.checks])
     response = _checklist(session, center_id, user.id, now)

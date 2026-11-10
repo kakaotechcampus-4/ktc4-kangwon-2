@@ -55,6 +55,10 @@ def mine(db_session, teacher):
     """로그인한 교사의 원 하나와 남의 원 하나."""
     center = _center(db_session, "쓱싹 어린이집")
     teacher.center_id = center.id
+    # 양식을 올리고 지우는 교사다 — 진짜 행이고 원을 만든 교사로 둔다(ADR-087).
+    db_session.add(teacher)
+    center.created_by = teacher.id
+    db_session.flush()
     return {"center": center, "other": _center(db_session, "옆 동네 어린이집")}
 
 

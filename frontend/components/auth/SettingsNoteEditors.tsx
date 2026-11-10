@@ -138,7 +138,7 @@ export function ClassesEditor({ onDone }: { onDone: () => void }) {
       )}
       <button
         type="button"
-        className={styles.addclass}
+        className={`${styles.addclass} tap44`}
         onClick={() =>
           patch({ classes: [...settings.classes, createEmptyClassroom(uid("class"))] })
         }

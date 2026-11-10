@@ -9,12 +9,13 @@ import {
   type ReactNode,
 } from "react";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { teacherTitle } from "@/lib/greeting";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { EMPTY_CLASS_SETTINGS, type ClassroomEntry } from "@/lib/onboarding/types";
 import { hydrateClassChildren } from "@/lib/api/onboarding";
 import { changePassword, getCurrentUser } from "@/lib/api/auth";
 import { invalidFields } from "@/lib/api/client";
-import { getCenterSettings, saveCenterSettings } from "@/lib/api/centers";
+import { getCenterSettings, saveCenterSettings, type ReflectMark } from "@/lib/api/centers";
 import {
   AXES,
   AXIS_LABELS,
@@ -306,7 +307,7 @@ export default function SettingsPage() {
             aria-selected={tab === t.key}
             aria-controls={`settings-panel-${t.key}`}
             tabIndex={tab === t.key ? 0 : -1}
-            className={`${styles.tab} ${styles[t.key]}`}
+            className={`${styles.tab} ${styles[t.key]} tap44`}
             onClick={() => setTab(t.key)}
           >
             <span>{t.label}</span>
@@ -382,6 +383,7 @@ export default function SettingsPage() {
               <div className={styles.two}>
                 <ObservationAxisCard centerId={centerId} />
                 <TrendsCard centerId={centerId} />
+                <ReflectMarkCard centerId={centerId} />
               </div>
             )}
           </section>
@@ -446,11 +448,14 @@ function AccountCard({ name, email }: { name: string; email: string }) {
       <span className={styles.meMark} aria-hidden="true">
         {name.slice(0, 1) || "쌤"}
       </span>
-      <span className={styles.meName}>{name ? `${name} 선생님` : "선생님"}</span>
+      <span className={styles.meName}>{teacherTitle(name)}</span>
       <span className={styles.meEmail}>{email}</span>
     </div>
   );
 }
+
+/** 원 설정은 원을 처음 등록한 교사만 바꾼다 (ADR-087). 같은 원 다른 교사는 보기만 한다. */
+const CREATOR_ONLY = "원 전체 설정이라 원을 처음 등록한 선생님만 바꿀 수 있습니다.";
 
 /**
  * 관찰 영역 축. 교사가 쓴 관찰일지 3건 중 2건이 누리과정 5영역이 아니었다
@@ -458,13 +463,18 @@ function AccountCard({ name, email }: { name: string; email: string }) {
  */
 function ObservationAxisCard({ centerId }: { centerId: number }) {
   const [axis, setAxis] = useState<ObservationAxis | null>(null);
+  const [canEdit, setCanEdit] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let live = true;
     getCenterSettings(centerId)
-      .then((s) => live && setAxis(s.observation_axis))
+      .then((s) => {
+        if (!live) return;
+        setAxis(s.observation_axis);
+        setCanEdit(s.can_edit !== false);
+      })
       .catch(() => live && setError("관찰 영역 설정을 불러오지 못했습니다."));
     return () => {
       live = false;
@@ -494,7 +504,7 @@ function ObservationAxisCard({ centerId }: { centerId: number }) {
         영역 구분
         <select
           value={axis ?? DEFAULT_AXIS}
-          disabled={axis === null || busy}
+          disabled={axis === null || busy || !canEdit}
           onChange={(e) => choose(e.target.value as ObservationAxis)}
         >
           {(Object.keys(AXES) as ObservationAxis[]).map((key) => (
@@ -504,6 +514,75 @@ function ObservationAxisCard({ centerId }: { centerId: number }) {
           ))}
         </select>
       </label>
+      {!canEdit && <p className={ws.muted}>{CREATOR_ONLY}</p>}
+      {error && <Message error>{error}</Message>}
+      <p role="status">{busy ? "변경하고 있습니다." : ""}</p>
+    </Note>
+  );
+}
+
+const REFLECT_MARKS: [ReflectMark, string][] = [
+  ["(반영)", "(반영)"],
+  ["(놀이반영)", "(놀이반영)"],
+  ["", "붙이지 않음"],
+];
+
+/**
+ * 어제 지원을 반영한 일과 줄에 종이가 붙이는 글자 (ADR-086 · §3-1).
+ * 원마다 쓰는 표기가 다르고, 대부분은 표기 없이 문장으로 잇는다. 화면의 보라 도장은 그대로다.
+ */
+function ReflectMarkCard({ centerId }: { centerId: number }) {
+  const [mark, setMark] = useState<ReflectMark | null>(null);
+  const [canEdit, setCanEdit] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    getCenterSettings(centerId)
+      .then((s) => {
+        if (!live) return;
+        setMark(s.reflect_mark ?? "(반영)");
+        setCanEdit(s.can_edit !== false);
+      })
+      .catch(() => live && setError("반영 표기 설정을 불러오지 못했습니다."));
+    return () => {
+      live = false;
+    };
+  }, [centerId]);
+
+  async function choose(next: ReflectMark) {
+    setBusy(true);
+    setError("");
+    // 화면을 먼저 바꾸지 않는다. 저장이 실패하면 바뀐 줄 알고 넘어간다.
+    try {
+      const saved = await saveCenterSettings(centerId, { reflect_mark: next });
+      setMark(saved.reflect_mark ?? next);
+    } catch {
+      setError("변경하지 못했습니다. 잠시 뒤 다시 시도해주세요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Note title="반영 표기" icon="pencil" tone="plum" tilt={1.5}>
+      <p>보육일지 종이에서 어제 지원을 반영한 줄 앞에 붙이는 글자예요.</p>
+      <label className={`${ws.field} ${styles.inlineField}`}>
+        표기
+        <select
+          value={mark ?? "(반영)"}
+          disabled={mark === null || busy || !canEdit}
+          onChange={(e) => choose(e.target.value as ReflectMark)}
+        >
+          {REFLECT_MARKS.map(([value, label]) => (
+            <option key={label} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {!canEdit && <p className={ws.muted}>{CREATOR_ONLY}</p>}
       {error && <Message error>{error}</Message>}
       <p role="status">{busy ? "변경하고 있습니다." : ""}</p>
     </Note>
@@ -519,13 +598,18 @@ function ObservationAxisCard({ centerId }: { centerId: number }) {
  */
 function TrendsCard({ centerId }: { centerId: number }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [canEdit, setCanEdit] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let live = true;
     getCenterSettings(centerId)
-      .then((s) => live && setEnabled(s.trends_enabled))
+      .then((s) => {
+        if (!live) return;
+        setEnabled(s.trends_enabled);
+        setCanEdit(s.can_edit !== false);
+      })
       .catch(() => live && setError("트렌드봇 설정을 불러오지 못했습니다."));
     return () => {
       live = false;
@@ -552,11 +636,11 @@ function TrendsCard({ centerId }: { centerId: number }) {
         최근 유행하는 놀이 소재를 모아 계획안에 참고 자료로 제공합니다. 이미 작성된 계획안에는
         영향을 주지 않습니다.
       </p>
-      <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <label className="tap44" style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <input
           type="checkbox"
           checked={enabled ?? false}
-          disabled={enabled === null || busy}
+          disabled={enabled === null || busy || !canEdit}
           onChange={(e) => toggle(e.target.checked)}
         />
         트렌드봇 사용
@@ -564,6 +648,7 @@ function TrendsCard({ centerId }: { centerId: number }) {
       {enabled !== null && (
         <p className={ws.muted}>현재 트렌드봇이 {enabled ? "켜져" : "꺼져"} 있습니다.</p>
       )}
+      {!canEdit && <p className={ws.muted}>{CREATOR_ONLY}</p>}
       {error && <Message error>{error}</Message>}
       <p role="status">{busy ? "변경하고 있습니다." : ""}</p>
     </Note>

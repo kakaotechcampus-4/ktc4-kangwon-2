@@ -35,6 +35,8 @@ class RequestAwareWeeklyLlm:
                 required = " ".join(target.get("required_name_terms", ()))
                 prefix = required + " " if required else ""
                 value = f"{prefix}{target['activity_type']} {noun} {key.rsplit('.', 1)[-1]}: 자료 속 대상을 함께 탐색합니다."
+                if target.get("trend_required"):  # ADR-072 그림책 자리
+                    value, grounding = f"『{target['trend_required']['title']}』 함께 읽기: 그림책을 읽고 떠오르는 생각을 이야기 나눕니다.", []
             elif key == "theme":
                 value, grounding = f"{again}{theme} 속 이번 주 놀이", []
             elif key == "outdoor_play":

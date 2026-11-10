@@ -29,7 +29,11 @@ from app.features.template_profiles.repository import (
     TemplateProfileError,
 )
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_center, require_own_class
+from app.shared.auth.ownership import (
+    require_center_creator,
+    require_own_center,
+    require_own_class,
+)
 
 router = APIRouter(tags=["template-profiles"])
 
@@ -381,7 +385,9 @@ def get_center_default(center_id: int, session: DbSession, user: CurrentUser):
 
 @router.put("/centers/{center_id}/template-profile-default", response_model=PointerOut)
 def put_center_default(center_id: int, body: PointerIn, session: DbSession, user: CurrentUser):
+    """원 모든 반의 다음 월간에 걸린다 — 원을 만든 교사만 바꾼다 (ADR-087)."""
     require_own_center(user, center_id)
+    require_center_creator(session, user, center_id)
     repo = PostgresTemplateProfileRepository(session, center_id=center_id)
     _move(body, repo.set_default, repo.clear_default, user.id)
     detail = _pointer_out(repo.get_default())

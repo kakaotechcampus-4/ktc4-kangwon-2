@@ -51,10 +51,10 @@ export function JournalTabs({
 }) {
   return (
     <nav aria-label="보육일지 종류" className={styles.journalTabs} data-tour="journal-tabs">
-      <Link href={daily} aria-current={at === "daily" ? "page" : undefined}>
+      <Link href={daily} className="tap44" aria-current={at === "daily" ? "page" : undefined}>
         일일 보육일지
       </Link>
-      <Link href={weekly} aria-current={at === "weekly" ? "page" : undefined}>
+      <Link href={weekly} className="tap44" aria-current={at === "weekly" ? "page" : undefined}>
         주간 보육일지
       </Link>
     </nav>
@@ -87,17 +87,35 @@ export function Message({
   children,
   error = false,
   id,
+  onClose,
 }: {
   children: ReactNode;
   error?: boolean;
   /** 입력 칸이 `aria-errormessage` 로 이 글을 가리킬 때 쓴다. */
   id?: string;
+  /** 있으면 오른쪽에 × 단추를 단다. 단추는 알림 글(role) 밖에 둔다 — 「안내 닫기」까지 읽히지 않게. */
+  onClose?: () => void;
 }) {
-  return children ? (
+  if (!children) return null;
+  const line = (
     <p id={id} className={error ? styles.error : styles.message} role={error ? "alert" : "status"}>
       {children}
     </p>
-  ) : null;
+  );
+  if (!onClose) return line;
+  return (
+    <div className={styles.messageBar}>
+      {line}
+      <button
+        type="button"
+        className={`${styles.messageClose} tap44`}
+        aria-label="안내 닫기"
+        onClick={onClose}
+      >
+        ×
+      </button>
+    </div>
+  );
 }
 const NO_CLASSES: ClassroomEntry[] = [];
 /**

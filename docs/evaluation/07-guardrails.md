@@ -16,7 +16,7 @@
 |---|---|---|
 | 실명이 LLM 프롬프트·응답·로그에 남는 것 | 호출 직전 아동 코드로 치환. `backend/app/shared/childCode/` 한 곳에서만 | ADR-004 · `test_child_code.py` |
 | 치환 실패한 채 호출 | **호출하지 않고 에러를 낸다** | [CLAUDE.md](../../CLAUDE.md) §개인정보 |
-| 복원 후 조사가 틀어지는 것 | 치환 토큰을 **받침 있는 더미 한글 이름**으로 | 같은 곳 |
+| 복원 후 조사가 틀어지는 것 | 치환 토큰을 **원래 이름과 받침 유무가 같은 더미 한글 이름**으로 | 같은 곳 |
 | 브라우저에 실명이 쌓이는 것 | `localStorage` · `sessionStorage` · IndexedDB 금지 — 거기 쌓이면 삭제 요청이 와도 못 지운다 | ADR-013 |
 | 필요 없는 정보 수집 | **아동에게서 이름만 받는다.** 생년월일·성별·건강정보 안 받음 | [CLAUDE.md](../../CLAUDE.md) |
 | 동의 없는 입력 | 아동 명단 입력칸은 확인 문구 체크박스 뒤에서만 열린다 | 같은 곳 |
@@ -28,6 +28,7 @@
 
 - **사실기록형(알림장 · 사고보고서 · 투약의뢰서)에 생성 기능을 안 붙였다.** 없는 사실을 쓰면 문서 조작이다 — [CLAUDE.md](../../CLAUDE.md) §문서 5분류
 - 해석형은 3층 규격을 못 넘으면 반려 → [06](06-ai-quality.md)
+- 일지 초안을 못 만들면(모델 실패 · 한도 · 1·2단에 걸림) 사실만 채운 초안을 201 로 주고 해석 · 지원은 빈 칸으로 둔다 — **걸린 글은 저장하지 않는다(fail-closed).** 편집 화면이 「AI 가 이번에는 초안을 쓰지 못했어요」로 알리고, 서버 로그에 까닭만 남긴다 — ADR-093 · `backend/tests/test_documents_fallback.py` · `frontend/tests/observation-screens.test.mjs`
 - 자동 제출·자동 발송 없음 — §생성
 - v1 월간은 안전 품질표의 자료 SHA·안전 분류 판이 맞지 않거나 분류가 없으면 LLM 호출·저장 전에 중단한다 — `p0-planning/src/ssuksak/planning/retrieval/retriever.py` · `p0-planning/tests/finalization/test_safety_placement_e2e.py`
 - v1 월간 실내 대체활동은 주간 분류가 실내대체로 정한 기관 기록만 근거로 쓰고, 근거가 없으면 생성하지 않고 빈칸을 남긴다. 주간 분류가 자료 묶음과 맞지 않으면 LLM 호출 · 저장 전에 중단한다 — `p0-planning/src/ssuksak/planning/retrieval/retriever.py` · `p0-planning/tests/application/test_monthly_application.py` · `backend/tests/test_monthly_lifecycle_api.py`

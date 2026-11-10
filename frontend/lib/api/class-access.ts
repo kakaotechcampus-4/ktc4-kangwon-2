@@ -59,6 +59,6 @@ export function classAccessMessage(error: unknown): string | null {
   if (code === "CLASS_ACCESS_REQUIRED")
     return "이 반은 담임 선생님이 승인해야 볼 수 있어요. 승인이 취소됐을 수 있으니 다시 요청해 주세요.";
   if (code === "CLASS_READ_ONLY")
-    return "승인받은 반은 보기와 내려받기만 돼요. 고치기 · 확정 · 삭제는 담임 선생님만 할 수 있어요.";
+    return "승인받은 반은 보기와 내려받기만 돼요. 수정 · 확정 · 삭제는 담임 선생님만 할 수 있어요.";
   return null;
 }
