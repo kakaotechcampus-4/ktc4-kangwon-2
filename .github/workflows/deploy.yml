@@ -103,7 +103,18 @@ jobs:
           echo "올릴 커밋 $sha"
           echo "DEPLOY_SHA=$sha" >> "$GITHUB_ENV"
 
+      # 잠금을 얻은 뒤 다시 본다(scripts/still-tip.sh). 「CI 기다리기」는 잠금 밖이라, 그 사이 더 새 push 가 먼저
+      # 올라갔으면 이 옛 커밋이 그 위를 덮는다(하민 리뷰 #549). 그러면 서버를 건드리지 않고 끝낸다(stale=true).
+      # 끝을 못 읽으면 막는다. 손 배포는 일부러 옛 커밋을 올리는 것이라 보지 않는다.
+      - name: 아직 브랜치 끝인지
+        id: latest
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/still-tip.sh "$DEPLOY_SHA"
+
       - name: AWS 자격증명 설정
+        if: steps.latest.outputs.stale != 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
@@ -115,6 +126,7 @@ jobs:
       # output 으로도 남긴다. SSM 이 stdout 은 앞 24000자만 줘서(next build 출력에서 잘린다) 끝에 찍는 줄은 stderr 에 있다.
       - name: 배포
         id: deploy
+        if: steps.latest.outputs.stale != 'true'
         env:
           # 서버가 교체 뒤 실패를 되돌릴지('1' · '0'). push 배포는 늘 '1', 손 배포는 auto_rollback 입력대로.
           AUTO_ROLLBACK: ${{ (github.event_name == 'push' || inputs.auto_rollback) && '1' || '0' }}
@@ -159,7 +171,7 @@ jobs:
 
       # 되돌렸어도(3) 이번에 올리려던 배포는 실패다. run 이 초록이면 실패한 커밋이 나간 것처럼 보인다.
       - name: 배포 판정
-        if: ${{ !cancelled() && steps.deploy.outputs.code != '0' }}
+        if: ${{ !cancelled() && steps.latest.outputs.stale != 'true' && steps.deploy.outputs.code != '0' }}
         env:
           DEPLOY_CODE: ${{ steps.deploy.outputs.code }}
         run: |
@@ -176,10 +188,15 @@ jobs:
           DEPLOY_CODE: ${{ steps.deploy.outputs.code }}
           RESULT: ${{ steps.deploy.outputs.result }}
           HEALTH_OUTCOME: ${{ steps.health.outcome }}
+          LATEST_OUTCOME: ${{ steps.latest.outcome }}
         run: |
           test -n "$WEBHOOK" || exit 0
           f=${DEPLOY_SHA:-올릴 커밋을 못 정함}
           nl=$'\n'
+          # 「아직 브랜치 끝인지」가 실패했으면 서버를 건드리지 않았다(배포 스텝이 안 돌아 DEPLOY_CODE 가 비었다)
+          if [ "$LATEST_OUTCOME" = failure ]; then
+            msg="🔴 ${BRANCH} 끝을 읽지 못해 배포하지 않았다 — $f. 서버는 그대로다. run 을 다시 돌린다"
+          else
           case "$DEPLOY_CODE" in
             0)
               msg="🔴 서버 안은 정상인데 밖에서 안 닿는다 — $f. DNS · 인증서 · HEALTHCHECK_URL 을 본다"
@@ -210,6 +227,7 @@ jobs:
               msg="🔴 배포 실패 — $f. 서비스 상태를 확인한다"
               ;;
           esac
+          fi
           curl -fsS -X POST "$WEBHOOK" \
             -H 'Content-Type: application/json' \
             -d "$(jq -n --arg c "${msg}${nl}${RUN_URL}" '{content: $c}')" \

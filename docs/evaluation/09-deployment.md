@@ -180,6 +180,7 @@ run 기록의 커밋과 서버 로그의 「배포 … <sha>」 줄을 맞춰 �
 - [x] main 배포 첫 회 — 2026-11-11 00:20 KST #529 머지 `8fbeb0ea` push 배포([run 42843300103](https://github.com/kakaotechcampus-4/ktc4-kangwon-2/actions/runs/42843300103)):
   「올릴 커밋」 · 서버 로그 「배포 8fbeb0ea…」 가 같고, 직전 성공 `e5e5e883`, 서버 안 「health/ready 200 · 화면 200 (1회째)」 · 밖 `health/ready 200 (1회째)` · 서버 종료 코드 0
 - [ ] CI 를 기다리는 배포 첫 회 — 다음 develop→main 머지에서 「CI 기다리기」가 CI 성공을 본 뒤에 배포가 시작되는지(run 의 두 job 시각).
-  판정은 `backend/tests/test_wait_ci_script.py`(성공 · 실패 5종 · 더 새 push 가 취소 · 뒤따를 배포 없는 취소 · 조회 실패 · 시간 초과)와
+  판정은 `backend/tests/test_wait_ci_script.py`(성공 · 실패 5종 · 더 새 push 가 취소 · 뒤따를 배포 없는 취소 · 조회 실패 · 시간 초과,
+  그리고 잠금 안의 「아직 브랜치 끝인지」 — 성공했지만 대체된 커밋은 안 올림)와
   2026-11-11 실제 커밋 손 시험이 본다 — `8fbeb0ea`@main(CI 성공) 통과, `d07b8ada`@develop(CI 실패) 막음,
   `083d2848`@develop(CI 취소, 브랜치 끝은 이미 `4d5a5bed`) 건너뜀, `8fbeb0ea`@develop(그 브랜치의 CI 없음) · 없는 커밋은 시간 초과로 막음

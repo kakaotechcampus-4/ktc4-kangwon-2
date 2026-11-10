@@ -49,6 +49,9 @@ DISCORD_WEBHOOK  Secret      실패 알림.  없으면 알림만 건너뛴다
   ↓
 올릴 커밋을 SHA 하나로 고정         브랜치 이름을 서버에 넘기지 않는다
   ↓
+아직 브랜치 끝인지 다시 봄          scripts/still-tip.sh.  배포 잠금을 얻은 뒤라, 기다리는 사이 더 새 push 가 먼저 올라갔으면
+                                 이 옛 커밋은 서버를 건드리지 않고 끝낸다.  끝을 못 읽으면 막고 알림.  손 배포는 안 본다
+  ↓
 OIDC 로 AWS 인증                  키 없음
   ↓
 scripts/deploy.sh 를 통째로 보냄   scripts/ssm-deploy.sh → aws ssm send-command

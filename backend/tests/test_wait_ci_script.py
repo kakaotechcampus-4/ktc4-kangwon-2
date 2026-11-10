@@ -19,6 +19,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 WAIT_CI_SH = ROOT / "scripts" / "wait-ci.sh"
+STILL_TIP_SH = ROOT / "scripts" / "still-tip.sh"
 
 SHA = "0123456789abcdef0123456789abcdef01234567"
 URL = "https://github.com/o/r/actions/runs/1"
@@ -56,10 +57,10 @@ def run(tmp_path):
     output = tmp_path / "github-output"
     args = tmp_path / "gh-args"
 
-    def go(*lines: str, tries: int = 10, tip: str = "f" * 40):
+    def go(*lines: str, tries: int = 10, tip: str = "f" * 40, script: Path = WAIT_CI_SH):
         (tmp_path / "lines").write_text("\n".join(lines) + "\n")
         proc = subprocess.run(
-            ["bash", str(WAIT_CI_SH), SHA],
+            ["bash", str(script), SHA],
             env={
                 **os.environ,
                 "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
@@ -69,6 +70,7 @@ def run(tmp_path):
                 "GITHUB_OUTPUT": str(output),
                 "WAIT_TRIES": str(tries),
                 "WAIT_INTERVAL": "0",
+                "TIP_RETRY_INTERVAL": "0",
                 "FAKE_LINES": str(tmp_path / "lines"),
                 "FAKE_COUNT": str(tmp_path / "count"),
                 "FAKE_ARGS": str(args),
@@ -146,3 +148,38 @@ def test_시간_안에_안_끝나면_막는다(run):
     assert proc.returncode == 1
     assert out["ok"] == "false"
     assert len(calls) == 3
+
+
+# 아래는 deploy job 이 잠금을 얻은 뒤 서버를 바꾸기 직전에 부르는 확인(scripts/still-tip.sh)이다.
+# 「CI 기다리기」는 잠금 밖이라, 그 사이 더 새 push 가 먼저 올라갔을 수 있다(하민 리뷰 #549 P2).
+
+
+def test_아직_브랜치_끝이면_올린다(run):
+    proc, out, _ = run(tip=SHA, script=STILL_TIP_SH)
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert out == {"stale": "false"}
+
+
+def test_더_새_push_가_있으면_옛_커밋은_올리지_않는다(run):
+    proc, out, _ = run(tip="f" * 40, script=STILL_TIP_SH)
+
+    assert proc.returncode == 0
+    assert out == {"stale": "true"}
+
+
+def test_브랜치_끝을_못_읽으면_막는다(run):
+    proc, out, _ = run(tip="ERR", script=STILL_TIP_SH)
+
+    assert proc.returncode == 1
+    assert "stale" not in out
+
+
+def test_성공했지만_대체된_커밋은_배포하지_않는다(run):
+    # 하민 리뷰 #549 P2 재현: A 의 CI 는 성공했는데 조회가 두 번 실패하는 사이 B 가 main 끝이 됐다.
+    # 「CI 기다리기」는 성공만 보고 ok=true 를 낸다 — 막는 것은 잠금 안의 still-tip 이다
+    proc, out, _ = run("ERR", "ERR", f"completed|success|{URL}", tip="f" * 40)
+    assert (proc.returncode, out["ok"]) == (0, "true")
+
+    proc, out, _ = run(tip="f" * 40, script=STILL_TIP_SH)
+    assert out["stale"] == "true"
