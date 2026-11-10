@@ -100,7 +100,7 @@ export interface ApiDocumentSource {
   text: string;
   /** 관찰일지 근거에만 있다. 양식의 영역 행을 이것으로 나눈다 (§11). */
   domain?: string | null;
-  /** 관찰 기록의 상황 사본 (ADR-077). 옛 문서 · 그 밖의 근거는 null 이다. */
+  /** 관찰 기록의 상황 사본 (ADR-088). 옛 문서 · 그 밖의 근거는 null 이다. */
   context?: string | null;
   /** 근거 종류. 아직 상세 응답에 없는 서버가 있어 비어 있을 수 있다. */
   source_kind?: string | null;
@@ -112,7 +112,7 @@ export interface ApiDocumentDetail extends Omit<ApiDocumentListItem, "sources_co
   sources: ApiDocumentSource[];
   review_note: string;
   class_note: string;
-  /** 관찰일지를 만들 때 찍은 영역 축 (ADR-077). 옛 문서 · 그 밖의 문서는 null 이다. */
+  /** 관찰일지를 만들 때 찍은 영역 축 (ADR-088). 옛 문서 · 그 밖의 문서는 null 이다. */
   observation_axis?: string | null;
 }
 

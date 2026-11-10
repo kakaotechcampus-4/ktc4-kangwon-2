@@ -533,7 +533,7 @@ function useLeaveGuard(dirty: boolean) {
 /**
  * 확정본 — 내려받는 한글 양식과 같은 칸으로 그린다 (backend documents/export.py `_observation`).
  *
- * 행은 **문서를 만들 때 찍은 축**이다 (ADR-077). 원이 나중에 축을 바꿔도 종이와 같게 그린다.
+ * 행은 **문서를 만들 때 찍은 축**이다 (ADR-088). 원이 나중에 축을 바꿔도 종이와 같게 그린다.
  * 사본이 없는 옛 문서만 지금 원 설정(`current`)을 쓴다.
  */
 function JournalSheet({

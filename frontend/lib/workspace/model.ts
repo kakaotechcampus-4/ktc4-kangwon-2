@@ -29,7 +29,7 @@ export type Source = {
   classId: string;
   /** 관찰 기록의 영역. 서버가 관찰일지 근거에만 준다 (api-spec §11). */
   domain?: string;
-  /** 관찰 기록의 상황 사본 (ADR-077). 사본이 없는 옛 문서는 없다. */
+  /** 관찰 기록의 상황 사본 (ADR-088). 사본이 없는 옛 문서는 없다. */
   context?: string;
   /** 근거가 어느 표의 것인가. 주간 보육일지는 일일 문서와 일과 기록 둘 다 받는다. */
   kind?: "observation" | "document" | "routine";
@@ -59,7 +59,7 @@ export type SavedDocument = {
   /** mock LLM 이 만든 초안. **본문이 아니라 여기로** 알린다 — 제출 문서에 시스템 글자를
    *  남기지 않으면서도 mock 을 실제 AI 로 보이게 하지 않는다. */
   mockDraft?: boolean;
-  /** 관찰일지를 만들 때 찍은 영역 축 (ADR-077). 없으면 옛 문서라 지금 원 설정을 쓴다. */
+  /** 관찰일지를 만들 때 찍은 영역 축 (ADR-088). 없으면 옛 문서라 지금 원 설정을 쓴다. */
   observationAxis?: string;
 };
 export type Template = {
