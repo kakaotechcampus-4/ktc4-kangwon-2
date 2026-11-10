@@ -9,7 +9,7 @@ import {
   type SavedDocument,
   type Section,
 } from "@/lib/workspace/model";
-import { invalidFields } from "@/lib/api/client";
+import { invalidFields, isUnauthenticated } from "@/lib/api/client";
 import { DROPPED_IMPORTS, onLegacyImportsMoved } from "@/lib/workspace/store";
 import { listRecords } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
@@ -46,6 +46,7 @@ import { createSelection } from "./document-selection";
 import { messageFor } from "./use-server-document";
 import { Empty, Message, useClasses, ws } from "./WorkspaceUI";
 import { Icon } from "@/components/app/icons";
+import { Posty } from "@/components/app/Posty";
 import { ArchiveNoteArt } from "./DocumentArchiveArt";
 import { FlowerMeadow } from "./ChildTrackingArt";
 import creation from "./DocumentCreation.module.css";
@@ -147,7 +148,15 @@ export default function DocumentsPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [invalid, setInvalid] = useState<string[]>([]);
-  const classes = useClasses(setMessage);
+  // 반 정보 실패는 보관함 위 알림 띠 한 줄로 모은다 — 다른 안내(`message`)와 따로 둔다.
+  const [classError, setClassError] = useState("");
+  const classes = useClasses(setClassError);
+  // 하나라도 401 이면 나머지 실패도 그 탓이다. 띠는 「다시 로그인」만 띄운다.
+  const [authLost, setAuthLost] = useState(false);
+  const failed = (e: unknown) => {
+    if (isUnauthenticated(e)) setAuthLost(true);
+    return messageFor(e);
+  };
   // 서버에만 있던 반은 useClasses가 늦게 들여온다. 먼저 주 반을 고르거나 미리 포기를 확정하지 않는다.
   const requestedClass =
     entry.classId !== null
@@ -231,7 +240,7 @@ export default function DocumentsPage() {
       })
       .catch((e) => {
         if (mine !== latestList.current) return;
-        setListError(messageFor(e));
+        setListError(failed(e));
         setListStatus("error");
       });
     return () => {
@@ -250,7 +259,7 @@ export default function DocumentsPage() {
       setListStatus("ready");
     } catch (e) {
       if (mine !== latestList.current) return;
-      setListError(messageFor(e));
+      setListError(failed(e));
       setListStatus("error");
     }
   }
@@ -266,7 +275,7 @@ export default function DocumentsPage() {
         if (live) setFilteredDocs(items);
       })
       .catch((e) => {
-        if (live) setListError(messageFor(e));
+        if (live) setListError(failed(e));
       });
     return () => {
       live = false;
@@ -309,12 +318,17 @@ export default function DocumentsPage() {
         if (mine === latestPlans.current) setPlans({ items, error: "" });
       })
       .catch((e) => {
-        if (mine === latestPlans.current) setPlans({ items: [], error: messageFor(e) });
+        if (mine === latestPlans.current) setPlans({ items: [], error: failed(e) });
       });
     return () => {
       latestPlans.current += 1;
     };
   }, []);
+  /** 알림 띠의 「다시 시도」 — 실패한 것만 다시 부른다. 반 정보는 다시 부를 길이 새로고침뿐이다. */
+  async function retryAll() {
+    if (classError) return window.location.reload();
+    await Promise.all([listStatus === "error" && reloadList(), plans?.error && reloadPlans()]);
+  }
   async function reloadPlans() {
     const mine = ++latestPlans.current;
     setPlans(null);
@@ -322,7 +336,7 @@ export default function DocumentsPage() {
       const { items } = await listAnnualPlans();
       if (mine === latestPlans.current) setPlans({ items, error: "" });
     } catch (e) {
-      if (mine === latestPlans.current) setPlans({ items: [], error: messageFor(e) });
+      if (mine === latestPlans.current) setPlans({ items: [], error: failed(e) });
     }
   }
 
@@ -697,6 +711,16 @@ export default function DocumentsPage() {
         </div>
         {/* 보관함은 찾아보는 곳이다. 만들기는 종류별 화면 안의 작성 단추로만 한다. */}
       </div>
+      <LoadNotice
+        authLost={authLost}
+        failed={[
+          classError && "반 정보",
+          listStatus === "error" && "문서 목록",
+          plans?.error && "계획안 목록",
+        ].filter((name): name is string => Boolean(name))}
+        busy={busy}
+        onRetry={retryAll}
+      />
       {notices}
     </>
   );
@@ -708,22 +732,6 @@ export default function DocumentsPage() {
           <>
             {head}
             <ArchiveFilters value={filter} onChange={setFilter} />
-            {listStatus === "error" && (
-              <div>
-                <Message error>{listError}</Message>
-                <button className={ws.secondary} disabled={busy} onClick={reloadList}>
-                  다시 시도
-                </button>
-              </div>
-            )}
-            {plans?.error && (
-              <div>
-                <Message error>계획안 목록을 불러오지 못했어요. {plans.error}</Message>
-                <button className={ws.secondary} onClick={reloadPlans}>
-                  계획안 다시 시도
-                </button>
-              </div>
-            )}
             {journalsPending && (
               <Message>
                 {entries.length ? "일지를 불러오고 있어요." : "문서 목록을 불러오고 있어요."}
@@ -805,6 +813,7 @@ export default function DocumentsPage() {
         </svg>
       </header>
       {notices}
+      <Message error>{classError}</Message>
       <div className={creation.grid}>
         <section className={`${ws.card} ${creation.card}`}>
           <div className={creation.cardHead}>
@@ -1062,6 +1071,13 @@ export default function DocumentsPage() {
 }
 
 /** 보관함 거르개 — 상태 · 원본 바뀜 · 제목 찾기 (FR-701 · FR-406). 지금 모양 안에 한 줄로 둔다. */
+/** 상태 칩 — 한 번에 하나. 말은 거르개가 쓰던 그대로다(「초안」 · 「검토 중」 이름은 결정 대기). */
+const STATUS_CHIPS: [ArchiveFilter["status"], string][] = [
+  ["", "전체"],
+  ["DRAFT", "초안"],
+  ["CONFIRMED", "확정"],
+];
+
 function ArchiveFilters({
   value,
   onChange,
@@ -1069,33 +1085,114 @@ function ArchiveFilters({
   value: ArchiveFilter;
   onChange: (next: ArchiveFilter) => void;
 }) {
+  /** ✕ 를 누르면 단추가 사라진다 — 포커스를 찾기 칸으로 돌려 둔다. */
+  function clearTitle(button: HTMLButtonElement) {
+    onChange({ ...value, title: "" });
+    button.parentElement?.querySelector("input")?.focus();
+  }
   return (
     <div className={archive.filters} role="search" aria-label="문서 거르기">
-      <select
-        aria-label="상태"
-        value={value.status}
-        onChange={(e) => onChange({ ...value, status: e.target.value as ArchiveFilter["status"] })}
-      >
-        <option value="">전체</option>
-        <option value="DRAFT">초안</option>
-        <option value="CONFIRMED">확정</option>
-      </select>
-      <label>
+      <div className={archive.chipRow}>
+        <div role="group" aria-label="상태" className={archive.chipGroup}>
+          {STATUS_CHIPS.map(([status, name]) => (
+            <button
+              key={name}
+              type="button"
+              className={archive.chip}
+              aria-pressed={value.status === status}
+              onClick={() => onChange({ ...value, status })}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className={archive.chip}
+          data-tone="stale"
+          aria-pressed={value.stale}
+          onClick={() => onChange({ ...value, stale: !value.stale })}
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <path d="M10 3.2 17.4 16H2.6z" />
+            <path d="M10 8.2v3.6M10 13.9v.1" />
+          </svg>
+          원본 바뀜
+        </button>
+      </div>
+      <div className={archive.search}>
+        <Icon name="search" />
         <input
-          type="checkbox"
-          checked={value.stale}
-          onChange={(e) => onChange({ ...value, stale: e.target.checked })}
+          type="search"
+          aria-label="제목 찾기"
+          placeholder="제목으로 찾기"
+          maxLength={200}
+          value={value.title}
+          onChange={(e) => onChange({ ...value, title: e.target.value })}
         />
-        원본 바뀜
-      </label>
-      <input
-        type="search"
-        aria-label="제목 찾기"
-        placeholder="제목 찾기"
-        maxLength={200}
-        value={value.title}
-        onChange={(e) => onChange({ ...value, title: e.target.value })}
-      />
+        {value.title && (
+          <button
+            type="button"
+            className="tap44"
+            aria-label="제목 지우기"
+            onClick={(e) => clearTitle(e.currentTarget)}
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path d="m6 6 8 8m0-8-8 8" />
+            </svg>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 보관함 위 알림 띠. 반 정보 · 문서 목록 · 계획안 목록이 따로 실패해도 띠는 하나다.
+ * 로그인이 끊겼으면 나머지 실패는 그 탓이라 「다시 로그인」만 띄운다.
+ * 로그인하면 홈(`/`)으로 가므로 「보던 화면으로 돌아온다」고 적지 않는다.
+ */
+function LoadNotice({
+  authLost,
+  failed,
+  busy,
+  onRetry,
+}: {
+  authLost: boolean;
+  failed: string[];
+  busy: boolean;
+  onRetry: () => void;
+}) {
+  if (authLost)
+    return (
+      <div className={archive.notice} data-tone="auth">
+        <span className={archive.noticeArt}>
+          <Posty tone="sun" face="oh" size={36} label={null} />
+        </span>
+        <Message error>
+          <strong>로그인이 끊겼어요</strong>
+          <span>다시 로그인해 주세요.</span>
+        </Message>
+        <Link href="/login" className={archive.noticeAction}>
+          다시 로그인
+        </Link>
+      </div>
+    );
+  if (!failed.length) return null;
+  // 「반 정보」만 받침이 없다.
+  const josa = failed.at(-1) === "반 정보" ? "를" : "을";
+  return (
+    <div className={archive.notice} data-tone="fail">
+      <span className={archive.noticeArt}>
+        <Posty tone="shell" face="fix" size={36} label={null} />
+      </span>
+      <Message error>
+        <strong>{`${failed.join(" · ")}${josa} 불러오지 못했어요`}</strong>
+        <span>잠시 뒤 다시 시도해 주세요.</span>
+      </Message>
+      <button type="button" className={archive.noticeAction} disabled={busy} onClick={onRetry}>
+        다시 시도
+      </button>
     </div>
   );
 }

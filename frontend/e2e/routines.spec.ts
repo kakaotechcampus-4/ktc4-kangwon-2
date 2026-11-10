@@ -1496,8 +1496,11 @@ for (const width of [1440, 390]) {
     await expect(
       preview.getByRole("heading", { name: a.title, exact: true, level: 2 }),
     ).toBeVisible();
+    // 사실은 일과마다 시각 칸 · 이름 딱지 · 본문으로 나눠 그린다. 이름표(`[블록놀이 09:00~10:00]`)를 뗀 본문을 본다.
     await expect(preview).toContainText(
-      a.sections.find((s: { heading: string }) => s.heading === "사실").body,
+      a.sections
+        .find((s: { heading: string }) => s.heading === "사실")
+        .body.replace(/^\[[^\]]*\]\s*/, ""),
     );
     await expect(preview.locator("input,textarea,select")).toHaveCount(0);
     await expect(page.getByRole("textbox", { name: "지원 내용", exact: true })).toHaveCount(0);
@@ -1563,14 +1566,17 @@ for (const width of [1440, 390]) {
       preview.getByRole("heading", { name: b.title, exact: true, level: 2 }),
     ).toBeVisible();
     await expect(preview).not.toContainText(support);
+    // 휴대폰은 문서를 펴면 목록(반 선택 포함)이 가려진다 — 목록으로 돌아가 반을 바꾼다.
+    if (width <= 760) await preview.getByRole("button", { name: "목록으로", exact: true }).click();
     await page.getByRole("complementary", { name: "반 선택" }).getByText("달님반").click();
     await expect(page.getByRole("heading", { name: b.title, exact: true, level: 2 })).toHaveCount(
       0,
     );
     await expect(preview).toHaveCount(0);
-    await expect(
-      page.getByRole("heading", { name: "문서를 선택해 주세요", exact: true }),
-    ).toBeVisible();
+    // 휴대폰은 빈 「문서를 선택해 주세요」 칸을 두지 않는다(PM 11-10).
+    const overview = page.getByRole("heading", { name: "문서를 선택해 주세요", exact: true });
+    if (width > 760) await expect(overview).toBeVisible();
+    else await expect(overview).toBeHidden();
     expect(
       (await api(page, `/api/documents/${a.id}`)).sections.find(
         (s: { heading: string }) => s.heading === "지원",

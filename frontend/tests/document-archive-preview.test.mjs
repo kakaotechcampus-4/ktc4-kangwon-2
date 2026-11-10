@@ -102,7 +102,11 @@ function harness(
     "@/lib/api/client": { errorCode: (e) => e?.code ?? null },
     "@/components/plan-generator/PlayMonthlyConfirm": { __esModule: true, default: "ask" },
     "./WorkspaceUI": { ws: {} },
-    "./DocumentArchive.module.css": { __esModule: true, default: {} },
+    "./CircleMark": { CircleMark: "circle-mark" },
+    "./DocumentArchive.module.css": {
+      __esModule: true,
+      default: new Proxy({}, { get: (_, key) => (typeof key === "string" ? key : undefined) }),
+    },
   };
   const m = { exports: {} };
   new Function("require", "module", "exports", code)(
@@ -466,4 +470,103 @@ test("확정본은 내 반 미리보기에서 확정을 풀고 편집 화면으�
     false,
   );
   d.unmount();
+});
+test("보육일지 사실은 왼쪽 시각 칸 · 세로줄을 따라 일과 이름 딱지와 함께 그리고, 이름표 없는 사실은 그대로 둔다", () => {
+  const { default: Preview, factRows, phrases } = harness();
+  const body =
+    "[등원 및 자유놀이 09:00~09:30] 친구에게 같이 만들자고 말하며 블록을 나눠 주었다.\n" +
+    "블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다.\n\n[바깥놀이] 모래를 팠다.";
+  assert.deepEqual(factRows(body), [
+    {
+      name: "등원 및 자유놀이",
+      time: "09:00 ~ 09:30",
+      lines: [
+        "친구에게 같이 만들자고 말하며 블록을 나눠 주었다.",
+        "블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다.",
+      ],
+    },
+    { name: "바깥놀이", time: "", lines: ["모래를 팠다."] },
+  ]);
+  assert.equal(factRows("블록을 쌓았다.\n\n[바깥놀이] 모래"), null);
+  // 마디 안에서는 안 끊긴다 · 짧은 끝마디는 앞에 붙는다 · 「~라고 말했다」는 한 마디다.
+  assert.deepEqual(phrases("모래에 물길을 파고 물이 어디로 가는지 따라가며 보았다."), [
+    "모래에 물길을 파고",
+    "물이 어디로 가는지 따라가며 보았다.",
+  ]);
+  assert.deepEqual(phrases("블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다."), [
+    "블록 세 개를 쌓은 뒤",
+    "“더 높이 만들래”라고 말했다.",
+  ]);
+  const tree = Preview(
+    props({ document: { ...doc, kind: "dailyLog", sections: [{ heading: "사실", body }] } }),
+  );
+  assert.ok(text(tree).includes("09:00 ~ 09:30"));
+  assert.equal(text(tree).includes("["), false);
+  // 시간 줄 한 가지뿐 — 왼쪽 칸에 시각, 일과 이름은 딱지. 시안 고르던 주소(?factopt)는 없다.
+  const name = nodes(tree).find((n) => n.props?.className === "factName");
+  assert.equal(text(name), "등원 및 자유놀이");
+  const clocks = nodes(tree).filter((n) => n.props?.className === "factClock");
+  assert.deepEqual(clocks.map(text), ["09:00 ~ 09:30", ""]);
+  assert.equal(source.includes("factopt"), false);
+});
+
+test("주간 보육일지 — 제목 옆에 주를 동그라미 치고 꼬리 기간을 떼며, 사실은 날짜별로 묶는다", () => {
+  const { default: Preview, weekLabel, dayLabel, bareTitle, factDays, factRows } = harness();
+  assert.equal(weekLabel("2026-11-09", "2026-11-15"), "11월 9일 ~ 15일");
+  assert.equal(weekLabel("2026-11-30", "2026-12-06"), "11월 30일 ~ 12월 6일");
+  assert.equal(weekLabel("2026-11-09", "2026-11-09"), "11월 9일");
+  assert.equal(weekLabel("", "2026-11-15"), "");
+  assert.equal(dayLabel("2026-11-09"), "11월 9일 (월)");
+  assert.equal(dayLabel("2026-11-15"), "11월 15일 (일)");
+  assert.equal(bareTitle("햇살반 주간 보육일지 (11월)"), "햇살반 주간 보육일지");
+  assert.equal(bareTitle("햇살반 주간 보육일지 (11/30~12/6)"), "햇살반 주간 보육일지");
+  assert.equal(bareTitle("우리 반 한 주 (놀이)"), "우리 반 한 주 (놀이)");
+
+  // 근거 원문을 이은 사실 — 화요일 근거가 먼저 와도 날짜순. 같은 글의 줄은 근거 순서대로 하나씩 쓴다.
+  const tue = "[점심 11:30~12:30] 골고루 먹었다.\n\n[바깥놀이 10:00~11:00] 모래를 팠다.";
+  const mon = "[점심 11:30~12:30] 골고루 먹었다.";
+  const body = `${tue}\n\n${mon}\n\n[낮잠] 고친 줄`;
+  const sources = [
+    { date: "2026-11-10", text: tue },
+    { date: "2026-11-09", text: mon },
+  ];
+  const days = factDays(factRows(body), sources);
+  assert.deepEqual(
+    days.map((d) => [d.date, d.rows.map((r) => r.name)]),
+    [
+      ["2026-11-09", ["점심"]],
+      ["2026-11-10", ["점심", "바깥놀이"]],
+      ["", ["낮잠"]],
+    ],
+  );
+  // 하루치뿐이면 머리글 없이 그대로.
+  assert.equal(factDays(factRows(mon), [sources[1]]), null);
+  assert.equal(factDays(factRows(mon), []), null);
+
+  const weekly = {
+    ...doc,
+    kind: "weeklyLog",
+    title: "햇살반 주간 보육일지 (11월)",
+    start: "2026-11-09",
+    end: "2026-11-15",
+    sections: [{ heading: "사실", body, sourceIds: [] }],
+    sources,
+  };
+  const tree = Preview(props({ document: weekly }));
+  const title = nodes(tree).find((n) => n.type === "h2");
+  assert.equal(text(title).replace(/\s+/g, " ").trim(), "햇살반 주간 보육일지 11월 9일 ~ 15일");
+  assert.ok(nodes(title).some((n) => n.type === "circle-mark"));
+  assert.deepEqual(
+    nodes(tree)
+      .filter((n) => n.props?.className === "factDayHead")
+      .map(text),
+    ["11월 9일 (월)", "11월 10일 (화)", "날짜 없음"],
+  );
+  // 일일 보육일지는 근거 날짜를 보지 않는다 — 머리글 없음.
+  const daily = Preview(props({ document: { ...weekly, kind: "dailyLog" } }));
+  assert.equal(
+    nodes(daily).some((n) => n.props?.className === "factDayHead"),
+    false,
+  );
+  assert.equal(text(nodes(daily).find((n) => n.type === "h2")), weekly.title);
 });
