@@ -3086,13 +3086,15 @@ function dailyCard(t, { dailies = [], day, create } = {}) {
     react: app.react,
     "./WorkspaceUI": { Message: "message", ws: {} },
     "@/components/app/Posty": { Posty: "posty" },
-    "./DocumentEditor": { __esModule: true, default: "document-editor" },
+    // 일일 일지는 칠판 모양 편집기(DailyJournalBoard)로 연다. 여기서는 열렸는지만 본다.
+    "./DailyJournalBoard": { __esModule: true, default: "document-editor" },
+    "./DailyJournal.module.css": { __esModule: true, default: {} },
     "./use-server-document": {
       useServerDocument: (id) => ({
         doc: id ? { id, sections: [] } : null,
         status: "ready",
         error: "",
-        server: undefined,
+        server: id ? {} : undefined,
       }),
     },
     "@/lib/api/onboarding": { classServerId: (id) => (id === "class-1" ? 7 : null) },

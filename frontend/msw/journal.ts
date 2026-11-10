@@ -120,15 +120,42 @@ function demoDocuments(classId: number, today: string) {
     doc(9101, "dailyLog", shift(today, -1), shift(today, -1), "CONFIRMED"),
     // 주간 일지가 없는 주를 보일 때는 오늘 일일 초안 하나 — 「여기서 확정」을 보여 준다.
     ...(noWeekly() ? [doc(9102, "dailyLog", today, today, "DRAFT")] : []),
-    ...made.map((m) => doc(m.id, "dailyLog", m.start, m.start, "DRAFT")),
+    ...made.map((m) => doc(m.id, "dailyLog", m.start, m.start, m.status)),
     ...(noWeekly() ? [] : [doc(9201, "weeklyLog", monday, shift(monday, 6), "DRAFT")]),
   ];
 }
-/** 보여 주기 중에 「오늘 일지 만들기」로 만든 초안. */
-const made: { id: number; start: string }[] = [];
+/**
+ * 문서 보관함은 반을 빼고 문서를 다 묻는다(`listDocuments()`). 그때 반 번호 0 으로 만들면
+ * 보관함이 제 반 문서가 아니라고 걸러 날짜 칸이 다 비었다 — 마지막으로 본 반 번호를 쓴다.
+ */
+let seenClass = 0;
+/** 보여 주기 중에 「오늘 일지 만들기」로 만든 초안. 근거는 그날 일과 기록 사본이다 (§11). */
+interface MadeDaily {
+  id: number;
+  start: string;
+  status: "DRAFT" | "CONFIRMED";
+  classNote: string;
+  sourceIds: number[];
+  sources: {
+    id: number;
+    source_kind: "routine";
+    date: string;
+    text: string;
+    class_id: number;
+    child_id: null;
+  }[];
+}
+const made: MadeDaily[] = [];
 const DEMO_SECTIONS: Record<number, [string, string][]> = {
+  // 사실은 서버처럼 일과마다 빈 줄로 잇는다(join_facts). 한 일과 안에서 교사가 줄을 바꾼 것도 있다.
   9101: [
-    ["사실", "[바깥놀이 11:00~12:20] 모래 놀이터에서 둑을 쌓았다."],
+    [
+      "사실",
+      "[등원 및 자유놀이 09:00~09:30] 친구에게 같이 만들자고 말하며 블록을 나눠 주었다.\n" +
+        "블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다.\n\n" +
+        "[바깥놀이 10:40~11:40] 모래에 물길을 파고 물이 어디로 가는지 따라가며 보았다.\n\n" +
+        "[점심 및 휴식 11:40~13:00] 숟가락을 스스로 들고 먹은 뒤 그릇을 정리대에 가져다 놓았다.",
+    ],
     ["해석", "모래와 물이 만나는 곳에 관심을 보이며 둑의 높이를 서로 견주었다."],
     ["지원", "모래놀이에 물길 재료를 더 준비한다."],
   ],
@@ -210,10 +237,32 @@ const today = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
+const madeDaily = (id: string | readonly string[] | undefined) =>
+  demo() ? made.find((m) => m.id === Number(id)) : undefined;
+/** 보여 주기 문서 상세. 오늘 만든 초안은 근거 사본 · 반 특이사항을 들고 있다. */
+function dailyDetail(id: number) {
+  const m = made.find((d) => d.id === id);
+  const summary = demoDocuments(seenClass, today()).find((d) => d.id === id)!;
+  const ids = m?.sourceIds ?? [];
+  return {
+    ...summary,
+    sources_count: ids.length,
+    sections: DEMO_SECTIONS[id].map(([heading, body]) => ({
+      heading,
+      body,
+      source_ids: heading === "사실" ? ids : [],
+    })),
+    sources: m?.sources ?? [],
+    review_note: "",
+    class_note: m?.classNote ?? "",
+  };
+}
+
 export const journalHandlers = [
   http.get("*/api/routines", ({ request }) => {
     const q = new URL(request.url).searchParams;
     const classId = Number(q.get("class_id"));
+    if (classId) seenClass = classId;
     const day = q.get("from");
     const oneDay = q.get("class_id") && day && day === q.get("to");
     if (!oneDay)
@@ -357,45 +406,119 @@ export const journalHandlers = [
   http.get("*/api/documents", ({ request }) => {
     if (!demo()) return;
     const q = new URL(request.url).searchParams;
-    const items = demoDocuments(Number(q.get("class_id")), today()).filter(
+    const items = demoDocuments(Number(q.get("class_id")) || seenClass, today()).filter(
       (d) => !q.get("kind") || d.kind === q.get("kind"),
     );
     return HttpResponse.json({ items });
   }),
   http.post("*/api/documents", async ({ request }) => {
     if (!demo()) return;
-    const b = (await request.json()) as { kind: string; start: string };
+    const b = (await request.json()) as {
+      kind: string;
+      class_id: number;
+      start: string;
+      source_ids: number[];
+    };
     if (b.kind !== "dailyLog") return;
     const id = 9300 + made.length;
-    made.push({ id, start: b.start });
+    // 서버와 같은 사실 한 줄 — `[오전 실내놀이 09:20~10:40] 활동실행` (routines/models.py fact_text).
+    const picked = b.source_ids
+      .map((sid) => routines.find((r) => r.id === sid))
+      .filter((r): r is MockRoutine => !!r);
+    const line = (r: MockRoutine) => {
+      const hm = (v: string | null) => (v ?? "").slice(0, 5);
+      const when = r.start || r.end ? ` ${hm(r.start)}~${hm(r.end)}` : "";
+      return `[${r.name.trim()}${when}] ${r.execution.trim()}`;
+    };
+    made.push({
+      id,
+      start: b.start,
+      status: "DRAFT",
+      classNote: "",
+      sourceIds: picked.map((r) => r.id),
+      sources: picked.map((r) => ({
+        id: r.id,
+        source_kind: "routine",
+        date: r.date,
+        text: line(r),
+        class_id: r.class_id,
+        child_id: null,
+      })),
+    });
     DEMO_SECTIONS[id] = [
-      ["사실", "[오전 실내놀이 09:20~10:40] ○○가 블록 셋을 쌓고 ○○에게 같이 만들자고 함"],
-      ["해석", "친구와 함께 만들기를 제안하며 놀이를 넓혔다."],
+      [
+        "사실",
+        picked.length ? picked.map(line).join("\n") : "[오전 실내놀이 09:20~10:40] 블록 놀이",
+      ],
+      [
+        "해석",
+        "친구와 함께 만들기를 제안하며 놀이를 넓혔다. 아이들은 매일 블록으로 길을 이어 간다.",
+      ],
       ["지원", "큰 블록을 더 두어 함께 쌓을 자리를 만든다."],
     ];
-    const summary = demoDocuments(0, today()).find((d) => d.id === id)!;
-    return HttpResponse.json(
-      {
-        ...summary,
-        sections: DEMO_SECTIONS[id].map(([heading, body]) => ({ heading, body, source_ids: [] })),
-        sources: [],
-        review_note: "",
-        class_note: "",
-      },
-      { status: 201 },
-    );
+    return HttpResponse.json(dailyDetail(id), { status: 201 });
   }),
   http.get("*/api/documents/:id", ({ params }) => {
     const id = Number(params.id);
     if (!demo() || !DEMO_SECTIONS[id]) return;
-    const summary = demoDocuments(0, today()).find((d) => d.id === id)!;
+    return HttpResponse.json(dailyDetail(id));
+  }),
+  http.put("*/api/documents/:id", async ({ params, request }) => {
+    const m = madeDaily(params.id);
+    if (!m) return;
+    const b = (await request.json()) as {
+      sections: { heading: string; body: string }[];
+      class_note?: string;
+    };
+    DEMO_SECTIONS[m.id] = b.sections.map((s) => [s.heading, s.body]);
+    m.classNote = b.class_note ?? m.classNote;
+    return HttpResponse.json(dailyDetail(m.id));
+  }),
+  // 3단 검토 흉내 — 「매일」처럼 기록에 없는 말을 짚는다(관찰일지 목업과 같은 규칙).
+  http.post("*/api/documents/:id/verify", async ({ params, request }) => {
+    const m = madeDaily(params.id);
+    if (!m) return;
+    const b = (await request.json()) as { sections: { heading: string; body: string }[] };
+    await new Promise((r) => setTimeout(r, 500));
+    const issues = b.sections
+      .filter((s) => s.heading === "해석" || s.heading === "지원")
+      .flatMap((s) =>
+        s.body
+          .split(/(?<=[.!?])\s+/)
+          .filter((sentence) => sentence.includes("매일"))
+          .map((sentence) => ({
+            heading: s.heading,
+            sentence,
+            code: "UNSUPPORTED_FACT",
+            source_id: null,
+            source_text: null,
+            reason: "「매일」은 오늘 일과 기록에 없어요.",
+            fix: "오늘 본 것만 적어 주세요.",
+          })),
+      );
+    return HttpResponse.json({ issues, judge: "jev" });
+  }),
+  http.post("*/api/documents/:id/confirm", ({ params }) => {
+    const m = madeDaily(params.id);
+    if (!m) return;
+    m.status = "CONFIRMED";
+    return HttpResponse.json(dailyDetail(m.id));
+  }),
+  http.post("*/api/documents/:id/unconfirm", ({ params }) => {
+    const m = madeDaily(params.id);
+    if (!m) return;
+    m.status = "DRAFT";
     return HttpResponse.json({
-      ...summary,
-      sections: DEMO_SECTIONS[id].map(([heading, body]) => ({ heading, body, source_ids: [] })),
-      sources: [],
-      review_note: "",
-      class_note: "",
+      ...dailyDetail(m.id),
+      review_impact: { affected_document_ids: [], newly_stale_document_ids: [] },
     });
+  }),
+  http.delete("*/api/documents/:id", ({ params }) => {
+    const m = madeDaily(params.id);
+    if (!m) return;
+    made.splice(made.indexOf(m), 1);
+    delete DEMO_SECTIONS[m.id];
+    return new HttpResponse(null, { status: 204 });
   }),
   http.get("*/api/plans/weekly", ({ request }) => {
     if (!demo()) return;

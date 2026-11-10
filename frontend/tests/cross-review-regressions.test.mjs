@@ -425,6 +425,8 @@ test("#373: 날짜·주 변경 즉시 이전 일지와 근거를 숨긴다", asy
     "@/components/app/Posty": { Posty: "posty" },
     "./WorkspaceUI": { Message: "message", ws: {} },
     "./DocumentEditor": { __esModule: true, default: "editor" },
+    "./DailyJournalBoard": { __esModule: true, default: "board" },
+    "./DailyJournal.module.css": { __esModule: true, default: {} },
     "./use-server-document": { useServerDocument() {} },
     "@/lib/workspace/journal-day": { indoorNote: () => null },
   };
