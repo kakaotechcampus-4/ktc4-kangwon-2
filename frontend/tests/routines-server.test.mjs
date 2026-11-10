@@ -598,12 +598,15 @@ function page(
     confirm = true,
     extras = { plan: null, observations: [] },
     yesterday = null,
+    journalDoc = null,
   } = {},
 ) {
   const confirms = browser({ rooms, primaryClassId, search, confirm });
   const pushed = [];
   /** 「오늘 일지 만들기」가 넘긴 근거 목록. 화면을 떠나지 않으므로 `pushed` 로는 못 본다. */
   const journals = [];
+  /** 「일지 열기」가 연 그날 일지 id. */
+  const opens = [];
 
   const app = host();
   let mutations = routineMutationBarriers.get(api);
@@ -678,7 +681,8 @@ function page(
       default: "daily-journal",
       DailyJournalEditor: "daily-journal-editor",
       useDailyJournal: () => ({
-        doc: null,
+        doc: journalDoc,
+        open: (id) => void opens.push(id),
         busy: false,
         error: "",
         yesterday,
@@ -724,6 +728,7 @@ function page(
     confirms,
     pushed,
     journals,
+    opens,
     unmount: app.cleanup,
     flush: view.flush,
     render: view.render,
@@ -1140,6 +1145,27 @@ test("올리기가 실패하면 일지를 만들지 않고 적은 글자를 그�
   assert.deepEqual(view.journals, []);
   assert.ok(view.errors().includes("저장하지 못했어요"), view.errors());
   assert.equal(view.dones()[0].props.value, "블록을 쌓았다");
+});
+
+test("그날 일지가 이미 있으면 「일지 열기」로 그 일지를 연다 — 새로 만들지 않는다(409)", async (t) => {
+  const api = recorder({ rows: [row({ id: 1 })] });
+  const doc = { id: "document:7", start: TODAY, status: "draft", stale: false };
+  const view = page(t, api.api, { journalDoc: doc });
+  await view.flush();
+  assert.equal(view.button("일지 만들기"), undefined, "있는 날에는 만들기 단추가 없다");
+  view.button("일지 열기").props.onClick();
+  await view.flush();
+  assert.deepEqual(view.opens, ["document:7"]);
+  assert.deepEqual(view.journals, [], "새로 만들지 않는다");
+  assert.deepEqual(api.only("draft"), []);
+});
+
+test("지난 날에는 「오늘」이라 하지 않는다 — 「이날 일지 만들기」", async (t) => {
+  const api = recorder({ rows: [row({ id: 1, date: "2026-10-02" })] });
+  const view = page(t, api.api, { search: "?date=2026-10-02&class_id=3" });
+  await view.flush();
+  assert.ok(view.button("이날 일지 만들기 →"));
+  assert.equal(view.button("오늘 일지 만들기"), undefined);
 });
 
 test("두 번 눌러도 한 번만 올리고 한 번만 만든다", async (t) => {

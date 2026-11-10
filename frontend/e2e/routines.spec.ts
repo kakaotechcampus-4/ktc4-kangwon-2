@@ -287,7 +287,7 @@ test("A B C G H J — 홈 진입, 7줄을 떠날 때 올림, S-J2 생성·확정
     );
     // 일지는 보관함으로 가지 않고 이 화면에서 만든다 — 고르는 단계 없이, 실제로 한 것을
     // 적은 줄 전부를 화면 순서(시간순) 그대로 근거로 삼는다.
-    await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
+    await page.getByRole("button", { name: /^(오늘|이날) 일지 만들기 →$/ }).click();
     const generated = await response;
     expect(generated.status()).toBe(201);
     await expect(page).toHaveURL(`/routines?date=${date}&class_id=${classId}`);
@@ -347,9 +347,7 @@ test("S-J2 빈 상태 — 실제로 한 것이 없는 저장 줄에서 입력 �
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
   await rows(page).nth(0).getByLabel("일과 이름").fill("시간과 이름만 있는 일과");
   await uploaded(page);
-  await expect(
-    page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }),
-  ).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^(오늘|이날) 일지 만들기 →$/ })).toBeDisabled();
   await page.getByRole("link", { name: "문서 보관함", exact: true }).click();
   // 보관함 상단의 생성 단추는 없앴다. 생성 화면은 기존 딥링크(S-J1 → S-J2)로 들어간다.
   await page.goto(`/documents?kind=dailyLog&class_id=${classId}&date=${date}`);
@@ -393,7 +391,7 @@ test("D E F J — 어제 복사·검증 오류·실제 401 임시본 실패와 �
   note(page, "D", { timeAndNameOnly: true, noWrite: true });
   await rows(page).nth(0).getByLabel("일과 이름").fill("");
   await rows(page).nth(0).getByLabel("실제로 한 것").fill("오늘 작성 중인 실행");
-  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
+  await page.getByRole("button", { name: /^(오늘|이날) 일지 만들기 →$/ }).click();
   await expect(rows(page).nth(0).getByText("일과 이름을 적어 주세요.")).toBeVisible();
   await expect(rows(page).nth(0).getByLabel("실제로 한 것")).toHaveValue("오늘 작성 중인 실행");
   expect(await dayRows(page, classId, date)).toEqual([]);
@@ -407,7 +405,7 @@ test("D E F J — 어제 복사·검증 오류·실제 401 임시본 실패와 �
   // 저장 단추는 없다(ADR-084). 멈추면 임시본을 보내고, 실패하면 머리줄에 「저장 못 했어요」.
   await expect(page.getByRole("alert").filter({ hasText: "저장 못 했어요" })).toBeVisible();
   await expect(rows(page).nth(0).getByLabel("실제로 한 것")).toHaveValue("오늘 작성 중인 실행");
-  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
+  await page.getByRole("button", { name: /^(오늘|이날) 일지 만들기 →$/ }).click();
   await expect(page.getByText("로그인이 필요해요. 다시 로그인한 뒤 이용해주세요.")).toBeVisible();
   await expect(page).toHaveURL(/\/routines\?/);
   await page.evaluate(
@@ -450,7 +448,7 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   await rows(page).nth(0).getByLabel("실제로 한 것").fill("달님반에서 공을 굴렸다.");
   // 「오늘 일지 만들기」가 먼저 근거로 올린다 — 따로 올리지 않는다(ADR-084).
   // 일지는 보관함으로 가지 않고 이 화면에서 만들어 칠판 밑에 펼친다.
-  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
+  await page.getByRole("button", { name: /^(오늘|이날) 일지 만들기 →$/ }).click();
   await expect(page.getByRole("region", { name: /보육일지$/ })).toBeVisible();
   await expect(page).toHaveURL(`/routines?date=${date}&class_id=${other.id}`);
   // 만든 일지는 고른 반(달님반) 것이고, 햇살반에는 그날 일지가 생기지 않는다.
@@ -489,7 +487,7 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   await rows(page).nth(0).getByLabel("일과 이름").fill("지난 날짜 일과");
   await rows(page).nth(0).getByLabel("실제로 한 것").fill("지난 날짜에 길을 만들었다.");
   // 지난 날짜도 그 날짜 · 그 반 그대로 이 화면에서 일지를 만든다.
-  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
+  await page.getByRole("button", { name: /^(오늘|이날) 일지 만들기 →$/ }).click();
   await expect(page.getByRole("region", { name: /보육일지$/ })).toBeVisible();
   await expect(page).toHaveURL(`/routines?date=2026-10-16&class_id=${other.id}`);
   await expect(rows(page).nth(0).getByLabel("일과 이름")).toHaveValue("지난 날짜 일과");
@@ -567,7 +565,7 @@ test("후속 #1~5 — 한 칸 시간 입력 · 기존 초 보존 · 이름 없�
 
   // 임시본은 쓰는 대로 간다. 근거로 올리는 길(「오늘 일지 만들기」)만 고칠 곳이 있으면 멈춘다.
   const before = await dayRows(page, classId, date);
-  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
+  await page.getByRole("button", { name: /^(오늘|이날) 일지 만들기 →$/ }).click();
   // 고칠 곳은 포스티 안내판이 줄마다 짚어 준다.
   await expect(page.getByRole("alert").filter({ hasText: "고칠 곳이" })).toBeVisible();
   await expect(added.getByLabel("일과 이름")).toBeFocused();

@@ -71,7 +71,7 @@ export function useDailyJournal({ classId, date }: { classId: number | null; dat
         setLoaded({ at: here, doc: null });
         setFailed({
           at: here,
-          text: e instanceof Error ? e.message : "오늘 일지를 불러오지 못했습니다.",
+          text: e instanceof Error ? e.message : "일지를 불러오지 못했습니다.",
         });
       });
     return () => {
@@ -145,14 +145,23 @@ export function journalMood(journal: DocumentSummary | null | undefined) {
   return { pose: "hand", face: "base", tone: "lilac" } as const;
 }
 
-export default function DailyJournalCard({ state, day }: { state: DailyJournal; day: string }) {
+export default function DailyJournalCard({
+  state,
+  day,
+  makeLabel = "오늘 일지 만들기 →",
+}: {
+  state: DailyJournal;
+  day: string;
+  /** 머리줄 만들기 단추의 글자. 지난 날이면 「이날 일지 만들기 →」다. */
+  makeLabel?: string;
+}) {
   if (state.off) return null;
   const journal = state.doc;
   const open = !!state.openId;
   const mood = journalMood(journal);
   const say =
     journal === undefined
-      ? "오늘 일지를 찾고 있어요."
+      ? "일지를 찾고 있어요."
       : journal
         ? journal.stale
           ? "근거가 바뀌었어요. 다시 볼 것이 있어요."
@@ -179,7 +188,7 @@ export default function DailyJournalCard({ state, day }: { state: DailyJournal; 
         <div>
           <p className={ws.journalWord}>{say}</p>
           {!journal && journal !== undefined && (
-            <p className={ws.journalLead}>화면 맨 위 「오늘 일지 만들기 →」를 누르세요.</p>
+            <p className={ws.journalLead}>화면 맨 위 「{makeLabel}」를 누르세요.</p>
           )}
         </div>
       </div>

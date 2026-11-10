@@ -939,6 +939,10 @@ export default function RoutinesPage() {
   const preset =
     now && !now.edits && !current?.rows.length && !current?.draft ? current?.preset : null;
   const weekday = templateWeekday(date);
+  /** 그날 일지. `undefined` 면 아직 찾는 중이라 만들기를 잠근다 — 있는 날에 눌리면 409 다. */
+  const existingJournal = journal.doc;
+  // 지난 날 · 앞날에는 「오늘」이라 하지 않는다.
+  const makeLabel = `${date === todayDate ? "오늘" : "이날"} 일지 만들기 →`;
 
   return (
     <WorkspacePage
@@ -958,15 +962,27 @@ export default function RoutinesPage() {
               적은 줄이 하나라도 있으면 켠다 — **올렸는지로 판단하지 않는다** (수락 기준 3).
               누르면 먼저 올리고, 성공해야 일지를 만든다.
             */}
-            <button
-              type="button"
-              className={ws.primary}
-              disabled={!!busy || !doneCount}
-              title={doneCount ? undefined : "실제로 한 것을 한 줄이라도 적어 주세요."}
-              onClick={openDailyLog}
-            >
-              {busy === "open" ? "만드는 중…" : "오늘 일지 만들기 →"}
-            </button>
+            {/* 그날 일지가 이미 있으면 새로 만들지 않고 연다 — 만들면 서버가 409 로 막는다. */}
+            {existingJournal ? (
+              <button
+                type="button"
+                className={ws.primary}
+                disabled={!!busy}
+                onClick={() => journal.open(existingJournal.id)}
+              >
+                일지 열기 →
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={ws.primary}
+                disabled={!!busy || !doneCount || existingJournal === undefined}
+                title={doneCount ? undefined : "실제로 한 것을 한 줄이라도 적어 주세요."}
+                onClick={openDailyLog}
+              >
+                {busy === "open" ? "만드는 중…" : makeLabel}
+              </button>
+            )}
           </div>
         ) : undefined
       }
@@ -1011,7 +1027,9 @@ export default function RoutinesPage() {
             </aside>
             {/* 「오늘 일지가 어디까지 됐나」는 날짜와 같이 본다 — 달력 바로 밑에 둔다.
                 일지를 펴면 편집기는 오른쪽 칠판 밑으로 나온다. 좁은 칸에서 쓸 글이 아니다. */}
-            {ready && <DailyJournalCard state={journal} day={koreanDay(date).day} />}
+            {ready && (
+              <DailyJournalCard state={journal} day={koreanDay(date).day} makeLabel={makeLabel} />
+            )}
           </div>
 
           <section className={ws.stack}>
