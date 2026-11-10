@@ -404,9 +404,62 @@ def import_document(
     return DocumentImportResponse(**detail.model_dump(), notices=notices)
 
 
+def _sources_changed(session: Session, copies: list[DocumentSource]) -> bool:
+    """사본을 만든 뒤 원본이 바뀌었나. 원본 → 문서, 종류 안에서 id 오름차순으로 잠근다.
+
+    review.lock_sources 와 같은 순서다. 일과 · 관찰 PUT · DELETE 도 원본을 먼저 잠근다.
+    """
+
+    def locked(model, kind):
+        ids = sorted({c.source_id for c in copies if c.source_kind == kind})
+        if not ids:
+            return {}
+        rows = session.scalars(
+            select(model)
+            .where(model.id.in_(ids))
+            .order_by(model.id)
+            .with_for_update(of=model)
+            .execution_options(populate_existing=True)
+        ).all()
+        return {row.id: row for row in rows}
+
+    routines = locked(RoutineRecord, "routine")
+    observations = locked(Observation, "observation")
+    documents = locked(Document, "document")
+    for copy in copies:
+        if copy.source_kind == "routine":
+            row = routines.get(copy.source_id)
+            same = row is not None and (row.fact_text(), row.date) == (copy.text, copy.date)
+        elif copy.source_kind == "observation":
+            row = observations.get(copy.source_id)
+            same = row is not None and (row.fact, row.date) == (copy.text, copy.date)
+        else:
+            row = documents.get(copy.source_id)
+            fact = session.scalar(
+                select(DocumentSection.body).where(
+                    DocumentSection.document_id == copy.source_id, DocumentSection.heading == "사실"
+                )
+            )
+            same = (
+                row is not None
+                and row.status == "CONFIRMED"
+                and not row.stale
+                and fact == copy.text
+            )
+        if not same:
+            return True
+    return False
+
+
 @router.post("", response_model=DocumentDetailResponse, status_code=status.HTTP_201_CREATED)
 def create_document(
     body: DocumentCreateRequest, session: DbSession, user: CurrentUser
+) -> DocumentDetailResponse:
+    return _create_document(body, session, user, retry=True)
+
+
+def _create_document(
+    body: DocumentCreateRequest, session: Session, user: User, *, retry: bool
 ) -> DocumentDetailResponse:
     """교사가 고른 근거로 초안을 만든다 (docs/api-spec.md §11).
 
@@ -418,8 +471,9 @@ def create_document(
         fields.append("child_id")
     if body.kind == "dailyLog" and body.start != body.end:
         fields.append("end")
-    if body.kind == "dailyLog" and body.child_id is not None:
-        # 반 단위 문서다 — 근거인 일과 기록에 아이가 없다 (§11 「종이 한 장」).
+    if body.kind in ("dailyLog", "weeklyLog") and body.child_id is not None:
+        # 반 단위 문서다 — 근거인 일과 기록 · 일일 보육일지에 아이가 없다
+        # (§11 「종이 한 장」, ADR-044).
         fields.append("child_id")
     if body.start > body.end:
         fields.append("start")
@@ -496,6 +550,15 @@ def create_document(
                     status.HTTP_409_CONFLICT,
                     "GATE_BLOCKED",
                     "확정된 일일 보육일지만 근거로 쓸 수 있습니다.",
+                    [f"sources.{source_id}"],
+                )
+            if source.stale:
+                # 근거가 바뀐 일일 보육일지다. 그대로 받으면 낡은 사실로 만든 주간이
+                # stale=False 로 확정 · 출력된다.
+                raise _error(
+                    status.HTTP_409_CONFLICT,
+                    "GATE_BLOCKED",
+                    "근거가 바뀐 일일 보육일지예요. 먼저 바뀐 근거를 반영하고 다시 확정해주세요.",
                     [f"sources.{source_id}"],
                 )
             if source.class_id != body.class_id or not (
@@ -625,6 +688,24 @@ def create_document(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "GENERATION_FAILED",
             "초안이 문서 규격을 통과하지 못했습니다. 다시 시도해주세요.",
+            [],
+        )
+
+    # 모델을 기다리는 동안 원본이 바뀌었을 수 있다. 저장 직전에 원본을 잠그고 다시 본다.
+    # 그대로 저장하면 옛 사본이 stale=False 로 남는다 — 그 사이의 수정은 아직 사본 행이
+    # 없어 stale 전파가 이 문서를 못 찾는다. 바뀌었으면 최신 기록으로 한 번 다시 만든다.
+    # 생성 시간 동안 원본을 붙잡지는 않는다.
+    if _sources_changed(session, copies):
+        if retry:
+            # 최신 기록으로 한 번 더 만든다. 아직 아무것도 쓰지 않았다 — 커밋은 잠금만 푼다.
+            # 잠근 채로 다시 모델을 부르면 그동안 교사의 기록 수정이 기다린다.
+            assert not session.new and not session.dirty
+            session.commit()
+            return _create_document(body, session, user, retry=False)
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "STALE_WRITE",
+            "초안을 만드는 동안 근거 기록이 계속 바뀌었어요. 잠시 뒤 다시 만들어주세요.",
             [],
         )
 
@@ -1055,7 +1136,9 @@ def refresh_document(
         field = f"sources.{copy.source_id}"
         if copy.source_kind == "observation":
             observation = session.get(Observation, copy.source_id)
-            if observation is None:
+            if observation is None or not (doc.start_date <= observation.date <= doc.end_date):
+                # 문서 기간 밖으로 옮긴 기록은 이 문서의 근거가 아니다 — 만들 때와 같은 규칙.
+                # 일과 근거와 같이 「사라진 근거」로 다룬다.
                 missing.append(field)
                 missing_ids.add(copy.source_id)
                 fresh.append(None)
@@ -1087,8 +1170,8 @@ def refresh_document(
             missing.append(field)
             missing_ids.add(copy.source_id)
             fresh.append(None)
-        elif source.status != "CONFIRMED":
-            # 만들 때와 같은 규칙이다 — 초안인 일일 보육일지를 근거로 두지 않는다.
+        elif source.status != "CONFIRMED" or source.stale:
+            # 만들 때와 같은 규칙이다 — 초안이거나 근거가 바뀐 일일 보육일지를 근거로 두지 않는다.
             unconfirmed.append(field)
             fresh.append(None)
         else:

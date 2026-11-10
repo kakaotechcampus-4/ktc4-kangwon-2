@@ -8,6 +8,7 @@ LLM 호출 자리는 `_generate` 하나다. 호출과 mock/real 분기는 `share
 """
 
 import json
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -28,6 +29,8 @@ RULE_VERSION = "v4"
 # 제출 문서에 시스템 글자가 섞였다. 그렇다고 아무 표시도 없으면 mock 을 실제 AI 로 보이게 한다.
 # **규칙 버전에서 파생한다** — 규칙이 바뀌었는데 mock 표식만 옛 버전이면 둘이 어긋난다.
 MOCK_RULE_VERSION = f"{RULE_VERSION}-mock"
+
+logger = logging.getLogger("app.server")
 
 
 def rule_version() -> str:
@@ -155,7 +158,10 @@ def _curriculum_for(domains: Sequence[str]) -> list[dict[str, str]]:
         return []
     try:
         catalog = v1_curriculum_catalog()
-    except (ValueError, OSError, KeyError, TypeError):
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        # 막지는 않지만 흔적은 남긴다(CLAUDE.md 「부가 의존을 빼고 만들었으면 남긴다」).
+        # 글은 찍지 않는다 — 예외 종류만.
+        logger.warning("curriculum_catalog_unavailable error=%s", type(exc).__name__)
         return []
     return [
         {"영역": c.domain, "내용범주": c.category, "내용": c.text}

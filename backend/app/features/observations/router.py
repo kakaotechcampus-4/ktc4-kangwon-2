@@ -73,9 +73,16 @@ def _response(row) -> ObservationResponse:
     )
 
 
-def _own(session: Session, user: User, observation_id: int):
-    """남의 원 기록도 없는 기록과 같은 404 다 (shared/auth/ownership.py 와 같은 이유)."""
-    row = session.execute(_visible(user).where(Observation.id == observation_id)).first()
+def _own(session: Session, user: User, observation_id: int, *, lock: bool = False):
+    """남의 원 기록도 없는 기록과 같은 404 다 (shared/auth/ownership.py 와 같은 이유).
+
+    `lock` 은 고치거나 지울 때다. 원본 → 문서 순으로 잠가야 refresh · reconfirm
+    (review.lock_sources)과 순서가 같아 교착이 없다. 일과 PUT · DELETE 와 같은 규칙이다.
+    """
+    query = _visible(user).where(Observation.id == observation_id)
+    if lock:
+        query = query.with_for_update(of=Observation).execution_options(populate_existing=True)
+    row = session.execute(query).first()
     if row is None:
         raise _NOT_FOUND
     return row
@@ -160,7 +167,7 @@ def list_observations(
 def update_observation(
     observation_id: int, body: ObservationUpdate, session: DbSession, user: CurrentUser
 ) -> ObservationResponse:
-    observation = _own(session, user, observation_id)[0]
+    observation = _own(session, user, observation_id, lock=True)[0]
     _check_axis(session, user, observation.class_id, body.domain)
     for field, value in body.model_dump().items():
         setattr(observation, field, value)
@@ -171,7 +178,7 @@ def update_observation(
 
 @router.delete("/{observation_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_observation(observation_id: int, session: DbSession, user: CurrentUser) -> None:
-    observation = _own(session, user, observation_id)[0]
+    observation = _own(session, user, observation_id, lock=True)[0]
     require_own_class(session, user, observation.class_id)
     observation_changed(session, observation_id, None, None)
     session.delete(observation)
