@@ -182,6 +182,10 @@ class TrendContextProvider:
         if not self._book_words or not self._books_file.exists():
             return []
         try:
+            # 사람이 이상한 책을 지우고 APPROVED 로 바꾼 목록만 쓴다(CLAUDE.md §8).
+            body = json.loads(self._books_file.read_text(encoding="utf-8"))
+            if body.get("status") != "APPROVED":
+                return []
             return book_items(load(self._books_file), self._book_words, self._today)
         except Exception:  # 깨진 그림책 파일은 그림책만 뺀다. 유튜브 트렌드 · 생성은 그대로다.
             logger.warning("picture book file unreadable", exc_info=True)

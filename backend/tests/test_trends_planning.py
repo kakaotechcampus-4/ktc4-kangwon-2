@@ -66,9 +66,14 @@ def book(isbn: str, title: str, description: str = "가짜 소개") -> RawItem:
     return RawItem("data4library", isbn, title, description, "", "2001-01-01", "도서관 정보나루")
 
 
-def books(tmp_path, items):
-    # 그림책 목록 파일은 주 파일과 모양이 같다. 이름만 다르다.
-    return save(items, date(2026, 11, 2), tmp_path / "books")
+def books(tmp_path, items, status="APPROVED"):
+    # 그림책 목록 파일은 주 파일과 모양이 같고 사람이 승인한 status 가 붙는다.
+    import json
+
+    path = save(items, date(2026, 11, 2), tmp_path / "books")
+    body = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**body, "status": status}), encoding="utf-8")
+    return path
 
 
 def test_books_matching_a_week_theme_word_come_first_in_the_story_queue(tmp_path):
@@ -115,6 +120,11 @@ def test_books_need_words_and_never_break_generation(tmp_path):
     # 그림책 파일이 없거나 깨져도 유튜브 트렌드는 그대로
     save([raw("a", "병뚜껑 경주 게임")], date(2026, 10, 26), tmp_path)
     assert [i.trend_id for i in fetch(books_file=tmp_path / "none.json").value] == ["youtube:a"]
+    # 승인 전(PENDING_HUMAN_REVIEW) 목록은 쓰지 않는다(CLAUDE.md §8)
+    pending = books(
+        tmp_path / "p", [book("9780000000001", "가짜 낙엽 그림책")], "PENDING_HUMAN_REVIEW"
+    )
+    assert [i.trend_id for i in fetch(books_file=pending).value] == ["youtube:a"]
     path.write_text("{broken", encoding="utf-8")
     assert [i.trend_id for i in fetch().value] == ["youtube:a"]
 
