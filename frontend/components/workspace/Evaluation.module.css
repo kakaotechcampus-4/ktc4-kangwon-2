@@ -1017,6 +1017,16 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* 오른쪽 끝 페이지 스크롤바를 숨긴다(사용자 결정 11-10). 안쪽 높이 800 에서 화면이 44~74px 넘치지만 휠 · 키보드로는 스크롤된다.
+   두 칸으로 설 때만 — 한 줄로 쌓이는 좁은 창은 페이지가 훨씬 길어 스크롤바가 있어야 한다. */
+@media (min-width: 1261px) {
+  :global(html):has(.layout) {
+    scrollbar-width: none;
+  }
+  :global(html):has(.layout)::-webkit-scrollbar {
+    display: none;
+  }
+}
 /* 페이지와 같이 스크롤한다. `ws.side` 처럼 따로 스크롤하면 노트북 높이에서 접힌 칸이 안쪽 밑으로 숨었다. */
 .aside {
   display: grid;
