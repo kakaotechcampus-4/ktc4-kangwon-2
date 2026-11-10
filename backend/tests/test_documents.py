@@ -729,7 +729,8 @@ def test_create_document_masks_other_class_child_names(db_session, monkeypatch):
     seen = {}
 
     def fake_generate(kind, masked_facts, curriculum=()):
-        seen["facts"] = masked_facts
+        # 사실마다 {fact, date, domain, context} 로 간다 (ADR-088).
+        seen["facts"] = [f["fact"] for f in masked_facts]
         return (
             "도담 해석입니다. 하람과 함께한 기록에 드러난 사실만 근거로 씁니다.",
             "도담 지원입니다. 다음 활동에서 교사가 할 방법을 적습니다.",

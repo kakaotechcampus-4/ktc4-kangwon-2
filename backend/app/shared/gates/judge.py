@@ -53,7 +53,7 @@ class TooLong(ValueError):
 
 @dataclass(frozen=True)
 class Source:
-    """근거 사본 한 줄. 초안 모델이 받는 칸과 같다 — `{fact, date, domain, context}` (ADR-080)."""
+    """근거 사본 한 줄. 초안 모델이 받는 칸과 같다 — `{fact, date, domain, context}` (ADR-088)."""
 
     source_id: int
     date: date | None

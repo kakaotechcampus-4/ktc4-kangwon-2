@@ -3312,7 +3312,7 @@ DAILY_PLAY_2  일상생활 · 놀이활동
 
 - 저장 · 수정 때 **지금 원의 축**이 아닌 값이면 `VALIDATION_FAILED` 422, `fields: ["domain"]`.
 - DB 는 두 축의 값을 모두 받는다. 원이 축을 바꿔도 전에 쌓은 기록은 그대로 읽힌다.
-- **문서는 만들 때의 축을 사본으로 갖는다**(§11 `observation_axis`, ADR-080). 원이 나중에 축을 바꿔도 이미 만든 관찰일지의 종이는 그 축이다.
+- **문서는 만들 때의 축을 사본으로 갖는다**(§11 `observation_axis`, ADR-088). 원이 나중에 축을 바꿔도 이미 만든 관찰일지의 종이는 그 축이다.
 
 **`context` 는 선택이다.** 빈 문자열을 허용한다 — 상황을 안 적고 사실만 남기는 교사가 있다.
 
@@ -3470,7 +3470,7 @@ assessment   영유아 평가      아동 단위   기간
 ```
 
 **관찰 기록 근거(`observation` · `assessment`)는 원의 지금 영역 축의 기록만 받는다.** 축이 다른 영역의 기록이면
-`VALIDATION_FAILED` 422, `fields: ["sources.{id}"]` — 이 문서의 양식에 그 영역 줄이 없다. 문서는 그 축을 `observation_axis` 로 찍는다(ADR-080).
+`VALIDATION_FAILED` 422, `fields: ["sources.{id}"]` — 이 문서의 양식에 그 영역 줄이 없다. 문서는 그 축을 `observation_axis` 로 찍는다(ADR-088).
 
 **`source_kind` 는 주간 보육일지에서만 고른다.** 생략하면 `"dailyLog"` 다.
 
@@ -3501,7 +3501,7 @@ source_kind   값                받는 kind      근거
       "context": "바깥놀이", "text": "...", "class_id": 1, "child_id": 5 }
   ],
   "observation_axis": "NURI_5",
-  "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v4" },
+  "generation": { "method": "RULE_LLM", "rule_id": "observation-draft", "rule_version": "v5" },
   "review_note": "", "class_note": "",
   "created_at": "...", "updated_at": "..."
 }
@@ -3552,7 +3552,7 @@ source_kind   값                받는 kind      근거
 ```
 
 - **영역 행은 `sources[].domain` 으로 서버가 나눈다.** 모델이 배치하지 않는다. 그래서 `observation` 의 `sources` 는 `domain` 을 같이 준다.
-- **`sources[].domain` · `context` 와 문서의 `observation_axis` 는 만들 때 찍은 사본이다**(ADR-080). 종이 · 미리보기 · `stale` 이 이것만 본다.
+- **`sources[].domain` · `context` 와 문서의 `observation_axis` 는 만들 때 찍은 사본이다**(ADR-088). 종이 · 미리보기 · `stale` 이 이것만 본다.
   `context` 의 빈 글은 「상황 없음」이다. 관찰 기록이 아닌 근거는 `domain` · `context` 가 `null` 이다.
   **사본이 없는 옛 문서(「다시 확인」)** 는 `context` · `observation_axis` 가 `null` 이고, `domain` 은 지금 원본 영역 · 행은 원의 지금 축이다.
 - 행은 문서의 축이다 — `NURI_5` 는 아래 5줄, `DAILY_PLAY_2` 는 일상생활 · 놀이활동 2줄(꼬리 이름 「총평」).
@@ -3700,7 +3700,7 @@ true    근거가 수정·삭제됐다.  교사가 다시 봐야 한다
 근거가 사라졌을 때       "원본 없음"
 ```
 
-**관찰 기록의 영역 · 상황만 고쳐도 `stale` 이다**(ADR-080). 영역은 종이의 행과 배움 칸의 누리과정 근거를,
+**관찰 기록의 영역 · 상황만 고쳐도 `stale` 이다**(ADR-088). 영역은 종이의 행과 배움 칸의 누리과정 근거를,
 상황은 관찰 칸의 글과 AI 입력을 바꾼다. 사본이 없는 옛 문서는 상황을 보지 않고, 원본 영역이 실제로 바뀔 때만 `stale` 이다.
 
 **`stale` 이면 확정할 수 없다.** `POST .../confirm` 이 `GATE_BLOCKED` 409 를 낸다.
@@ -3721,7 +3721,7 @@ true    근거가 수정·삭제됐다.  교사가 다시 봐야 한다
 - **원본이 하나라도 사라졌으면 `GATE_BLOCKED` 409.** `fields` 에 `sources.{id}`. 빼고 이으면 교사가 고른 근거가 조용히 줄어든다 — 지우고 새로 만든다
 - **근거 일일 보육일지가 초안이면 `GATE_BLOCKED` 409.** 만들 때와 같은 규칙이다
 - **관찰 기록의 영역 · 상황 사본도 새로 뜬다.** 원본 영역이 이 문서의 축(`observation_axis`)에 없으면 `GATE_BLOCKED` 409,
-  `fields` 에 `sources.{id}` — 그 양식에 넣을 줄이 없다. 문서는 `stale` 그대로다. 축 사본이 없는 옛 문서는 원의 지금 축으로 보고 그 축을 찍는다(ADR-080)
+  `fields` 에 `sources.{id}` — 그 양식에 넣을 줄이 없다. 문서는 `stale` 그대로다. 축 사본이 없는 옛 문서는 원의 지금 축으로 보고 그 축을 찍는다(ADR-088)
 
 ### 상태와 출처
 
@@ -3863,7 +3863,7 @@ ALREADY_REGISTERED       같은 아동 · 종류 · 겹치는 기간의 증빙�
 ```
 
 - `issues` 가 비고 `judge` 가 `jev` 면 통과다. 각 항목이 **이유와 수정 지시**를 담는다.
-- **jev 가 받는 근거는 초안 모델이 받은 사본 칸과 같다** — 사실 · 날짜 · 영역 · 상황(ADR-080). 상황에 적은 장소 ·
+- **jev 가 받는 근거는 초안 모델이 받은 사본 칸과 같다** — 사실 · 날짜 · 영역 · 상황(ADR-088). 상황에 적은 장소 ·
   함께한 사람을 해석이 쓰면 그것도 기록이다. 가명 처리도 사실 · 상황 둘 다 하고, 이름 표는 사실 · 상황 · 해석 · 지원 글로 만든다.
 - `judge: "mock"` 은 판정하지 않았다는 뜻이다(`LLM_MODE=mock`). 화면은 통과로 보이면 안 된다.
 - **판정 못 하면 빈 목록이 아니라 오류다.** 1·2단에 걸리면 422 `VALIDATION_FAILED`(jev 를 부르지 않는다),
@@ -3949,7 +3949,7 @@ GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?f
 
 **해석에 사실에 없는 숫자가 있으면 `sections.해석` 으로 거절한다.**
 상황에 든 숫자는 사실과 같이 친다. 근거 날짜(연 · 월 · 일)는 **날짜 표현 안의 숫자에만** 쓴다 —
-「11월 4일」 「11/4」의 4 는 교사가 준 날짜라 통과지만, 같은 문서의 「블록 4개」는 사실에 4 가 없으면 거절이다(ADR-080).
+「11월 4일」 「11/4」의 4 는 교사가 준 날짜라 통과지만, 같은 문서의 「블록 4개」는 사실에 4 가 없으면 거절이다(ADR-088).
 지원은 앞으로의 계획이라 새 숫자가 나와도 된다.
 
 **`PUT` 이 `사실` 을 바꾸면 거절한다.** 원본과 일치해야 한다는 규칙이 그대로 적용된다.
@@ -4020,7 +4020,7 @@ assessment    observation · dailyLog
 **미리보기 그림(`Preview/PrvImage.png`)은 다시 만들지 않는다.** 그래서 양식 파일은 빈 양식이어야 한다.
 `.hwp` 에도 이 그림이 그대로 들어간다.
 
-**관찰일지의 영역 · 상황 · 영역 축은 문서의 사본에서 읽는다**(ADR-080). 영역 · 상황을 고치면 `stale` 이 되어 내보내지 않는다.
+**관찰일지의 영역 · 상황 · 영역 축은 문서의 사본에서 읽는다**(ADR-088). 영역 · 상황을 고치면 `stale` 이 되어 내보내지 않는다.
 원이 축을 바꿔도 만들 때의 양식으로 나간다. 사본이 없는 옛 문서만 지금 원본 영역 · 원의 지금 축을 읽는다 —
 그 축에 없는 영역이면 `VALIDATION_FAILED` 422(`fields` 에 `sources.{id}`), 원본이 사라졌으면 `GATE_BLOCKED` 409 다.
 **일일 보육일지의 시간 · 일과 · 활동계획은 지금의 원본 기록에서 읽는다.**
@@ -4049,8 +4049,8 @@ assessment    observation · dailyLog
 
 `observations` 를 참조만 하면 원본이 수정될 때 문서의 `사실` 이 조용히 바뀐다.
 **무효 판정을 하려면 만들 당시의 원문이 남아 있어야 한다.** 관찰 기록 근거는 원문과 함께 날짜 · 영역 · 상황을,
-문서는 영역 축을 사본으로 둔다(ADR-080). AI 초안은 사본만 받는다 — 사실마다 `{fact, date, domain, context}`,
-`fact` · `context` 둘 다 가명으로 바꾼 뒤다(`rule_version` `v4`).
+문서는 영역 축을 사본으로 둔다(ADR-088). AI 초안은 사본만 받는다 — 사실마다 `{fact, date, domain, context}`,
+`fact` · `context` 둘 다 가명으로 바꾼 뒤다(`rule_version` `v5`).
 필요한 테이블은 맨 아래 「채워야 할 곳 — BE」 에 적었다.
 
 ---

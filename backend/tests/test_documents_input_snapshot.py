@@ -1,4 +1,4 @@
-"""문서는 만들 때의 입력을 사본으로 갖는다 — 영역 · 상황 · 영역 축 (ADR-080).
+"""문서는 만들 때의 입력을 사본으로 갖는다 — 영역 · 상황 · 영역 축 (ADR-088).
 
 종이 · 미리보기 · stale 판단이 원본 대신 사본을 본다. 실제 LLM 은 부르지 않는다 —
 `complete_json` 을 가짜로 바꿔 무엇이 나가는지만 잡는다.
@@ -237,7 +237,7 @@ def test_G1_G2_LLM_에_사실마다_날짜_영역_상황이_가명으로_간다(
     res = _create(sun, me, [a, b])
 
     assert res.status_code == 201, res.text
-    assert res.json()["generation"]["rule_version"] == "v4"
+    assert res.json()["generation"]["rule_version"] == "v5"
     raw = llm_seen["payloads"][0]
     assert "이서윤" not in raw and "박하준" not in raw
     assert json.loads(raw)["facts"] == [
@@ -434,7 +434,7 @@ def test_채우기는_다시_돌려도_채운_값을_덮지_않는다(sun, db_se
     assert _snapshot_of(db_session, doc) == ("NURI_5", [("자연탐구", "바깥놀이")])
 
 
-# ── 되감았다가 다시 올라올 때의 재대조 (ADR-080 결과) ─────────────────────────
+# ── 되감았다가 다시 올라올 때의 재대조 (ADR-088 결과) ─────────────────────────
 
 _RECHECK = Path(__file__).resolve().parents[1] / "scripts/recheck_observation_snapshots.py"
 
