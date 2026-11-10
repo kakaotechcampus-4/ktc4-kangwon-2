@@ -17,6 +17,7 @@ from sqlalchemy import select
 
 from app.features.documents.draft import KIND_LABELS
 from app.features.documents.models import DocumentSection
+from app.features.documents.review import class_ages
 from app.features.documents.router import (
     DbSession,
     _error,
@@ -184,7 +185,8 @@ def rewrite_sentence(
         facts,
         {s.source_id for s in sources},
         stage="rewrite",
-        extras=input_extras(sources),
+        # 다른 길과 같이 반 연령을 넘긴다 — 없으면 해석의 「만 4세」가 늘 2단에 걸린다.
+        extras=input_extras(sources, class_ages(session, doc.class_id)),
     )
     if blocked:
         return RewriteResponse(sentence=None, blocked=blocked, issues=[], judge="failed")

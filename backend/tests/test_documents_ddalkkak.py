@@ -385,6 +385,18 @@ def test_고쳐_쓰기는_이유_칸에_적힌_이름도_가명으로_보낸다(
     assert seen["payload"]["이유"] == "도담이가 매일 봤다는 말이 기록에 없어요."
 
 
+def test_고쳐_쓰기도_반_연령_만_4세는_2단에_걸리지_않는다(db_session, writer):
+    """다른 다섯 길처럼 반 연령을 넘긴다. 반은 만 4세다(_room)."""
+    install, _ = writer
+    install("만 4세답게 도담은 개미를 오래 바라본다.")
+    made, sections = _drafted(db_session)
+
+    body = _rewrite(made["id"], sections).json()
+
+    assert body["blocked"] == []
+    assert body["sentence"] == "만 4세답게 이가명은 개미를 오래 바라본다."
+
+
 def test_규칙_검사에_걸린_문장은_보여_주지_않는다(db_session, writer):
     install, _ = writer
     install("도담은 개미를 3번 오래 바라본다.")  # 기록에 없는 숫자
@@ -451,7 +463,7 @@ def test_말투_예시는_아이가_안_나오는_짧은_문장만_고르고_아
 
 
 def test_말투_예시는_초안과_같은_가명표로_외자_부르는_이름_옆_반_아이까지_뺀다():
-    """외자 아이(김민)는 「민이가」로 적힌다. 이름 꼴 두 글자 규칙도, 등록 이름도 못 잡던 문장이다."""
+    """외자 아이(김민)는 「민이가」로 적힌다. 두 글자 이름 꼴 · 등록 이름으로는 못 잡았다."""
     from app.features.documents.style import pick_examples
 
     own = [("김민", "가람", "민이"), ("최솔", "누리", None)]
@@ -504,7 +516,8 @@ def test_전에_확정한_관찰일지에서_말투_예시를_골라_보낸다(d
                 document_id=old.id,
                 heading="지원",
                 # 외자 아이를 부른 문장 — 등록 이름(김민)으로는 안 잡힌다.
-                body="다음에는 삽과 체를 같이 놓아 주면 좋을 것 같다. 민아 하고 부르면 삽을 들고 온다.",
+                body="다음에는 삽과 체를 같이 놓아 주면 좋을 것 같다. "
+                "민아 하고 부르면 삽을 들고 온다.",
                 source_ids=[1],
             ),
         ]
