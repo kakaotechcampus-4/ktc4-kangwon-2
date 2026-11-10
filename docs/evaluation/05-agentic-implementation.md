@@ -35,6 +35,8 @@ ADR-003 의 「P0a 는 결정론적이라 golden set 이 성립한다」도 같�
 
 ## 호출 구조
 
+- 연간 소주제 수가 달의 주 수와 다르면 실패 달만 묶어 수리를 최대 한 번 받고 정상 달·메모 판정은 보존한다. 주제형 연간은 재시도 포함 최대 6회다 — `backend/app/features/plans/annual_content.py` · `backend/tests/test_annual_content.py` · ADR-049
+
 - **문서 단위 배치.** 연간은 12개월, 월간은 한 달, 주간은 한 주를 한 번에.
   칸 단위로 부르면 시스템 프롬프트가 칸 수만큼 반복돼 **15배 이상** 나간다 — [CLAUDE.md](../../CLAUDE.md) §LLM 예산
 - 모든 호출이 `backend/app/shared/llm/client.py` 한 곳을 지난다
