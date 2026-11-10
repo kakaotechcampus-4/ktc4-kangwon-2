@@ -25,7 +25,12 @@ from urllib.parse import urlparse
 from ssuksak import timing
 
 from app.config import settings
-from app.shared.llm.errors import LlmBudgetExceeded, LlmFailed, LlmUnavailable
+from app.shared.llm.errors import (
+    LlmBudgetExceeded,
+    LlmCallCapExceeded,
+    LlmFailed,
+    LlmUnavailable,
+)
 
 # #100 이 만든 로거를 그대로 쓴다. 한 줄로 남기고 아동 정보는 찍지 않는다.
 logger = logging.getLogger("app.server")
@@ -46,6 +51,16 @@ TIMEOUT_SECONDS = 30.0
 # 다시 보내지 않는다 — 한도는 다시 눌러도 같고, 시간 초과는 모델이 이미 돌았을 수 있다.
 RETRY_STATUSES = frozenset({502, 503, 504})
 RETRY_DELAY_SECONDS = 1.5
+
+# 생성 요청 하나(`ssuksak.timing` 실행)가 부를 수 있는 LLM **시도** 횟수. 재시도도 센다(ADR-081).
+# 스레드를 열어도 합쳐서 센다 — 놀이형 연간은 구간 4개를 스레드로 부른다.
+# 설계상 최대는 놀이형 연간의 24다: (구간 4 + 실패한 구간 다시 4 + 겹침 다시 4) × 재시도 한 번씩 2.
+# **48 은 정책 값이다 — 설계 최대의 2배.** 같게 두면 다음에 정상 경로 하나를 더하는 변경이 운영에서
+# 조용히 500 이 된다. 진짜 최대는 `test_play_project_llm_cap.py` 가 CI 에서 24 로 지킨다.
+# 넘으면 어딘가 반복문이 샌 것이라 더 부르지 않고 멈춘다. 월 예산 차단(2026-09-21 무효)이 아니다.
+# 실행 밖 호출(문서 초안 · 칸 재생성 · 연간 가져오기 추출 · jev 판정)에는 걸지 않는다.
+# 센 실행이 없다.
+MAX_LLM_CALLS_PER_RUN = 48
 
 
 class _NotDelivered(LlmFailed):
@@ -216,13 +231,26 @@ def _llm_call(model: object):
     숫자와 이름만 적는다 — 내용은 없다. `run` 은 생성 요청 하나(`ssuksak.timing`)를 가리키고,
     `phase` 는 이 호출이 불린 구간이다(수리 호출이면 `repair`). 생성 요청 밖이면 `-` 다.
     """
+    run = timing.current()
+    reserved = timing.reserve_llm_call(MAX_LLM_CALLS_PER_RUN)
+    if reserved is False:
+        # 부르지 않고 멈춘다 — `llm_call` 줄 대신 이 줄만 남긴다. 숫자와 이름뿐이다(ADR-004).
+        # `_NotDelivered` 가 아니라서 `_once_more` 가 다시 부르지도 않는다.
+        # 막힌 순간의 쓴 수(used)는 상한과 같다 — 줄을 읽는 쪽이 한눈에 보도록 둘 다 적는다.
+        timing_logger.warning(
+            "llm_cap_hit run=%s kind=%s used=%d limit=%d",
+            run.id,
+            run.kind,
+            MAX_LLM_CALLS_PER_RUN,
+            MAX_LLM_CALLS_PER_RUN,
+        )
+        raise LlmCallCapExceeded(
+            f"생성 요청 하나의 LLM 호출 상한({MAX_LLM_CALLS_PER_RUN}회)을 넘었다"
+        )
     call = {"first_byte_ms": "-", "tokens": ("-", "-")}
     started = time.perf_counter()
     outcome = "ok"
     with timing.span("llm") as phase:
-        run = timing.current()
-        if run is not None:
-            run.llm_calls += 1
         try:
             yield call
         except BaseException as error:

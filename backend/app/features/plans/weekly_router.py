@@ -122,7 +122,7 @@ from app.features.plans.weekly_schemas import (
     WeeklySectionOut,
     WeekPeriodOut,
 )
-from app.features.trends.planning import TrendContextProvider
+from app.features.trends.planning import TrendContextProvider, book_words_for
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import foreign_class_refs, require_own_class
 from app.shared.llm import LlmBudgetExceeded, LlmUnavailable, is_mock
@@ -287,7 +287,23 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     center = session.get(Center, center_id)
     saturday = center.weekly_saturday_enabled
     # ADR-072: 원이 켠 경우에만 트렌드를 읽는다. 오늘 = 서버의 한국 날짜.
-    trends = TrendContextProvider(enabled=center.trends_enabled, today=today_kst(datetime.now(UTC)))
+    # 그림책은 그 주 주제 낱말이 제목에 있는 것만(2026-11-10 보완).
+    # 주 주제 = 부모 그 주 focus, 없으면 월 주제.
+    week_theme = next(
+        (
+            cell.value
+            for key in ("focus", "theme")
+            if (section := parent.section(key)) is not None
+            for cell in (section.cell_for_week(week), section.cell_for_week(None))
+            if cell is not None and cell.value.strip()
+        ),
+        "",
+    )
+    trends = TrendContextProvider(
+        enabled=center.trends_enabled,
+        today=today_kst(datetime.now(UTC)),
+        book_words=book_words_for(week_theme),
+    )
     try:
         provider = _weekly_provider()
     except LlmUnavailable as error:
@@ -838,11 +854,18 @@ def regenerate_weekly_cell(
         target = plan.find_cell(_item_id(item_id))
         if target is not None and target.section_key == "indoor_play":
             raise _CELL_NOT_REGENERATABLE
-    # 칸 프롬프트에도 저장된 요청 사항이 실린다. 생성과 같이 가린다(ADR-060).
-    names = memo_name_table(session, int(plan.classroom_ref), plan.teacher_memo, REGEN_MASK_FAILED)
+    # 칸 프롬프트에는 저장된 요청 사항과 이 계획안의 다른 칸 값(current_plan · 교사가 고친 값
+    # 포함)이 실린다. 둘 다 생성과 같이 가린다(ADR-060).
+    # Core 가 싣는 칸만 넣는다 — 다시 만들 칸 자신은 빠진다(weekly_lifecycle `current_values`).
+    target_id = _item_id(item_id)
+    cells = tuple(
+        cell.value for cell in plan.cells if cell.item_id != target_id and cell.value.strip()
+    )
+    seen = "\n".join((plan.teacher_memo or "", *cells))
+    names = memo_name_table(session, int(plan.classroom_ref), seen, REGEN_MASK_FAILED)
     session.commit()  # 이름표 읽기까지 끝낸다. LLM 을 기다리는 동안 transaction 을 잡지 않는다
     try:
-        provider = with_masked_memo(_weekly_provider(), plan.teacher_memo, names)
+        provider = with_masked_memo(_weekly_provider(), plan.teacher_memo, names, cells)
     except LlmUnavailable as error:
         raise _UNAVAILABLE from error
     try:

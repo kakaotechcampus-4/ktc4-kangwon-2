@@ -18,7 +18,7 @@ import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
 import { useServerDocument } from "./use-server-document";
 import { openPicker } from "./RecordsPage";
 
-const NO_ENTRY = { childId: "", recordId: "" };
+const NO_ENTRY = { classId: "", childId: "", recordId: "" };
 
 function messageFor(error: unknown) {
   return error instanceof Error ? error.message : "요청을 처리하지 못했어요.";
@@ -37,9 +37,15 @@ export default function ObservationJournalPage() {
   const [entry] = useClientState(() => {
     if (typeof window === "undefined") return NO_ENTRY;
     const q = new URLSearchParams(window.location.search);
-    return { childId: q.get("child") ?? "", recordId: q.get("record") ?? "" };
+    return {
+      classId: q.get("class") ?? "",
+      childId: q.get("child") ?? "",
+      recordId: q.get("record") ?? "",
+    };
   }, NO_ENTRY);
-  const [classId] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
+  // 관찰 기록 화면이 반을 주소로 넘긴다. 없으면 주 반을 연다 — 관찰 기록 화면과 같다.
+  const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
+  const classId = entry.classId || primaryClass;
   const [classError, setClassError] = useState("");
   const classes = useClasses(setClassError);
   const classroom = classes.find((c) => c.id === classId);
@@ -112,7 +118,8 @@ export default function ObservationJournalPage() {
     [records, classId, childId, start, end],
   );
   const sources = inRange.filter((r) => !left.includes(r.id));
-  const mine = docs.filter((d) => d.childId === childId);
+  // 올린 서류(IMPORT)는 AI 편집기로 열지 않는다 — 문서 보관함이 연다.
+  const mine = docs.filter((d) => d.childId === childId && d.origin === "ai");
   const periodOk = validDate(start) && validDate(end) && start <= end;
 
   const blocked = !child
@@ -175,7 +182,6 @@ export default function ObservationJournalPage() {
       {openId ? (
         <JournalEditor
           id={openId}
-          domainOf={(id) => records?.find((r) => r.id === id)?.domain ?? ""}
           onChanged={() => setReload((n) => n + 1)}
           onClose={() => setOpenId("")}
         />
@@ -263,6 +269,7 @@ export default function ObservationJournalPage() {
                                 type="checkbox"
                                 disabled={busy}
                                 checked={!left.includes(r.id)}
+                                disabled={busy}
                                 onChange={(e) =>
                                   setLeft((prev) =>
                                     e.target.checked
@@ -319,8 +326,7 @@ export default function ObservationJournalPage() {
                       <button type="button" disabled={busy} onClick={() => setOpenId(d.id)}>
                         <b>{d.title}</b>
                         <small>
-                          {d.start === d.end ? d.start : `${d.start} ~ ${d.end}`} ·{" "}
-                          {d.status === "confirmed" ? "확정" : d.stale ? "다시 볼 것 있음" : "초안"}
+                          {d.start === d.end ? d.start : `${d.start} ~ ${d.end}`} · {statusLabel(d)}
                         </small>
                       </button>
                     </li>
@@ -338,12 +344,10 @@ export default function ObservationJournalPage() {
 /** 펴 놓은 관찰일지. 서버에 바로 쓴다 — 저장 · 확정은 문서 보관함과 같은 한 벌이다. */
 function JournalEditor({
   id,
-  domainOf,
   onChanged,
   onClose,
 }: {
   id: string;
-  domainOf: (sourceId: string) => string;
   onChanged: () => void;
   onClose: () => void;
 }) {
@@ -356,10 +360,15 @@ function JournalEditor({
       key={edit.doc.id}
       initial={edit.doc}
       server={edit.server}
-      domainOf={domainOf}
       domains={domains}
     />
   );
+}
+
+/** 확정이 stale 을 가리지 않는다 — 확정본도 근거가 바뀌면 다시 봐야 한다. */
+function statusLabel(d: DocumentSummary) {
+  if (d.status === "confirmed") return d.stale ? "확정 · 다시 확인 필요" : "확정";
+  return d.stale ? "다시 볼 것 있음" : "초안";
 }
 
 const WEEK = ["일", "월", "화", "수", "목", "금", "토"];

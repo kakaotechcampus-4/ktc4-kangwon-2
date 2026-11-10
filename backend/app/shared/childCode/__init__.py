@@ -16,7 +16,7 @@
 from .allocation import table_for_text
 from .names import call_suffix, name_variants, one_syllable
 from .pool import CallNameNeeded, PseudonymPool, SubstitutionError, has_final, load_pool
-from .substitute import NameTable, mask, unmask, unmask_from
+from .substitute import NameTable, mask, unmask, unmask_as_written, unmask_from
 
 __all__ = [
     "CallNameNeeded",
@@ -31,5 +31,6 @@ __all__ = [
     "one_syllable",
     "table_for_text",
     "unmask",
+    "unmask_as_written",
     "unmask_from",
 ]
