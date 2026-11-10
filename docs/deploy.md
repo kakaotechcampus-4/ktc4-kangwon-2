@@ -41,6 +41,9 @@ DISCORD_WEBHOOK  Secret      실패 알림.  없으면 알림만 건너뛴다
 ```
 배포 브랜치에 push
   ↓
+같은 커밋의 CI(push)를 기다림       scripts/wait-ci.sh.  성공이면 다음으로, 실패 · 시간 초과면 안 올리고 Discord 알림,
+                                 더 새 push 가 CI 를 취소했으면 조용히 건너뛴다(뒤 run 이 올린다).  손 배포는 안 기다린다
+  ↓
 올릴 커밋을 SHA 하나로 고정         브랜치 이름을 서버에 넘기지 않는다
   ↓
 OIDC 로 AWS 인증                  키 없음
