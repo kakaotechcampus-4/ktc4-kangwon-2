@@ -841,3 +841,25 @@ export interface ApiForm {
   /** 이 계정이 지울 수 있는지 — 올린 교사 · 원을 처음 등록한 교사만 참이다 (ADR-087). */
   can_delete?: boolean;
 }
+
+/**
+ * 생성 기록 한 줄 (docs/api-spec.md §9-8). 숫자와 이름만 든다 — 프롬프트 · 생성 글 · 트렌드 상태는 없다.
+ * `UNKNOWN` 은 서버가 저장하지 않고 읽을 때 만든다(오래 RUNNING 인 줄).
+ */
+export interface GenerationRun {
+  id: string;
+  kind: "annual_theme" | "annual_play" | "monthly_theme" | "monthly_play" | "weekly";
+  class_id: number;
+  status: "RUNNING" | "SUCCEEDED" | "FAILED" | "STOPPED" | "UNKNOWN";
+  /** 서버 단계 키(kind 마다 다르다). 알려진 키가 아니면 화면은 무시한다. */
+  stage: string;
+  plan_id: number | null;
+  error_code: string | null;
+  mode: "mock" | "real";
+  model: string | null;
+  prompt_versions: string[] | null;
+  llm_calls: number | null;
+  phase_ms: Record<string, number> | null;
+  started_at: string;
+  finished_at: string | null;
+}

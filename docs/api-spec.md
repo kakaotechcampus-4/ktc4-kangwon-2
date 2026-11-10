@@ -937,6 +937,8 @@ PM 결정(ADR-030 WQ-01): 주간계획안은 기본 5일이고, 토요일을 운
 **화면에서 형식 카드를 반드시 고른다.** 고른 `format` 을 보내며, `PLAY_PROJECT` 는 `form_id` 를 보내지 않는다.
 형식은 `plans.body.format` 에 저장한다 — 열 · migration 은 없다. `body` 에 `format` 이 없는 행은 `MONTHLY_THEME` 이다(ADR-042 · ADR-043).
 
+**선택 헤더 `X-Generation-Run-Id`** — 이 생성의 진행을 묻는 id(uuid v4). 응답 · 상태 · 오류는 헤더와 상관없이 같다. §9-8.
+
 **`school_year` 를 받지 않는다.** `class_id` 가 학년도를 결정한다 — `classes` 행은
 학년도마다 새로 만든다(schema.md 불변규칙 5). 따로 받으면 불일치 경로만 생긴다.
 
@@ -1919,6 +1921,8 @@ memo                     문자열.  선택.  요청 사항 0~300자(§4 「요�
 ```
 
 **`school_year` 를 받지 않는다.** 연간(§4)과 같다 — `class_id` 의 학년도가 정한다.
+
+**선택 헤더 `X-Generation-Run-Id`** — 이 생성의 진행을 묻는 id(uuid v4). 응답 · 상태 · 오류는 헤더와 상관없이 같다. §9-8.
 대상 달은 3~12월이면 그 학년도, 1~2월이면 다음 해다(2026 학년도의 `month: 2` 는 2027-02).
 
 **부모 연간계획안을 받지 않는다.** 서버가 반으로 찾는다 — 연간은 반당 하나다(§4).
@@ -2765,6 +2769,8 @@ memo       문자열.  선택.  요청 사항 0~300자(§4 「요청 사항」).
 양식 설정(주간은 Profile 이 없다 — 기반 Template 은 서버 상수) · 생성 방식(서버 정책 `LLM_PLANNER`) ·
 참조자료 판 · 토요일 여부(아래).
 
+**선택 헤더 `X-Generation-Run-Id`** — 이 생성의 진행을 묻는 id(uuid v4). 응답 · 상태 · 오류는 헤더와 상관없이 같다. §9-8.
+
 **토요일은 원 설정을 읽어 복사한다.** 만들 때 `weekly_saturday_enabled`(§3-1)를 읽어 `operating_days` 에
 담는다. 뒤에 설정을 바꿔도 이미 만든 주간은 그대로다.
 
@@ -3046,6 +3052,8 @@ memo                  문자열.  선택.  요청 사항 0~300자(§4 「요청 
 ```
 
 **부모 연간을 받지 않는다.** 서버가 반으로 찾는다(§4 「반당 하나다」). `profile_ref` · 양식 · 트렌드 · 날씨를 받지 않는다.
+
+**선택 헤더 `X-Generation-Run-Id`** — 이 생성의 진행을 묻는 id(uuid v4). 응답 · 상태 · 오류는 헤더와 상관없이 같다. §9-8.
 
 생성 순서: **스키마(422)** → 반 소유 → `month` → **같은 반 · 같은 달 월간이 이미 있으면 409 `ALREADY_EXISTS`**(기존 · 놀이 무관) → 연간이 없으면 409 `GATE_BLOCKED` → 연간이 놀이 프로젝트형이 아니면 409(읽기 전에) →
 **연간이 확정된 놀이 프로젝트형이어야 한다.** 상태 `CONFIRMED` 와 본문의 `CONFIRMED` 이벤트가 **둘 다** 있어야 한다(ADR-048 §4 — 그래서 연간 확정은 본문 전체를 저장한다) → 참조자료 검사 → LLM.
@@ -3391,6 +3399,124 @@ RESIZE_HEIGHT    null            null        null          null          [24] �
 - **주간 생성** `POST /api/plans/weekly` 는 그 달 월간이 놀이 월간이면 409 `GATE_BLOCKED` · 「놀이 중심 월간계획안 아래에서는 주간계획안을 만들 수 없습니다.」(`["class_id"]`)다. 주간 Core 는 기존 월간만 부모로 받는다. 길이 생길 때까지다(질문).
 - **한글 내려받기는 위 `GET /api/plans/monthly/play/{id}/export/hwp` 다.** 기존 월간 경로(`.../monthly/{id}/export/hwp`)로 받으려 하면 409 다(위).
 - **화면은 screen-spec S-PM1 에 있다.**
+
+---
+
+## 9-8. 생성 기록 — `GET /api/generation-runs/{run_id}` · `GET /api/generation-runs?class_id=`   (ADR-096)
+
+계획안 생성 요청 하나가 어디까지 갔고 어떻게 끝났는지. **숫자와 이름만** 든다 — 프롬프트 · 생성 글 · 반 이름 · 아이 정보 · 요청 사항 원문 · 트렌드 상태는 없다.
+**작업 큐가 아니다** — 생성은 지금처럼 생성 POST 하나가 끝까지 하고, 이 기록으로 이어 만들지 않는다(techspec 「하지 않은 것」 그대로).
+
+### 기록이 생기는 곳 — 선택 헤더 `X-Generation-Run-Id`
+
+`POST /api/plans/annual` · `POST /api/plans/monthly` · `POST /api/plans/monthly/play` · `POST /api/plans/weekly` 에 `X-Generation-Run-Id: <uuid v4>` 를 붙이면 그 id 로 기록한다.
+없으면 서버가 id 를 만든다(화면은 그 id 를 몰라 조회하지 않는다).
+
+- **생성 응답 · 상태 코드 · 오류는 헤더와 상관없이 같다.** 바뀌는 것은 하나뿐이다 — 헤더가 uuid v4 가 아니면 `422 VALIDATION_FAILED` `["X-Generation-Run-Id"]` 이고 생성도 기록도 없다.
+- 반 확인(§2-2)을 지난 요청만 기록한다. 그 뒤에 409 · 422 · 500 · 499 로 끝나도 기록은 남는다.
+- **같은 id 가 다시 오면 먼저 있던 기록을 덮지 않고 그 요청은 기록하지 않는다**(생성은 한다). 먼저 있던 줄은 다른 반 · 다른 원 것일 수도 있다. 화면은 POST 마다 새 uuid 를 만들므로 같은 id 는 재전송이나 버그로만 온다. 그때 화면은 자기 반 옛 줄이면 그 줄의 단계를 보고, 남의 줄이면 404 · 403 이라 첫 단계에 머문다.
+- **기록 쓰기가 실패해도 생성은 그대로 돈다** — 그때 조회는 404 다. 쓰기마다 짧은 시간 제한이 있어 DB 가 느린 날에도 생성이 수 초 이상 서지 않는다.
+
+### 단건 — `GET /api/generation-runs/{run_id}`
+
+`run_id` 가 uuid 가 아니면 422 `["run_id"]`. `id` 와 내 원으로 찾고 없으면 404 `NOT_FOUND` `["run_id"]` 「생성 기록을 찾을 수 없습니다.」 — 첫 기록 전 · 남의 원 · 기록이 꺼진 요청이 모두 같은 404 다.
+찾으면 그 반을 읽을 수 있는지 본다(§2-2 읽기 규칙). 같은 원의 남의 반을 승인 없이 보면 403 `CLASS_ACCESS_REQUIRED`, 승인받은 반은 읽는다.
+
+```json
+// 200 — 실행 중(끝날 때 채우는 칸은 null)
+{
+  "id": "0f8c2c1e-3b7a-4d2e-9c1a-2a6f0b9e4d11",
+  "kind": "monthly_theme",
+  "class_id": 12,
+  "status": "RUNNING",
+  "stage": "generate",
+  "plan_id": null,
+  "error_code": null,
+  "mode": "real",
+  "model": null,
+  "prompt_versions": null,
+  "llm_calls": null,
+  "phase_ms": null,
+  "started_at": "2026-11-10T09:00:00Z",
+  "finished_at": null
+}
+// 200 — 끝남(수리 한 번)
+{
+  "id": "0f8c2c1e-3b7a-4d2e-9c1a-2a6f0b9e4d11",
+  "kind": "monthly_theme",
+  "class_id": 12,
+  "status": "SUCCEEDED",
+  "stage": "save",
+  "plan_id": 345,
+  "error_code": null,
+  "mode": "real",
+  "model": "openai/gpt-6.1-sol",
+  "prompt_versions": ["monthly-planner-v23…", "monthly-planner-repair-v18…"],
+  "llm_calls": 2,
+  "phase_ms": {"db_read": 85, "select": 410, "prompt": 3, "llm": 31890, "validate": 12, "repair": 2, "assemble": 6, "save": 40},
+  "started_at": "2026-11-10T09:00:00Z",
+  "finished_at": "2026-11-10T09:00:33Z"
+}
+```
+
+```
+id               uuid.  헤더로 받았거나 서버가 만든 값
+kind             annual_theme | annual_play | monthly_theme | monthly_play | weekly
+class_id         정수.  center_id 는 내보내지 않는다
+status           RUNNING | SUCCEEDED | FAILED | STOPPED | UNKNOWN
+stage            종류별 단계 키(아래). 앞으로만 간다. 실패하면 실패한 단계가 그대로 남는다
+plan_id          정수 | null.  SUCCEEDED 일 때 만든 계획안. 계획안을 지우면 null 이 된다(기록은 남는다)
+error_code       문자열 | null.  FAILED · STOPPED 일 때 이 문서 「공통」의 오류 코드(GENERATION_FAILED · ALREADY_EXISTS · GENERATION_STOPPED · INTERNAL_ERROR …). 문장은 없다
+mode             mock | real.  첫 줄을 쓸 때의 LLM_MODE
+model            문자열 | null.  LLM 시도가 한 번이라도 있었으면 그 모델. 끝나기 전엔 null
+prompt_versions  문자열 배열 | null.  이 실행이 만든 LLM 요청의 프롬프트 판 이름. 처음 쓴 순서, 중복 없이. 수리 · 실패한 실행 · mock 포함. 끝나기 전엔 null
+llm_calls        정수 | null.  LLM 시도 수(재시도 포함, ADR-081)
+phase_ms         {구간: 정수 ms} | null.  구간 이름과 걸린 시간만
+started_at       UTC (끝에 Z)
+finished_at      UTC | null.  RUNNING 이면 null
+```
+
+- **`prompt_versions` 에 `+trend-v1` 같은 태그가 보일 수 있다.** 칸 `rule_version` 과 같은 종류의 프롬프트 태그다. 트렌드 상태는 이 기록에 없다 — 서버 로그 한 줄이다(CLAUDE.md).
+- **`UNKNOWN` 은 저장하지 않고 읽을 때 만든다.** 저장된 값이 `RUNNING` 이고 `started_at` 이 15분을 넘었으면 `UNKNOWN`(확인 불가)이다 — 계획안 commit 뒤 프로세스가 죽었거나 끝 줄을 못 쓴 경우다. 서버 쪽 최장 경로(놀이 연간)가 약 6분, nginx 최장 대기가 510초다.
+- 핸들러가 값을 돌려준 뒤 응답 직렬화가 실패하면(500) 계획안은 저장됐고 기록은 `SUCCEEDED` 로 남는다. 끝 줄만 못 쓴 기록은 `RUNNING` 으로 남다가 15분 뒤 `UNKNOWN` 이 된다.
+
+### 목록 — `GET /api/generation-runs?class_id=12`
+
+`class_id` 는 필수 정수다(빠지면 422 `["class_id"]`). 반이 없거나 남의 원 반이면 404 `["class_id"]`, 승인 없는 같은 원의 남의 반은 403 `CLASS_ACCESS_REQUIRED`, 승인받은 반은 읽는다.
+응답은 `{"items": [단건과 같은 모양 …]}` 이고 `started_at` 내림차순으로 **최근 50개**만 준다(페이지 없음). `UNKNOWN` 판정은 단건과 같다. 5c 「실행 이력 조회」를 위한 것이다.
+
+### 단계 — `stage`
+
+단계 키는 `ssuksak.timing` 구간에서 나오고 앞으로만 간다. 표에 없는 구간은 단계를 바꾸지 않는다. 화면 글자는 screen-spec 이 정한다.
+
+| kind | 단계 순서 | 단계를 여는 구간 |
+|---|---|---|
+| `annual_theme` | `generate` → `subthemes` → `save` | (처음) · `subthemes` · `save` |
+| `annual_play` | `generate` → `check` → `save` | (처음) · `overlap`(겹침 찾기 + 겹친 후보 다시 만들기) · `save` |
+| `monthly_theme` · `monthly_play` · `weekly` | `prepare` → `generate` → `check` → `save` | (처음) · `prompt`/`llm` · `validate`/`repair` · `assemble`/`save` |
+
+- mock 모드의 주간은 `llm` 구간이 없어 `prepare` 에서 `check` 로 건너뛴다(앞으로 건너뛰기는 괜찮다).
+- 놀이 연간의 겹침 다시 만들기 시간은 `plan_timing` 로그에서 `llm_ms` 가 아니라 `overlap_ms` 로 센다(ADR-096).
+
+### 오류
+
+| 상태 | code | fields | 언제 |
+|---|---|---|---|
+| 401 | `UNAUTHENTICATED` | `[]` | 토큰 없음 |
+| 404 | `NOT_FOUND` | `["run_id"]` | 단건 — 없음 · 아직 첫 기록 전 · 남의 원 · 기록이 꺼진 요청 |
+| 404 | `NOT_FOUND` | `["class_id"]` | 목록 — 반 없음 · 남의 원 |
+| 403 | `CLASS_ACCESS_REQUIRED` | `["class_id"]` | 같은 원 남의 반, 승인 없음 |
+| 422 | `VALIDATION_FAILED` | `["run_id"]` · `["class_id"]` | 형식 |
+| 422 | `VALIDATION_FAILED` | `["X-Generation-Run-Id"]` | 생성 POST 의 헤더가 uuid v4 가 아님(생성하지 않는다) |
+
+### UI states — 생성 중 링 (screen-spec 「생성 중 화면」)
+
+| 상태 | 화면 |
+|---|---|
+| loading | 첫 조회 전 — 첫 단계 |
+| empty | 404(첫 기록 전 · 기록 없음) — 첫 단계에 머문다. **생성 실패가 아니다** |
+| success | `stage` 까지 끝난 칸만큼 찬다 |
+| error | 조회 실패 — 지금 단계에 머문다. 생성 실패는 생성 POST 의 오류로만 보인다 |
 
 ---
 

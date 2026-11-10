@@ -45,34 +45,36 @@ const sheet = load("../components/workspace/WeeklySheet.tsx", {
   },
 });
 const MONTH_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
+const WEEKLY_NEW = {
+  react: React,
+  "next/link": { __esModule: true, default: stub },
+  "@/lib/api/client": { ApiError: class {} },
+  "@/lib/api/conflict": {},
+  "@/lib/api/monthly": {},
+  "@/lib/api/plans": {},
+  "@/lib/api/weekly": {},
+  "@/lib/api/trends": {},
+  "@/lib/api/generationRuns": { newRunId: () => "run-1" },
+  "@/lib/api/onboarding": {},
+  "@/lib/monthly/play-entry": {},
+  "@/lib/monthly/section-labels": monthlyLabels,
+  "@/lib/onboarding/settings": {},
+  "@/lib/onboarding/types": { MONTH_ORDER, planClassLine: (c) => c.className },
+  "@/lib/hooks/use-client-state": {},
+  "@/components/plan-ui/GenerationRing": {
+    __esModule: true,
+    default: stub,
+    ringFinished: async () => {},
+  },
+  "@/components/plan-generator/PlanMemo": { PlanMemoField: stub, memoError: stub },
+  "@/components/app/compact-shell": {},
+  "./WorkspaceUI": {},
+  "@/components/plan-generator/AnnualFrame": { BACK_BUTTON: "back", BACK_ICON: null },
+  "./WeeklySheet": sheet,
+};
 const { firstWeeklyMonth, firstOpenWeek, inheritWeek } = load(
   "../components/workspace/WeeklyNew.tsx",
-  {
-    react: React,
-    "next/link": { __esModule: true, default: stub },
-    "@/lib/api/client": { ApiError: class {} },
-    "@/lib/api/conflict": {},
-    "@/lib/api/monthly": {},
-    "@/lib/api/plans": {},
-    "@/lib/api/weekly": {},
-    "@/lib/api/trends": {},
-    "@/lib/api/onboarding": {},
-    "@/lib/monthly/play-entry": {},
-    "@/lib/monthly/section-labels": monthlyLabels,
-    "@/lib/onboarding/settings": {},
-    "@/lib/onboarding/types": { MONTH_ORDER, planClassLine: (c) => c.className },
-    "@/lib/hooks/use-client-state": {},
-    "@/components/plan-ui/GenerationRing": {
-      __esModule: true,
-      default: stub,
-      ringFinished: async () => {},
-    },
-    "@/components/plan-generator/PlanMemo": { PlanMemoField: stub, memoError: stub },
-    "@/components/app/compact-shell": {},
-    "./WorkspaceUI": {},
-    "@/components/plan-generator/AnnualFrame": { BACK_BUTTON: "back", BACK_ICON: null },
-    "./WeeklySheet": sheet,
-  },
+  WEEKLY_NEW,
 );
 
 test("처음 고를 달: 주소의 달 → 확정한 이번 달 → 마지막 확정 달 → 이번 달", () => {
@@ -310,4 +312,98 @@ test("주간 용지: 활동 후보를 대·소집단활동 칸에 놓으면 그 
   assert.match(html, /text-center"><div><span data-cell="mon">\[게임\]\n짝 찾기/);
   const still = all(sheet.default({ ...props, onPut: undefined })).filter((n) => n.props?.onDrop);
   assert.equal(still.length, 0); // 확정 · 저장 중에는 받지 않는다
+});
+
+/** 화면 함수를 hook 칸 · 의존 값이 바뀌면 다시 도는 effect 로 그린다. 함수 컴포넌트는 펼치지 않는다. */
+function fakeReact() {
+  const slots = [];
+  const effects = [];
+  let cursor = 0;
+  const state = (initial) => {
+    const i = cursor++;
+    slots[i] ??= [
+      typeof initial === "function" ? initial() : initial,
+      (next) => (slots[i][0] = typeof next === "function" ? next(slots[i][0]) : next),
+    ];
+    return [slots[i][0], slots[i][1]];
+  };
+  const useEffect = (fn, deps) => {
+    const i = cursor++;
+    const prev = effects[i];
+    if (prev && deps.every((d, k) => Object.is(d, prev.deps[k]))) return;
+    prev?.cleanup?.();
+    effects[i] = { deps, cleanup: fn() };
+  };
+  const jsx = (type, props, key) => ({ type, props, key });
+  return {
+    react: { useState: state, useRef: (v) => state(() => ({ current: v }))[0], useEffect },
+    runtime: { jsx, jsxs: jsx, Fragment: "fragment" },
+    render: (fn) => ((cursor = 0), fn()),
+    cleanup: () => effects.forEach((e) => e?.cleanup?.()),
+  };
+}
+const nodes = (n) =>
+  Array.isArray(n)
+    ? n.flatMap(nodes)
+    : n && typeof n === "object"
+      ? [n, ...nodes(n.props?.children)]
+      : [];
+const drain = async () => {
+  for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+};
+
+test("만들기: 생성 POST 의 X-Generation-Run-Id 와 링의 runId 가 같은 값이다", async (t) => {
+  const fake = fakeReact();
+  const sent = [];
+  const apiRequest = (path, init) => {
+    sent.push({ path, init });
+    return new Promise(() => {}); // 만드는 중에 멈춰 둔다 — 링이 떠 있다
+  };
+  const runs = load("../lib/api/generationRuns.ts", { "./client": { apiRequest } });
+  const weeklyApi = load("../lib/api/weekly.ts", {
+    "./client": { apiRequest },
+    "./export": {},
+    "./generationRuns": runs,
+  });
+  const week = { week_id: "W1", label: "11월 1주", active: true, start_date: "", end_date: "" };
+  const classes = [{ id: "c1", className: "햇살반" }];
+  const { default: WeeklyNew } = load("../components/workspace/WeeklyNew.tsx", {
+    ...WEEKLY_NEW,
+    react: fake.react,
+    "react/jsx-runtime": fake.runtime,
+    "@/lib/api/generationRuns": { ...runs, newRunId: () => "run-1" },
+    "@/lib/api/weekly": { ...weeklyApi, listWeeklyPlans: async () => ({ items: [] }) },
+    "@/lib/api/monthly": {
+      listMonthlyPlans: async () => ({ items: [{ id: 5, month: 11, status: "CONFIRMED" }] }),
+      getMonthlyPlan: async () => ({ weeks: [week], sections: [] }),
+    },
+    "@/lib/api/plans": { listAnnualPlans: async () => ({ items: [] }) },
+    "@/lib/api/onboarding": { syncClass: async () => 31 },
+    "@/lib/api/trends": { topicMemo: () => "" },
+    "@/lib/monthly/play-entry": { isPlayAnnual: () => false },
+    "@/lib/onboarding/settings": { loadClassSettings: () => ({}), chosenClassFor: () => null },
+    "@/lib/hooks/use-client-state": { useClientState: (_read, fallback) => [fallback, stub] },
+    "@/components/plan-ui/GenerationRing": { __esModule: true, default: "generation-ring" },
+    "@/components/app/compact-shell": { useCompactShell: stub },
+    "./WorkspaceUI": { Tape: stub, useClasses: () => classes },
+  });
+  globalThis.window = { location: { search: "?month=11" } };
+  t.after(() => {
+    fake.cleanup();
+    delete globalThis.window;
+  });
+  const render = () => nodes(fake.render(() => WeeklyNew({ onOpen: stub })));
+  render();
+  await drain(); // 반 · 월간 목록
+  render();
+  await drain(); // 고른 달의 월간 · 주간 목록
+  const label = "11월 1주 주간계획안 만들기";
+  render()
+    .find((n) => n.type === "button" && n.props.children === label)
+    .props.onClick();
+  await drain();
+
+  const post = sent.find((s) => s.path === "/api/plans/weekly" && s.init.method === "POST");
+  assert.equal(new Headers(post.init.headers).get("X-Generation-Run-Id"), "run-1");
+  assert.equal(render().find((n) => n.type === "generation-ring").props.runId, "run-1");
 });

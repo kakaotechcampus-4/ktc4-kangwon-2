@@ -1,5 +1,6 @@
 import { apiRequest } from "./client";
 import { downloadHwpx, type ExportFormat } from "./export";
+import { runHeaders } from "./generationRuns";
 import type {
   PlayMonthlyAuditEvent,
   PlayMonthlyPlan,
@@ -23,7 +24,12 @@ const json = (method: "PUT" | "POST", data: unknown, signal?: AbortSignal): Requ
 export const createPlayMonthly = (
   data: { class_id: number; month: number; emphasized_row_keys: string[]; memo?: string },
   signal?: AbortSignal,
-) => apiRequest<PlayMonthlyPlan>(BASE, json("POST", data, signal));
+  runId?: string,
+) =>
+  apiRequest<PlayMonthlyPlan>(BASE, {
+    ...json("POST", data, signal),
+    headers: { "Content-Type": "application/json", ...runHeaders(runId) },
+  });
 /** 대상 달 오름차순 요약. 기존 월간은 들어 있지 않다. */
 export const listPlayMonthly = (classId?: number, signal?: AbortSignal) =>
   apiRequest<{ items: PlayMonthlySummary[] }>(BASE + (classId ? "?class_id=" + classId : ""), {

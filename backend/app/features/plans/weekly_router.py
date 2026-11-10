@@ -60,6 +60,7 @@ from app.config import settings
 from app.db import get_session
 from app.features.centers.models import Center
 from app.features.evaluation.judge import today_kst
+from app.features.plans.generation_runs import PromptNoted, RunRecord
 from app.features.plans.memo_privacy import (
     REGEN_MASK_FAILED,
     memo_name_table,
@@ -249,10 +250,13 @@ def _generation_error(error: MonthlyApplicationError):
 
 @router.post("", response_model=WeeklyPlanOut, status_code=status.HTTP_201_CREATED)
 @timing.timed("weekly", logging.getLogger("app.server.timing").info)
-def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: CurrentUser):
+def create_weekly_plan(
+    body: CreateWeeklyPlan, session: DbSession, user: CurrentUser, run: RunRecord
+):
     """한 주치를 만들어 DRAFT 로 저장한다. 실패하면 아무것도 남지 않는다."""
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     klass = require_own_class(session, user, body.class_id)
+    run.begin(klass)
     center_id, class_id = user.center_id, klass.id
     names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-060)
     week = _week(body.week_id, klass.school_year)
@@ -320,7 +324,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     use_case = weekly_generation(
         parent_plan_repository=parents,
         plan_repository=InMemoryPlanRepository(),
-        provider=with_masked_memo(provider, body.memo, names),
+        provider=with_masked_memo(PromptNoted(provider), body.memo, names),
         clock=SystemClock(),
         id_generator=UuidGenerator(),
         optional_context=trends,

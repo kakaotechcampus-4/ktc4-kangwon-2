@@ -629,6 +629,11 @@ export const handlers = [
     const plan = findPlan(Number(params.id));
     return plan ? HttpResponse.json(plan) : annualMissing();
   }),
+  // 생성 기록(api-spec §9-8). 목업 서버는 기록을 쓰지 않는다 — 기록을 못 쓴 서버와 같은 모양(404 · 빈 목록)이다.
+  http.get("*/api/generation-runs/:id", () =>
+    failure("NOT_FOUND", "생성 기록을 찾을 수 없습니다.", "run_id"),
+  ),
+  http.get("*/api/generation-runs", () => HttpResponse.json({ items: [] })),
   http.delete("*/api/plans/annual/:id", ({ params }) => {
     const id = Number(params.id);
     if (!findPlan(id)) return annualMissing();

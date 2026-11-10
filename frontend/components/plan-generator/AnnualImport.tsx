@@ -123,9 +123,11 @@ export default function AnnualImport({
       <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
           title="연간계획안을 읽고 있어요"
-          steps={["파일 열기", "달마다 주제 찾기", "표로 정리하기"]}
-          kind="annual-import"
-          expect={15}
+          steps={[
+            ["open", "파일 열기"],
+            ["find", "달마다 주제 찾기"],
+            ["table", "표로 정리하기"],
+          ]}
           spin
           cancelLabel="읽기 멈추기"
           onCancel={onCancel}

@@ -100,6 +100,7 @@ function page(t, { format = "MONTHLY_THEME", hold = null, conflict = false } = {
       path: String(path),
       method,
       body: options.body ? JSON.parse(options.body) : null,
+      runId: new Headers(options.headers).get("X-Generation-Run-Id"),
     });
     if (String(path) === "/api/centers" && method === "POST") return json({ id: 7 });
     if (String(path) === "/api/centers/7/classes" && method === "POST") return json({ id: 31 });
@@ -156,6 +157,7 @@ function page(t, { format = "MONTHLY_THEME", hold = null, conflict = false } = {
     "@/lib/api/client": apiClient,
     "@/lib/api/plans": plansApi,
     "@/lib/api/onboarding": onboarding,
+    "@/lib/api/generationRuns": { newRunId: () => "run-1" },
     "@/lib/auth/request-session": session,
     "@/lib/workspace/model": workspaceModel,
     "@/lib/workspace/document-archive": { schoolYearOf: () => 2026 },
@@ -254,8 +256,15 @@ test("놀이 중심형은 form_id 를 보내지 않고, 만드는 동안 원형 
   assert.equal(p.compact(), true, "만드는 동안은 사이드바를 접는다");
   // 진행률은 서버가 주지 않는다 — 넘기지 않으면 고리가 스스로 돈다.
   assert.equal(ring.props.progress, undefined);
-  assert.deepEqual(ring.props.steps, ["놀이 떠올리기", "계절별로 나누기", "문서로 정리하기"]);
+  assert.deepEqual(ring.props.steps, [
+    ["generate", "놀이 떠올리기"],
+    ["check", "겹치는 놀이 살펴보기"],
+    ["save", "문서로 정리하기"],
+  ]);
   assert.equal(ring.props.done, false);
+  // POST 헤더와 링이 같은 id 를 쓴다 — 링이 이 id 로 서버 단계를 묻는다.
+  assert.equal(p.created().runId, "run-1");
+  assert.equal(ring.props.runId, "run-1");
   release();
   await drain();
   assert.deepEqual(p.created().body, { class_id: 31, format: "PLAY_PROJECT" });

@@ -13,6 +13,7 @@ import { existingAfterConflict } from "@/lib/api/conflict";
 import { memoError, PlanMemoField } from "@/components/plan-generator/PlanMemo";
 import { getMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
 import { listAnnualPlans } from "@/lib/api/plans";
+import { newRunId } from "@/lib/api/generationRuns";
 import { createWeeklyPlan, listWeeklyPlans } from "@/lib/api/weekly";
 import { syncClass } from "@/lib/api/onboarding";
 import type { MonthlyPlan, WeeklyPlanSummary } from "@/lib/api/types";
@@ -96,6 +97,8 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
   const [weekId, setWeekId] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  // 이번 생성 POST 의 헤더와 링이 같은 값을 쓴다 — 요청마다 새로 만든다(api-spec §9-8).
+  const [runId, setRunId] = useState<string>();
   const controller = useRef<AbortController | null>(null);
   useCompactShell(busy);
   useEffect(() => () => controller.current?.abort(), []);
@@ -208,6 +211,8 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     controller.current?.abort();
     const ctl = new AbortController();
     controller.current = ctl;
+    const id = newRunId();
+    setRunId(id);
     setBusy(true);
     setDone(false);
     setProblem("");
@@ -223,6 +228,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
           ...(memo.trim() ? { memo: memo.trim() } : {}),
         },
         ctl.signal,
+        id,
       );
       if (ctl.signal.aborted) return;
       setDone(true);
@@ -256,13 +262,15 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     return (
       <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
-          kind="weekly"
-          // 배포 서버 실측(2026-11-10, 29회, docs/evaluation/runs/2026-11-10-weekly): 중앙 26초.
-          // 만4 중앙 28.4 · 만5 26.3초. 링은 예상 시간에 90% 가 차서 조금 넉넉히 둔다.
-          expect={30}
           title={`${label} 주간계획안을 만들고 있어요`}
+          runId={runId}
           done={done}
-          steps={[`${label} 놀이 이어받기`, "요일별 활동 나누기", "문서로 정리하기"]}
+          steps={[
+            ["prepare", `${label} 놀이 이어받기`],
+            ["generate", "요일별 활동 나누기"],
+            ["check", "살펴보고 다듬기"],
+            ["save", "문서로 정리하기"],
+          ]}
           onCancel={() => {
             controller.current?.abort();
             setBusy(false);

@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api/client";
 import { existingAfterConflict } from "@/lib/api/conflict";
 import { memoError, PlanMemoField } from "@/components/plan-generator/PlanMemo";
+import { newRunId } from "@/lib/api/generationRuns";
 import { createMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
 import { createPlayMonthly, listPlayMonthly } from "@/lib/api/playMonthly";
 import { getAnnualPlan, listAnnualPlans } from "@/lib/api/plans";
@@ -58,18 +59,26 @@ const LOOK = {
     chip: "bg-[#e8f1ea] text-[#3b5441]",
     form: "소주제형 월간 양식",
     image: "monthly-theme-month",
-    steps: (m: number) => [`${m}월 주제 이어받기`, "주별 놀이 나누기", "문서로 정리하기"],
+    steps: (m: number) =>
+      [
+        ["prepare", `${m}월 주제 이어받기`],
+        ["generate", "주별 놀이 나누기"],
+        ["check", "살펴보고 다듬기"],
+        ["save", "문서로 정리하기"],
+      ] as const,
   },
   play: {
     name: "놀이 중심형",
     chip: "bg-[#eee4f4] text-[#5e4b96]",
     form: "놀이 중심형 월간 양식",
     image: "play-monthly",
-    steps: (_: number, season = "") => [
-      `${season} 놀이 이어받기`.trim(),
-      "함께 할 활동 정하기",
-      "문서로 정리하기",
-    ],
+    steps: (_: number, season = "") =>
+      [
+        ["prepare", `${season} 놀이 이어받기`.trim()],
+        ["generate", "함께 할 활동 정하기"],
+        ["check", "살펴보고 다듬기"],
+        ["save", "문서로 정리하기"],
+      ] as const,
   },
 } as const;
 
@@ -461,6 +470,8 @@ export default function MonthlyNew({
   const [extras, setExtras] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  // 이번 생성 POST 의 헤더와 링이 같은 값을 쓴다 — 요청마다 새로 만든다(api-spec §9-8).
+  const [runId, setRunId] = useState<string>();
   const controller = useRef<AbortController | null>(null);
   useCompactShell(busy);
   useEffect(() => () => controller.current?.abort(), []);
@@ -541,6 +552,8 @@ export default function MonthlyNew({
     controller.current?.abort();
     const ctl = new AbortController();
     controller.current = ctl;
+    const id = newRunId();
+    setRunId(id);
     setBusy(true);
     setDone(false);
     setProblem("");
@@ -558,6 +571,7 @@ export default function MonthlyNew({
             ...note,
           },
           ctl.signal,
+          id,
         );
         if (ctl.signal.aborted) return;
         setDone(true);
@@ -585,6 +599,7 @@ export default function MonthlyNew({
         const plan = await createMonthlyPlan(
           { class_id: classId, month, profile_ref: ref, ...note },
           ctl.signal,
+          id,
         );
         if (ctl.signal.aborted) return;
         setDone(true);
@@ -626,12 +641,8 @@ export default function MonthlyNew({
     return (
       <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
-          // 놀이 중심형은 활동 후보가 8개씩으로 늘어(ADR-065) 예전 기억을 버리려고 kind 를 바꿨다.
-          kind={play ? "monthly:PLAY_PROJECT:v0.3" : "monthly:MONTHLY_THEME"}
-          // 배포 서버 실측(2026-11-10, 10회씩, docs/evaluation/runs/2026-11-10-plan-repeat-after):
-          // 주제형 중앙 17.5 · 최대 18.5초, 놀이 중심형 중앙 48.3 · 최대 52.9초.
-          expect={play ? 55 : 20}
           title={`${month}월 월간계획안을 만들고 있어요`}
+          runId={runId}
           done={done}
           steps={
             play
