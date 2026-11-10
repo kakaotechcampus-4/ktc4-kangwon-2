@@ -1,0 +1,53 @@
+# 동시 생성 부하 측정(#457) 전용 override. docs/load-check.md 를 먼저 읽는다.
+#
+# **운영 폴더(~/ktc4-kangwon-2)에서 쓰지 않는다.** 운영 밖 폴더(~/loadtest-457/)에
+# docker-compose.yml 과 이 파일을 나란히 두고, 그 폴더 .env 에
+#   COMPOSE_PROJECT_NAME=loadtest
+#   COMPOSE_FILE=docker-compose.yml:compose.loadtest.yml
+# 을 적는다. 그러면 컨테이너 · 볼륨 · 망 이름이 전부 loadtest 로 시작해 운영(ktc4-kangwon-2)과 겹치지 않는다.
+#
+# 이 파일이 막는 것 — 운영과 같은 상자에서 돌려도 운영이 다치지 않게:
+#   · 호스트 포트를 열지 않는다(운영 db 가 5432 · backend 가 8000 을 이미 쥐고 있다).
+#   · 운영 이미지를 그대로 쓴다(빌드 안 함 — 빌드는 메모리를 먹고 서버에서 Killed 가 난 적 있다, docs/deploy.md).
+#   · 메모리 상한 — 넘치면 운영 대신 loadtest 컨테이너가 죽는다.
+#   · restart: "no" — 죽은 채로 두고, 되살아나며 자원을 쓰지 않는다.
+#   · 운영 망(172.28.0.0/16)과 다른 대역.
+#
+# journald 로그(docker-compose.server.yml)는 일부러 붙이지 않는다. 기본 json-file 이라
+# `docker compose logs -t backend` 로 읽는다. 정리(down) **전에** 반드시 덤프해 둔다.
+name: loadtest
+
+services:
+  db:
+    ports: !reset []
+    restart: "no"
+    mem_limit: 512m
+
+  backend:
+    # 서버에서는 운영 backend 이미지에 이 태그를 붙여 쓴다(docs/load-check.md). 이름이 달라야
+    # 정리할 때 태그만 지우고 운영 이미지는 그대로 둔다.
+    image: ssample-loadtest-backend:457
+    build: !reset null
+    pull_policy: never
+    ports: !reset []
+    restart: "no"
+    mem_limit: 1g
+    environment:
+      # load_check.py 가 이 값이 없으면 돌지 않는다 — 운영 backend 컨테이너에서 잘못 부르는 것을 막는다.
+      LOADTEST: "1"
+
+  # 나머지 셋은 쓰지 않는다. 인자 없는 `docker compose up` 이 nginx 의 80 · 443 · frontend 의 3000 을
+  # 잡으려 들거나 없는 frontend/ 를 빌드하려 하지 못하게, 켜지지 않는 profile 에 넣는다.
+  frontend:
+    profiles: ["unused"]
+  nginx:
+    profiles: ["unused"]
+  certbot:
+    profiles: ["unused"]
+
+networks:
+  default:
+    ipam: !override
+      config:
+        - subnet: 172.29.0.0/16
+          gateway: 172.29.0.1
