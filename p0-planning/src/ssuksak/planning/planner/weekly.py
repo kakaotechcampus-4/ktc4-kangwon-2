@@ -133,16 +133,20 @@ DAY_CELL_PROMPT = " 이번에는 days 의 요일 하나만 쓰고, current_plan 
 # ADR-072 결정 10: 칸마다 쓸 수 있는 트렌드는 Rule 이 이 표로 정한다. 대·소집단 후보는 activity_type
 # 낱말(「동요·음률」이면 둘 다)로, 실내놀이 후보는 영역으로 — 일반 놀이 자료는 모든 실내놀이 후보에, 역할 자료는
 # 역할놀이 영역에만(Human Decision 2026-11-08 하민). 표에 없는 유형의 칸에는 붙이지 않는다.
+# 동화(그림책)는 이야기나누기 후보 · 언어놀이 영역에도(2026-11-10 하민) — 근거에 동화 · 동극 유형이 거의 없다.
 TREND_KINDS_BY_ACTIVITY_TYPE = {
     "동요": TrendKind.SONG, "새노래": TrendKind.SONG, "음률": TrendKind.SONG, "음악": TrendKind.SONG,
-    "동화": TrendKind.STORY, "동극": TrendKind.STORY,
+    "동화": TrendKind.STORY, "동극": TrendKind.STORY, "이야기나누기": TrendKind.STORY,
     "게임": TrendKind.GAME,
     "신체": TrendKind.MOVEMENT,
     "미술": TrendKind.CRAFT,
 }
 INDOOR_PLAY_TREND_KINDS = frozenset({TrendKind.PLAY})
 # 실내놀이 후보의 영역은 indoor_play_type 이 한 표기로 맞춘다(역할 · 역할 놀이 · 역할영역 → 「역할놀이」).
-INDOOR_AREA_TREND_KINDS = {"역할놀이": frozenset({TrendKind.ROLE, TrendKind.PLAY})}
+INDOOR_AREA_TREND_KINDS = {
+    "역할놀이": frozenset({TrendKind.ROLE, TrendKind.PLAY}),
+    "언어놀이": frozenset({TrendKind.STORY, TrendKind.PLAY}),
+}
 TREND_NAME_REPAIR = "채널 · 프로그램 · 캐릭터 이름을 빼고 놀이 내용만 다시 쓴다"  # ADR-072 결정 11
 WEEKLY_TREND_PROMPT = (
     " trend_ids가 있는 후보 target만 트렌드를 쓸 수 있고, 그 칸에 허용된 trend_id만 쓴다. "

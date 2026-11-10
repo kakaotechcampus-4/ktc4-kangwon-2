@@ -6,7 +6,12 @@ from ssuksak.planning.application.ports import OptionalContextStatus
 from ssuksak.planning.domain.trend import TrendKind
 
 from app.features.trends.item import RawItem, save
-from app.features.trends.planning import TrendContextProvider, book_words_for, theme_words
+from app.features.trends.planning import (
+    TrendContextProvider,
+    book_items,
+    book_words_for,
+    theme_words,
+)
 
 TODAY = date(2026, 11, 8)  # W45 — W44 파일이 4주 안이다
 
@@ -101,6 +106,11 @@ def test_books_matching_a_week_theme_word_come_first_in_the_story_queue(tmp_path
     assert first.summary.startswith("첫 줄 소개") and len(first.summary) == 200
     # 조사는 떼고 일반어 · 한 글자는 뺀다
     assert theme_words("우리 동네와 가을과 열매를 · 산 놀이") == ("동네", "가을", "열매")
+    # 앞 낱말(주 주제)에 걸린 책부터 6권 — 뒤 낱말(넓은 묶음)에 걸린 책은 자리가 남을 때만
+    many = [book(f"97800000001{n:02d}", f"가짜 지구촌 그림책 {n}") for n in range(5)]
+    many += [book(f"97800000002{n:02d}", f"가짜 낙엽 그림책 {n}") for n in range(3)]
+    picked = book_items(many, ("낙엽", "지구"), TODAY)
+    assert [i.trend_id[-3:] for i in picked] == ["200", "201", "202", "100", "101", "102"]
 
 
 def test_books_need_words_and_never_break_generation(tmp_path):

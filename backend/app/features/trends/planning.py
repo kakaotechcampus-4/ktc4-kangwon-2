@@ -136,12 +136,26 @@ def book_words_for(text: str, related_file: Path | None = None) -> tuple[str, ..
     return tuple(dict.fromkeys((*words, *extra)))
 
 
-def book_items(raw: list[RawItem], words: tuple[str, ...], today: date) -> list[TrendItem]:
-    """제목에 주제 낱말이 있는 승인 그림책 → 동화 트렌드.
+BOOK_LIMIT = 6
 
+
+def book_items(raw: list[RawItem], words: tuple[str, ...], today: date) -> list[TrendItem]:
+    """제목에 주제 낱말이 있는 승인 그림책 → 동화 트렌드, 앞 낱말에 걸린 책부터 BOOK_LIMIT 권.
+
+    words 는 주 주제 낱말이 앞, 관련 낱말 묶음이 뒤다 — 주제 낱말에 바로 걸린 책이
+    「지구」 → 「지구촌」 같은 넓은 묶음 낱말에 걸린 책보다 먼저 뽑힌다. 같은 순위는 ISBN 순.
     수집 주 · 게시일을 오늘로 두어 최근 4주 안에 들고, 동화 줄에서 유튜브보다 앞에 선다(새것부터).
-    ponytail: 오늘 올라온 유튜브 동화와는 trend_id 순으로 유튜브가 앞선다 — 주 1회 수집이라 드물다.
+    ponytail: 관련도 = 걸린 낱말의 순서뿐. 오늘 올라온 유튜브 동화와는 trend_id 순으로
+    유튜브가 앞선다 — 드물다.
     """
+
+    def rank(row: RawItem) -> int:
+        return next((i for i, word in enumerate(words) if word in row.title), len(words))
+
+    books = sorted(
+        (row for row in raw if row.source == "data4library" and rank(row) < len(words)),
+        key=lambda row: (rank(row), row.source_id),
+    )[:BOOK_LIMIT]
     return [
         TrendItem(
             trend_id=f"{row.source}:{row.source_id}",
@@ -152,8 +166,7 @@ def book_items(raw: list[RawItem], words: tuple[str, ...], today: date) -> list[
             week=week_label(today),
             published_on=today,
         )
-        for row in raw
-        if row.source == "data4library" and any(word in row.title for word in words)
+        for row in books
     ]
 
 
