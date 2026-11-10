@@ -43,12 +43,22 @@ export type CenterSettings = {
   weekly_saturday_enabled?: boolean;
   /** 관찰 기록의 영역 축 (lib/workspace/observation-axis.ts). */
   observation_axis: "NURI_5" | "DAILY_PLAY_2";
+  /** 어제 지원을 반영한 줄에 종이가 붙이는 글자 (ADR-086). 옛 서버는 안 보낸다. */
+  reflect_mark?: ReflectMark;
+  /** 이 계정이 바꿀 수 있는지 — 원을 처음 등록한 교사만 참이다 (ADR-087). 보내지 않는다. */
+  can_edit?: boolean;
 };
+
+/** 빈 글은 「붙이지 않음」이다. */
+export type ReflectMark = "(반영)" | "(놀이반영)" | "";
 
 export const getCenterSettings = (centerId: number) =>
   apiRequest<CenterSettings>(`/api/centers/${centerId}/settings`);
 
-export const saveCenterSettings = (centerId: number, data: Partial<CenterSettings>) =>
+export const saveCenterSettings = (
+  centerId: number,
+  data: Partial<Omit<CenterSettings, "can_edit">>,
+) =>
   apiRequest<CenterSettings>(`/api/centers/${centerId}/settings`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

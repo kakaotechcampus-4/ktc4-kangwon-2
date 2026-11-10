@@ -3,7 +3,19 @@
 from datetime import date, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+# 문서 하나의 근거 상한(입력 상한). 화면이 같은 선을 지키지만 서버가 다시 본다.
+MAX_SOURCES = 60
+
+
+class DocumentGenerationFallback(BaseModel):
+    """초안을 못 만들어 사실만 채운 초안이다 (ADR-093). 해석 · 지원은 빈 칸으로 왔다."""
+
+    reason: Literal[
+        "llm_unavailable", "llm_failed", "budget_exceeded", "gate_rejected", "name_mask_failed"
+    ]
+    at: datetime
 
 
 class DocumentGeneration(BaseModel):
@@ -12,6 +24,7 @@ class DocumentGeneration(BaseModel):
     method: str | None
     rule_id: str | None
     rule_version: str | None
+    fallback: DocumentGenerationFallback | None = None
 
 
 class DocumentListItem(BaseModel):
@@ -37,6 +50,9 @@ class DocumentListItem(BaseModel):
     stale: bool
     generation: DocumentGeneration
     sources_count: int
+    # 지금 글에 붙은 AI 검토 상태(ADR-083). 없거나 글이 바뀌었으면 null.
+    # 「반 전체 초안」 목록이 쓴다.
+    ai_review_state: Literal["done", "mock", "failed"] | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -75,9 +91,15 @@ class DocumentSourceItem(BaseModel):
     """
 
     id: int
+    # `id` 가 가리키는 곳. 주간은 일일 문서(document)도 일과 기록(routine)도 근거로 쓴다 —
+    # 번호만으로는 화면이 「원본 보기」를 어디로 열지 모른다.
+    source_kind: Literal["observation", "document", "routine"]
     date: date | None
     # 관찰 기록 근거일 때만 있다. 관찰일지 종이의 영역 행을 가른다 (§11 「종이 한 장」).
+    # 만들 때 찍은 사본이다. 사본이 없는 옛 문서만 지금 원본 영역을 준다 (ADR-088).
     domain: str | None = None
+    # 관찰 기록 근거의 상황 사본. 빈 글은 「상황 없음」, null 은 그 밖의 근거와 옛 사본이다.
+    context: str | None = None
     text: str
     class_id: int
     child_id: int | None
@@ -100,12 +122,16 @@ class DocumentDetailResponse(BaseModel):
     status: str
     origin: str
     stale: bool
+    # 관찰 기록 근거 문서를 만들 때 찍은 영역 축. null 이면 그 밖의 문서이거나 옛 문서다 (ADR-088).
+    observation_axis: str | None = None
     sections: list[DocumentSectionItem]
     sources: list[DocumentSourceItem]
     generation: DocumentGeneration
     review_note: str
     # 반 운영 특이사항. 일일 보육일지만 쓴다 — 나머지 종류는 늘 빈 문자열이다.
     class_note: str
+    # 지금 글을 검토한 결과(ADR-083). 검토한 적 없거나 그 뒤 글이 바뀌었으면 null 이다.
+    ai_review: "DocumentAiReview | None" = None
     created_at: datetime
     updated_at: datetime
 
@@ -164,6 +190,18 @@ class DocumentVerifyIssue(BaseModel):
     fix: str
 
 
+class DocumentAiReview(BaseModel):
+    """문서에 붙여 둔 AI 검토 결과 (ADR-083).
+
+    `done` 은 jev 가 판정했다, `mock` 은 판정하지 않았다(테스트 모드), `failed` 는 판정하지 못했다
+    (`message` 가 이유). `mock` · `failed` 의 빈 `issues` 를 「문제없음」으로 읽으면 안 된다.
+    """
+
+    state: Literal["done", "mock", "failed"]
+    issues: list["DocumentVerifyIssue"]
+    message: str = ""
+
+
 class DocumentVerifyResponse(BaseModel):
     issues: list[DocumentVerifyIssue]
     #: `mock` 이면 판정하지 않았다는 뜻이다. 화면은 「통과」로 보이면 안 된다.
@@ -192,8 +230,11 @@ class DocumentCreateRequest(BaseModel):
     """`POST /api/documents`. 교사가 고른 근거로 초안을 만든다 (docs/api-spec.md §11).
 
     `source_ids` 는 `kind` 마다 가리키는 것이 다르다 — `dailyLog` 는 일과 기록 id,
-    `observation` · `assessment` 는 관찰 기록 id 다. 순서는 교사가 고른 순서 그대로
-    `사실` 에 이어 붙는다.
+    `observation` 은 관찰 기록 id 다. 순서는 교사가 고른 순서 그대로 `사실` 에 이어 붙는다.
+
+    **영유아 평가(`assessment`)는 만들지 않는다** (ADR-091). 우리 데이터(관찰 · 일과 기록)로는
+    발달 평가를 쓸 수 없고 실측도 없다. 원에서 쓴 평가는 `POST /api/documents/import` 로 올린다.
+    `kind: "assessment"` 를 보내면 422 `VALIDATION_FAILED` · `fields: ["kind"]` 다.
 
     `weeklyLog` 만 **두 가지**다. `source_kind` 로 고른다 —
 
@@ -207,14 +248,19 @@ class DocumentCreateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["dailyLog", "weeklyLog", "observation", "assessment"]
+    kind: Literal["dailyLog", "weeklyLog", "observation"]
     class_id: int
     child_id: int | None = None
     start: date
     end: date
-    source_ids: list[int]
+    # 넘으면 422 `source_ids`. 모델을 부르기 전에 막는다.
+    source_ids: list[int] = Field(max_length=MAX_SOURCES)
     # `weeklyLog` 에서만 쓴다. 안 보내면 예전처럼 확정된 일일 보육일지를 근거로 본다.
     source_kind: Literal["dailyLog", "routine"] = "dailyLog"
+    # 아동별 초안(관찰일지)에 쓴다.
+    # 같은 아이 · 같은 기간 초안이 있으면 서버는 그것을 돌려준다(200).
+    # true 면 새로 만들고, **새 초안을 저장한 뒤에** 옛 초안을 지운다 — 「넣어서 다시」(ADR-083).
+    replace_draft: bool = False
 
 
 class EvidenceChecks(BaseModel):

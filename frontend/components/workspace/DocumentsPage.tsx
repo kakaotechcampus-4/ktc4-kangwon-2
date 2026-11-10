@@ -6,15 +6,11 @@ import {
   today,
   validPeriod,
   validDate,
-  compareEvidence,
-  invalidateDependents,
-  assertDocumentUnchanged,
-  type DocumentKind,
   type SavedDocument,
   type Section,
 } from "@/lib/workspace/model";
-import { useWorkspace } from "@/lib/workspace/store";
 import { invalidFields } from "@/lib/api/client";
+import { DROPPED_IMPORTS, onLegacyImportsMoved } from "@/lib/workspace/store";
 import { listRecords } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import {
@@ -30,11 +26,10 @@ import {
   refreshDocument,
   deleteDocument,
   documentServerId,
-  isRecordKind,
-  RECORD_KINDS,
+  GENERATED_KINDS,
   verifyDocument,
   type DocumentSummary,
-  type RecordKind,
+  type GeneratedKind,
 } from "@/lib/api/documents";
 import { listDayRoutines, type RoutineLine } from "@/lib/api/routines";
 import { listAnnualPlans } from "@/lib/api/plans";
@@ -54,6 +49,13 @@ import { Icon } from "@/components/app/icons";
 import { ArchiveNoteArt } from "./DocumentArchiveArt";
 import { FlowerMeadow } from "./ChildTrackingArt";
 import creation from "./DocumentCreation.module.css";
+import archive from "./DocumentArchive.module.css";
+import {
+  ARCHIVE_FILTER_NONE,
+  archiveQuery,
+  passesFilter,
+  type ArchiveFilter,
+} from "@/lib/workspace/document-archive";
 import {
   WorkspaceViewState,
   FieldError,
@@ -80,15 +82,22 @@ type Candidate = { id: string; date: string; label: string };
 /** 렌더마다 새 배열이 생기면 useMemo 가 매번 다시 돈다. */
 const NO_ROUTINES: RoutineLine[] = [];
 
+/** 서버로 옮기지 못하고 지운 예전 증빙 건수(`moveLegacyImports`). */
+function readDropped() {
+  try {
+    return Number(window.sessionStorage.getItem(DROPPED_IMPORTS)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 export default function DocumentsPage() {
-  const { data, error, save } = useWorkspace();
   const [entry] = useClientState(
     () => {
       const blank = {
         date: "",
         classId: null,
         daily: false,
-        assessment: false,
         weekly: null,
         docId: "",
       };
@@ -102,8 +111,6 @@ export default function DocumentsPage() {
       return {
         ...routinesScope(window.location.search),
         daily: kind === "dailyLog",
-        // 평가 준비 4-2 「영유아 평가 작성하기」가 여는 길.
-        assessment: kind === "assessment",
         // 주간 기록 화면의 「주간 일지 만들기」가 여는 길. 보고 있던 주를 그대로 받는다.
         weekly: kind === "weeklyLog" ? { start: day("start"), end: day("end") } : null,
         // 다른 화면에서 문서 하나를 바로 열 때. 모르는 id 면 보관함을 연다.
@@ -114,14 +121,20 @@ export default function DocumentsPage() {
       date: "",
       classId: null as number | null,
       daily: false,
-      assessment: false,
       weekly: null as { start: string; end: string } | null,
       docId: "",
     },
   );
+  // 서버로 옮기지 못하고 지운 예전 증빙 건수(`moveLegacyImports`). 한 번만 알린다.
+  const [dropped, setDropped] = useClientState(readDropped, 0);
+  useEffect(() => {
+    try {
+      window.sessionStorage.removeItem(DROPPED_IMPORTS);
+    } catch {}
+  }, []);
   const [mode, setMode] = useState<"library" | "create">("library");
   const [editingId, setEditingId] = useState("");
-  const [kind, setKind] = useState<DocumentKind>("observation");
+  const [kind, setKind] = useState<GeneratedKind>("observation");
   const [pickedClass, setClassId] = useState<string | null>(null);
   const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
   const [childId, setChildId] = useState("");
@@ -142,6 +155,10 @@ export default function DocumentsPage() {
       : primaryClass;
   const classId = pickedClass ?? requestedClass;
   const [serverDocs, setServerDocs] = useState<DocumentSummary[]>([]);
+  // 보관함 거르개 (FR-701 · FR-406). 상태 · 원본 바뀜은 서버가 거른 목록을 따로 받는다 —
+  // `serverDocs` 는 만들기 화면의 근거 후보도 쓰므로 거르지 않고 둔다.
+  const [filter, setFilter] = useState<ArchiveFilter>(ARCHIVE_FILTER_NONE);
+  const [filteredDocs, setFilteredDocs] = useState<DocumentSummary[] | null>(null);
   const [listStatus, setListStatus] = useState<ViewStatus>("loading");
   const [listError, setListError] = useState("");
   const [records, setRecords] = useState<ServerObservation[]>([]);
@@ -168,12 +185,6 @@ export default function DocumentsPage() {
     if (entry.weekly.start) setStart(entry.weekly.start);
     if (entry.weekly.end) setEnd(entry.weekly.end);
     setSelected([]);
-  }
-  const [assessmentPrefilled, setAssessmentPrefilled] = useState(false);
-  if (entry.assessment && !assessmentPrefilled) {
-    setAssessmentPrefilled(true);
-    setMode("create");
-    setKind("assessment");
   }
   // 일일 보육일지의 근거(일과 기록). 반 · 날짜를 key 로 둬서 「불러오는 중」을 따로 저장하지 않는다.
   const [routineData, setRoutineData] = useState<{
@@ -243,6 +254,52 @@ export default function DocumentsPage() {
       setListStatus("error");
     }
   }
+
+  const filterQuery = archiveQuery(filter);
+  const filterKey = JSON.stringify(filterQuery);
+  useEffect(() => {
+    const query = JSON.parse(filterKey);
+    if (!query) return;
+    let live = true;
+    listDocuments(query)
+      .then((items) => {
+        if (live) setFilteredDocs(items);
+      })
+      .catch((e) => {
+        if (live) setListError(messageFor(e));
+      });
+    return () => {
+      live = false;
+    };
+    // 목록을 다시 받으면(저장 · 확정 뒤) 거른 목록도 다시 받는다.
+  }, [filterKey, serverDocs]);
+  const shownDocs = (filterQuery ? (filteredDocs ?? []) : serverDocs).filter((d) =>
+    passesFilter(d, filter),
+  );
+  const shownPlans = plans?.items.filter((p) =>
+    passesFilter(
+      {
+        title: `${p.school_year}학년도 ${DOCUMENT_KINDS.annual}`,
+        status: p.status === "CONFIRMED" ? "confirmed" : "draft",
+      },
+      filter,
+    ),
+  );
+
+  // 보관함은 예전 증빙 옮기기를 기다리지 않고 먼저 열린다. 옮기기가 끝나면 목록과 안내를 다시 읽는다.
+  // 의존성 없이 매번 다시 건다 — 늘 지금의 reloadList · classId 를 부른다.
+  useEffect(() =>
+    onLegacyImportsMoved(() => {
+      const count = readDropped();
+      if (count) {
+        setDropped(count);
+        try {
+          window.sessionStorage.removeItem(DROPPED_IMPORTS);
+        } catch {}
+      }
+      void reloadList();
+    }),
+  );
 
   // 마운트할 때 한 번. 일지를 고치거나 만들어도 계획안 목록은 바뀌지 않는다.
   useEffect(() => {
@@ -354,13 +411,11 @@ export default function DocumentsPage() {
       ? selected.flatMap((id) => candidates.filter((s) => s.id === id))
       : candidates.filter((s) => selected.includes(s.id));
 
-  // 새로 등록하는 증빙은 서버로 간다 (§11 「증빙 등록」) — 아래 서버 목록에 섞여 온다.
-  // 이 줄은 그 길이 열리기 전에 브라우저에 쌓인 증빙을 계속 보여 주기 위한 것이다.
-  // 브라우저에 남은 옛 계획안은 읽지 않는다. 계획안은 이제 서버 목록에서 온다.
-  const localDocs = data.documents.filter((d) => d.origin === "import");
+  // 보관함은 서버 목록만 그린다. 올린 서류(§11 「증빙 등록」)도 서버 목록에 섞여 온다 —
+  // 브라우저에 남았던 예전 증빙은 로그인 · 서비스 화면 진입 때 서버로 옮기고 지운다(`moveLegacyImports`).
   // 목록에는 sections · sources 가 없다 — 제목 · 종류 · 날짜 · 상태만 그린다 (§11).
   const entries = [
-    ...serverDocs.map((d) => ({
+    ...shownDocs.map((d) => ({
       id: d.id,
       source: "document" as const,
       serverId: d.serverId,
@@ -372,19 +427,7 @@ export default function DocumentsPage() {
       createdAt: d.createdAt,
       stale: d.stale,
     })),
-    ...localDocs.map((d) => ({
-      id: d.id,
-      source: "document" as const,
-      serverId: null,
-      title: d.title,
-      className: d.className,
-      childName: d.childName,
-      kind: d.kind,
-      status: d.status,
-      createdAt: d.createdAt,
-      stale: false,
-    })),
-    ...(plans?.items ?? []).map((p) => ({
+    ...(shownPlans ?? []).map((p) => ({
       id: `annual:${p.id}`,
       source: "plan" as const,
       serverId: p.id,
@@ -402,7 +445,7 @@ export default function DocumentsPage() {
 
   // 보관함 탐색(반 → 종류 → 기간)이 쓰는 목록. 계획안은 각자 API 가 따로 준다.
   const archiveDocs: ArchiveDoc[] = [
-    ...serverDocs.map((d) => ({
+    ...shownDocs.map((d) => ({
       id: d.id,
       kind: d.kind,
       title: d.title,
@@ -410,24 +453,14 @@ export default function DocumentsPage() {
       childId: d.childId,
       start: d.start,
       status: d.status,
-      createdAt: d.createdAt,
-      updatedAt: d.updatedAt,
-    })),
-    ...localDocs.map((d) => ({
-      id: d.id,
-      kind: d.kind,
-      title: d.title,
-      classId: d.classId,
-      childId: d.childId,
-      start: d.start,
-      status: d.status,
+      stale: d.stale,
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
     })),
   ];
 
   /** 보관함에서 「작성」을 누르면 **기존 생성 화면**으로 넘어간다 — 가짜 생성을 만들지 않는다. */
-  function startCreate(next: RecordKind, options: { date: string; childId?: string }) {
+  function startCreate(next: GeneratedKind, options: { date: string; childId?: string }) {
     selection.leaveCreation();
     setMode("create");
     setKind(next);
@@ -440,10 +473,9 @@ export default function DocumentsPage() {
   }
 
   const activeServerId = documentServerId(active);
-  const localCurrent = data.documents.find((d) => d.id === active);
   // 서버 문서는 `active` 와 같은 문서일 때만 화면에 올린다.
   const serverCurrent = chosen.detail?.id === active ? chosen.detail : null;
-  const current = activeServerId === null ? localCurrent : serverCurrent;
+  const current = serverCurrent;
   // 첫 목록이 비어 있어도 조회가 끝나기 전에는 로딩임을 알린다.
   const journalsPending = listStatus === "loading";
 
@@ -452,7 +484,7 @@ export default function DocumentsPage() {
     setInvalid((prev) => (prev.includes(name) ? prev.filter((f) => f !== name) : prev));
 
   /** 일일 보육일지는 반 단위 · 하루짜리다 — 아이를 비우고 종료일을 시작일에 맞춘다. */
-  function changeKind(next: DocumentKind) {
+  function changeKind(next: GeneratedKind) {
     setKind(next);
     setSelected([]);
     clearInvalid("kind");
@@ -486,8 +518,7 @@ export default function DocumentsPage() {
       !classroom ||
       !validPeriod(start, end) ||
       !sources.length ||
-      !isRecordKind(kind) ||
-      ((kind === "observation" || kind === "assessment") && !child) ||
+      (kind === "observation" && !child) ||
       (kind === "dailyLog" && start !== end)
     ) {
       setMessage(
@@ -501,7 +532,7 @@ export default function DocumentsPage() {
     try {
       // 사실·해석·지원은 서버가 만든다 — 화면이 초안을 짓지 않는다 (§11).
       const created = await createDocument({
-        kind: kind as RecordKind,
+        kind,
         classId,
         childId,
         start,
@@ -541,7 +572,7 @@ export default function DocumentsPage() {
       ? ""
       : !classroom
         ? "반을 먼저 골라주세요."
-        : (kind === "observation" || kind === "assessment") && !child
+        : kind === "observation" && !child
           ? "이 문서는 아동을 한 명 골라야 만들 수 있어요."
           : kind === "dailyLog" && start !== end
             ? "일일 보육일지는 시작일과 종료일이 같아야 해요."
@@ -557,13 +588,16 @@ export default function DocumentsPage() {
       ? `/routines${routinesQuery(entry.classId, start)}`
       : routinesPath(classId, start);
 
+  // 편집기에는 지금 연 문서에 묶인 작업을 준다. 「저장하고 반영」 사이 다른 문서를 열어도
+  // 뒤 작업이 새 문서로 나가지 않는다.
+  const pinned = selection.pin();
   const serverActions = serverCurrent
     ? {
         stale: serverCurrent.stale,
         pending: chosen.pending !== "",
-        reload: selection.reload,
+        reload: pinned.reload,
         reconfirm: async (input: ReconfirmInput) => {
-          const next = await selection.reconfirm(input);
+          const next = await pinned.reconfirm(input);
           void reloadList();
           return next;
         },
@@ -572,7 +606,7 @@ export default function DocumentsPage() {
           reviewNote: string,
           classNote?: string,
         ) => {
-          const saved = await selection.save(sections, reviewNote, classNote);
+          const saved = await pinned.save(sections, reviewNote, classNote);
           void reloadList();
           return saved;
         },
@@ -581,22 +615,22 @@ export default function DocumentsPage() {
           reviewNote: string,
           classNote?: string,
         ) => {
-          const confirmed = await selection.saveAndConfirm(sections, reviewNote, classNote);
+          const confirmed = await pinned.saveAndConfirm(sections, reviewNote, classNote);
           void reloadList();
           return confirmed;
         },
         unconfirm: async () => {
-          const next = await selection.unconfirm();
+          const next = await pinned.unconfirm();
           void reloadList();
           return next;
         },
         refresh: async (resolutions?: SourceResolution[]) => {
-          const next = await selection.refresh(resolutions);
+          const next = await pinned.refresh(resolutions);
           void reloadList();
           return next;
         },
         remove: async () => {
-          await selection.remove();
+          await pinned.remove();
           setMessage("문서를 삭제했어요.");
           await reloadList();
         },
@@ -623,30 +657,8 @@ export default function DocumentsPage() {
           key={current.id}
           initial={current}
           server={serverActions}
-          onSave={(doc, expected) =>
-            save((prev) => {
-              assertDocumentUnchanged(
-                prev.documents.find((d) => d.id === doc.id),
-                expected,
-              );
-              if (
-                doc.status === "confirmed" &&
-                compareEvidence(doc, prev.documents, prev.observations).linked.some(
-                  (r) => r.state !== "일치",
-                )
-              )
-                throw new Error(
-                  "원본이 변경되었거나 없어졌어요. 최신 기록으로 초안을 다시 생성해주세요.",
-                );
-              return {
-                ...prev,
-                documents: invalidateDependents(
-                  prev.documents.map((d) => (d.id === doc.id ? doc : d)),
-                  doc.id,
-                ),
-              };
-            })
-          }
+          /* 서버 문서는 편집기가 서버에 바로 쓴다. 브라우저 저장소로 가는 길은 쓰지 않는다. */
+          onSave={() => true}
         />
       ) : null}
     </WorkspaceViewState>
@@ -668,7 +680,10 @@ export default function DocumentsPage() {
   );
   const notices = (
     <>
-      <Message error>{error}</Message>
+      <Message>
+        {dropped > 0 &&
+          `이 브라우저에만 있던 예전 증빙 ${dropped}건을 서버로 옮기지 못해 지웠어요. 원본 파일을 평가 점검에서 다시 등록해주세요.`}
+      </Message>
       <Message>{message}</Message>
     </>
   );
@@ -692,6 +707,7 @@ export default function DocumentsPage() {
         header={
           <>
             {head}
+            <ArchiveFilters value={filter} onChange={setFilter} />
             {listStatus === "error" && (
               <div>
                 <Message error>{listError}</Message>
@@ -727,7 +743,7 @@ export default function DocumentsPage() {
           selection.select("", null);
         }}
         documents={archiveDocs}
-        annual={plans?.items ?? null}
+        annual={shownPlans ?? null}
         onAnnualChanged={reloadPlans}
         activeId={active}
         editingId={editingId}
@@ -807,9 +823,9 @@ export default function DocumentsPage() {
                 disabled={busy}
                 value={kind}
                 {...fieldErrorProps("kind", invalid)}
-                onChange={(e) => changeKind(e.target.value as DocumentKind)}
+                onChange={(e) => changeKind(e.target.value as GeneratedKind)}
               >
-                {RECORD_KINDS.map((k) => (
+                {GENERATED_KINDS.map((k) => (
                   <option key={k} value={k}>
                     {DOCUMENT_KINDS[k]}
                   </option>
@@ -930,9 +946,7 @@ export default function DocumentsPage() {
                   ? weeklyFrom === "routine"
                     ? "일일 보육일지를 쓰지 않는 원이면 그 주 일과 기록을 바로 근거로 써요. 날짜별 해석·지원 칸은 비워서 내보내고, 주간 총평 하나만 적어요."
                     : "시작일과 종료일은 같은 주로 골라주세요. 그 주에 확정한 일일 보육일지가 아래에 뜹니다."
-                  : kind === "assessment"
-                    ? "한 아동의 누적 관찰을 선택해주세요. 기록에 드러난 변화만 다루며 발달을 진단하지 않아요."
-                    : "관찰일지는 아동을 선택하고, 일일 보육일지는 시작·종료일을 같은 날짜로 지정해주세요."}
+                  : "관찰일지는 아동을 선택하고, 일일 보육일지는 시작·종료일을 같은 날짜로 지정해주세요."}
             </p>
             <button
               className={`${ws.primary} ${creation.generate}`}
@@ -1044,5 +1058,44 @@ export default function DocumentsPage() {
         )}
       </div>
     </main>
+  );
+}
+
+/** 보관함 거르개 — 상태 · 원본 바뀜 · 제목 찾기 (FR-701 · FR-406). 지금 모양 안에 한 줄로 둔다. */
+function ArchiveFilters({
+  value,
+  onChange,
+}: {
+  value: ArchiveFilter;
+  onChange: (next: ArchiveFilter) => void;
+}) {
+  return (
+    <div className={archive.filters} role="search" aria-label="문서 거르기">
+      <select
+        aria-label="상태"
+        value={value.status}
+        onChange={(e) => onChange({ ...value, status: e.target.value as ArchiveFilter["status"] })}
+      >
+        <option value="">전체</option>
+        <option value="DRAFT">초안</option>
+        <option value="CONFIRMED">확정</option>
+      </select>
+      <label>
+        <input
+          type="checkbox"
+          checked={value.stale}
+          onChange={(e) => onChange({ ...value, stale: e.target.checked })}
+        />
+        원본 바뀜
+      </label>
+      <input
+        type="search"
+        aria-label="제목 찾기"
+        placeholder="제목 찾기"
+        maxLength={200}
+        value={value.title}
+        onChange={(e) => onChange({ ...value, title: e.target.value })}
+      />
+    </div>
   );
 }

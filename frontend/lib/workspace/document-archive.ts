@@ -5,24 +5,29 @@
  * 주차를 세기 시작하면 서버와 어긋나고, 어긋난 쪽이 교사 눈에 먼저 보인다.
  */
 
-export type ArchiveStatus = "confirmed" | "draft" | "none";
+export type ArchiveStatus = "confirmed" | "stale" | "draft" | "none";
 
 export const ARCHIVE_STATUS_LABEL: Record<ArchiveStatus, string> = {
   confirmed: "확정",
+  // 관찰일지 화면 목록(`ObservationJournalPage` 의 statusLabel)과 같은 말이다.
+  stale: "확정 · 다시 확인 필요",
   draft: "검토 중",
   none: "미작성",
 };
 
 /**
- * 목록에 보여 줄 상태. 셋뿐이다 — 확정 · 검토 중 · 미작성.
+ * 목록에 보여 줄 상태 — 확정 · 확정이지만 다시 확인 필요 · 검토 중 · 미작성.
  *
- * **`stale` 을 보지 않는다.** 근거가 바뀐 확정본도 목록에서는 확정이다. 확정은 교사가 누른
- * 것이고 `stale` 은 별개 사실이라, 여기서 초안으로 끌어내리면 안 된다 (ADR-030).
- * 재확인 안내와 재확정은 **문서 상세 안에서** 그대로 돈다 — 그 길을 막지 않는다.
+ * **근거가 바뀐 확정본을 초안으로 끌어내리지 않는다.** 확정은 교사가 누른 것이고 `stale` 은
+ * 별개 사실이다 (ADR-030). 그렇다고 그냥 「확정」으로 보이면 교사가 다시 볼 문서를 못 찾는다.
+ * 확정은 그대로 두고 「다시 확인 필요」를 붙인다. 재확인과 재확정은 문서 상세 안에서 돈다.
  */
-export function archiveStatus(doc?: { status: "draft" | "confirmed" } | null): ArchiveStatus {
+export function archiveStatus(
+  doc?: { status: "draft" | "confirmed"; stale?: boolean } | null,
+): ArchiveStatus {
   if (!doc) return "none";
-  return doc.status === "confirmed" ? "confirmed" : "draft";
+  if (doc.status !== "confirmed") return "draft";
+  return doc.stale ? "stale" : "confirmed";
 }
 
 /** 계획안 목록은 대문자 상태만 준다 — `stale` 이라는 개념이 없다. */
@@ -155,4 +160,38 @@ export function archivePlanEntry(search: string) {
   const month = weekId ? Number(weekId.slice(5, 7)) : Number(query.get("month"));
   if (!Number.isInteger(month) || month < 1 || month > 12) return null;
   return { id, classId, month, weekId };
+}
+
+/**
+ * 보관함 거르개 — 상태 · 원본 바뀜 · 제목 찾기 (FR-701 · FR-406).
+ *
+ * 상태와 원본 바뀜은 서버가 거른다(`GET /api/documents?status=&stale=`, §11). 제목 찾기는 서버가
+ * 받지 않아 화면이 받은 목록에서 거른다.
+ */
+export interface ArchiveFilter {
+  status: "" | "DRAFT" | "CONFIRMED";
+  /** 원본 기록이 바뀐 문서만. */
+  stale: boolean;
+  title: string;
+}
+export const ARCHIVE_FILTER_NONE: ArchiveFilter = { status: "", stale: false, title: "" };
+
+/** 서버에 보낼 쿼리. 서버가 거를 것이 없으면 null — 그때는 전체 목록을 그대로 쓴다. */
+export function archiveQuery(filter: ArchiveFilter) {
+  if (!filter.status && !filter.stale) return null;
+  return {
+    ...(filter.status ? { status: filter.status } : {}),
+    ...(filter.stale ? { stale: true } : {}),
+  };
+}
+
+/** 계획안처럼 서버가 따로 주는 목록과 제목 찾기는 여기서 거른다. 계획안에는 stale 이 없다. */
+export function passesFilter(
+  doc: { title: string; status: "draft" | "confirmed"; stale?: boolean },
+  filter: ArchiveFilter,
+): boolean {
+  if (filter.status && doc.status !== (filter.status === "CONFIRMED" ? "confirmed" : "draft"))
+    return false;
+  if (filter.stale && !doc.stale) return false;
+  return doc.title.includes(filter.title.trim());
 }

@@ -13,6 +13,7 @@ from ... import timing
 import hashlib
 import json
 import logging
+import random
 import re
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -42,8 +43,10 @@ from .teacher_memo import (
 from .trend import (
     TREND_PROMPT,
     TREND_PROMPT_TAG,
+    TREND_LYRICS_IN_TEXT,
     TREND_NAME_IN_TEXT,
     TREND_SHARE_EXCEEDED,
+    lyric_hits,
     split_trend_applied,
     trend_payload,
     trend_properties,
@@ -133,23 +136,47 @@ DAY_CELL_PROMPT = " 이번에는 days 의 요일 하나만 쓰고, current_plan 
 # ADR-072 결정 10: 칸마다 쓸 수 있는 트렌드는 Rule 이 이 표로 정한다. 대·소집단 후보는 activity_type
 # 낱말(「동요·음률」이면 둘 다)로, 실내놀이 후보는 영역으로 — 일반 놀이 자료는 모든 실내놀이 후보에, 역할 자료는
 # 역할놀이 영역에만(Human Decision 2026-11-08 하민). 표에 없는 유형의 칸에는 붙이지 않는다.
+# 동화(그림책)는 이야기나누기 후보 · 언어놀이 영역에도(2026-11-10 하민) — 근거에 동화 · 동극 유형이 거의 없다.
 TREND_KINDS_BY_ACTIVITY_TYPE = {
     "동요": TrendKind.SONG, "새노래": TrendKind.SONG, "음률": TrendKind.SONG, "음악": TrendKind.SONG,
-    "동화": TrendKind.STORY, "동극": TrendKind.STORY,
+    "동화": TrendKind.STORY, "동극": TrendKind.STORY, "이야기나누기": TrendKind.STORY,
     "게임": TrendKind.GAME,
     "신체": TrendKind.MOVEMENT,
     "미술": TrendKind.CRAFT,
 }
 INDOOR_PLAY_TREND_KINDS = frozenset({TrendKind.PLAY})
 # 실내놀이 후보의 영역은 indoor_play_type 이 한 표기로 맞춘다(역할 · 역할 놀이 · 역할영역 → 「역할놀이」).
-INDOOR_AREA_TREND_KINDS = {"역할놀이": frozenset({TrendKind.ROLE, TrendKind.PLAY})}
+INDOOR_AREA_TREND_KINDS = {
+    "역할놀이": frozenset({TrendKind.ROLE, TrendKind.PLAY}),
+    "언어놀이": frozenset({TrendKind.STORY, TrendKind.PLAY}),
+}
 TREND_NAME_REPAIR = "채널 · 프로그램 · 캐릭터 이름을 빼고 놀이 내용만 다시 쓴다"  # ADR-072 결정 11
+TREND_LYRICS_REPAIR = "노래 가사를 옮겨 적지 말고 노래 제목과 놀이 방법만 쓴다"  # ADR-072 결정 12
 WEEKLY_TREND_PROMPT = (
     " trend_ids가 있는 후보 target만 트렌드를 쓸 수 있고, 그 칸에 허용된 trend_id만 쓴다. "
     "트렌드를 쓴 후보는 activity_basis 대신 그 자료의 title · summary를 원문 활동으로 삼는다 — "
     "required_name_terms는 따르지 않고 grounding_refs는 비운다. "
     "fix_sections의 issue가 TREND_SHARE_EXCEEDED인 후보는 trends 없이 원래 activity_basis로 다시 쓴다."
 )
+# ADR-072 그림책 자리(2026-11-10 하민): LLM 이 고르게 두니 168곳 중 0곳에 반영됐다. 그림책은 이미 주 주제
+# 낱말로 걸러진 자료라, Rule 이 동화 트렌드를 받을 수 있는 첫 후보 하나에 첫 그림책을 배정한다.
+BOOK_SOURCE = "data4library:"
+BOOK_SLOT_TAG = "+book-slot-v1"
+WEEKLY_BOOK_PROMPT = (
+    " trend_required가 있는 후보는 Rule이 그림책 자리로 정한 칸이다. 반드시 그 책으로 쓴다: "
+    "활동명에 『trend_required.title』을 그대로 넣고, 설명은 그 책을 함께 읽고 떠오르는 생각이나 느낌을 이야기 나누는 활동으로 쓴다. "
+    "책 summary에 없는 줄거리 · 인물 · 사건을 지어내지 않는다. grounding_refs는 비우고 trend_applied에 그 후보와 trend_id를 넣는다."
+)
+
+
+def book_title(item: TrendItem) -> str:
+    """활동명에 넣을 짧은 제목: 부제(「:」 뒤) · 원제(「=」 뒤)를 뗀다 — 「활동명: 설명」의 「:」과 겹치지 않게."""
+    return item.title.split(":")[0].split("=")[0].strip()
+
+
+def book_repair_reason(item: TrendItem) -> str:
+    title = book_title(item)
+    return f"그림책 『{title}』을 함께 읽고 이야기 나누는 활동으로 쓴다. 활동명에 『{title}』을 넣고 grounding_refs는 비운다"
 CELL_SYSTEM_PROMPT = SYSTEM_PROMPT + (
     " 이번 요청은 계획안의 한 칸만 다시 쓴다: targets 의 Section 하나만 쓰고, "
     "current_plan 에 있는 다른 칸 내용은 맥락으로만 읽는다."
@@ -179,13 +206,17 @@ class WeeklyIssueCode(str, Enum):
     TREND_SHARE_EXCEEDED = TREND_SHARE_EXCEEDED  # ADR-072: a third trend candidate in one list
     TREND_GROUNDING_MIXED = "TREND_GROUNDING_MIXED"  # ADR-072: a trend candidate also cited an institution record
     TREND_NAME_IN_TEXT = TREND_NAME_IN_TEXT  # ADR-072 결정 11: a channel or character name in a candidate
+    TREND_LYRICS_IN_TEXT = TREND_LYRICS_IN_TEXT  # ADR-072 결정 12: song lyrics copied into a candidate
+    TREND_REQUIRED_MISSING = "TREND_REQUIRED_MISSING"  # ADR-072 그림책 자리: the assigned book is not in the name
 
 
 # Same idea as the monthly REPAIRABLE_CODES: wording or a ref choice inside a fixed slot.
 REPAIRABLE = frozenset({
+    WeeklyIssueCode.TREND_REQUIRED_MISSING,
     WeeklyIssueCode.TREND_SHARE_EXCEEDED,
     WeeklyIssueCode.TREND_GROUNDING_MIXED,
     WeeklyIssueCode.TREND_NAME_IN_TEXT,
+    WeeklyIssueCode.TREND_LYRICS_IN_TEXT,
     WeeklyIssueCode.ACTIVITY_CANDIDATE_INVALID,
     WeeklyIssueCode.TEXT_POLICY,
     WeeklyIssueCode.SOURCE_TEXT_COPY,
@@ -253,10 +284,17 @@ class WeeklyPlanningRequest:
     trends: tuple[TrendItem, ...] = ()
     trend_options: tuple[tuple[str, tuple[str, ...]], ...] = ()
     teacher_memo: str = ""  # ADR-072 결정 11: names the teacher wrote here are not blocked
+    trend_required: tuple[str, TrendItem] | None = None  # ADR-072 그림책 자리: (address, book)
 
     @property
     def trend_addresses(self) -> tuple[str, ...] | None:
         return tuple(address for address, _ in self.trend_options) or None
+
+    @property
+    def trend_share_order(self) -> tuple[str, ...]:
+        """The book slot counts first, so the share cap never rewrites the assigned book away."""
+        first = (self.trend_required[0],) if self.trend_required else ()
+        return (*first, *(a for a in self.trend_addresses or () if a not in first))
 
     def __post_init__(self) -> None:
         if not isinstance(self.week_id, WeekId):
@@ -361,6 +399,12 @@ def trend_options(
     return tuple(options)
 
 
+def book_slot(options: tuple[tuple[str, tuple[str, ...]], ...], trend_id: str) -> str | None:
+    """2026-11-10 하민: 대·소집단(이야기나누기 · 동화 · 동극)을 먼저, 없으면 실내놀이(언어놀이). Stable: request order within each."""
+    ranked = sorted(options, key=lambda option: not option[0].startswith("group_activity."))
+    return next((address for address, ids in ranked if trend_id in ids), None)
+
+
 def validate_daily_life_context(daily_life: DailyLifeCatalog, curriculum: CurriculumCatalog | None) -> None:
     if not isinstance(daily_life, DailyLifeCatalog) or not daily_life.is_active or curriculum is None or (
         daily_life.curriculum_catalog_id, daily_life.curriculum_catalog_version
@@ -389,6 +433,7 @@ def build_weekly_request(
     teacher_memo: str = "",
     teacher_venues: tuple[str, ...] = (),
     trends: tuple[TrendItem, ...] = (),
+    book_seed: int | None = None,  # generation's candidate seed; None keeps the first passed book
 ) -> WeeklyPlanningRequest:
     body = {
         "task": "weekly_plan",
@@ -439,7 +484,7 @@ def build_weekly_request(
         *(label for _, label in reference_candidates),
     ])
     suffix = DAY_CELLS_SUFFIX if any(t.days for t in targets) else ""
-    candidates = "+activity-candidates-v5" if any(t.activity_type is not None for t in targets) else ""
+    candidates = "+activity-candidates-v6" if any(t.activity_type is not None for t in targets) else ""
     if candidates:
         source_refs |= {t.section_key for t in targets if t.activity_type is not None}
     memo = _memo_addresses(targets) if teacher_memo else None
@@ -456,15 +501,25 @@ def build_weekly_request(
     # ADR-072: without a fitting trend nothing below runs — request, prompt and fingerprint stay as before.
     options = trend_options(targets, trends)
     passed = tuple(item for item in trends if any(item.trend_id in ids for _, ids in options))
+    # 2026-11-10 하민: every passed book already matched the week theme words, so the seed picks one at random
+    # (same seed, same book). Without a seed the first passed book (ISBN order after select_trends) stays.
+    books = [item for item in passed if item.trend_id.startswith(BOOK_SOURCE)]
+    book = (random.Random(f"{book_seed}:book").choice(books) if book_seed is not None else books[0]) if books else None
+    slot = book_slot(options, book.trend_id) if book is not None else None
+    required = (slot, book) if slot is not None and book is not None else None
+    if required is not None:
+        options = tuple((a, (book.trend_id,)) if a == slot else (a, ids) for a, ids in options)
     if options:
         body.update(trend_payload(passed, tuple(address for address, _ in options)))
         allowed_ids = dict(options)
         for t in body["targets"]:
             if t["section_key"] in allowed_ids:
                 t["trend_ids"] = list(allowed_ids[t["section_key"]])
+            if required is not None and t["section_key"] == slot:
+                t["trend_required"] = {"trend_id": book.trend_id, "title": book_title(book)}
         allowed += " " + " ".join(f"{item.title} {item.summary}" for item in passed)
         source_refs |= {item.trend_id for item in passed}
-        linked += TREND_PROMPT_TAG
+        linked += TREND_PROMPT_TAG + (BOOK_SLOT_TAG if required is not None else "")
     contextual = curriculum is not None or reference_wiring
     if contextual:
         linked += VENUE_POLICY_TAG
@@ -494,6 +549,10 @@ def build_weekly_request(
             "activity_basis는 이 후보가 사용할 원문 활동이다. 전체 근거에 다른 활동이 있어도 그 활동으로 바꾸거나 서로 섞어 새 활동을 만들지 않는다. "
             "required_name_terms는 문서 이름에 남겨야 할 활동 정보이며 모두 포함한다. 설명도 activity_basis의 같은 활동을 다룬다. "
             "작품명과 익숙한 놀이명은 유지하고, 모든 제목에 같은 행동어를 억지로 붙이지 않는다. "
+            "activity_basis에 따옴표로 묶인 이름(노래 · 동시 · 이야기 제목 등)이 있으면 따옴표째 제목으로 옮기고, "
+            "그 이름을 재료나 흉내 낼 대상처럼 풀어 쓰지 않는다. 설명에서도 그 이름을 제목으로만 가리키며"
+            "(예: '…' 말놀이를 함께 읊으며), '…에 어울리는 움직임'처럼 이름의 뜻을 소재로 삼지 않는다. "
+            "그 제목이 무엇을 담는지 근거에 없으면 지어내지 않는다. "
             "제목과 설명은 같은 활동을 뜻해야 하며, 근거에 없는 재료·놀이 방법·절차·결과물을 보태지 않는다. "
             "후보를 부모 소주제와 일치시키려고 대상을 바꾸거나 모두 같은 놀이로 만들지 않는다. "
             "같은 Section의 후보끼리 활동 이름이 겹치지 않게 하되 근거에 없는 활동으로 개수를 채우지 않는다. "
@@ -504,6 +563,7 @@ def build_weekly_request(
         prompt_version=(WEEKLY_CONTEXT_PROMPT_VERSION if curriculum is not None else WEEKLY_PROMPT_VERSION) + linked + suffix,
         system_prompt=system_prompt + (DAY_PROMPT if suffix else "") + (V1_GUIDANCE if curriculum is not None else "")
         + (TEACHER_MEMO_PROMPT if memo is not None else "") + (TREND_PROMPT + WEEKLY_TREND_PROMPT if options else "")
+        + (WEEKLY_BOOK_PROMPT if required is not None else "")
         + (VENUE_GUIDANCE if contextual else ""),
         user_content=json.dumps(body, ensure_ascii=False, sort_keys=True),
         week_id=week_id,
@@ -524,6 +584,7 @@ def build_weekly_request(
         trends=passed,
         trend_options=options,
         teacher_memo=teacher_memo,
+        trend_required=required,
     )
 
 
@@ -863,6 +924,7 @@ def validate_weekly(
             WeeklyIssue(WeeklyIssueCode.TREND_NAME_IN_TEXT, address)
             for address in trend_name_hits(texts, request.trends, request.teacher_memo)
         ]
+        issues += [WeeklyIssue(WeeklyIssueCode.TREND_LYRICS_IN_TEXT, address) for address in lyric_hits(texts)]
     return tuple(issues)
 
 
@@ -942,6 +1004,23 @@ def _split_trends(content: str, request: WeeklyPlanningRequest) -> tuple[str, di
     return content, applied
 
 
+def _with_required_book(
+    values: tuple[ProposedSectionValue | WeeklyDayValues, ...],
+    request: WeeklyPlanningRequest,
+    applied: dict[str, TrendItem],
+) -> tuple[dict[str, TrendItem], bool]:
+    """그림책 자리: Rule 이 배정한 책이라 Application 이 결정적으로 붙인다 — 고쳐 쓰기 답에는 trend_applied 가 없다.
+    기관 근거를 인용하지 않은 답은 그 책으로 쓴 것이다(근거 없는 후보로 실패시키지 않는다). (applied, 활동명에 제목이 있는가)."""
+    if request.trend_required is None:
+        return applied, True
+    address, book = request.trend_required
+    value = next((v for v in values if v.section_key == address and isinstance(v, ProposedSectionValue)), None)
+    if value is None or value.unresolved:
+        return applied, False
+    titled = normalize_visible_text(book_title(book)) in normalize_visible_text(value.value.partition(":")[0])
+    return ({**applied, address: book} if titled or not value.grounding_refs else applied), titled
+
+
 def _codes(issues: tuple[WeeklyIssue, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(issue.code.value for issue in issues))
 
@@ -982,12 +1061,15 @@ class WeeklyPlanner:
         content, memo_applied, memo_skipped = split_memo_applied(response.content, request.memo_addresses)
         content, trend_applied = _split_trends(content, request)
         values = with_reference_labels(parse_weekly_proposal(content, request), request)
+        trend_applied, book_used = _with_required_book(values, request, trend_applied)
         issues = validate_weekly(values, request, frozenset(trend_applied))
         # ADR-072: at most TREND_SHARE per list; the extra ones are rewritten from their own basis.
         excess = trend_share_excess(
-            trend_applied, request.trend_addresses or (), lambda address: address.partition(".")[0]
+            trend_applied, request.trend_share_order, lambda address: address.partition(".")[0]
         )
         issues += tuple(WeeklyIssue(WeeklyIssueCode.TREND_SHARE_EXCEEDED, address) for address in excess)
+        if not book_used:
+            issues += (WeeklyIssue(WeeklyIssueCode.TREND_REQUIRED_MISSING, request.trend_required[0]),)
         repaired: frozenset[str] = frozenset()
         prompt_version = request.prompt_version
         if issues and all(issue.code in REPAIRABLE for issue in issues):
@@ -1003,7 +1085,10 @@ class WeeklyPlanner:
                     "fix_sections": [
                         {"section_key": i.section_key, "issue": i.code.value, **({"day": i.day} if i.day else {}),
                          **({"reason": "UNREQUESTED_VENUE"} if "UNREQUESTED_VENUE" in i.detail else {}),
-                         **({"reason": TREND_NAME_REPAIR} if i.code is WeeklyIssueCode.TREND_NAME_IN_TEXT else {})}
+                         **({"reason": TREND_NAME_REPAIR} if i.code is WeeklyIssueCode.TREND_NAME_IN_TEXT else {}),
+                         **({"reason": TREND_LYRICS_REPAIR} if i.code is WeeklyIssueCode.TREND_LYRICS_IN_TEXT else {}),
+                         **({"reason": book_repair_reason(request.trend_required[1])}
+                            if i.code is WeeklyIssueCode.TREND_REQUIRED_MISSING else {})}
                         for i in issues
                     ],
                 }, ensure_ascii=False, sort_keys=True),
@@ -1041,6 +1126,11 @@ class WeeklyPlanner:
             if any("UNREQUESTED_VENUE" in issue.detail for issue in issues) and venue_name_only_repair(previous_values, values):
                 raise ProposalRejectedError(("VENUE_NAME_ONLY_REMOVAL",))
             trend_applied = {a: item for a, item in trend_applied.items() if a not in excess}
+            if request.trend_required is not None and request.trend_required[0] in flagged:
+                trend_applied.pop(request.trend_required[0], None)  # judged again from the rewritten name
+            trend_applied, book_used = _with_required_book(values, request, trend_applied)
+            if not book_used:  # §7: the book is optional context — keep the candidate as written, no failure
+                _log.info("Weekly picture book slot fell back to its own basis")
             issues = validate_weekly(values, request, frozenset(trend_applied))
             repaired, prompt_version = frozenset(flagged), request.repair_prompt_version
         if issues:

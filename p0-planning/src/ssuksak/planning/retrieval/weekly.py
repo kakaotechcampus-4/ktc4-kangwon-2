@@ -47,6 +47,16 @@ REVIEWED_UNCLEAR_ACTIVITY_SOURCES = frozenset({
     ("ev_5d3e713585b1_p01_r00252_c07_i01", "이럴땐 이렇게"),  # no situation or activity
     ("ev_7650ed22cba2_p03_r00337_c02_i02", "우리나라 지도 퍼즐 -"),  # extraction cut mid-title (2026-11-10 live: 12월 5주 500)
     ("ev_7650ed22cba2_p03_r00337_c02_i03", "<컴톡> 고장난 키보"),  # extraction cut mid-title (2026-11-10 live: 12월 5주 500)
+    # program/event name only, no activity (2026-11-10 live: seed 202 10월 1주 blank cell)
+    ("ev_1a38525ff65b_p01_r00472_c01_i03", "<교육> 유아수업 마음자람"),
+    ("ev_1a38525ff65b_p03_r00486_c01_i05", "<교육> 유아수업 마음자람"),
+    ("ev_afbdb8956312_p01_r00478_c01_i04", "<교육> 하나금융그룹 유아AI 코딩교육"),
+    ("ev_afbdb8956312_p04_r00057_c01_i03", "<교육> 하나금융그룹 유아 AI코딩 교육"),
+    ("ev_1a38525ff65b_p01_r00472_c01_i01", "<특별한날> 개천절, 추석, 한글날"),
+    ("ev_1a38525ff65b_p03_r00486_c01_i04", "<특별한날> 개천절, 추석, 한글날"),
+    ("ev_3a610d1983a6_p03_r00470_c01_i01", "<행사> 어린이날, 어버이날"),
+    ("ev_af259877ba7c_p03_r00493_c01_i01", "<중점프로그램> 한마음 쑥쑥 프로그램"),
+    ("ev_af259877ba7c_p01_r00437_c01_i03", "<행사> 식목일 행사"),
 })
 
 

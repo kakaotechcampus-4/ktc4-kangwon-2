@@ -51,8 +51,8 @@ function journalBlock(journal: WeeklyJournal) {
   if (!journal.sources.length)
     return journal.from === "routine"
       ? "이 주 일과 기록에 「실제로 한 것」이 아직 없어요. 일과 기록을 먼저 적어 주세요."
-      : journal.draftDailies.length
-        ? `일일 보육일지 ${journal.draftDailies.length}건이 아직 초안이에요. 「이번 주 보육일지」 칸에서 확정하러 가세요.`
+      : journal.blockedDailies.length
+        ? `일일 보육일지 ${journal.blockedDailies.length}건은 아직 근거로 쓸 수 없어요. 「이번 주 보육일지」 칸에서 까닭을 보고 고쳐 주세요.`
         : "이 주에 확정한 일일 보육일지가 없어요. 일지를 확정하거나 근거를 「일과 기록」으로 바꿔 주세요.";
   return null;
 }
@@ -166,6 +166,11 @@ export default function WeeklyRecordsPage() {
   }
 
   const blocked = journalBlock(journal);
+  /** 다른 주로 넘길 때만 펴 놓은 일지가 닫힌다. 저장 안 한 글이 있으면 먼저 묻는다. */
+  const pick = (iso: string) => {
+    if (isoOf(mondayOf(iso)) !== weekStart && !journal.leave()) return;
+    setSelected(iso);
+  };
   const todayIso = today();
 
   return (
@@ -199,7 +204,8 @@ export default function WeeklyRecordsPage() {
                 type="button"
                 aria-label="지난 주"
                 className={ws.weekStep}
-                onClick={() => setSelected(shift(selected, -7))}
+                disabled={journal.pending}
+                onClick={() => pick(shift(selected, -7))}
               >
                 <Icon name="arrow" className="h-4 w-4 rotate-180" />
               </button>
@@ -210,7 +216,8 @@ export default function WeeklyRecordsPage() {
                 type="button"
                 aria-label="다음 주"
                 className={ws.weekStep}
-                onClick={() => setSelected(shift(selected, 7))}
+                disabled={journal.pending}
+                onClick={() => pick(shift(selected, 7))}
               >
                 <Icon name="arrow" className="h-4 w-4" />
               </button>
@@ -230,7 +237,7 @@ export default function WeeklyRecordsPage() {
                       data-empty={total ? undefined : true}
                       data-today={iso === todayIso ? true : undefined}
                       data-weekend={index > 4 ? true : undefined}
-                      onClick={() => setSelected(iso)}
+                      onClick={() => pick(iso)}
                     >
                       <span className={ws.weekDow}>{DAY_NAMES[index]}</span>
                       <span className={ws.weekDate}>{Number(iso.slice(8, 10))}</span>

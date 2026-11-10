@@ -1,0 +1,4 @@
+# 같은 사람의 여러 커밋 주소를 하나로 모은다 — git shortlog · git log 가 쓴다 (GitHub 그래프에는 영향 없음)
+이승석 <leess5731@gmail.com> amuro <leess5731@seungseog-ui-bonche.local>
+이승석 <leess5731@gmail.com> amuro <leess5731@MacBook-Pro.local>
+이승석 <leess5731@gmail.com> 01_seok <leess5731@gmail.com>

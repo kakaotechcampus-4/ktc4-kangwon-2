@@ -13,6 +13,7 @@ import {
   putCenterSettings,
 } from "./data/centers";
 import type { Greetings } from "../lib/api/centers";
+import { journalHandlers } from "./journal";
 import { findClass, listClasses, addClass, classNameTaken, patchClass } from "./data/classes";
 import { hasChild, listChildren, addChild, removeChild, setCallName } from "./data/children";
 import {
@@ -156,6 +157,7 @@ const withMemo = <T extends { id: number }>(
   return Object.assign(plan, fields);
 };
 const missing = () => failure("NOT_FOUND", "대상을 찾을 수 없습니다.");
+
 async function body(request: Request): Promise<Record<string, unknown> | null> {
   try {
     const b = await request.json();
@@ -280,8 +282,10 @@ export const handlers = [
   // MSW interception 판정 전용 probe — 실제 백엔드 API가 아니다.
   // 이 응답이 오면 fetch가 정말 MSW handler를 통과했다는 뜻이다.
   http.get("*/api/__msw_health", () => HttpResponse.json({ msw: true })),
-  // 계획안 밖 화면(관찰 · 일과 · 일지 · 반 공유 요청)은 목업 데이터가 없다 — 빈 목록으로 답해 404 이슈만 막는다.
-  ...["observations", "routines", "documents", "access-requests/received"].map((path) =>
+  // 보육일지 하루 화면 — 일과 기록 · 날씨 · 임시본 · 반 기본 일과표 (msw/journal.ts).
+  ...journalHandlers,
+  // 계획안 밖 화면(관찰 · 일지 · 반 공유 요청)은 목업 데이터가 없다 — 빈 목록으로 답해 404 이슈만 막는다.
+  ...["observations", "documents", "access-requests/received"].map((path) =>
     http.get(`*/api/${path}`, () => HttpResponse.json({ items: [] })),
   ),
   // 인증 (docs/api-spec.md §0). **목업은 토큰을 검증하지 않는다** —
@@ -390,7 +394,12 @@ export const handlers = [
     if (!findCenter(id) || id !== currentCenterId()) return missing();
     const b = await body(request);
     if (!b) return bad("body");
-    const SETTING_KEYS = ["trends_enabled", "weekly_saturday_enabled", "observation_axis"];
+    const SETTING_KEYS = [
+      "trends_enabled",
+      "weekly_saturday_enabled",
+      "observation_axis",
+      "reflect_mark",
+    ];
     if (Object.keys(b).some((key) => !SETTING_KEYS.includes(key))) return bad("body");
     // **보낸 칸만 바꾼다.** 빈 요청은 아무것도 바꾸지 않는다.
     const patch: Parameters<typeof putCenterSettings>[1] = {};
@@ -403,6 +412,11 @@ export const handlers = [
       if (b.observation_axis !== "NURI_5" && b.observation_axis !== "DAILY_PLAY_2")
         return bad("observation_axis");
       patch.observation_axis = b.observation_axis;
+    }
+    if (b.reflect_mark !== undefined) {
+      if (b.reflect_mark !== "(반영)" && b.reflect_mark !== "(놀이반영)" && b.reflect_mark !== "")
+        return bad("reflect_mark");
+      patch.reflect_mark = b.reflect_mark;
     }
     if (!Object.keys(patch).length) return HttpResponse.json(findCenterSettings(id));
     return HttpResponse.json(putCenterSettings(id, patch));

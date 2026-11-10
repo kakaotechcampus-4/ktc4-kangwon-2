@@ -401,7 +401,7 @@
   border-radius: 50%;
 }
 /* 찍힌 칸과 빈 칸이 둘 다 흰 동그라미에 포스티 윤곽이라 구분이 안 됐다(11-08).
-   찍힌 칸은 흰 칸에 보라 이중 원 도장(안에 노란 포스티), 빈 칸은 종이가 비쳐 보이는 점선 구멍에 흐린 포스티. */
+   찍힌 칸은 흰 칸에 빨간 이중 원 도장(안에 노란 포스티), 빈 칸은 종이가 비쳐 보이는 점선 구멍에 흐린 포스티. */
 .ring[data-state="done"] {
   border: 2.5px solid var(--pg-line);
   background: var(--pg-paper);
@@ -444,7 +444,7 @@
   color: var(--pg-primary-ink);
 }
 
-/* 도장 — 보라 이중 원(::before)이 「찍혔다」를 맡고, 안의 노란 만세 포스티가 쌤플 얼굴을 맡는다(찍힌 모양 시안 ④).
+/* 도장 — 빨간 이중 원(::before)이 「찍혔다」를 맡고(보라에서 바꿈, 사용자 결정 11-10), 안의 노란 만세 포스티가 쌤플 얼굴을 맡는다(찍힌 모양 시안 ④).
    꽉 찬 보라 몸에 하얀 얼굴은 탈처럼 보여 뺐다 — 포스티는 앱 어디서나 쓰는 노란 모습 그대로다.
    칸마다 조금씩 기울여 손으로 찍은 티를 낸다. 기울기는 테두리 · 포스티 · 글자가 함께 받는다. */
 .stampMark {
@@ -463,11 +463,11 @@
   content: "";
   position: absolute;
   inset: 0;
-  border: 3.5px solid var(--pg-primary);
+  border: 3.5px solid var(--pg-alert-strong-line);
   border-radius: 50%;
   box-shadow:
     inset 0 0 0 4px var(--pg-paper),
-    inset 0 0 0 6px var(--pg-primary);
+    inset 0 0 0 6px var(--pg-alert-strong-line);
   pointer-events: none;
 }
 .slot:nth-child(6n + 1) .stampMark {
@@ -519,7 +519,7 @@
   font-size: 15px;
   font-weight: 700;
   line-height: 1.05;
-  color: var(--pg-primary);
+  color: var(--pg-alert-strong-line);
   white-space: nowrap;
 }
 .stampWords[data-count="2"] {
@@ -537,7 +537,8 @@
   --pg-shell-line: var(--pg-ink-hint);
   --pg-shell-fold: var(--pg-paper);
 }
-/* 포스티만 흐리게 둔다. 「비었어요」 글자까지 흐리면 읽기 어렵다. */
+/* 포스티만 흐리게 둔다. 「비었어요」 글자까지 흐리면 읽기 어렵다.
+   글자는 회색 — 찍힌 도장이 빨강이라 빈 칸 글자까지 빨강이면 찍힌 칸과 한 색으로 보였다(11-10). */
 .wait svg {
   display: block;
   opacity: 0.55;
@@ -550,7 +551,7 @@
   font-size: 16px;
   font-weight: 700;
   line-height: 1.1;
-  color: var(--pg-alert-ink);
+  color: var(--pg-ink-soft);
 }
 .optWord {
   font-size: 13px;
@@ -558,7 +559,7 @@
 }
 
 /* 찍히는 동작 — 방금 빈 칸에서 찍힌 칸에만(`data-fresh`). 0.45초.
-   보라 이중 원이 크게 떴다가 꾹 찍히고(0~0.32초) 칸이 한 번 눌린다. 안의 포스티와 근거 글자는 같은 느낌으로
+   빨간 이중 원이 크게 떴다가 꾹 찍히고(0~0.32초) 칸이 한 번 눌린다. 안의 포스티와 근거 글자는 같은 느낌으로
    그 자리에서 스르륵 나타난다(0.1~0.4초, 사용자 결정 11-08). */
 .ring[data-fresh] {
   animation: thump 0.3s 0.12s ease-out both;
@@ -979,7 +980,7 @@
 .src[data-state="none"] {
   color: var(--pg-ink-soft);
 }
-/* 줄 맨 앞 작은 동그라미 — 찍힌 서류는 도장판과 같은 보라 이중 원 */
+/* 줄 맨 앞 작은 동그라미 — 찍힌 서류는 도장판과 같은 빨간 이중 원 */
 .mini {
   flex: none;
   display: grid;
@@ -989,11 +990,11 @@
   border-radius: 50%;
 }
 .mini[data-state="done"] {
-  border: 2.5px solid var(--pg-primary);
+  border: 2.5px solid var(--pg-alert-strong-line);
   background: var(--pg-paper);
   box-shadow:
     inset 0 0 0 2.5px var(--pg-paper),
-    inset 0 0 0 4px var(--pg-primary);
+    inset 0 0 0 4px var(--pg-alert-strong-line);
   transform: rotate(-6deg);
 }
 .mini[data-state="empty"] {
@@ -1017,16 +1018,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
-/* 오른쪽 끝 페이지 스크롤바를 숨긴다(사용자 결정 11-10). 안쪽 높이 800 에서 화면이 44~74px 넘치지만 휠 · 키보드로는 스크롤된다.
-   두 칸으로 설 때만 — 한 줄로 쌓이는 좁은 창은 페이지가 훨씬 길어 스크롤바가 있어야 한다. */
-@media (min-width: 1261px) {
-  :global(html):has(.layout) {
-    scrollbar-width: none;
-  }
-  :global(html):has(.layout)::-webkit-scrollbar {
-    display: none;
-  }
-}
 /* 페이지와 같이 스크롤한다. `ws.side` 처럼 따로 스크롤하면 노트북 높이에서 접힌 칸이 안쪽 밑으로 숨었다. */
 .aside {
   display: grid;
@@ -1035,7 +1026,7 @@
   min-width: 0;
 }
 /* 내 컴퓨터 폴더 — 테이프로 붙인 노란 쪽지(시안 ③). 사이드바 쪽지 · 시작 설정 쪽지와 같은 색이다.
-   제목 · 안내는 왼쪽, 단추는 오른쪽에 둔다 — 아래 서랍 단추 셋과 폴더를 고른 뒤의 결과 줄까지 도장판 아래 한 화면(900px)에 들어와야 한다. */
+   제목 · 안내는 왼쪽, 단추는 오른쪽에 둔다 — 아래 서랍 단추 셋과 폴더를 고른 뒤의 결과 줄까지 도장판 아래 한 화면(안쪽 800px)에 들어와야 한다. */
 .folderNote {
   position: relative;
   display: grid;
@@ -1090,6 +1081,48 @@
   font-size: 13px;
   line-height: 1.5;
   color: var(--pg-ink-soft);
+}
+/* 두 칸으로 설 때는 안쪽 1440×800 한 화면에 들어온다(사용자 결정 11-10) — 빈 여백만 줄였고 글자 · 도장 · 단추 크기는 그대로다.
+   가장 긴 때는 폴더를 고른 뒤 파일 이름이 100개를 넘어 결과가 두 줄일 때로, 그때 아래에 11px 남는다. 이 화면에 줄을 더하면 다시 잰다.
+   한 줄로 쌓이는 좁은 창(1260 아래)은 페이지가 훨씬 길어 그대로 스크롤된다. 위 칸들보다 뒤에 둬야 덮어쓴다. */
+@media (min-width: 1261px) {
+  :global(main):has(.layout) {
+    padding-bottom: 16px;
+  }
+  /* 페이지 머리(WorkspacePage 의 pageHead) */
+  :global(main):has(.layout) > :first-child {
+    margin-bottom: 16px;
+  }
+  /* 도장판과 아래 두 칸 사이(ws.stack) */
+  :global(div):has(> .layout) {
+    gap: 14px;
+  }
+  .stampCard {
+    padding-top: 22px;
+    padding-bottom: 20px;
+  }
+  .stampHead {
+    margin-bottom: 16px;
+  }
+  .aside {
+    gap: 4px;
+  }
+  .folderNote {
+    row-gap: 2px;
+    margin: 4px 4px 2px;
+    padding: 12px 18px 8px;
+  }
+  .scanStat {
+    margin-top: 2px;
+    padding: 4px 10px;
+  }
+  /* 페이지 스크롤바를 숨긴다(#505). 한 화면에 들어오면 생기지 않지만, 맨 위 오류 줄이 뜬 동안처럼 잠깐 넘칠 때를 위해 남긴다. */
+  :global(html):has(.layout) {
+    scrollbar-width: none;
+  }
+  :global(html):has(.layout)::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* 서랍 단추 — 평소에는 수만 보이고, 누르면 오른쪽에서 서랍이 나온다(시안 ④). 접어 두는 칸이 아니다. */

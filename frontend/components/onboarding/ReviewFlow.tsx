@@ -291,8 +291,8 @@ function ClassRow({
         <button
           type="button"
           onClick={onEdit}
-          aria-label={`${c.className} 고치기`}
-          title={`${c.className} 고치기`}
+          aria-label={`${c.className} 수정`}
+          title={`${c.className} 수정`}
           className="inline-flex h-11 w-11 flex-none items-center justify-center squircle [--r:12px] text-ink-soft hover:bg-primary-tint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
         >
           <EditIcon />

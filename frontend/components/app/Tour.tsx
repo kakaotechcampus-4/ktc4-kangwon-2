@@ -224,7 +224,7 @@ const TOURS: Record<string, Step[]> = {
       at: "weekly-journal",
       title: "주간 보육일지",
       lines: ["**확정한 일일 보육일지**로 만들어요."],
-      tip: "초안이 남았으면 「확정하러 가기」부터 눌러요.",
+      tip: "초안이 남았으면 그 줄의 「여기서 확정」부터 눌러요.",
     },
     {
       at: "weekly-make",
@@ -539,7 +539,7 @@ export default function Tour() {
   const [open, setOpen] = useState<{ path: string; steps: Step[] }>({ path: "", steps: [] });
   const steps = open.path === path ? open.steps : [];
   const [index, setIndex] = useState(0);
-  const [hole, setHole] = useState<Hole | null>(null);
+  const [raw, setHole] = useState<Hole | null>(null);
   const next = useRef<HTMLButtonElement>(null);
 
   const shut = useCallback(() => {
@@ -585,7 +585,10 @@ export default function Tour() {
     if (!step) return;
     const el = target(step.at);
     if (!el) return;
-    el.scrollIntoView({ block: "center" });
+    // 화면보다 긴 칸(쌓인 기록 목록)은 가운데로 맞추면 위아래가 다 잘린다. 머리부터 보이게 한다.
+    el.scrollIntoView({
+      block: el.offsetHeight > window.innerHeight / appZoom() ? "start" : "center",
+    });
     const pad = step.pad ?? 8;
     const measure = () => {
       const box = toLocal(el.getBoundingClientRect());
@@ -626,12 +629,16 @@ export default function Tour() {
     };
   }, [step, close, steps.length]);
 
-  if (!step || !hole) return null;
+  if (!step || !raw) return null;
   const last = index === steps.length - 1;
 
-  // 칸을 가리지 않는 쪽에 둔다 — 아래 → 위 → 오른쪽 순. 다 좁으면(큰 칸) 화면 아래에 붙인다.
+  // 칸을 가리지 않는 쪽에 둔다 — 아래 → 위 → 오른쪽 → 왼쪽 순. 다 좁으면(큰 칸) 화면 아래에 붙인다.
   const vw = window.innerWidth / appZoom();
   const vh = window.innerHeight / appZoom();
+  // 화면보다 긴 칸은 구멍을 화면 안으로 자른다. 안 자르면 구멍 테두리가 화면 밖으로 나가
+  // 위아래가 열린 띠처럼 보였다(덕철 점검 — 기록이 많은 관찰 기록 화면).
+  const top = Math.max(raw.top, 8);
+  const hole = { ...raw, top, height: Math.min(raw.top + raw.height, vh - 8) - top };
   const left = Math.min(Math.max(16, hole.left), vw - CARD - 16);
   const place =
     vh - (hole.top + hole.height) > 260
@@ -641,7 +648,9 @@ export default function Tour() {
         : vw - (hole.left + hole.width) > CARD + 40
           ? // 위 여백은 포스티(카드 위로 40px 튀어나옴)가 화면 위에 잘리지 않을 만큼 둔다.
             { top: Math.max(52, Math.min(hole.top, vh - 300)), left: hole.left + hole.width + 24 }
-          : undefined;
+          : hole.left > CARD + 40
+            ? { top: Math.max(52, Math.min(hole.top, vh - 300)), left: hole.left - CARD - 24 }
+            : undefined;
 
   return (
     <div className={styles.tour} role="dialog" aria-modal="true" aria-labelledby="tour-title">

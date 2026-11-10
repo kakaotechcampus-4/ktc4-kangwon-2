@@ -39,8 +39,9 @@ export function PageContainer({
   className?: string;
 }) {
   return (
-    <div className={`px-4 pt-[18px] pb-8 lg:px-10 lg:pt-[26px] lg:pb-12 min-w-0 ${className}`}>
+    // 본문 자리 표시(점검 H-E3). 다른 화면은 WorkspacePage 가 <main> 을 둔다.
+    <main className={`px-4 pt-[18px] pb-8 lg:px-10 lg:pt-[26px] lg:pb-12 min-w-0 ${className}`}>
       {children}
-    </div>
+    </main>
   );
 }

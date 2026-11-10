@@ -298,6 +298,24 @@ def test_일일_보육일지_없이_일과_기록으로_주간을_만든다(db_s
     assert _facts(payload) == "\n\n".join(s["text"] for s in payload["sources"])
 
 
+def test_상세_근거는_종류를_같이_준다(mine):
+    """주간의 근거는 일일 문서 또는 일과 기록이다. 번호만 주면 화면이 둘을 가르지 못해
+    일과 31 을 문서 31 로 연다(「원본 보기」)."""
+    record = _routine(mine["sun"]).json()
+    daily = _daily(mine["sun"], [record]).json()
+    client.post(f"/api/documents/{daily['id']}/confirm", json={"checks": CHECKS})
+    from_routines = _weekly_from_routines(mine["sun"], [record]).json()
+    from_daily = _weekly_from_routines(mine["sun"], [daily], source_kind="dailyLog").json()
+
+    def kinds(doc):
+        detail = client.get(f"/api/documents/{doc['id']}").json()
+        return [s["source_kind"] for s in detail["sources"]]
+
+    assert kinds(daily) == ["routine"]
+    assert kinds(from_routines) == ["routine"]
+    assert kinds(from_daily) == ["document"]
+
+
 def test_주간이_아닌데_일과_근거를_고르면_거절한다(mine):
     """보낸 값이 반영되지 않는데 받으면 교사는 고른 대로 만들어진 줄 안다."""
     record = _routine(mine["sun"]).json()
@@ -424,10 +442,16 @@ def test_영향_응답은_확정_일지만_세고_신규와_기존_stale을_구�
     }
     assert _stale(db_session, confirmed["id"]) is True
     assert _stale(db_session, draft["id"]) is True  # 초안 stale 정책도 유지한다.
-    # 같은 값 저장/계획/순서만 변경은 근거 변경으로 다시 세지 않는다.
-    second = client.put(url, json=_update_body(first.json(), plan="새 계획", position=7))
+    # 같은 값 저장 · 순서만 변경은 근거 변경으로 다시 세지 않는다.
+    second = client.put(url, json=_update_body(first.json(), position=7))
     assert second.json()["review_impact"] == {
         "affected_document_ids": [],
+        "newly_stale_document_ids": [],
+    }
+    # 계획은 확정 때 박은 종이 사본과 비교한다 — 이미 stale 이라 영향에만 든다(ADR-086).
+    planned = client.put(url, json=_update_body(second.json(), plan="새 계획"))
+    assert planned.json()["review_impact"] == {
+        "affected_document_ids": [confirmed["id"]],
         "newly_stale_document_ids": [],
     }
     third = client.put(url, json=_update_body(first.json(), execution="다시 자동차를 움직였다."))
@@ -469,20 +493,31 @@ def test_삭제만으로도_새로_stale이_된_확정_문서를_반환한다(db
     }
 
 
-def test_계획과_position만_변경하면_영향이_없고_기존_응답도_호환된다(db_session, mine):
+def test_순서만_바꾸면_영향이_없고_기존_응답도_호환된다(db_session, mine):
     row = _routine(mine["sun"]).json()
     doc = _confirmed_daily(mine["sun"], [row])
-    plain = client.put(f"/api/routines/{row['id']}", json=_update_body(row, plan="계획 변경"))
+    plain = client.put(f"/api/routines/{row['id']}", json=_update_body(row, position=9))
     assert set(plain.json()) == set(row)
     extended = client.put(
         f"/api/routines/{row['id']}?include_impact=true",
-        json=_update_body(plain.json(), position=9),
+        json=_update_body(plain.json(), position=3),
     )
     assert extended.json()["review_impact"] == {
         "affected_document_ids": [],
         "newly_stale_document_ids": [],
     }
     assert _stale(db_session, doc["id"]) is False
+
+
+def test_확정_뒤_활동계획을_고치면_그_확정_일지는_원본_바뀜이다(db_session, mine):
+    """활동계획은 사실 칸이 아니지만 확정본 종이의 계획 칸이다 — 바뀌면 다시 본다 (ADR-086)."""
+    row = _routine(mine["sun"]).json()
+    doc = _confirmed_daily(mine["sun"], [row])
+    response = client.put(
+        f"/api/routines/{row['id']}?include_impact=true", json=_update_body(row, plan="계획 변경")
+    )
+    assert response.json()["review_impact"]["newly_stale_document_ids"] == [doc["id"]]
+    assert _stale(db_session, doc["id"]) is True
 
 
 def test_오염된_다른_기관의_근거도_조회하거나_전파하지_않는다(db_session, mine, teacher):
@@ -769,7 +804,7 @@ def test_다른_날이나_다른_반이면_만들_수_있다(mine):
     assert _daily(mine["moon"], [moon]).status_code == 201
 
 
-def test_예산_초과는_다시_시도가_아니라_503_LLM_BUDGET_EXCEEDED(db_session, mine, monkeypatch):
+def test_예산을_넘겨도_사실만_채운_일일_보육일지를_준다(db_session, mine, monkeypatch):
     from app.shared.llm import LlmBudgetExceeded
 
     def over_budget(*args, **kwargs):
@@ -781,6 +816,8 @@ def test_예산_초과는_다시_시도가_아니라_503_LLM_BUDGET_EXCEEDED(db_
 
     response = _daily(mine["sun"], [record])
 
-    assert response.status_code == 503
-    assert response.json()["error"]["code"] == "LLM_BUDGET_EXCEEDED"
-    assert db_session.scalars(select(Document)).all() == []
+    # 503 으로 빈손이 아니다 — 사실만 채운 초안이다 (ADR-093).
+    assert response.status_code == 201, response.text
+    assert response.json()["generation"]["fallback"]["reason"] == "budget_exceeded"
+    bodies = {s["heading"]: s["body"] for s in response.json()["sections"]}
+    assert bodies["사실"] and bodies["해석"] == bodies["지원"] == ""

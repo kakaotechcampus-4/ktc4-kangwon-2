@@ -27,6 +27,9 @@ export interface ApiRoutine {
   name: string;
   plan: string;
   execution: string;
+  /** 어제 지원을 반영한 줄 · 계획안에서 맞다고 한 활동 이름 (ADR-086). 옛 서버는 안 보낸다. */
+  reflected?: boolean;
+  activities?: string[];
   created_at: string;
   /** include_impact=true PUT 응답에서만 온다. */
   review_impact?: RoutineReviewImpact;
@@ -54,6 +57,77 @@ export interface RoutineInput {
 }
 export type RoutineCreateInput = RoutineInput & { class_id: number };
 export type RoutineDraft = RoutineInput & { id?: number };
+
+/** 그날 하늘 (ADR-089). 교사가 고를 수 있는 값도 이 여섯이다. */
+export type Sky = "맑음" | "구름많음" | "흐림" | "비" | "눈" | "비나 눈";
+/** PM10 · PM2.5 등급 중 나쁜 쪽. 자동으로만 온다 — 종이에 안 나간다. */
+export type DustGrade = "좋음" | "보통" | "나쁨" | "매우나쁨";
+
+/**
+ * 그날 날씨 — `GET /api/routines?class_id=&from=D&to=D`(반 하나 · 하루 하나)의 `weather` ·
+ * `PUT /api/routines/weather` 응답 (api-spec §10-1 「그날 날씨」).
+ *
+ * 값이 없어도(키 없음 · 바깥 API 실패 · 지난 날짜) 오류가 아니라 `source: "none"` 으로 온다.
+ */
+export interface DayWeather {
+  date: string;
+  sky: Sky | null;
+  dust: DustGrade | null;
+  /** `sky` 의 출처. 교사가 고른 값이 이긴다. */
+  source: "auto" | "teacher" | "none";
+  /** 대체놀이 칩을 띄울 까닭. 비 · 눈이 미세먼지보다 먼저다. */
+  indoor_hint: "rain" | "dust" | null;
+}
+
+/**
+ * 임시본 한 줄 — 화면 줄 그대로다 (ADR-084 · api-spec §10-1 「임시본」).
+ * 시간은 `HH:MM:SS` 로 돌아온다. 보낼 때는 `HH:MM` 이나 `null`.
+ */
+export interface DraftRow {
+  id: number | null;
+  start: string | null;
+  end: string | null;
+  name: string;
+  plan: string;
+  execution: string;
+  touched: boolean;
+  reflected: boolean;
+  activities: string[];
+}
+
+export interface RoutineDayDraft {
+  class_id: number;
+  date: string;
+  /** 하루치 판 번호. 저장할 때 그대로 돌려보내고, 다르면 409 `STALE_WRITE` 다. */
+  revision: number;
+  rows: DraftRow[];
+  removed: number[];
+  /** 지금 줄이 일과 기록에 올라갔나. */
+  promoted: boolean;
+  updated_at: string;
+}
+
+/** 새 날에 깔 줄 (ADR-085). 깔 것이 없으면 `null` — 화면이 표준 10행을 깐다. */
+export interface DayPreset {
+  source: "template" | "last_week" | "recent";
+  from_date: string | null;
+  rows: { name: string; start: string | null; end: string | null }[];
+}
+
+/** `GET /api/routines` 응답. 하루치가 아니면 `weather` · `draft` · `preset` 이 `null` 이다. */
+export interface RoutineListResponse {
+  items: ApiRoutine[];
+  weather: DayWeather | null;
+  draft?: RoutineDayDraft | null;
+  preset?: DayPreset | null;
+}
+
+/** `PUT /api/routines/weather` 의 body. `sky: null` 이면 고른 것을 지워 자동 값으로 돌린다. */
+export interface WeatherChoice {
+  class_id: number;
+  date: string;
+  sky: Sky | null;
+}
 
 /** 셋 다 선택이다 (§10-1). */
 export interface RoutineQuery {
@@ -100,10 +174,66 @@ const json = (method: string, body: unknown) => ({
 
 /** 정렬은 서버가 날짜 · `position` · 시작 시간 · id 로 고정한다 — 종이의 행 순서다 (§10-1). */
 export const listRoutines = (params: RoutineQuery = {}) =>
-  apiRequest<{ items: ApiRoutine[] }>("/api/routines" + query(params)).then((body) => body.items);
+  apiRequest<RoutineListResponse>("/api/routines" + query(params)).then((body) => body.items);
 
 export const listRoutinesOfDay = (classId: number, date: string) =>
   listRoutines({ class_id: classId, from: date, to: date });
+
+/** 보육일지 화면의 하루 — 줄 · 날씨 · 임시본 · 깔 줄을 한 번에 받는다. */
+export const getRoutineDay = (classId: number, date: string) =>
+  apiRequest<RoutineListResponse>(
+    "/api/routines" + query({ class_id: classId, from: date, to: date }),
+  );
+
+export interface DraftSaveInput {
+  class_id: number;
+  date: string;
+  expected_revision: number;
+  rows: DraftRow[];
+  removed: number[];
+  /** true 면 같은 요청에서 그날 일과 기록으로 올린다. */
+  promote: boolean;
+}
+
+export interface DraftSaveResult {
+  draft: RoutineDayDraft;
+  /** 올렸을 때만 — 그날 일과 기록 전부. */
+  items: ApiRoutine[] | null;
+  review_impact: RoutineReviewImpact | null;
+}
+
+/**
+ * 하루치 임시본을 둔다 (`PUT /api/routines/draft`).
+ * `keepalive` 는 창을 닫을 때 쓴다 — 페이지가 사라져도 요청 하나는 끝까지 간다.
+ */
+export const saveRoutineDraft = (input: DraftSaveInput, options?: { keepalive?: boolean }) =>
+  apiRequest<DraftSaveResult>("/api/routines/draft", {
+    ...json("PUT", input),
+    keepalive: options?.keepalive,
+  });
+
+/** 교사가 그날 날씨를 고른다 (`PUT /api/routines/weather`). `sky: null` 이면 자동 값으로 돌린다. */
+export const chooseRoutineWeather = (choice: WeatherChoice) =>
+  apiRequest<DayWeather>("/api/routines/weather", json("PUT", choice));
+
+/** 반 기본 일과표 한 줄. `weekday` 가 있으면 그 요일에만 더한다 (0=월 … 5=토). */
+export interface TemplateRow {
+  name: string;
+  start: string | null;
+  end: string | null;
+  weekday?: number | null;
+}
+
+export const getRoutineTemplate = (classId: number) =>
+  apiRequest<{ class_id: number; rows: TemplateRow[] } | null>(
+    "/api/routines/template" + query({ class_id: classId }),
+  );
+
+export const saveRoutineTemplate = (classId: number, rows: TemplateRow[]) =>
+  apiRequest<{ class_id: number; rows: TemplateRow[] }>(
+    "/api/routines/template",
+    json("PUT", { class_id: classId, rows }),
+  );
 
 /**
  * 그 사이에 **일과를 적은 날**만. 달력에 점을 찍는 데 쓴다 (S-J1).

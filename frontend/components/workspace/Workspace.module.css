@@ -310,6 +310,15 @@ select.input {
 .secondary:hover {
   background: var(--pg-primary-tint);
 }
+/* 삭제 단추 — .secondary 와 같이 쓴다. 경고 토큰만 쓴다: 글자 alert-ink(흰 종이 8.1:1 · 노랑 쪽지 6.5:1),
+   누르기 전 바탕 alert-soft(글자와 5.8:1). 다른 단추와 모양은 같고 색만 다르다(PM). */
+.danger {
+  border-color: var(--pg-alert-line);
+  color: var(--pg-alert-ink);
+}
+.danger:hover:not(:disabled) {
+  background: var(--pg-alert-soft);
+}
 .page button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -330,6 +339,34 @@ select.input {
 .message {
   background: var(--pg-primary-tint);
   color: var(--pg-success);
+}
+/* 닫을 수 있는 알림 — 글 오른쪽에 × (수민 점검). 휴대폰은 tap44 로 누르는 자리를 44px 까지 넓힌다. */
+.messageBar {
+  position: relative;
+  margin: 16px 0;
+}
+.messageBar > p {
+  margin: 0;
+  padding-right: 52px;
+}
+.messageClose {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  translate: 0 -50%;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--pg-ink-soft);
+  cursor: pointer;
+}
+.messageClose:hover {
+  background: color-mix(in srgb, var(--pg-primary) 12%, transparent);
+  color: var(--pg-ink);
 }
 .error {
   background: var(--pg-peach-tint);
@@ -2184,6 +2221,216 @@ button.recordBlank:disabled {
 .recordArea[aria-pressed="true"][data-tone="nature"] {
   background: var(--pg-sage-tint);
 }
+/* AI 가 놓아 둔 제안 — 보라 점선(「이 활동 했어요」와 같은 뜻). 이름을 펴 두고, 눌러야 고른 것이다. */
+.recordArea[data-suggested] {
+  gap: 5px;
+  padding: 0 13px 0 11px;
+  border: 1.5px dashed var(--pg-primary);
+  background: var(--pg-primary-tint);
+}
+.recordArea[data-suggested] span {
+  max-width: 9em;
+  opacity: 1;
+}
+.recordAreaHint {
+  font-size: 12.5px;
+  color: var(--pg-primary-ink);
+}
+/* 그날 일과 시간표 — 보육일지와 같은 모양(손글씨 시각 + 일과 이름). 고른 칸은 보라 밑줄. */
+.recordSlots {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.recordSlotRow {
+  display: flex;
+  overflow-x: auto;
+  border: 1.5px solid var(--pg-line);
+  background: var(--pg-paper);
+}
+.recordSlot {
+  display: grid;
+  flex: none;
+  align-content: center;
+  min-height: 44px;
+  padding: 4px 12px;
+  border: 0;
+  border-right: 1px solid var(--pg-line);
+  background: none;
+  color: var(--pg-ink-soft);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.recordSlot:last-child {
+  border-right: 0;
+}
+.recordSlot:hover {
+  background: var(--pg-ivory);
+}
+.recordSlot[aria-pressed="true"] {
+  background: var(--pg-primary-tint);
+  box-shadow: inset 0 -3px 0 var(--pg-primary);
+  color: var(--pg-primary-ink);
+  font-weight: 700;
+}
+.recordSlotTime {
+  font-family: var(--font-display), sans-serif;
+  font-size: 16px;
+  line-height: 1.05;
+}
+.recordPlaces {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.recordPlaces > span {
+  margin-right: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pg-ink-soft);
+}
+.recordPlaces button {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--pg-line);
+  border-radius: 6px;
+  background: var(--pg-ivory);
+  box-shadow: var(--pg-shadow-card);
+  color: var(--pg-ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.recordPlaces button:active {
+  translate: 2px 3px;
+  box-shadow: none;
+}
+.recordPlaces button[aria-pressed="true"] {
+  border-color: var(--pg-primary-line);
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+}
+/* 머리줄 「저장됨」 — 도장. 손글씨는 제목 · 숫자 · 도장에만 쓴다. */
+.recordListTitle .recordSaved {
+  padding: 1px 6px 0;
+  border: 2px solid currentColor;
+  border-radius: 6px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--pg-sage-ink);
+  rotate: -8deg;
+}
+/* 떠날 때 저장할 수 없으면 붙는 포스트잇. 테이프에 매달린 채 툭 붙으며 처음 한 번 흔들린다(0.7초). */
+.recordLeave {
+  position: fixed;
+  overflow: visible;
+  width: min(300px, calc(100vw - 32px));
+  padding: 26px 18px 16px;
+  border: 1px solid var(--pg-note-line);
+  background: var(--pg-note);
+  color: var(--pg-ink);
+  text-align: center;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.26);
+  rotate: -1.5deg;
+  transform-origin: 50% 0;
+}
+.recordLeave[open] {
+  animation: recordWobble 0.7s cubic-bezier(0.3, 1.4, 0.5, 1) 1;
+}
+.recordLeave::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  width: 80px;
+  height: 24px;
+  border-inline: 1px solid rgba(255, 255, 255, 0.6);
+  background: var(--pg-tape);
+  box-shadow: var(--pg-shadow-tape);
+  translate: -50% 0;
+  rotate: -3deg;
+}
+.recordLeave::backdrop {
+  background: rgba(43, 51, 46, 0.55);
+}
+.recordLeave h3 {
+  margin: 0 0 4px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 30px;
+  line-height: 1.05;
+}
+.recordLeave p {
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.recordLeave > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.recordLeave button {
+  min-height: 44px;
+}
+/* 노란 쪽지 위 보라는 약하다 — 주 버튼을 먹색으로 세운다(관찰일지 편집기 쪽지와 같다). */
+.recordLeave > div > button:first-child {
+  border-color: var(--pg-ink);
+  background: var(--pg-ink);
+  color: var(--pg-paper);
+}
+/* 되돌릴 수 없는 일이라 글자만 빨강. */
+.recordDiscard {
+  border: 0;
+  background: none;
+  color: var(--pg-alert-ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+@keyframes recordWobble {
+  0% {
+    rotate: -1.5deg;
+    translate: 0 -10px;
+  }
+  30% {
+    rotate: 3deg;
+    translate: 0 0;
+  }
+  55% {
+    rotate: -3.5deg;
+  }
+  78% {
+    rotate: 1deg;
+  }
+  100% {
+    rotate: -1.5deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .recordLeave[open] {
+    animation: none;
+  }
+}
+/* 저장 뒤 빠진 것 쪽지 — 잠깐 붙여 둔 노란 쪽지 한 줄(ADR-082). */
+.recordGap {
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--pg-note-soft-line);
+  background: var(--pg-note-soft);
+  box-shadow: var(--pg-shadow-card);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pg-ink);
+  rotate: -1deg;
+}
 .recordSubmit {
   display: flex;
   justify-content: flex-end;
@@ -3220,6 +3467,14 @@ button.recordBlank:disabled {
 }
 .ojNotes li[data-tone="nature"] {
   background: var(--pg-sage);
+}
+/* 쪽지마다 그 관찰 기록을 여는 「고치기」 — 본문 뒤 작은 글씨 */
+.ojNotes a {
+  display: block;
+  margin-top: 6px;
+  color: var(--pg-ink);
+  font-size: 13px;
+  text-underline-offset: 3px;
 }
 .ojNotes small {
   display: block;

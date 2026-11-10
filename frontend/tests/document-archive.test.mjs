@@ -14,19 +14,24 @@ const {
   schoolYearOf,
   monthLabel,
   shortDate,
+  ARCHIVE_FILTER_NONE,
+  archiveQuery,
+  passesFilter,
 } = await import("../lib/workspace/document-archive.ts");
 
-test("목록 상태는 확정 · 검토 중 · 미작성 셋뿐이다", () => {
+test("목록 상태는 확정 · 확정 다시 확인 · 검토 중 · 미작성 넷이다", () => {
   assert.equal(archiveStatus({ status: "confirmed" }), "confirmed");
   assert.equal(archiveStatus({ status: "draft" }), "draft");
   assert.equal(archiveStatus(null), "none");
   assert.equal(archiveStatus(undefined), "none");
-  assert.deepEqual(Object.keys(ARCHIVE_STATUS_LABEL), ["confirmed", "draft", "none"]);
+  assert.deepEqual(Object.keys(ARCHIVE_STATUS_LABEL), ["confirmed", "stale", "draft", "none"]);
 });
 
-test("stale 인 확정본을 검토 중으로 끌어내리지 않는다", () => {
-  // 근거가 바뀌어도 목록에서는 확정이다. 재확인은 문서 상세 안에서 한다.
-  assert.equal(archiveStatus({ status: "confirmed", stale: true }), "confirmed");
+test("stale 인 확정본은 확정 그대로 「다시 확인 필요」를 붙인다", () => {
+  // 확정을 초안으로 끌어내리지 않는다(ADR-030). 그렇다고 그냥 「확정」으로 두면 다시 볼 문서를 못 찾는다.
+  assert.equal(archiveStatus({ status: "confirmed", stale: true }), "stale");
+  // 관찰일지 화면 목록(ObservationJournalPage)과 같은 말이다.
+  assert.equal(ARCHIVE_STATUS_LABEL.stale, "확정 · 다시 확인 필요");
   assert.equal(archiveStatus({ status: "draft", stale: true }), "draft");
 });
 
@@ -186,4 +191,27 @@ test("관찰일지에서 아동을 바꾸면 이전 아동 문서 상세는 열�
   const view = { kind: "observation", classId: "c1", childId: "kid-2", day: "2026-10-28" };
   assert.equal(openableIn(pool, view, "doc:3"), null);
   assert.equal(openableIn(pool, view, "doc:4").id, "doc:4");
+});
+
+test("FR-701 · FR-406 상태 · 원본 바뀜은 서버 쿼리로, 제목 찾기는 화면에서 거른다", () => {
+  assert.deepEqual(
+    archiveQuery(ARCHIVE_FILTER_NONE),
+    null,
+    "거르개가 없으면 전체 목록을 그대로 쓴다",
+  );
+  assert.deepEqual(archiveQuery({ ...ARCHIVE_FILTER_NONE, status: "CONFIRMED" }), {
+    status: "CONFIRMED",
+  });
+  assert.deepEqual(archiveQuery({ ...ARCHIVE_FILTER_NONE, stale: true }), { stale: true });
+  // 제목 찾기는 서버가 받지 않아 쿼리에 넣지 않는다.
+  assert.equal(archiveQuery({ ...ARCHIVE_FILTER_NONE, title: "가람" }), null);
+
+  const doc = { title: "가람 관찰일지 (11월)", status: "confirmed", stale: true };
+  assert.equal(passesFilter(doc, { ...ARCHIVE_FILTER_NONE, title: " 가람 " }), true);
+  assert.equal(passesFilter(doc, { ...ARCHIVE_FILTER_NONE, title: "나래" }), false);
+  assert.equal(passesFilter(doc, { ...ARCHIVE_FILTER_NONE, status: "DRAFT" }), false);
+  // 계획안은 stale 이 없다 — 「원본 바뀜」을 켜면 빠진다.
+  const plan = { title: "2026학년도 연간 계획안", status: "draft" };
+  assert.equal(passesFilter(plan, { ...ARCHIVE_FILTER_NONE, stale: true }), false);
+  assert.equal(passesFilter(plan, { ...ARCHIVE_FILTER_NONE, status: "DRAFT" }), true);
 });

@@ -6,7 +6,12 @@ from ssuksak.planning.application.ports import OptionalContextStatus
 from ssuksak.planning.domain.trend import TrendKind
 
 from app.features.trends.item import RawItem, save
-from app.features.trends.planning import TrendContextProvider
+from app.features.trends.planning import (
+    TrendContextProvider,
+    book_items,
+    book_words_for,
+    theme_words,
+)
 
 TODAY = date(2026, 11, 8)  # W45 — W44 파일이 4주 안이다
 
@@ -60,3 +65,119 @@ def test_disabled_missing_or_broken_files_fall_back_without_raising(tmp_path):
     (tmp_path / "2026-W45.json").write_text("{broken", encoding="utf-8")
     broken = TrendContextProvider(enabled=True, today=TODAY, directory=tmp_path)
     assert broken.fetch("trend").status is OptionalContextStatus.ERROR
+
+
+def test_songs_only_from_song_channels(tmp_path):
+    """ADR-072 결정 12: 노래는 승인 파일에서 채널 종류가 동요인 채널 것만 노래로 넘긴다.
+
+    제목 낱말로 정하지 않는다.
+    """
+    result = provider(
+        tmp_path,
+        [
+            raw("a", "가을 동요 부르기"),  # 꼬미쌤TV — 종류 없음
+            raw("b", "신나는 노래 놀이", origin="EBS 키즈"),
+            raw("c", "동요 메들리", origin="꿈꾸는미술 DreamingArts"),  # 종류 만들기
+            raw("d", "상어 가족 동요", origin="핑크퐁"),  # 종류 동요
+            raw("e", "숫자 송", origin="핑크퐁"),  # 제목 낱말 없음 → 채널 종류
+            raw("f", "가을 율동 체조"),  # 율동은 신체다 — 노래가 아니다
+        ],
+    ).fetch("trend")
+    assert {(i.trend_id, i.kind) for i in result.value} == {
+        ("youtube:d", TrendKind.SONG),
+        ("youtube:e", TrendKind.SONG),
+        ("youtube:f", TrendKind.MOVEMENT),
+    }
+
+
+def book(isbn: str, title: str, description: str = "가짜 소개") -> RawItem:
+    return RawItem("data4library", isbn, title, description, "", "2001-01-01", "도서관 정보나루")
+
+
+def books(tmp_path, items, status="APPROVED"):
+    # 그림책 목록 파일은 주 파일과 모양이 같고 사람이 승인한 status 가 붙는다.
+    import json
+
+    path = save(items, date(2026, 11, 2), tmp_path / "books")
+    body = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**body, "status": status}), encoding="utf-8")
+    return path
+
+
+def test_books_matching_a_week_theme_word_come_first_in_the_story_queue(tmp_path):
+    """2026-11-10 보완: 주 주제 2자 이상 낱말이 제목에 있는 그림책만, 동화 줄에서 유튜브 앞."""
+    path = books(
+        tmp_path,
+        [
+            book("9780000000001", "가짜 낙엽 그림책", "첫 줄\n" + "소개" * 150),
+            book("9780000000002", "가짜 바다 그림책"),  # 주제 낱말 없음
+            book("9780000000003", "가짜 산 그림책"),  # 「산」은 한 글자라 대조하지 않는다
+        ],
+    )
+    save([raw("s", "가짜 동화 읽어주기")], date(2026, 10, 26), tmp_path)
+    result = TrendContextProvider(
+        enabled=True,
+        today=TODAY,
+        directory=tmp_path,
+        book_words=theme_words("낙엽을 · 산 놀이"),
+        books_file=path,
+    ).fetch("trend")
+    stories = [i for i in result.value if i.kind is TrendKind.STORY]
+    assert [i.trend_id for i in stories] == ["data4library:9780000000001", "youtube:s"]
+    first = stories[0]
+    assert first.source_name == "도서관 정보나루" and first.week == "2026-W45"
+    assert first.summary.startswith("첫 줄 소개") and len(first.summary) == 200
+    # 조사는 떼고 일반어 · 한 글자는 뺀다
+    assert theme_words("우리 동네와 가을과 열매를 · 산 놀이") == ("동네", "가을", "열매")
+    # 앞 낱말(주 주제)에 걸린 책부터 6권 — 뒤 낱말(넓은 묶음)에 걸린 책은 자리가 남을 때만
+    many = [book(f"97800000001{n:02d}", f"가짜 지구촌 그림책 {n}") for n in range(5)]
+    many += [book(f"97800000002{n:02d}", f"가짜 낙엽 그림책 {n}") for n in range(3)]
+    picked = book_items(many, ("낙엽", "지구"), TODAY)
+    assert [i.trend_id[-3:] for i in picked] == ["200", "201", "202", "100", "101", "102"]
+
+
+def test_books_need_words_and_never_break_generation(tmp_path):
+    path = books(tmp_path, [book("9780000000001", "가짜 낙엽 그림책")])
+
+    def fetch(books_file=path, **kwargs):
+        options = {"enabled": True, "book_words": ("낙엽",), **kwargs}
+        return TrendContextProvider(
+            today=TODAY, directory=tmp_path, books_file=books_file, **options
+        ).fetch("trend")
+
+    # 유튜브 주 파일이 없어도 맞는 그림책만으로 AVAILABLE
+    assert fetch().status is OptionalContextStatus.AVAILABLE
+    # 낱말이 없으면(놀이 중심 월간) · 원이 껐으면 그림책을 넘기지 않는다
+    assert fetch(book_words=()).status is OptionalContextStatus.UNAVAILABLE
+    assert fetch(enabled=False).status is OptionalContextStatus.UNAVAILABLE
+    # 그림책 파일이 없거나 깨져도 유튜브 트렌드는 그대로
+    save([raw("a", "병뚜껑 경주 게임")], date(2026, 10, 26), tmp_path)
+    assert [i.trend_id for i in fetch(books_file=tmp_path / "none.json").value] == ["youtube:a"]
+    # 승인 전(PENDING_HUMAN_REVIEW) 목록은 쓰지 않는다(CLAUDE.md §8)
+    pending = books(
+        tmp_path / "p", [book("9780000000001", "가짜 낙엽 그림책")], "PENDING_HUMAN_REVIEW"
+    )
+    assert [i.trend_id for i in fetch(books_file=pending).value] == ["youtube:a"]
+    path.write_text("{broken", encoding="utf-8")
+    assert [i.trend_id for i in fetch().value] == ["youtube:a"]
+
+
+def test_related_word_groups_widen_book_words_only_when_approved(tmp_path):
+    """관련 낱말 묶음: APPROVED 일 때만, 묶음 이름(한 글자도) · 묶음 낱말이 주제에 있으면 넓힌다."""
+    import json
+
+    path = tmp_path / "related.json"
+    groups = [
+        {"name": "봄", "words": ["새싹", "나비", "꽃"]},
+        {"name": "가을", "words": ["가을", "낙엽", "열매"]},
+        {"name": "우주", "words": ["우주", "로켓"]},
+    ]
+    path.write_text(json.dumps({"status": "APPROVED", "groups": groups}), encoding="utf-8")
+    assert book_words_for("봄 열매", path) == ("열매", "새싹", "나비", "가을", "낙엽")
+    path.write_text(
+        json.dumps({"status": "PENDING_HUMAN_REVIEW", "groups": groups}), encoding="utf-8"
+    )
+    assert book_words_for("봄 열매", path) == ("열매",)
+    path.write_text("{broken", encoding="utf-8")
+    assert book_words_for("봄 열매", path) == ("열매",)
+    assert book_words_for("봄 열매", tmp_path / "none.json") == ("열매",)

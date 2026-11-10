@@ -238,8 +238,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y fonts-nanum
       # postgres 를 띄운다. /health/ready 200 이 배포 성공 판정이 보는 응답이라
       # 실제 DB 로 확인한다. 503 은 SessionLocal 을 모의해서 본다. ADR-011.
-      - name: pytest
-        run: pytest
+      - name: pytest — 실 Postgres 통합 (real_db)
+        id: real_db
+        run: pytest -m real_db
+      # 위 단계가 실패해도 돌아 백엔드 실패가 한 번에 다 보이게 한다 (전에는 한 단계라 그랬다).
+      - name: pytest — DB 없는 테스트
+        if: ${{ success() || steps.real_db.outcome == 'failure' }}
+        run: pytest -m "not real_db"
       # p0-planning 은 backend 와 별도 패키지라 위 pytest 가 보지 않는다.
       # job 을 새로 만들지 않고 스텝으로 붙인다 — job 개수는 멘토 리뷰 후 정한다.
       - name: planning core pytest
@@ -250,7 +255,7 @@ jobs:
   # 근거가 이 job 이다 — scripts/deploy.sh 는 「이 job 이 시험한 코드」로 되감을 때만 `alembic upgrade`
   # 를 건너뛴다.
   #
-  #   코드      = base(HEAD^1). develop 머지는 곧 배포라, base 가 운영에서 돌고 있을 코드다.
+  #   코드      = base(HEAD^1). main 으로 가는 PR 이면 운영에서 돌고 있는 main 끝, develop 으로 가는 PR 이면 develop 끝이다.
   #   DB 스키마 = 이 PR 의 마이그레이션까지 올린 것(머지 뒤 운영 DB 와 같다).
   #   통과      = backend pytest 전부. 대조군과 비교하지 않는다.
   #
@@ -259,13 +264,14 @@ jobs:
   # 찾아 판정한다. 그래서 둘이 같은 가정 위에 있다.
   # 필수 검사로 켜기 전에는 경고등일 뿐이다 — develop 규칙의 required 에 `backend (rollback compat)` 를 더한다.
   #
-  # **develop 으로 가는 PR 에서만** 돈다. push 에는 base 가 없고, main 으로 가는 PR(멘토 리뷰)의 base 는 main 끝이라
-  # develop 이 쌓은 마이그레이션을 한꺼번에 얹게 된다 — deploy.sh 가 찾는 B(develop 의 first-parent)가 아니라서 결과가 의미 없다.
+  # **main · develop 으로 가는 PR 에서** 돈다(ADR-094). push 에는 base 가 없다. main 으로 가는 PR 은 develop 이 쌓은
+  # 마이그레이션을 한꺼번에 얹는다 — 배포는 main 머지로 나가서 직전 main 이 되감을 곳이고, deploy.sh 가 main 의
+  # first-parent 에서 같은 B 를 찾는다. main 규칙에는 필수 검사가 없어서 main 쪽은 경고등이다.
   # 마이그레이션이 안 바뀐 PR 은 건너뛰고, 판단할 수 없으면 돈다.
   rollback-compat:
     name: backend (rollback compat)
     needs: changes
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.base_ref == 'develop' && (needs.changes.result != 'success' || needs.changes.outputs.migrations != 'false') }}
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && (github.base_ref == 'develop' || github.base_ref == 'main') && (needs.changes.result != 'success' || needs.changes.outputs.migrations != 'false') }}
     runs-on: ubuntu-latest
     services:
       db:
@@ -311,6 +317,7 @@ jobs:
         with:
           python-version: "3.12"
       # 아래는 test job 과 같다. 다만 이 작업 폴더는 base 코드다.
+      # pytest 는 test job 처럼 나누지 않는다 — base 코드엔 real_db 마커 훅이 없어 -m real_db 가 0건(종료 코드 5)이다.
       - name: Install planning core
         working-directory: p0-planning
         run: pip install -e .

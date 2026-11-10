@@ -21,7 +21,7 @@
 ③ 지원   다음에 어떻게 지원할지
 ```
 
-- **②가 ①에 없는 사실을 쓰면 반려**
+- **②가 ①에 없는 숫자를 쓰면 반려** — 그 밖의 없는 내용은 3단 AI 판정이 짚는다(확정 조건 아님)
 - **③이 비면 반려**
 - [CLAUDE.md](../../CLAUDE.md) §3층 규격 · ADR-024 `024-journal-three-layers-merge-on-paper.md`
 
@@ -33,8 +33,8 @@
 | 방법 | 무엇을 잡나 | 어디 |
 |---|---|---|
 | 스키마 게이트 | 칸 이름·개수 | `backend/app/shared/gates/sections.py` |
-| 추출 대조 | 이름·수량·날짜가 원문과 다름 (모델 안 부름) | 같은 곳 |
-| LLM Judge | ①②③ 관계 — 근거 없는 해석, 빈 지원 | `test_evaluation_judge.py` |
+| 추출 대조 | 사실 칸이 근거 원문과 다름 · 해석에 사실에 없는 숫자 (모델 안 부름. 고유명사는 3단) | 같은 곳 |
+| AI 판정 (jev, ADR-071) | ①②③ 관계 — 근거 없는 해석, 형식적인 지원 | `backend/app/shared/gates/judge.py` · `test_documents_verify.py` |
 | 벤치 | 실제 문장으로 돌려본 결과 | `test_bench_monthly_luna_guard.py` · `test_bench_weekly_luna.py` |
 | 검증 리포트 | 월간 생성이 무엇을 통과·반려했는지 | ADR-037 `037-monthly-verification-report-contract.md` |
 | **실측(live)** | 실제 모델로 돌려 형식·시간·토큰·비용·문장 | `backend/scripts/bench_weekly_luna.py` · `bench_monthly_luna.py` — `--live` 없이는 호출 안 함 |
@@ -116,7 +116,7 @@
 
 ## 아직 아닌 것
 
-- **보육일지 · 영유아 평가는 real 로 한 번도 안 돌렸다.** 관찰일지만 20건 쟀다(위). bench 스크립트가 계획안 쪽에만 있다
+- **보육일지 · 영유아 평가는 real 로 한 번도 안 돌렸다.** (영유아 평가는 2026-11-10 생성을 뺐다 — ADR-091) 관찰일지만 20건 쟀다(위). bench 스크립트가 계획안 쪽에만 있다
 - 한글 숫자(「네 개」)는 2단 추출 대조 밖이다 — 측정 17 · 19 · 20번. 이번엔 틀린 것이 없었을 뿐 막아 주지는 않는다
 - 월간 bench 스크립트는 있는데 **결과 문서가 없다** — 돌렸는지 확인 필요
 - 품질이 「사람이 본 요약」이라 **몇 장 중 몇 장인지 말할 수 없다** — 놀이 연간만 사람 판정 60개로 셌다(위)

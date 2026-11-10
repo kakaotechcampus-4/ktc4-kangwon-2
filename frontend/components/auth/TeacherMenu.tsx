@@ -2,10 +2,10 @@
 import Link from "next/link";
 import { accountName } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { teacherTitle } from "@/lib/greeting";
 export default function TeacherMenu({ compact = false }: { compact?: boolean }) {
   const [name] = useClientState(() => {
-    const saved = accountName();
-    return saved ? `${saved} 선생님` : "선생님";
+    return teacherTitle(accountName());
   }, "선생님");
   return (
     <details

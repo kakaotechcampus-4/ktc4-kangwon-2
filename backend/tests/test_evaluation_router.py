@@ -27,6 +27,9 @@ CENTER = {
 
 @pytest.fixture
 def own_center(db_session, teacher):
+    # 원을 만든 교사로 남는다(centers.created_by, ADR-087) — 진짜 행이어야 한다.
+    db_session.add(teacher)
+    db_session.flush()
     response = client.post("/api/centers", json=CENTER)
     assert response.status_code == 201, response.text
     return response.json()["id"]

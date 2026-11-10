@@ -302,11 +302,11 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   await row
     .getByLabel("실제로 한 것")
     .fill("유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.");
-  // 「오늘 일지 만들기」는 저장하고 이 화면에서 바로 초안을 만든다(보관함으로 가지 않는다).
+  // 저장 단추는 없다(ADR-084). 「오늘 일지 만들기」가 근거로 올리고 이 화면에서 바로 초안을 만든다(보관함으로 가지 않는다).
   const response = page.waitForResponse(
     (r) => r.url().endsWith("/api/documents") && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
+  await page.getByRole("button", { name: /^(오늘|이날) 일지 만들기 →$/ }).click();
   const generated = await response;
   expect(generated.status()).toBe(201);
   const created = await generated.json();
@@ -349,6 +349,11 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
     .getByRole("button", { name: "가나다", exact: true })
     .click();
   await page.getByLabel("본 대로 적기").fill(fact);
+  // 영역은 기본값이 없다 — 교사가 골라야 저장된다(ADR-082).
+  await page
+    .getByRole("group", { name: "영역", exact: true })
+    .getByRole("button", { name: "사회관계", exact: true })
+    .click();
   await page.getByRole("button", { name: "기록하기", exact: true }).click();
   await expect(page.getByText("관찰 기록을 저장했어요.")).toBeVisible();
   // 할 일은 그 줄을 눌러야 나온다 — 줄마다 단추를 세 개씩 두지 않는다.
@@ -379,7 +384,7 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await page
     .getByRole("textbox", { name: "지원 내용", exact: true })
     .fill("다음 놀이에는 함께 쌓을 수 있는 블록과 넓은 공간을 제공한다.");
-  await page.getByRole("checkbox").check();
+  await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
   await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
   const download = page.waitForEvent("download");
@@ -415,7 +420,7 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   await page.getByRole("button", { name: "확정 취소", exact: true }).click();
   await page.getByRole("button", { name: "변경된 근거 반영하기", exact: true }).click();
   await expect(page.getByText(updatedFact, { exact: true }).first()).toBeVisible();
-  await page.getByRole("checkbox").check();
+  await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
   await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
 });
@@ -501,7 +506,7 @@ test("멘토: 등록한 반을 마지막 확인에서 고치면 같은 반이 �
   const before = await api(page, `/api/centers/${user.center_id}/classes`);
   // 설정과 온보딩은 따로 돈다 — 마지막 확인은 주소로 바로 연다.
   await page.goto("/onboarding/review");
-  await page.getByRole("button", { name: "햇살반 고치기", exact: true }).click();
+  await page.getByRole("button", { name: "햇살반 수정", exact: true }).click();
   await page.getByLabel("반 이름").fill("새싹반");
   await page.getByRole("button", { name: "저장", exact: true }).click();
   await expect(page.getByRole("region", { name: "새싹반 정보" })).toBeVisible();
@@ -512,7 +517,7 @@ test("멘토: 등록한 반을 마지막 확인에서 고치면 같은 반이 �
   );
 
   // 아이가 있는 반은 동의를 끌 수 없다 — 알림이 뜨고 체크는 그대로다.
-  await page.getByRole("button", { name: "새싹반 고치기", exact: true }).click();
+  await page.getByRole("button", { name: "새싹반 수정", exact: true }).click();
   const consent = page.getByLabel("이 반 모든 아동의 법정대리인 동의를 받았습니다.");
   await consent.click();
   await expect(

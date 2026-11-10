@@ -135,6 +135,10 @@ def world(db_session, teacher):
     mine = _seed(db_session, "가원", "a@example.com")
     other = _seed(db_session, "나원", "b@example.com")
     teacher.center_id = mine["center"]
+    # 원 설정(토요일)을 바꾸는 교사다 — 원을 만든 교사로 둔다(ADR-087).
+    db_session.add(teacher)
+    db_session.flush()
+    db_session.get(Center, mine["center"]).created_by = teacher.id
     return {"session": db_session, "mine": mine, "other": other, "monthly": _monthly(mine)}
 
 
@@ -161,7 +165,8 @@ def test_trend_applied_follows_the_center_setting_and_the_candidate_evidence(
     seen = []
 
     class Trends:
-        def __init__(self, *, enabled, today):
+        def __init__(self, *, enabled, today, book_words):
+            assert book_words  # 그림책 Rule 낱말 = 부모 그 주 주제(2026-11-10 보완)
             seen.append(enabled)
             self._enabled = enabled
 
