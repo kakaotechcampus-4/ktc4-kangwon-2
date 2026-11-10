@@ -863,7 +863,7 @@ const SUMMARY = {
   stale: false,
 };
 
-function journalPage(t, { search = "", docs = [], records = [], opened } = {}) {
+function journalPage(t, { search = "", docs = [], records = [], opened, domains } = {}) {
   browser(t, search);
   const app = host();
   const asked = [];
@@ -871,6 +871,9 @@ function journalPage(t, { search = "", docs = [], records = [], opened } = {}) {
   const editors = [];
   const Page = compile("../components/workspace/ObservationJournalPage.tsx", {
     ...common(app.react),
+    ...(domains && {
+      "@/lib/hooks/use-observation-domains": { useObservationDomains: () => domains },
+    }),
     "@/lib/api/records": {
       listRecords: async (classId) => {
         asked.push(classId);
@@ -883,7 +886,11 @@ function journalPage(t, { search = "", docs = [], records = [], opened } = {}) {
       listDocuments: async () => docs,
     },
     "@/lib/api/onboarding": { classServerId: () => 3 },
-    "@/lib/workspace/child-mark": { markFor: () => 0, weekStart: () => "2026-11-09" },
+    "@/lib/workspace/child-mark": {
+      ...childMark,
+      markFor: () => 0,
+      weekStart: () => "2026-11-09",
+    },
     "./WorkspaceUI": {
       WorkspacePage: "page",
       Empty: "empty",
@@ -1099,7 +1106,8 @@ test("F16 근거 쪽지마다 그 관찰 기록을 여는 「고치기」가 있
 
 test("F12 근거 쪽지와 출력 미리보기가 서버가 준 영역을 쓴다", async (t) => {
   const draft = editor(t);
-  assert.match(draft.text(), /11\/2\(월\) · 자연탐구/);
+  // 날짜와 영역 사이 「·」 를 뺐다 — 영역은 그림 붙은 칩으로 따로 선다(PM 11-10).
+  assert.match(draft.text(), /11\/2\(월\)자연탐구/);
   const done = editor(t, { initial: { ...DOC, status: "confirmed" } });
   const row = done.nodes().find((n) => n.type === "tr" && textOf(n).startsWith("자연탐구"));
   assert.match(textOf(row), /\(11\/2\) 개미를 오래 보았다\./);
@@ -1547,4 +1555,54 @@ test("F4 반 전체 초안이 도는 동안 아이 일지 열기를 잠그고 �
   assert.deepEqual(busy, [true]);
   assert.equal(view.button("나래").props.disabled, true);
   assert.equal(view.button("다온").props.disabled, true);
+});
+
+test("초안 전 칠판 — 「하늘이의 이번 주」, 고른 수 · 기간, 영역 다섯 칸을 늘 세운다", async (t) => {
+  const view = journalPage(t, {
+    search: "?child=kid-1",
+    records: [
+      { ...RECORD, id: "r1", childId: "kid-1", date: "2026-11-09", domain: "의사소통" },
+      { ...RECORD, id: "r2", childId: "kid-1", date: TODAY, domain: "의사소통" },
+      { ...RECORD, id: "r3", childId: "kid-1", date: TODAY, domain: "자연탐구" },
+    ],
+  });
+  await view.flush();
+  const board = view
+    .nodes()
+    .find((n) => n.type === "section" && n.props["aria-labelledby"] === "jb-title");
+  assert.ok(board, "초안 전에는 칠판이 선다");
+  assert.equal(textOf(all(board).find((n) => n?.type === "h2")), "하늘이의 이번 주");
+  assert.ok(textOf(board).includes("3건 골랐어요"));
+  const slots = all(board)
+    .filter((n) => n?.type === "li")
+    .map((n) => textOf(n));
+  assert.deepEqual(slots, [
+    "신체운동·건강아직 없어요",
+    "의사소통2건",
+    "사회관계아직 없어요",
+    "예술경험아직 없어요",
+    "자연탐구1건",
+  ]);
+  assert.ok(textOf(board).includes("「이 영역 관찰이 없어요」"));
+});
+
+test("초안 전 칠판 — 두 축 원은 두 칸, 고른 기록이 없으면 칸은 비어도 선다", async (t) => {
+  const view = journalPage(t, {
+    search: "?child=kid-1",
+    domains: ["일상생활", "놀이활동"],
+    records: [{ ...RECORD, id: "r1", childId: "kid-1", date: TODAY, domain: "놀이활동" }],
+  });
+  await view.flush();
+  const board = () => view.nodes().find((n) => n.props["aria-labelledby"] === "jb-title");
+  const slots = () =>
+    all(board())
+      .filter((n) => n?.type === "li")
+      .map((n) => textOf(n));
+  assert.deepEqual(slots(), ["일상생활아직 없어요", "놀이활동1건"]);
+  // 근거에서 빼면 0건 — 칠판은 그대로, 칸은 다 빈 쪽지.
+  const box = view.nodes().find((n) => n.type === "input" && n.props.type === "checkbox");
+  box.props.onChange({ target: { checked: false } });
+  view.render();
+  assert.ok(textOf(board()).includes("아직 고른 기록이 없어요"));
+  assert.deepEqual(slots(), ["일상생활아직 없어요", "놀이활동아직 없어요"]);
 });

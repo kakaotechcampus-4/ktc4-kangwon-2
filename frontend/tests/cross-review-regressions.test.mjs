@@ -145,7 +145,13 @@ test("#373: 미저장 일지 이동 취소·저장 중 이동 차단·저장 후
   }
 });
 
-test("#392: 아이·기간·근거는 생성 완료까지 잠기고 올바른 문서를 연다", async () => {
+test("#392: 아이·기간·근거는 생성 완료까지 잠기고 올바른 문서를 연다", async (t) => {
+  // 펴 둔 일지를 주소(?doc=)에 적는다 — 주소 줄만 흉내 낸다.
+  const before = globalThis.window;
+  globalThis.window = { location: { search: "", pathname: "/observation-journal" }, history: {} };
+  t.after(() => {
+    globalThis.window = before;
+  });
   let resolve, sent;
   const response = new Promise((done) => {
     resolve = done;
@@ -189,7 +195,13 @@ test("#392: 아이·기간·근거는 생성 완료까지 잠기고 올바른 �
       chosenClassFor: () => classes[0],
       loadClassSettings: () => ({}),
     },
-    "@/lib/workspace/child-mark": { markFor: () => ({}), weekStart: (d) => d },
+    "@/lib/workspace/child-mark": {
+      calledName: (name) => name,
+      markFor: () => ({}),
+      weekStart: (d) => d,
+    },
+    "@/lib/workspace/domain-look": { DOMAIN_LOOK: {} },
+    "@/components/app/icons": { Icon: "icon" },
     "@/components/app/ChildPicker": { ChildNote: "child-note" },
     "@/components/app/Posty": { Posty: "posty" },
     "./WorkspaceUI": {
