@@ -14,7 +14,7 @@ import { EMPTY_CLASS_SETTINGS, type ClassroomEntry } from "@/lib/onboarding/type
 import { hydrateClassChildren } from "@/lib/api/onboarding";
 import { changePassword, getCurrentUser } from "@/lib/api/auth";
 import { invalidFields } from "@/lib/api/client";
-import { getCenterSettings, saveCenterSettings } from "@/lib/api/centers";
+import { getCenterSettings, saveCenterSettings, type ReflectMark } from "@/lib/api/centers";
 import {
   AXES,
   AXIS_LABELS,
@@ -382,6 +382,7 @@ export default function SettingsPage() {
               <div className={styles.two}>
                 <ObservationAxisCard centerId={centerId} />
                 <TrendsCard centerId={centerId} />
+                <ReflectMarkCard centerId={centerId} />
               </div>
             )}
           </section>
@@ -500,6 +501,68 @@ function ObservationAxisCard({ centerId }: { centerId: number }) {
           {(Object.keys(AXES) as ObservationAxis[]).map((key) => (
             <option key={key} value={key}>
               {AXIS_LABELS[key]}
+            </option>
+          ))}
+        </select>
+      </label>
+      {error && <Message error>{error}</Message>}
+      <p role="status">{busy ? "변경하고 있습니다." : ""}</p>
+    </Note>
+  );
+}
+
+const REFLECT_MARKS: [ReflectMark, string][] = [
+  ["(반영)", "(반영)"],
+  ["(놀이반영)", "(놀이반영)"],
+  ["", "붙이지 않음"],
+];
+
+/**
+ * 어제 지원을 반영한 일과 줄에 종이가 붙이는 글자 (ADR-086 · §3-1).
+ * 원마다 쓰는 표기가 다르고, 대부분은 표기 없이 문장으로 잇는다. 화면의 보라 도장은 그대로다.
+ */
+function ReflectMarkCard({ centerId }: { centerId: number }) {
+  const [mark, setMark] = useState<ReflectMark | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    getCenterSettings(centerId)
+      .then((s) => live && setMark(s.reflect_mark ?? "(반영)"))
+      .catch(() => live && setError("반영 표기 설정을 불러오지 못했습니다."));
+    return () => {
+      live = false;
+    };
+  }, [centerId]);
+
+  async function choose(next: ReflectMark) {
+    setBusy(true);
+    setError("");
+    // 화면을 먼저 바꾸지 않는다. 저장이 실패하면 바뀐 줄 알고 넘어간다.
+    try {
+      const saved = await saveCenterSettings(centerId, { reflect_mark: next });
+      setMark(saved.reflect_mark ?? next);
+    } catch {
+      setError("변경하지 못했습니다. 잠시 뒤 다시 시도해주세요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Note title="반영 표기" icon="pencil" tone="plum" tilt={1.5}>
+      <p>보육일지 종이에서 어제 지원을 반영한 줄 앞에 붙이는 글자예요.</p>
+      <label className={`${ws.field} ${styles.inlineField}`}>
+        표기
+        <select
+          value={mark ?? "(반영)"}
+          disabled={mark === null || busy}
+          onChange={(e) => choose(e.target.value as ReflectMark)}
+        >
+          {REFLECT_MARKS.map(([value, label]) => (
+            <option key={label} value={value}>
+              {label}
             </option>
           ))}
         </select>

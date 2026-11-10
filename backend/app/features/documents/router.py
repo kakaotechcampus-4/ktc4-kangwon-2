@@ -28,6 +28,7 @@ from app.features.documents.models import (
     DocumentSource,
     DocumentSourceResolution,
 )
+from app.features.documents.paper import clear_confirmed, stamp_confirmed
 from app.features.documents.review import (
     class_ages,
     lock_sources,
@@ -1220,6 +1221,7 @@ def confirm_document(
 
     doc.status = "CONFIRMED"
     doc.updated_at = datetime.now(UTC)
+    stamp_confirmed(session, doc)
     session.commit()
     return _build_detail_response(session, doc)
 
@@ -1246,6 +1248,7 @@ def unconfirm_document(
     impact = SourceImpact()
     if doc.status != "DRAFT":
         doc.status = "DRAFT"
+        clear_confirmed(session, doc)
         doc.updated_at = datetime.now(UTC)
         impact = document_changed(session, doc.id)
         session.commit()

@@ -367,6 +367,8 @@ def put_center_settings(
         center.weekly_saturday_enabled = body.weekly_saturday_enabled
     if body.observation_axis is not None:
         center.observation_axis = body.observation_axis
+    if body.reflect_mark is not None:
+        center.reflect_mark = body.reflect_mark
     session.commit()
     session.refresh(center)
     return center

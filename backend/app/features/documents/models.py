@@ -1,5 +1,6 @@
 from datetime import date as date_
 from datetime import datetime
+from datetime import time as time_
 
 from sqlalchemy import (
     CheckConstraint,
@@ -9,6 +10,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    Time,
     UniqueConstraint,
     func,
 )
@@ -92,6 +94,22 @@ class Document(Base):
         comment=(
             "마지막 AI 검토 결과 {state, issues, message, hash}. hash 는 검토한 사실 · 해석 · "
             "지원의 지문이고, 지금 글과 다르면 보이지 않는다 (ADR-083)"
+        ),
+    )
+    weather: Mapped[str | None] = mapped_column(
+        String(10),
+        comment=(
+            "일일 보육일지를 확정할 때의 날씨(ADR-089 보완). 종이는 이 값을 싣는다 — "
+            "확정 뒤 날씨를 바꿔도 확정본 종이는 그대로다. 값이 없었으면 빈 문자열, "
+            "NULL 은 초안이거나 이 칸이 생기기 전에 확정한 옛 문서다(지금 값을 읽는다)"
+        ),
+    )
+    reflect_mark: Mapped[str | None] = mapped_column(
+        String(10),
+        comment=(
+            "일일 보육일지를 확정할 때 원이 쓰던 「반영」 표기(ADR-086 결정 7). "
+            "확정본 종이는 이 값을 쓴다 — 확정 뒤 원 설정을 바꿔도 그대로다. "
+            "NULL 은 초안이거나 이 칸이 생기기 전에 확정한 옛 문서다(지금 원 설정을 읽는다)"
         ),
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -213,6 +231,27 @@ class DocumentSource(Base):
     )
     text: Mapped[str] = mapped_column(
         Text, comment="생성 시점 원문 복사본. 원본이 나중에 바뀌어도 이 값은 안 바뀐다"
+    )
+    # 아래는 일과 근거일 때 **확정 시점** 종이 한 줄의 사본이다(ADR-086 결정 7). 확정본 종이는
+    # 이것만 읽는다. 초안 · 일과가 아닌 근거 · 이 칸이 생기기 전 확정본은 NULL(원본을 읽는다).
+    position: Mapped[int | None] = mapped_column(comment="확정 시점 일과 순서 사본")
+    name: Mapped[str | None] = mapped_column(String(50), comment="확정 시점 일과 이름 사본")
+    start_time: Mapped[time_ | None] = mapped_column(Time, comment="확정 시점 시작 시간 사본")
+    end_time: Mapped[time_ | None] = mapped_column(Time, comment="확정 시점 끝 시간 사본")
+    plan: Mapped[str | None] = mapped_column(Text, comment="확정 시점 활동계획 사본")
+    execution: Mapped[str | None] = mapped_column(Text, comment="확정 시점 활동실행 사본")
+    reflected: Mapped[bool | None] = mapped_column(
+        comment=(
+            "일과 근거일 때 확정 시점 「반영」 표시 사본(ADR-086). 확정본 종이가 이것만 읽는다. "
+            "NULL 은 초안 · 일과가 아닌 근거 · 이 칸이 생기기 전 확정본(원본을 읽는다)"
+        ),
+    )
+    activities: Mapped[list[str] | None] = mapped_column(
+        JSONB,
+        comment=(
+            "확정 시점 「맞다고 한 활동」 사본(ADR-086). 일과 근거면 그 줄의 것, "
+            "일일 문서 근거(주간)면 그날 일일이 확정 때 박은 것을 모은 것. NULL 은 박지 않음"
+        ),
     )
     domain: Mapped[str | None] = mapped_column(
         String(20),

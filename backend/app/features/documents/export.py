@@ -7,7 +7,9 @@
 실물 양식에는 해석 칸과 지원 칸이 따로 없다. 꼬리 칸 하나에 해석, 빈 줄, 지원 순서로 잇는다.
 
 **근거가 바뀐(`stale`) 문서는 내보내지 않는다.** 일과 기록의 시간 · 일과 이름 · 활동계획은
-원본에서 읽는다. 근거가 바뀐 채로 내보내면 교사가 확정한 것과 다른 종이가 나간다.
+원본에서 읽지 않는다 — 확정 때 박은 사본(순서 · 이름 · 시간 · 활동계획 · 활동실행 ·
+「반영」 · 활동 · 날씨)을 읽는다(`paper.py`, ADR-086). 사본이 없는 옛 확정본만 원본을 읽는다.
+근거가 바뀐 채로 내보내면 교사가 확정한 것과 다른 종이가 나간다.
 관찰 기록의 영역 · 상황과 영역 축은 문서가 만들 때 찍은 사본에서 읽는다(ADR-088). 사본이 없는
 옛 문서만 예전처럼 원본 영역과 원의 지금 축을 읽는다.
 """
@@ -25,6 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.features.documents.models import Document, DocumentSection, DocumentSource
+from app.features.documents.paper import current_reflect_mark
 from app.features.documents.router import (
     DbSession,
     _error,
@@ -251,6 +254,62 @@ def _daily_log(
             "일과 기록으로 새로 만들어주세요.",
             ["source_kind"],
         )
+    # 어제 지원을 반영한 줄은 원이 고른 표기를 앞에 붙인다. 표시는 사실 글에 없다 (ADR-086).
+    # 확정본은 확정 때 박은 표기다 — 원 설정을 바꿔도 확정본 종이는 그대로다(결정 7).
+    # NULL 은 초안이거나 이 칸이 생기기 전에 확정한 옛 문서라 지금 원 설정을 읽는다.
+    mark = (
+        doc.reflect_mark
+        if doc.reflect_mark is not None
+        else current_reflect_mark(session, doc.class_id)
+    )
+    routines = _stamped_lines(sources) or _routine_lines(session, doc, sources)
+    rows = [
+        [r.time_range(), r.name.strip(), r.plan.strip(), _executed(r.execution, r.reflected, mark)]
+        for r in routines
+    ]
+    return fill_grid(
+        (TEMPLATE_DIR / "daily_log.hwpx").read_bytes(),
+        doc.title,
+        DAILY_LOG_HEADER_ROWS,
+        rows,
+        [
+            ["놀이 평가 및 다음날 지원계획", evaluation],
+            # 공식 양식 5종 전부에 있는 칸이다. 교사가 안 적었으면 빈 칸으로 나간다 —
+            # 종이에서 칸 자체가 사라지면 제출할 때 손으로 그려 넣어야 한다.
+            ["반 운영 특이사항", doc.class_note.strip()],
+        ],
+        lines={DAILY_HEAD_PLACEHOLDER: _daily_head(session, doc)},
+    )
+
+
+def _stamped_lines(sources: list[DocumentSource]) -> list[RoutineRecord]:
+    """확정 때 박은 종이 한 줄들(ADR-086 결정 7). 하나라도 박지 않았으면 빈 목록 — 원본을 읽는다.
+
+    세션에 넣지 않는 임시 객체다. `time_range` 를 원본과 같은 규칙으로 쓰려고 같은 모양으로 만든다.
+    """
+    if not sources or any(s.name is None for s in sources):
+        return []
+    lines = [
+        RoutineRecord(
+            id=s.source_id,
+            position=s.position,
+            name=s.name,
+            start_time=s.start_time,
+            end_time=s.end_time,
+            plan=s.plan or "",
+            execution=s.execution or "",
+            reflected=bool(s.reflected),
+        )
+        for s in sources
+    ]
+    # 확정 때의 종이 순서 — 원본 조회와 같은 규칙(순서 · 시작 시간 · 번호)이다.
+    return sorted(lines, key=lambda r: (r.position, r.start_time is None, r.start_time or 0, r.id))
+
+
+def _routine_lines(
+    session: Session, doc: Document, sources: list[DocumentSource]
+) -> list[RoutineRecord]:
+    """사본을 박지 않은 옛 확정본 — 일과 기록 원본을 읽는다."""
     ids = [s.source_id for s in sources]
     # 일과 기록 화면과 같은 순서다 — 종이의 행 순서다(routines/router.py).
     # 이 문서의 반 · 그날 일과만 읽는다. 만들 때와 같은 조건이다(router.py 일일 근거 검사).
@@ -269,31 +328,25 @@ def _daily_log(
     ).all()
     found = {r.id for r in routines}
     _missing([f"sources.{i}" for i in ids if i not in found])
+    return list(routines)
 
-    rows = [[r.time_range(), r.name.strip(), r.plan.strip(), r.execution.strip()] for r in routines]
-    return fill_grid(
-        (TEMPLATE_DIR / "daily_log.hwpx").read_bytes(),
-        doc.title,
-        DAILY_LOG_HEADER_ROWS,
-        rows,
-        [
-            ["놀이 평가 및 다음날 지원계획", evaluation],
-            # 공식 양식 5종 전부에 있는 칸이다. 교사가 안 적었으면 빈 칸으로 나간다 —
-            # 종이에서 칸 자체가 사라지면 제출할 때 손으로 그려 넣어야 한다.
-            ["반 운영 특이사항", doc.class_note.strip()],
-        ],
-        lines={DAILY_HEAD_PLACEHOLDER: _daily_head(session, doc)},
-    )
+
+def _executed(execution: str, reflected: bool, mark: str | None) -> str:
+    text = execution.strip()
+    return f"{mark} {text}" if reflected and mark else text
 
 
 def _daily_head(session: Session, doc: Document) -> str:
     """제목 아래 머리 줄 — `날짜 : 2026년 9월 22일 (화)      날씨 : 맑음` (ADR-089).
 
-    날씨는 교사가 고른 값, 없으면 자동 값이다. 둘 다 없으면 「날씨 :」 뒤를 비워 손으로 적게 둔다.
+    날씨는 확정 때 박은 값이다(교사가 고른 값, 없으면 자동 값).
+    없으면 「날씨 :」 뒤를 비워 손으로 적게 둔다.
     미세먼지는 싣지 않는다 — 실물 양식에 칸이 없다.
     """
     day = doc.start_date
-    sky = day_weather(session, doc.class_id, day).sky or ""
+    # 확정 때 박은 값이 먼저다. 그 칸이 생기기 전에 확정한 옛 문서(NULL)만 지금 값을 읽는다.
+    sky = doc.weather if doc.weather is not None else day_weather(session, doc.class_id, day).sky
+    sky = sky or ""
     return (
         f"날짜 : {day.year}년 {day.month}월 {day.day}일 ({WEEKDAYS[day.weekday()]})"
         f"{' ' * 6}날씨 : {sky}"
@@ -313,7 +366,7 @@ def _weekly_log(
     된다. 실물도 놀이 이름을 늘어놓고, 무슨 일이 있었는지는 분석 칸에서 읽는다.
     """
     if any(s.source_kind == "routine" for s in sources):
-        return _weekly_log_from_routines(doc, sources, evaluation)
+        return _weekly_log_from_routines(session, doc, sources, evaluation)
 
     dailies = {
         d.id: d
@@ -331,13 +384,28 @@ def _weekly_log(
             .where(DocumentSection.heading.in_(("해석", "지원")))
         ).all()
     }
+    # 일일 일지마다 근거로 쓴 일과 기록 — 교사가 맞다고 한 활동 이름을 읽는다.
+    # 확정 때 박은 사본(`copy.activities`)이 있으면 그것만 쓴다(ADR-086).
+    routine_ids: dict[int, list[int]] = {}
+    for document_id, routine_id in session.execute(
+        select(DocumentSource.document_id, DocumentSource.source_id).where(
+            DocumentSource.document_id.in_(dailies), DocumentSource.source_kind == "routine"
+        )
+    ):
+        routine_ids.setdefault(document_id, []).append(routine_id)
+    played = _activities(session, [i for ids in routine_ids.values() for i in ids])
     rows = []
     for copy in sorted(sources, key=lambda s: s.date):
         daily = dailies[copy.source_id]
         rows.append(
             [
                 f"{copy.date.month}/{copy.date.day}({WEEKDAYS[copy.date.weekday()]})",
-                "\n".join(_routine_names(copy.text)),
+                _our_plays(
+                    copy.text,
+                    copy.activities
+                    if copy.activities is not None
+                    else [a for i in routine_ids.get(daily.id, []) for a in played.get(i, [])],
+                ),
                 bodies.get((daily.id, "해석"), ""),
                 bodies.get((daily.id, "지원"), ""),
                 daily.class_note.strip(),
@@ -353,7 +421,7 @@ def _weekly_log(
 
 
 def _weekly_log_from_routines(
-    doc: Document, sources: list[DocumentSource], evaluation: str
+    session: Session, doc: Document, sources: list[DocumentSource], evaluation: str
 ) -> bytes:
     """일일 보육일지를 쓰지 않는 원의 주간. 일과 기록을 날짜로 묶어 한 줄씩 담는다.
 
@@ -361,18 +429,28 @@ def _weekly_log_from_routines(
     해석과 지원인데, 이 문서에는 한 주를 통째로 본 해석 · 지원 하나뿐이다. 그것은 꼬리
     「주간 총평」에 들어간다. 지어내서 채우면 교사가 쓰지 않은 말이 종이에 찍힌다.
     """
-    by_date: dict[date, list[str]] = {}
+    played = _activities(session, [s.source_id for s in sources])
+    by_date: dict[date, list[DocumentSource]] = {}
     for source in sources:
-        by_date.setdefault(source.date, []).extend(_routine_names(source.text))
+        by_date.setdefault(source.date, []).append(source)
     rows = [
         [
             f"{day.month}/{day.day}({WEEKDAYS[day.weekday()]})",
-            "\n".join(names),
+            _our_plays(
+                "\n".join(s.text for s in copies),
+                [
+                    a
+                    for s in copies
+                    for a in (
+                        s.activities if s.activities is not None else played.get(s.source_id, [])
+                    )
+                ],
+            ),
             "",
             "",
             "",
         ]
-        for day, names in sorted(by_date.items())
+        for day, copies in sorted(by_date.items())
     ]
     return fill_grid(
         (TEMPLATE_DIR / "weekly_log.hwpx").read_bytes(),
@@ -381,6 +459,27 @@ def _weekly_log_from_routines(
         rows,
         [["주간 총평", evaluation]],
     )
+
+
+def _activities(session: Session, routine_ids: list[int]) -> dict[int, list[str]]:
+    """일과 기록마다 교사가 계획안에서 맞다고 한 활동 이름 (ADR-086)."""
+    if not routine_ids:
+        return {}
+    return dict(
+        session.execute(
+            select(RoutineRecord.id, RoutineRecord.activities).where(
+                RoutineRecord.id.in_(routine_ids)
+            )
+        ).all()
+    )
+
+
+def _our_plays(fact: str, activities: list[str]) -> str:
+    """주간 「우리반 놀이」 칸. 교사가 맞다고 한 활동 이름이 있으면 그것, 없으면 일과 이름이다.
+
+    일과 이름(「점심식사」)은 놀이가 아니지만, 계획안을 쓰지 않는 반은 이름 말고 적을 것이 없다.
+    """
+    return "\n".join(list(dict.fromkeys(activities)) or _routine_names(fact))
 
 
 def _routine_names(fact: str) -> list[str]:

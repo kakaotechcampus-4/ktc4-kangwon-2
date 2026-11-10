@@ -302,11 +302,11 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   await row
     .getByLabel("실제로 한 것")
     .fill("유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.");
-  // 「오늘 일지 만들기」는 저장하고 이 화면에서 바로 초안을 만든다(보관함으로 가지 않는다).
+  // 저장 단추는 없다(ADR-084). 「오늘 일지 만들기」가 근거로 올리고 이 화면에서 바로 초안을 만든다(보관함으로 가지 않는다).
   const response = page.waitForResponse(
     (r) => r.url().endsWith("/api/documents") && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
+  await page.getByRole("button", { name: /^(오늘|이날) 일지 만들기 →$/ }).click();
   const generated = await response;
   expect(generated.status()).toBe(201);
   const created = await generated.json();

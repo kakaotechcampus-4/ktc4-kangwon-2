@@ -1,6 +1,6 @@
 import { read, commit } from "./store";
 import type { CenterInput, PlanConfig } from "../../lib/api/types";
-import type { Greetings } from "../../lib/api/centers";
+import type { Greetings, ReflectMark } from "../../lib/api/centers";
 import { DEFAULT_CHARACTER_MESSAGES, MONTH_ORDER } from "../../lib/onboarding/types";
 export const findCenter = (id: number) => read().centers.find((c) => c.id === id);
 export const currentCenterId = () => read().centers[0]?.id ?? null;
@@ -26,6 +26,7 @@ const SETTINGS_DEFAULT = {
   trends_enabled: false,
   weekly_saturday_enabled: false,
   observation_axis: "NURI_5" as const,
+  reflect_mark: "(반영)" as ReflectMark,
 };
 export const findCenterSettings = (id: number) => ({
   ...SETTINGS_DEFAULT,
@@ -37,6 +38,7 @@ export const putCenterSettings = (
     trends_enabled?: boolean;
     weekly_saturday_enabled?: boolean;
     observation_axis?: "NURI_5" | "DAILY_PLAY_2";
+    reflect_mark?: ReflectMark;
   },
 ) =>
   commit((db) => {

@@ -408,6 +408,7 @@ test("#373: 날짜·주 변경 즉시 이전 일지와 근거를 숨긴다", asy
     "./WorkspaceUI": { Message: "message", ws: {} },
     "./DocumentEditor": { __esModule: true, default: "editor" },
     "./use-server-document": { useServerDocument() {} },
+    "@/lib/workspace/journal-day": { indoorNote: () => null },
   };
   const daily = harness("../components/workspace/DailyJournalCard.tsx", common);
   const firstDay = { classId: 1, date: "2026-03-02" };
@@ -431,6 +432,7 @@ test("#373: 날짜·주 변경 즉시 이전 일지와 근거를 숨긴다", asy
     "@/lib/api/routines": { routineLocalId: (id) => `routine:${id}` },
     "@/lib/workspace/routines-route": { routinesPath: () => "/routines" },
     "./DailyJournalCard": { journalMood: () => ({}) },
+    "./RoutineDay.module.css": { __esModule: true, default: {} },
   });
   const firstWeek = {
     classId: "class-a",
