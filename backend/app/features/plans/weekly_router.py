@@ -281,7 +281,8 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     # 2026-11-10 하민: 후보 근거를 상위 20건에서 섞어 뽑는다. 다시 만들면 다른 근거가 나온다.
     # 실제로 쓴 근거는 칸 Evidence 에 남는다. seed 는 로그에만 둔다(저장 여부는 결정 전).
     candidate_seed = secrets.randbelow(2**31)
-    _log.info("weekly candidate seed=%d", candidate_seed)
+    # PR #469 review: log class · week here and the plan id after save, so a seed ties to one plan.
+    _log.info("weekly candidate seed=%d class=%s week=%s", candidate_seed, class_id, body.week_id)
     # 만들 때의 원 설정을 계획안에 복사한다 — 뒤에 설정을 바꿔도 이 계획안은 그대로다(§3-5).
     center = session.get(Center, center_id)
     saturday = center.weekly_saturday_enabled
@@ -353,6 +354,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
             raise _ALREADY_EXISTS from error
         raise
     row = session.scalar(select(Plan).where(Plan.plan_ref == plan.plan_id.value))
+    _log.info("weekly candidate seed=%d plan=%s", candidate_seed, plan.plan_id.value)
     # **응답을 다 만든 뒤에 확정한다**(월간과 같다). 저장소가 flush 해 두어 commit 전에도 읽힌다.
     detail = _detail(row, plan, parent_id)
     session.commit()

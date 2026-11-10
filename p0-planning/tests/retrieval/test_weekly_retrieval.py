@@ -188,6 +188,23 @@ def test_a_sample_seed_picks_top_k_from_the_top_pool_in_rank_order():
         assert len(found) == 10 and "ev_a400" in found
 
 
+def test_a_sample_seed_draws_one_activity_kind_at_a_time():
+    # PR #469 review: the pool mixes kinds, so a plain shuffle would be caught here.
+    # 4 kinds x 5 records = the whole top-20; drawing by kind gives every kind 2-3 of the 10.
+    kinds = ("동화", "새노래", "미술", "게임")
+    records = tuple(_record(f"ev_{kind}{i}", label="이야기 나누기", text=f"[{kind}] 가을 열매 {i}", institution=f"I{kind}{i}")
+                    for kind in kinds for i in range(5))
+    for seed in range(30):
+        found = _search(records, weekly_class=WeeklySemanticClass.GROUP_ACTIVITY, top_k=10, by_activity_type=True,
+                        sample_seed=seed)
+        by_kind = collections.Counter(activity_type(_by_id(records, rid)) for rid in found)
+        assert len(found) == 10 and all(by_kind[kind] >= 2 for kind in kinds), (seed, dict(by_kind))
+
+
+def _by_id(records, record_id):
+    return next(r for r in records if r.record_id == record_id)
+
+
 def test_parent_citation_survives_top_k_without_bypassing_eligibility_or_source_cap():
     records = tuple(_record(f"ev_{i:02}", institution=f"I{i}") for i in range(12)) + (
         _record("ev_99", text="놀이터 약속", institution="parent"),
