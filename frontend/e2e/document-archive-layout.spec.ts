@@ -316,7 +316,10 @@ for (const viewport of viewports) {
       .getByRole("complementary", { name: "반 선택" })
       .getByRole("button", { name: "달님반", exact: true })
       .click();
-    await expect(page.getByRole("heading", { name: "문서를 선택해 주세요" })).toBeVisible();
+    // 휴대폰(760px 이하)은 빈 「문서를 선택해 주세요」 칸을 두지 않는다 — 문서 종류 카드가 바로 보인다(PM 11-10).
+    const overview = page.getByRole("heading", { name: "문서를 선택해 주세요" });
+    if (viewport.width > 760) await expect(overview).toBeVisible();
+    else await expect(overview).toBeHidden();
     await page.getByRole("button", { name: "관찰일지", exact: true }).click();
     await expect(page.getByRole("button", { name: "가나다", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "마바사", exact: true }).focus();
