@@ -9,6 +9,7 @@
 - 교사가 고른 하늘(`RoutineWeather`)이 있으면 그것이 이긴다. 미세먼지는 고르지 않는다
   (종이에 안 나간다).
 - 같은 지역 · 같은 날은 한 번만 부른다 — 받은 값을 `RegionWeather` 에 남긴다.
+  한쪽만 받았으면 못 받은 쪽만 다음 조회 때 다시 부른다. 남길 때 부르는 쪽 세션을 커밋하지 않는다.
 
 **망을 타는 곳은 `_client()` 하나다.** LLM_MODE 와 같은 규칙이다.
 
@@ -31,11 +32,13 @@ from functools import cache
 from pathlib import Path
 from statistics import mean
 from typing import Literal
+from urllib.parse import unquote
 from zoneinfo import ZoneInfo
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -193,6 +196,11 @@ def _grid() -> dict[tuple[str, str], tuple[int, int]]:
 def _auto(
     session: Session, sido: str, sigungu: str, day: datetime.date
 ) -> tuple[str | None, str | None]:
+    """남긴 값이 있으면 그것, 모자란 쪽만 부른다.
+
+    한쪽만 받은 날은 받은 쪽을 남기고, 못 받은 쪽은 다음 조회 때 그쪽만 다시 부른다.
+    받은 쪽은 지역 · 날짜마다 한 번만 부른다.
+    """
     region = region_of(sido, sigungu)
     if region is None:
         return None, None
@@ -203,32 +211,74 @@ def _auto(
             RegionWeather.date == day,
         )
     ).first()
-    if saved:
-        return saved.sky, saved.dust
-
-    now = _now()
-    today = now.date()
-    if day == today and now.time() < FIRST_RELEASE:
-        return None, None
-    # 단기예보는 하루 전 발표분까지만 준다. 그보다 지난날 · 앞날은 부르지 않는다.
-    if day not in (today, today - datetime.timedelta(days=1)):
-        return None, None
+    sky, dust = saved or (None, None)
+    want_sky, want_dust = _wanted(day)
+    want_sky = want_sky and sky is None
+    want_dust = want_dust and dust is None
+    if not (want_sky or want_dust):
+        return sky, dust
     client = _client()
     if client is None:
-        return None, None
-    key = settings.data_go_kr_service_key or ""
+        return sky, dust
+    key = _service_key()
     with client:
-        sky = _safely("kma", lambda: _fetch_sky(client, key, _grid()[region], day))
-        dust = _safely("air", lambda: _fetch_dust(client, key, *region)) if day == today else None
-    if sky or dust:
-        # 같은 순간 두 교사가 같은 지역을 열면 둘 다 부른다. 먼저 넣은 쪽을 남긴다.
-        session.execute(
-            insert(RegionWeather)
-            .values(region_sido=region[0], region_sigungu=region[1], date=day, sky=sky, dust=dust)
-            .on_conflict_do_nothing()
-        )
-        session.commit()
+        if want_sky:
+            sky = _safely("kma", lambda: _fetch_sky(client, key, _grid()[region], day))
+        if want_dust:
+            dust = _safely("air", lambda: _fetch_dust(client, key, *region))
+    if (want_sky and sky) or (want_dust and dust):
+        try:
+            _save(session, region, day, sky, dust)
+        except SQLAlchemyError as error:
+            # 못 남겨도 받은 값은 이번 화면에 쓴다. 다음 조회에 다시 부를 뿐이다.
+            logger.warning("weather_save_failed error=%s", type(error).__name__)
     return sky, dust
+
+
+def _wanted(day: datetime.date) -> tuple[bool, bool]:
+    """(하늘, 미세먼지) 를 부를 수 있는 날인가."""
+    now = _now()
+    today = now.date()
+    # 기상청 02시 발표분이 나오기 전이다.
+    if day == today and now.time() < FIRST_RELEASE:
+        return False, False
+    # 단기예보는 하루 전 발표분까지만 준다. 그보다 지난날 · 앞날은 부르지 않는다.
+    # 미세먼지는 실시간 값이라 오늘만이다.
+    return day in (today, today - datetime.timedelta(days=1)), day == today
+
+
+def _save(
+    session: Session, region: tuple[str, str], day: datetime.date, sky: str | None, dust: str | None
+) -> None:
+    """받은 값을 남긴다. **부르는 쪽 세션을 커밋하지 않는다** — 따로 연 세션에서 커밋한다.
+
+    내보내기 · 일과 조회가 이 함수를 지난다. 그 요청이 하던 일을 날씨가 대신 커밋하면 안 된다.
+    같은 순간 두 교사가 같은 지역을 열면 둘 다 부른다. 칸마다 먼저 넣은 값을 남긴다.
+    """
+    stmt = insert(RegionWeather).values(
+        region_sido=region[0], region_sigungu=region[1], date=day, sky=sky, dust=dust
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["region_sido", "region_sigungu", "date"],
+        set_={
+            "sky": func.coalesce(RegionWeather.sky, stmt.excluded.sky),
+            "dust": func.coalesce(RegionWeather.dust, stmt.excluded.dust),
+        },
+    )
+    # 운영에서는 연결을 하나 더 쓴다. 시험은 한 연결 안의 savepoint 라 시험 끝에 같이 되감긴다.
+    with Session(session.get_bind(), join_transaction_mode="create_savepoint") as own:
+        own.execute(stmt)
+        own.commit()
+
+
+def _service_key() -> str:
+    """포털이 주는 키 둘(Encoding · Decoding) 어느 쪽을 넣어도 된다.
+
+    httpx 가 주소에 실을 때 한 번 인코딩한다. Encoding 키를 그대로 실으면 두 번 인코딩돼
+    SERVICE_KEY_IS_NOT_REGISTERED_ERROR 가 난다 — 그래서 먼저 푼다.
+    Decoding 키에는 「%」가 없어 그대로다.
+    """
+    return unquote(settings.data_go_kr_service_key or "")
 
 
 def _now() -> datetime.datetime:
@@ -246,24 +296,42 @@ def _client() -> httpx.Client | None:
     return httpx.Client(timeout=TIMEOUT, transport=transport or httpx.MockTransport(_fake))
 
 
+class Refused(Exception):
+    """API 가 거절했다. 까닭은 포털이 준 짧은 부호다(키가 아니다) — 로그에 그대로 남긴다."""
+
+
 def _safely(api: str, call: Callable[[], str | None]) -> str | None:
     try:
         return call()
     except Exception as error:
-        # 응답 본문 · 키를 찍지 않는다. 예외 이름만 남긴다.
-        logger.warning("weather_fetch_failed api=%s error=%s", api, type(error).__name__)
+        # 응답 본문 · 키를 찍지 않는다. httpx 예외의 글에는 serviceKey 가 든 주소가 있다 —
+        # 예외 이름과 포털 부호만 남긴다.
+        reason = str(error) if isinstance(error, Refused) else "-"
+        logger.warning(
+            "weather_fetch_failed api=%s error=%s reason=%s", api, type(error).__name__, reason
+        )
         return None
 
 
 def _items(response: httpx.Response) -> list[dict]:
     """두 API 모두 `response.header.resultCode` 가 00 이어야 정상이다.
 
-    키가 틀리면 JSON 대신 XML 을 주기도 한다 — 그때는 `.json()` 이 예외를 내고 `_safely` 가 받는다.
+    [실측 2026-11-10] 키가 없거나 등록되지 않았으면 포털 문지기가 401 · 403 과 함께 JSON 을 준다 —
+    `{"OpenAPI_ServiceResponse": {"cmmMsgHeader": {"errMsg": "SERVICE_KEY_IS_NULL", …}}}`.
+    그 부호를 까닭으로 남긴다. JSON 이 아니면 `.json()` 이 예외를 내고 `_safely` 가 받는다.
     """
+    try:
+        body = response.json()
+    except ValueError:
+        response.raise_for_status()
+        raise
+    gate = body.get("OpenAPI_ServiceResponse")
+    if gate:
+        raise Refused(str(gate.get("cmmMsgHeader", {}).get("errMsg", response.status_code))[:60])
     response.raise_for_status()
-    body = response.json()["response"]
+    body = body["response"]
     if body["header"]["resultCode"] != "00":
-        raise ValueError(body["header"]["resultCode"])
+        raise Refused(f"resultCode={body['header']['resultCode']}"[:60])
     items = body["body"]["items"]
     return items["item"] if isinstance(items, dict) else items
 

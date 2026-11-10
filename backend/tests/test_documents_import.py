@@ -4,14 +4,17 @@
 집계에 들어간다 — 영유아 평가가 특히 그렇다.
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.features.centers.models import Center, Child, Class
 from app.features.documents.models import Document, DocumentSection
+from app.features.evaluation import auto
+from app.features.evaluation.judge import Ratio
 from app.main import app
+from app.shared.school_year import KST
 
 client = TestClient(app)
 
@@ -135,6 +138,23 @@ def test_영유아_평가인데_아동이_없으면_422(db_session):
 
     assert response.status_code == 422
     assert response.json()["error"]["fields"] == ["child_id"]
+
+
+def test_올린_영유아_평가가_4_2_에_세어진다(db_session):
+    """영유아 평가는 만들지 않는다 — 올린 것만 센다 (ADR-091 · ADR-022 결정 10)."""
+    center, klass, child = _center_class_child(db_session)
+    ids = []
+    for start, end in (("2026-03-02", "2026-04-30"), ("2026-05-01", "2026-08-30")):
+        response = client.post(
+            "/api/documents/import", json=_payload(klass, child, start=start, end=end)
+        )
+        assert response.status_code == 201, response.text
+        ids.append(response.json()["id"])
+
+    result = auto.judge_auto(db_session, center.id, datetime(2026, 10, 8, 10, tzinfo=KST))["4-2"]
+
+    assert result.document_ids == tuple(sorted(ids))
+    assert result.children == Ratio(1, 1)
 
 
 def test_원문이_비면_422(db_session):

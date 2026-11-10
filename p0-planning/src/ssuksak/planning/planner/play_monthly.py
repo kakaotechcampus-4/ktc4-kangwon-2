@@ -37,10 +37,12 @@ from .teacher_memo import (
 )
 from .text_policy import MAX_RATIONALE_CHARS, visible_text_violations
 from .trend import (
+    TREND_LYRICS_IN_TEXT,
     TREND_NAME_IN_TEXT,
     TREND_PROMPT,
     TREND_PROMPT_TAG,
     TREND_SHARE_EXCEEDED,
+    lyric_hits,
     trend_name_hits,
     trend_payload,
     trend_properties,
@@ -101,6 +103,9 @@ TREND_REPAIR_INSTRUCTION = (
 )
 TREND_NAME_REPAIR_INSTRUCTION = (
     f" issues 의 code 가 {TREND_NAME_IN_TEXT} 인 후보는 채널 · 프로그램 · 캐릭터 이름을 빼고 놀이 내용만 다시 쓴다."
+)
+TREND_LYRICS_REPAIR_INSTRUCTION = (
+    f" issues 의 code 가 {TREND_LYRICS_IN_TEXT} 인 후보는 노래 가사를 옮겨 적지 말고 노래 제목과 놀이 방법만 다시 쓴다."
 )
 
 _ACTIVITY_SCHEMA = _object_schema(
@@ -362,6 +367,8 @@ def build_repair_request(
         system_prompt += TREND_REPAIR_INSTRUCTION
     if any(i.code == TREND_NAME_IN_TEXT for i in issues):
         system_prompt += TREND_NAME_REPAIR_INSTRUCTION
+    if any(i.code == TREND_LYRICS_IN_TEXT for i in issues):
+        system_prompt += TREND_LYRICS_REPAIR_INSTRUCTION
     return PlayMonthlyRequest(
         **{
             **{name: getattr(request, name) for name in PlayMonthlyRequest.__dataclass_fields__},
@@ -603,6 +610,22 @@ def trend_name_issues(
     return tuple(
         PlayMonthlyIssue(location, TREND_NAME_IN_TEXT)
         for address in trend_name_hits(texts, request.trends, memo)
+        for location in (address, f"{address}.description")
+    )
+
+
+def trend_lyric_issues(proposal: PlayMonthlyProposal, request: PlayMonthlyRequest) -> tuple[PlayMonthlyIssue, ...]:
+    """ADR-072 결정 12: a candidate that copies song lyrics (both its cells). Only when trends were passed."""
+    if not request.trends:
+        return ()
+    texts = {
+        f"{section}[{i}]": f"{row.name} {row.description}"
+        for section in ACTIVITY_SECTIONS
+        for i, row in enumerate(getattr(proposal, section))
+    }
+    return tuple(
+        PlayMonthlyIssue(location, TREND_LYRICS_IN_TEXT)
+        for address in lyric_hits(texts)
         for location in (address, f"{address}.description")
     )
 
