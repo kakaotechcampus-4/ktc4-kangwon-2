@@ -195,6 +195,7 @@ const common = (react) => ({
   "@/components/app/ChildPicker": { ChildNote: "child-note" },
   "@/components/app/icons": { Icon: "icon" },
   "@/lib/workspace/domain-look": { DOMAIN_LOOK: {} },
+  "./ObservationJournal.module.css": { __esModule: true, default: {} },
 });
 function browser(t, search = "") {
   globalThis.window = {
@@ -215,8 +216,8 @@ function browser(t, search = "") {
 
 const NO_IMPACT = { affected: [], newlyStale: [] };
 
-function recordsPage(t, api = {}, { now = "08:00" } = {}) {
-  browser(t);
+function recordsPage(t, api = {}, { now = "08:00", search = "" } = {}) {
+  browser(t, search);
   const app = host();
   const warned = [];
   const Page = compile("../components/workspace/RecordsPage.tsx", {
@@ -444,6 +445,21 @@ test("A1 아이만 고르고 영역이 비었으면 「영역 고르기」 쪽�
   view.render();
   assert.match(view.text(), /영역을 골라야 저장돼요/);
   assert.ok(view.button("영역 고르기"));
+});
+
+test("F16 관찰일지 쪽지의 「고치기」로 오면 그 기록을 고치는 칸에 연다", async (t) => {
+  const view = recordsPage(t, {}, { search: "?class=class-a&record=observation%3A1" });
+  await view.flush();
+  assert.equal(view.fact().props.value, RECORD.fact);
+  assert.equal(view.date().props.value, RECORD.date);
+  assert.ok(view.button("그만두기"), "고치는 중이다");
+});
+
+test("F16 주소의 기록이 목록에 없으면 비워 두고 알린다", async (t) => {
+  const view = recordsPage(t, {}, { search: "?class=class-a&record=observation%3A99" });
+  await view.flush();
+  assert.equal(view.fact().props.value, "");
+  assert.match(view.text(), /그 관찰 기록을 찾지 못했어요/);
 });
 
 test("F11 관찰일지로 가는 길이 반을 들고 간다", async (t) => {
@@ -677,10 +693,12 @@ const SUMMARY = {
   stale: false,
 };
 
-function journalPage(t, { search = "", docs = [], records = [] } = {}) {
+function journalPage(t, { search = "", docs = [], records = [], opened } = {}) {
   browser(t, search);
   const app = host();
   const asked = [];
+  const drafts = [];
+  const editors = [];
   const Page = compile("../components/workspace/ObservationJournalPage.tsx", {
     ...common(app.react),
     "@/lib/api/records": {
@@ -703,11 +721,27 @@ function journalPage(t, { search = "", docs = [], records = [] } = {}) {
       useClasses: () => ROOMS,
       ws: {},
     },
-    "./ObservationJournalEditor": { default: "journal-editor" },
-    "./use-server-document": { useServerDocument: () => ({ status: "loading" }) },
+    "./ObservationJournalEditor": {
+      __esModule: true,
+      default: function JournalEditorStub(props) {
+        editors.push(props);
+        return null;
+      },
+    },
+    "./ObservationClassDrafts": {
+      __esModule: true,
+      default: function ClassDraftsStub(props) {
+        drafts.push(props);
+        return null;
+      },
+    },
+    "./use-server-document": {
+      useServerDocument: () =>
+        opened ? { status: "ready", doc: opened, server: {} } : { status: "loading" },
+    },
     "./RecordsPage": { openPicker: () => {} },
   }).default;
-  return { ...app.mount(Page), asked };
+  return { ...app.mount(Page), asked, drafts, editors };
 }
 
 test("F7 초안을 만드는 동안 아이 · 기간 · 근거를 고를 수 없다", async (t) => {
@@ -744,7 +778,31 @@ test("F11 주소의 class 로 그 반을 연다", async (t) => {
   const view = journalPage(t, { search: "?class=class-b&child=kid-9" });
   await view.flush();
   assert.deepEqual(view.asked, ["class-b"]);
-  assert.ok(view.button("이달"), "그 반 아이가 나온다");
+  // 기록이 없는 아이라 이름 뒤에 「기록 없음」이 붙는다.
+  assert.ok(view.button("이달기록 없음"), "그 반 아이가 나온다");
+});
+
+test("F17 뒤로 가는 단추는 일지를 펴도 「← 관찰 기록」이고, 설명은 고른 아이 · 반 전체를 따른다", async (t) => {
+  const view = journalPage(t, { docs: [SUMMARY], opened: { ...DOC, classId: "class-a" } });
+  await view.flush();
+  const page = () => view.nodes().find((n) => n.type === "page");
+  const back = () => page().props.action;
+  assert.equal(textOf(back()), "← 관찰 기록");
+  assert.equal(back().props.href, "/records");
+  assert.match(page().props.description, /반 아이들의 관찰일지 초안을 한 번에/);
+  assert.doesNotMatch(page().props.description, /한 아이의/);
+
+  await view.press("김하늘기록 없음");
+  assert.match(page().props.description, /김하늘의 관찰일지 초안/);
+  // 일지를 펴도 뒤로 가는 단추는 같다.
+  view
+    .nodes()
+    .find((n) => n.type === "button" && textOf(n).includes("김하늘 관찰일지"))
+    .props.onClick();
+  view.render();
+  assert.equal(view.editors.length > 0, true, "일지가 열렸다");
+  assert.equal(textOf(back()), "← 관찰 기록");
+  assert.equal(back().props.href, "/records");
 });
 
 test("F15 확정본이 stale 이면 목록에 둘 다 보인다", async (t) => {
@@ -778,14 +836,14 @@ const DOC = {
   ],
 };
 
-function editor(t, { initial = DOC, save, refresh } = {}) {
+function editor(t, { initial = DOC, save, refresh, api = {}, onNext, extra = {} } = {}) {
   browser(t);
   const app = host();
   const calls = [];
   const modules = { ...common(app.react), "./WorkspaceUI": { Message: "message", ws: {} } };
   const Editor = compile("../components/workspace/ObservationJournalEditor.tsx", {
     ...modules,
-    "@/lib/api/documents": documents,
+    "@/lib/api/documents": { ...documents, ...api },
     "@/lib/api/client": { invalidFields },
     "@/components/plan-generator/AnnualFrame": { EXPORTS: {}, FileLogo: "file-logo" },
     "@/lib/hooks/use-hwpx-download": {
@@ -807,8 +865,13 @@ function editor(t, { initial = DOC, save, refresh } = {}) {
       calls.push("refresh");
       return refresh ?? initial;
     },
+    saveAndConfirm: async (sections) => {
+      calls.push("confirm");
+      return { ...initial, sections, status: "confirmed" };
+    },
+    ...extra,
   };
-  const view = app.mount(Editor, { initial, server, domains: DOMAINS });
+  const view = app.mount(Editor, { initial, server, domains: DOMAINS, onNext });
   const pad = (heading) => view.nodes().find((n) => n.props["aria-label"] === `${heading} 내용`);
   return { ...view, calls, pad };
 }
@@ -832,6 +895,15 @@ test("F9 편집 버리고 반영 · 고친 게 없으면 바로 반영", async (
 
   await view.press("바뀐 근거 반영하기");
   assert.deepEqual(view.calls, ["refresh", "refresh"]);
+});
+
+test("F16 근거 쪽지마다 그 관찰 기록을 여는 「고치기」가 있다 — 관찰 기록 첫 화면이 아니다", async (t) => {
+  const view = editor(t, { initial: { ...DOC, classId: "class-a" } });
+  const fix = view
+    .nodes()
+    .filter((n) => n.type === "link")
+    .map((n) => n.props.href);
+  assert.deepEqual(fix, ["/records?class=class-a&record=observation%3A1"]);
 });
 
 test("F12 근거 쪽지와 출력 미리보기가 서버가 준 영역을 쓴다", async (t) => {
@@ -885,4 +957,403 @@ test("3차-12 확정본 미리보기는 문서 사본의 축 · 상황으로 그
   // 사본이 없는 옛 문서만 지금 원 설정을 쓴다.
   const old = editor(t, { initial: { ...DOC, status: "confirmed" } });
   assert.ok(old.nodes().some((n) => n.type === "th" && textOf(n) === "종합해석"));
+});
+
+// ── 관찰일지 딸깍 (ADR-083) ────────────────────────────────────────────────
+
+test("B5 기간 칩 한 번으로 기간을 정하고, 기록 없는 아이만 점선과 「기록 없음」", async (t) => {
+  const view = journalPage(t, { records: [{ ...RECORD, childId: "kid-1", date: TODAY }] });
+  await view.flush();
+  assert.equal(view.button("이번 주").props["aria-pressed"], true);
+  await view.press("이번 달");
+  const dates = view.nodes().filter((n) => n.type === "input" && n.props.type === "date");
+  assert.deepEqual(
+    dates.map((n) => n.props.value),
+    ["2026-11-01", TODAY],
+  );
+  await view.press("지난달");
+  assert.deepEqual(
+    view
+      .nodes()
+      .filter((n) => n.props.type === "date")
+      .map((n) => n.props.value),
+    ["2026-10-01", "2026-10-31"],
+  );
+  await view.press("이번 주");
+  // 숫자를 붙이지 않는다. 기록 있는 아이는 이름만.
+  assert.ok(view.button("김하늘"));
+  assert.ok(view.button("박서아기록 없음"));
+});
+
+test("B1 아이를 고르지 않으면 반 전체를 보여 준다", async (t) => {
+  const view = journalPage(t, { records: [RECORD] });
+  await view.flush();
+  const last = view.drafts.at(-1);
+  assert.deepEqual(
+    last.kids.map((k) => k.name),
+    ["김하늘", "박서아"],
+  );
+  assert.equal(last.classId, "class-a");
+  // 아이를 고르면 그 아이 목록으로 바뀌고, 다시 누르면 반 전체로 돌아간다.
+  const before = view.drafts.length;
+  await view.press("김하늘기록 없음");
+  assert.equal(view.drafts.length, before);
+  await view.press("김하늘기록 없음");
+  assert.ok(view.drafts.length > before);
+});
+
+test("B6 반 전체 초안의 다음 아이 초안이 있으면 「확정하고 다음 아이」를 단다", async (t) => {
+  const draft = { ...SUMMARY, start: "2026-11-01", end: TODAY };
+  const docs = [draft, { ...draft, id: "document:2", childId: "kid-2", title: "박서아 관찰일지" }];
+  const view = journalPage(t, { docs, opened: { ...DOC, id: "document:1" } });
+  await view.flush();
+  view.drafts.at(-1).onOpen("document:1");
+  view.render();
+  const props = view.editors.at(-1);
+  assert.equal(typeof props.onNext, "function");
+  // 마지막 아이에게는 다음이 없다.
+  props.onNext();
+  view.render();
+  assert.equal(view.editors.at(-1).onNext, undefined);
+});
+
+// ── 반 전체 초안 (ObservationClassDrafts) ─────────────────────────────────
+
+const KIDS = [
+  { id: "kid-1", name: "가람" },
+  { id: "kid-2", name: "나래" },
+  { id: "kid-3", name: "다온" },
+  { id: "kid-4", name: "하람" },
+];
+const rec = (id, childId, date = "2026-11-03", createdAt = "2026-11-03T01:00:00Z") => ({
+  ...RECORD,
+  id: `observation:${id}`,
+  childId,
+  date,
+  createdAt,
+});
+const draftOf = (childId, extra = {}) => ({
+  ...SUMMARY,
+  id: `document:${childId}`,
+  childId,
+  start: "2026-11-01",
+  end: "2026-11-10",
+  createdAt: "2026-11-04T00:00:00Z",
+  aiReviewState: "done",
+  ...extra,
+});
+
+function classDrafts(t, { records = [], docs = [], create, bundle } = {}) {
+  browser(t);
+  const app = host();
+  const calls = { create: [], bundle: [], opened: [], changed: 0 };
+  const Drafts = compile("../components/workspace/ObservationClassDrafts.tsx", {
+    ...common(app.react),
+    "@/lib/api/documents": {
+      createDocument: async (input) => {
+        calls.create.push(input);
+        return create ? create(input) : {};
+      },
+      downloadDocumentBundle: async (ids) => {
+        calls.bundle.push(ids);
+        if (bundle) await bundle(ids);
+      },
+    },
+    "@/lib/api/client": { errorCode: documentsErrorCode },
+    "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
+    "./WorkspaceUI": { Message: "message", ws: {} },
+  });
+  const view = app.mount(Drafts.default, {
+    kids: KIDS,
+    records,
+    docs,
+    start: "2026-11-01",
+    end: "2026-11-10",
+    classId: "class-a",
+    onOpen: (id) => calls.opened.push(id),
+    onChanged: () => calls.changed++,
+  });
+  const row = (name) => view.nodes().find((n) => n.type === "li" && textOf(n).startsWith(name));
+  const box = (name) => view.nodes().find((n) => n.props["aria-label"] === `${name} 초안 만들기`);
+  return { ...view, calls, row, box, helpers: Drafts };
+}
+const { errorCode: documentsErrorCode } = await import("../lib/api/client.ts");
+
+test("B1 아이별 상태 — 확정 · 초안 · 검토 못 함 · 물어볼 것 · 기록 없음, 기록 1개는 체크 끈 채로", async (t) => {
+  const view = classDrafts(t, {
+    records: [
+      rec(1, "kid-1"),
+      rec(2, "kid-2"),
+      rec(3, "kid-2", "2026-11-05", "2026-11-05T01:00:00Z"),
+      rec(4, "kid-3"),
+      rec(5, "kid-3", "2026-11-04"),
+    ],
+    docs: [draftOf("kid-2"), draftOf("kid-3", { status: "confirmed" })],
+  });
+  assert.match(textOf(view.row("가람")), /관찰 1개/);
+  assert.equal(view.box("가람").props.checked, false, "기록 1개는 끈 채로");
+  assert.equal(view.box("가람").props.disabled, false);
+  // 초안을 만든 뒤 기록이 하나 더 생겼다 — 물어본다.
+  assert.match(textOf(view.row("나래")), /물어볼 것새 기록 1개그대로 열기넣어서 다시/);
+  assert.match(textOf(view.row("다온")), /확정/);
+  assert.match(textOf(view.row("하람")), /기록 없음/);
+  assert.equal(view.box("하람").props.disabled, true);
+
+  const unreviewed = classDrafts(t, {
+    records: [rec(1, "kid-1"), rec(2, "kid-1")],
+    docs: [draftOf("kid-1", { aiReviewState: "mock" })],
+  });
+  // mock 검토를 「초안」(통과)으로 보이게 하지 않는다.
+  assert.match(textOf(unreviewed.row("가람")), /검토 못 함/);
+});
+
+test("B1 반 전체 초안은 체크한 아이만 차례로 만들고, 한도 초과면 남은 아이를 부르지 않는다", async (t) => {
+  const { ApiError } = await import("../lib/api/client.ts");
+  const fail = (code, message) =>
+    new ApiError(code === "VALUE_INVALID" ? 422 : 503, {
+      error: { code, message, fields: ["source_ids"] },
+    });
+  const view = classDrafts(t, {
+    records: [
+      rec(1, "kid-1"),
+      rec(2, "kid-1"),
+      rec(3, "kid-2"),
+      rec(4, "kid-2"),
+      rec(5, "kid-3"),
+      rec(6, "kid-3"),
+      rec(7, "kid-4"),
+    ],
+    create: (input) => {
+      if (input.childId === "kid-1") throw fail("VALUE_INVALID", "「민」이 아이 이름인가요?");
+      if (input.childId === "kid-2")
+        throw fail("LLM_BUDGET_EXCEEDED", "AI 사용 한도를 넘었습니다.");
+      return {};
+    },
+  });
+  await view.press("반 전체 초안 만들기");
+  await view.flush();
+  // 기록 1개인 하람은 체크가 꺼져 있어 부르지 않는다. 한도에 걸린 뒤 다온도 부르지 않는다.
+  assert.deepEqual(
+    view.calls.create.map((c) => c.childId),
+    ["kid-1", "kid-2"],
+  );
+  assert.deepEqual(view.calls.create[0].sourceIds, ["observation:1", "observation:2"]);
+  assert.match(textOf(view.row("가람")), /물어볼 것.*「민」이 아이 이름인가요\?/);
+  assert.match(textOf(view.row("나래")), /못 만듦.*AI 사용 한도/);
+  assert.match(textOf(view.row("다온")), /못 만듦.*AI 사용 한도/);
+});
+
+test("B1 넣어서 다시는 이 기간 기록 전부로 옛 초안을 바꾼다", async (t) => {
+  const view = classDrafts(t, {
+    records: [rec(1, "kid-1"), rec(2, "kid-1", "2026-11-06", "2026-11-06T00:00:00Z")],
+    docs: [draftOf("kid-1")],
+  });
+  await view.press("넣어서 다시");
+  assert.equal(view.calls.create.length, 1);
+  assert.equal(view.calls.create[0].replaceDraft, true);
+  assert.deepEqual(view.calls.create[0].sourceIds, ["observation:1", "observation:2"]);
+  await view.press("그대로 열기");
+  assert.deepEqual(view.calls.opened, ["document:kid-1"]);
+});
+
+test("B2 확정본 묶음은 근거가 그대로인 확정본만 받고, 빠진 수를 알린다", async (t) => {
+  const view = classDrafts(t, {
+    records: [rec(1, "kid-1"), rec(2, "kid-2"), rec(3, "kid-3")],
+    docs: [
+      draftOf("kid-1", { status: "confirmed" }),
+      draftOf("kid-2", { status: "confirmed", stale: true }),
+      draftOf("kid-3"),
+    ],
+  });
+  assert.match(view.text(), /1명은 원본 기록이 바뀌어 파일에서 빠져요/);
+  await view.press("확정 1명 한 파일로");
+  assert.deepEqual(view.calls.bundle, [["document:kid-1"]]);
+});
+
+// ── 편집기: 붙여 온 검토 · 고친 문장 · 다음 아이 ─────────────────────────────
+
+const FLAGGED = "작은 생물에 매일 관심이 많다.";
+const REVIEWED = {
+  ...DOC,
+  sections: DOC.sections.map((s) =>
+    s.heading === "해석" ? { ...s, body: `${FLAGGED} 개미를 오래 본다.` } : s,
+  ),
+  aiReview: {
+    state: "done",
+    message: "",
+    issues: [
+      {
+        heading: "해석",
+        sentence: FLAGGED,
+        code: "UNSUPPORTED_FACT",
+        sourceText: null,
+        reason: "기록에 없는 일이 사실처럼 적혀 있어요.",
+        fix: "",
+      },
+    ],
+  },
+};
+
+test("B3 붙여 온 검토는 문장에 형광펜, 이유는 칸 아래 한 줄. 문장을 고치면 사라진다", async (t) => {
+  const view = editor(t, { initial: REVIEWED });
+  const marks = view.nodes().filter((n) => n.type === "mark");
+  assert.deepEqual(marks.map(textOf), [FLAGGED]);
+  assert.match(view.text(), /기록에 없는 일이 사실처럼 적혀 있어요\./);
+  assert.ok(view.nodes().find((n) => n.props["aria-label"] === "다시 검토"));
+  view.type(view.pad("해석"), "개미를 오래 본다.");
+  assert.equal(view.nodes().filter((n) => n.type === "mark").length, 0);
+});
+
+test("B3 mock · 실패한 검토는 형광펜 없이 판정하지 않았다고 말한다", async (t) => {
+  const view = editor(t, {
+    initial: { ...REVIEWED, aiReview: { state: "mock", message: "", issues: [] } },
+  });
+  assert.match(view.text(), /AI 검토가 꺼져 있어 판정하지 않았어요/);
+  const failed = editor(t, {
+    initial: { ...REVIEWED, aiReview: { state: "failed", message: "지금은 못 써요.", issues: [] } },
+  });
+  assert.match(failed.text(), /AI 검토를 못 했어요\. 지금은 못 써요\./);
+});
+
+test("B4 고친 문장은 보라 점선 제안으로 오고, 확인할 곳을 같이 보이며, 눌러야 바뀐다", async (t) => {
+  const asked = [];
+  const view = editor(t, {
+    initial: REVIEWED,
+    api: {
+      rewriteSentence: async (id, kind, input) => {
+        asked.push({ id, ...input });
+        return {
+          sentence: "작은 생물에 관심이 많다.",
+          judged: true,
+          issues: [
+            {
+              heading: "해석",
+              sentence: "작은 생물에 관심이 많다.",
+              code: "DIAGNOSIS",
+              sourceText: null,
+              reason: "성향을 단정하는 표현이 있어요.",
+              fix: "",
+            },
+          ],
+        };
+      },
+    },
+  });
+  await view.press("고친 문장");
+  await view.flush();
+  assert.equal(asked[0].sentence, FLAGGED);
+  assert.equal(asked[0].style, "fix");
+  // jev 가 짚어도 거르지 않는다 — 문장과 확인할 곳을 같이 보여 준다.
+  assert.match(view.text(), /작은 생물에 관심이 많다\.확인할 곳: 성향을 단정하는 표현이 있어요\./);
+  assert.equal(view.pad("해석").props.value, REVIEWED.sections[1].body, "누르기 전엔 그대로");
+  await view.press("이 문장으로 바꾸기");
+  assert.equal(view.pad("해석").props.value, "작은 생물에 관심이 많다. 개미를 오래 본다.");
+});
+
+test("B4 규칙 검사에 걸린 고친 문장은 보여 주지 않는다", async (t) => {
+  const view = editor(t, {
+    initial: REVIEWED,
+    api: { rewriteSentence: async () => ({ sentence: null, judged: false, issues: [] }) },
+  });
+  await view.press("더 짧게");
+  await view.flush();
+  assert.match(view.text(), /규칙 검사를 지난 문장을 못 만들었어요/);
+  assert.equal(view.button("이 문장으로 바꾸기"), undefined);
+});
+
+test("B6 「확정하고 다음 아이」는 확정이 된 뒤에만 다음으로 간다", async (t) => {
+  let moved = 0;
+  const none = editor(t, { extra: { stale: false } });
+  assert.equal(none.button("확정하고 다음 아이"), undefined, "다음 아이가 없으면 단추도 없다");
+
+  const view = editor(t, { onNext: () => moved++, extra: { stale: false } });
+  view
+    .nodes()
+    .find((n) => n.type === "input" && n.props.type === "checkbox")
+    .props.onChange({
+      target: { checked: true },
+    });
+  view.render();
+  await view.press("확정하고 다음 아이");
+  await view.flush();
+  assert.deepEqual(view.calls, ["confirm"]);
+  assert.equal(moved, 1);
+});
+
+test("FR 종이 미리보기의 빈 영역 줄은 화면에만 「이 영역 관찰이 없어요」", async (t) => {
+  const done = editor(t, { initial: { ...DOC, status: "confirmed" } });
+  const row = (domain) => done.nodes().find((n) => n.type === "tr" && textOf(n).startsWith(domain));
+  assert.match(textOf(row("의사소통")), /이 영역 관찰이 없어요/);
+  assert.doesNotMatch(textOf(row("자연탐구")), /이 영역 관찰이 없어요/);
+  const draft = editor(t);
+  assert.match(draft.text(), /이 영역 관찰이 없어요: 신체운동·건강, 의사소통, 사회관계, 예술경험/);
+});
+
+// ── F4 (하민 교차 검토) — 만드는 동안 다른 일지를 열 수 없다 ─────────────────
+
+test("F4 한 아이 초안을 만드는 동안 목록의 다른 일지를 열 수 없다", async (t) => {
+  const view = journalPage(t, {
+    search: "?child=kid-1",
+    docs: [SUMMARY],
+    records: [{ ...RECORD, childId: "kid-1", date: TODAY }],
+  });
+  await view.flush();
+  const opener = () =>
+    view.nodes().find((n) => n.type === "button" && textOf(n).startsWith("김하늘 관찰일지"));
+  assert.equal(opener().props.disabled, false);
+  view.button("초안 만들기").props.onClick();
+  view.render();
+  // 열 수 있으면 늦게 온 생성 응답이 교사가 연 일지를 덮는다.
+  assert.equal(opener().props.disabled, true);
+});
+
+test("F4 반 전체 초안이 도는 동안 아이 · 기간 고르기를 잠근다", async (t) => {
+  const view = journalPage(t, { records: [RECORD] });
+  await view.flush();
+  const pickers = () =>
+    view
+      .nodes()
+      .filter(
+        (n) => (n.type === "button" && n.props["aria-pressed"] !== undefined) || n.type === "input",
+      );
+  assert.ok(pickers().every((n) => !n.props.disabled));
+  view.drafts.at(-1).onBusy(true);
+  view.render();
+  assert.ok(pickers().every((n) => n.props.disabled));
+  view.drafts.at(-1).onBusy(false);
+  view.render();
+  assert.ok(pickers().every((n) => !n.props.disabled));
+});
+
+test("F4 반 전체 초안이 도는 동안 아이 일지 열기를 잠그고 화면에 알린다", async (t) => {
+  const busy = [];
+  browser(t);
+  const app = host();
+  const Drafts = compile("../components/workspace/ObservationClassDrafts.tsx", {
+    ...common(app.react),
+    "@/lib/api/documents": {
+      createDocument: () => new Promise(() => {}),
+      downloadDocumentBundle: async () => {},
+    },
+    "@/lib/api/client": { errorCode: documentsErrorCode },
+    "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
+    "./WorkspaceUI": { Message: "message", ws: {} },
+  });
+  const view = app.mount(Drafts.default, {
+    kids: KIDS,
+    records: [rec(1, "kid-1"), rec(2, "kid-1"), rec(3, "kid-2"), rec(4, "kid-2")],
+    docs: [draftOf("kid-2"), draftOf("kid-3", { status: "confirmed" })],
+    start: "2026-11-01",
+    end: "2026-11-10",
+    classId: "class-a",
+    onOpen: () => {},
+    onChanged: () => {},
+    onBusy: (on) => busy.push(on),
+  });
+  assert.equal(view.button("나래").props.disabled, false);
+  view.button("반 전체 초안 만들기").props.onClick();
+  view.render();
+  assert.deepEqual(busy, [true]);
+  assert.equal(view.button("나래").props.disabled, true);
+  assert.equal(view.button("다온").props.disabled, true);
 });
