@@ -73,12 +73,16 @@ def _not_delivered(exc: BaseException) -> bool:
 
 
 def _once_more(send):
-    """`send` 가 모델에 닿지 못했으면 잠깐 쉬고 한 번만 더 부른다. 두 번째 실패는 그대로 올린다."""
+    """`send` 가 모델에 닿지 못했으면 잠깐 쉬고 한 번만 더 부른다. 두 번째 실패는 그대로 올린다.
+
+    다시 보낸 결과는 생성 기록에 남긴다(ADR-096) — 첫 시도는 정의상 「닿지 못함」이라 적지 않는다.
+    """
     try:
         return send()
     except _NotDelivered:
         time.sleep(RETRY_DELAY_SECONDS)
-    return send()
+    with timing.attempt("transport"):
+        return send()
 
 
 def is_mock() -> bool:

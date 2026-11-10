@@ -5,10 +5,15 @@
 
 # ruff: noqa: F811 — 다른 테스트 파일의 픽스처를 가져와 쓰면 인자 이름이 import 와 겹친다
 
+import json
+from dataclasses import replace
+
 from fastapi.testclient import TestClient
 from ssuksak.adapters.request_aware_monthly_llm import RequestAwareMonthlyLlm
+from ssuksak.planning.planner.contracts import MONTHLY_MODEL, RawLlmResponse
 from test_generation_runs import (  # noqa: F401
     Broken,
+    assert_attempts_shape,
     assert_forward,
     broken_run,
     captured_run,
@@ -64,6 +69,7 @@ def test_월간_주제형은_이어받기_나누기_다듬기_저장_순서로_�
     final = run.final
     assert (final["status"], final["plan_id"]) == ("SUCCEEDED", response.json()["id"])
     assert (final["model"], final["llm_calls"]) == (None, 0)  # mock 은 전송을 지나지 않는다
+    assert final["attempts"] is None  # 다시 한 일이 없다
     assert {"db_read", "select", "prompt", "validate", "assemble", "save"} <= set(final["phase_ms"])
     assert recording.versions and final["prompt_versions"] == list(
         dict.fromkeys(recording.versions)
@@ -106,6 +112,46 @@ def test_real_모드_월간은_전송을_지난_호출_수와_모델과_모드�
     assert "llm" in final["phase_ms"]
 
 
+def test_real_모드_월간의_전송_재시도는_프롬프트_구간의_시도로_남고_생성은_같다(
+    world, captured_run, monkeypatch
+):
+    """`phase` 는 `_llm_call` 의 `llm` 구간이 아니라 그것을 부른 쪽(월간은 `prompt`)이다."""
+    _annual(world["class_a"])
+    sent = []
+
+    class Small(Recording):
+        def generate_monthly(self, request):
+            llm.post_stream(
+                "https://x/v1/chat/completions",
+                headers={},
+                payload={"model": MODEL},
+                timeout=1,
+                fold=list,
+                deadline=1,
+            )
+            return super().generate_monthly(request)
+
+    def network(*args, **kwargs):
+        sent.append(1)
+        if len(sent) == 1:
+            raise llm._NotDelivered("엘리스에 닿지 못했다")
+        return {}
+
+    _provider(monkeypatch, Small())
+    monkeypatch.setattr(llm, "_post_stream", network)
+    monkeypatch.setattr(llm, "RETRY_DELAY_SECONDS", 0)
+    monkeypatch.setattr(settings, "llm_mode", "real")
+    monkeypatch.setattr(settings, "is_server", True)
+
+    response = _create(world)
+
+    assert response.status_code == 201, response.text
+    final = captured_run[-1].final
+    assert final["llm_calls"] == len(sent) == 2  # 시도 기록은 상한 셈을 바꾸지 않는다
+    assert final["attempts"] == [{"kind": "transport", "phase": "prompt", "result": "ok"}]
+    assert_attempts_shape(final["attempts"])
+
+
 def test_LLM_이_실패하면_실패한_단계와_보낸_판이_남는다(world, captured_run, monkeypatch):
     class Failing:
         versions = []
@@ -129,6 +175,37 @@ def test_LLM_이_실패하면_실패한_단계와_보낸_판이_남는다(world,
     )
     assert run.stages == ["prepare", "generate"]  # 실패한 단계에서 멈춘다
     assert failing.versions and final["prompt_versions"] == list(dict.fromkeys(failing.versions))
+
+
+class LegalClaimFirst(Recording):
+    """첫 답에 법적 표현을 넣어 수리 대상으로 만든다. 수리 호출에는 빈 답을 낸다."""
+
+    def generate_monthly(self, request):
+        if self.versions:  # 두 번째 호출 = 수리
+            self.versions.append(request.prompt_version)
+            return RawLlmResponse(content="{}", model=MONTHLY_MODEL)
+        response = super().generate_monthly(request)
+        body = json.loads(response.content)
+        focus = next(s for s in body["weeks"][0]["sections"] if s["section_key"] == "focus")
+        focus["value"] = "법적 기준에 맞게 바람을 살펴본다."
+        return replace(response, content=json.dumps(body, ensure_ascii=False))
+
+
+def test_수리_대상이_되면_수리_호출_하나가_남고_수리_뒤에_틀리면_check_에서_실패로_끝난다(
+    world, captured_run, monkeypatch
+):
+    """수리 결과는 호출 결과(답을 받았나)다. 고친 답이 검사를 통과했는지는 실행의 끝이 말한다."""
+    recording = _provider(monkeypatch, LegalClaimFirst())
+    _annual(world["class_a"])
+
+    response = _create(world)
+
+    assert response.status_code == 500
+    assert len(recording.versions) == 2  # 첫 호출 + 수리 1회
+    run = captured_run[-1]
+    assert (run.final["status"], run.stages[-1]) == ("FAILED", "check")
+    assert run.final["attempts"] == [{"kind": "repair", "phase": "repair", "result": "ok"}]
+    assert_attempts_shape(run.final["attempts"])
 
 
 def test_월간은_판_기록을_가명_처리_안쪽에_둔다(world, monkeypatch):

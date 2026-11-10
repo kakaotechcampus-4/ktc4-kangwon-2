@@ -858,6 +858,19 @@ export interface GenerationRun {
   prompt_versions: string[] | null;
   llm_calls: number | null;
   phase_ms: Record<string, number> | null;
+  /** 요청 안의 다시 하기(구간 다시 부르기 · 전송 재시도 · 수리 호출). 없었으면 `null`. 화면은 쓰지 않는다. */
+  attempts: GenerationRunAttempt[] | null;
   started_at: string;
   finished_at: string | null;
+}
+
+/** 요청 안의 다시 하기 한 번. 이름 · 번호만 든다 — `period` · `attempt` 는 `kind` 가 `period` 일 때만 있다. */
+export interface GenerationRunAttempt {
+  kind: "period" | "transport" | "repair";
+  /** 그때의 서버 구간 이름. 알려진 이름이 아니어도 그대로 둔다. */
+  phase: string;
+  period?: string;
+  attempt?: number;
+  /** `ok` 또는 예외 클래스 이름(진단용 — 계약이 아니다). */
+  result: string;
 }

@@ -151,6 +151,14 @@ def _each(pool, jobs: dict):
     return done
 
 
+def _noted(done: dict, keys, attempt: int) -> None:
+    """구간 생성 한 번(호출 + 검사)의 결과를 생성 기록에 적는다 — 요청 스레드에서만(ADR-096)."""
+    for key in keys:
+        value = done[key]
+        result = type(value).__name__ if isinstance(value, Exception) else "ok"
+        timing.note_attempt("period", result, period=key, attempt=attempt)
+
+
 def _memo_applied(candidate) -> bool:
     return TEACHER_MEMO_EVIDENCE in candidate.play_name.evidence
 
@@ -202,6 +210,7 @@ def generate(
     timing.phase("llm")
     with ThreadPoolExecutor(len(keys)) as pool:
         done = _each(pool, {key: partial(period, key, seeds[key]) for key in keys})
+        _noted(done, keys, 1)
         failed = [key for key in keys if isinstance(done[key], Exception)]
         for key in failed:
             if _final(done[key]):
@@ -210,6 +219,7 @@ def generate(
             if stopped():
                 raise GenerationStopped("recall")
             done |= _each(pool, {key: partial(period, key, seeds[key]) for key in failed})
+            _noted(done, failed, 2)
             for key in failed:
                 if isinstance(done[key], Exception):
                     raise done[key]

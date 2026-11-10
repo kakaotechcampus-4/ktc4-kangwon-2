@@ -3358,6 +3358,7 @@ RESIZE_HEIGHT    null            null        null          null          [24] �
   "prompt_versions": null,
   "llm_calls": null,
   "phase_ms": null,
+  "attempts": null,
   "started_at": "2026-11-10T09:00:00Z",
   "finished_at": null
 }
@@ -3375,6 +3376,7 @@ RESIZE_HEIGHT    null            null        null          null          [24] �
   "prompt_versions": ["monthly-planner-v23…", "monthly-planner-repair-v18…"],
   "llm_calls": 2,
   "phase_ms": {"db_read": 85, "select": 410, "prompt": 3, "llm": 31890, "validate": 12, "repair": 2, "assemble": 6, "save": 40},
+  "attempts": [{"kind": "repair", "phase": "repair", "result": "ok"}],
   "started_at": "2026-11-10T09:00:00Z",
   "finished_at": "2026-11-10T09:00:33Z"
 }
@@ -3393,6 +3395,7 @@ model            문자열 | null.  LLM 시도가 한 번이라도 있었으면 
 prompt_versions  문자열 배열 | null.  이 실행이 만든 LLM 요청의 프롬프트 판 이름. 처음 쓴 순서, 중복 없이. 수리 · 실패한 실행 · mock 포함. 끝나기 전엔 null
 llm_calls        정수 | null.  LLM 시도 수(재시도 포함, ADR-081)
 phase_ms         {구간: 정수 ms} | null.  구간 이름과 걸린 시간만
+attempts         시도 배열 | null.  요청 안에서 다시 한 일(아래 「시도 기록」). 없었으면 null(DB 에서도 SQL NULL). 놀이 연간은 구간을 부른 요청이면 첫 시도 넷이 늘 있고, 구간을 부르기 전에 끝난 요청(409 · 메모 422 · 동시 호출 전 멈춤)은 null. 끝나기 전엔 null
 started_at       UTC (끝에 Z)
 finished_at      UTC | null.  RUNNING 이면 null
 ```
@@ -3400,6 +3403,39 @@ finished_at      UTC | null.  RUNNING 이면 null
 - **`prompt_versions` 에 `+trend-v1` 같은 태그가 보일 수 있다.** 칸 `rule_version` 과 같은 종류의 프롬프트 태그다. 트렌드 상태는 이 기록에 없다 — 서버 로그 한 줄이다(CLAUDE.md).
 - **`UNKNOWN` 은 저장하지 않고 읽을 때 만든다.** 저장된 값이 `RUNNING` 이고 `started_at` 이 15분을 넘었으면 `UNKNOWN`(확인 불가)이다 — 계획안 commit 뒤 프로세스가 죽었거나 끝 줄을 못 쓴 경우다. 서버 쪽 최장 경로(놀이 연간)가 약 6분, nginx 최장 대기가 510초다.
 - 핸들러가 값을 돌려준 뒤 응답 직렬화가 실패하면(500) 계획안은 저장됐고 기록은 `SUCCEEDED` 로 남는다. 끝 줄만 못 쓴 기록은 `RUNNING` 으로 남다가 15분 뒤 `UNKNOWN` 이 된다.
+
+### 시도 기록 — `attempts`   (ADR-096 개정)
+
+생성 요청 **하나 안에서 이미 일어나는** 다시 하기를 시도 단위로 적는다. 생성 동작은 바꾸지 않는다. 끝날 때 한 번에 채운다(쓰기 횟수는 그대로).
+**이름과 번호만** 든다 — 오류 메시지 · 검사 코드 · 프롬프트 · 응답 · 반 이름 · 아이 정보는 없다. 배열 순서는 적힌 순서다.
+
+```json
+// 놀이 연간 — 9~11월 구간이 거절돼 그 구간만 다시 불렀고, 같은 요청 안에서 전송도 한 번 다시 보냈다
+"attempts": [
+  {"kind": "period", "phase": "llm", "period": "m03_m05", "attempt": 1, "result": "ok"},
+  {"kind": "period", "phase": "llm", "period": "m06_m08", "attempt": 1, "result": "ok"},
+  {"kind": "period", "phase": "llm", "period": "m09_m11", "attempt": 1, "result": "ProposalRejectedError"},
+  {"kind": "period", "phase": "llm", "period": "m12_m02", "attempt": 1, "result": "ok"},
+  {"kind": "transport", "phase": "prompt", "result": "ok"},
+  {"kind": "period", "phase": "llm", "period": "m09_m11", "attempt": 2, "result": "ok"}
+]
+```
+
+```
+kind     period | transport | repair
+phase    그 시도를 적을 때의 서버 구간 이름.  period 는 llm.  transport 는 부른 쪽의 구간이다
+         (월간 prompt · 주간 select · 수리 repair · 놀이 연간 작업 스레드 prompt) — 어느 구간의 재시도인지는 모른다
+period   구간 키(m03_m05 …).  period 만
+attempt  1 | 2.  period 만
+result   "ok" 또는 예외 클래스 이름(ProposalRejectedError · _NotDelivered · LlmFailed …).  진단용이라 이름은 계약이 아니다
+```
+
+- **`period`** — 놀이 연간 구간 생성 한 번(호출 + 검사)의 결과다(ADR-077). 구간을 부른 요청이면 첫 시도 넷은 **늘** 구간 키 순서로 적고, `attempt: 2` 가 있는 구간이 다시 부른 구간이다.
+  첫 실패가 다시 불러도 풀리지 않는 종류(한도 · 키 · 호출 상한 · 설정 · 메모 가명)면 `attempt: 2` 없이 끝난다. 겹친 후보 다시 만들기는 적지 않는다.
+- **`transport`** — 모델에 닿지 못해 **다시 보낸 것**의 결과다(ADR-076). 첫 시도는 정의상 「닿지 못함」이라 적지 않는다. 다시 보낸 것도 닿지 못하면 `_NotDelivered` 다. 첫 실패의 상태 번호는 적지 않는다.
+- **`repair`** — 검사에 걸린 답을 LLM 으로 고친 **호출**의 결과(답을 받았나)다. 월간 · 주간 · 놀이 월간 · 연간 소주제. 수리한 답이 검사를 통과했는지는 `attempts` 가 아니라 실행의 끝으로 본다
+  (`SUCCEEDED`, 또는 `FAILED` + 단계 `check`) — 수리는 한 번뿐이라 수리 뒤 검사에 걸리면 그 자리에서 끝나기 때문이다.
+- **요청을 넘어선 재개는 없다.** 이 기록은 구간 결과(후보 · 문장)를 저장하지 않으므로 이어 만들 재료가 아니다. 교사가 다시 누르면 지금처럼 처음부터 새 요청이다.
 
 ### 목록 — `GET /api/generation-runs?class_id=12`
 

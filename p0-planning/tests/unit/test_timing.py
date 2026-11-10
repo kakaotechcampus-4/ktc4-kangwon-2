@@ -326,3 +326,72 @@ def test_작업_스레드_넷이_동시에_프롬프트_판을_적어도_루트_
         return timing.current().prompts
 
     assert sorted(handler()) == ["shared", "v0", "v1", "v2", "v3"]
+
+
+def test_시도는_지금_구간_이름을_붙여_적은_순서대로_쌓고_실행_밖에서는_아무_일도_안_한다():
+    timing.note_attempt("transport", "ok")  # 아무 일도 없다
+    with timing.attempt("repair"):
+        pass
+
+    @timing.timed("weekly", lambda line: None)
+    def handler():
+        timing.note_attempt("transport", "ok")
+        timing.phase("repair")
+        timing.note_attempt("period", "LlmFailed", period="m03_m05", attempt=2)
+        return timing.current().attempts
+
+    assert handler() == [
+        {"kind": "transport", "phase": "db_read", "result": "ok"},
+        {
+            "kind": "period",
+            "phase": "repair",
+            "period": "m03_m05",
+            "attempt": 2,
+            "result": "LlmFailed",
+        },
+    ]
+
+
+def test_작업_스레드_넷이_동시에_시도를_적어도_루트_하나에_빠짐없이_쌓이고_구간은_스레드의_것이다():
+    threads = 4
+    start = threading.Barrier(threads)
+
+    def job():
+        start.wait(5)
+        with timing.span("prompt"):  # 작업 스레드의 구간 이름은 루트에 닿지 않는다
+            timing.note_attempt("transport", "ok")
+
+    @timing.timed("annual_play", lambda line: None)
+    def handler():
+        timing.phase("llm")
+        with ThreadPoolExecutor(threads) as pool:
+            jobs = [pool.submit(timing.in_thread(job)) for _ in range(threads)]
+            [j.result() for j in jobs]
+        return timing.current().attempts, timing.current().phase
+
+    attempts, root_phase = handler()
+    assert attempts == [{"kind": "transport", "phase": "prompt", "result": "ok"}] * threads
+    assert root_phase == "llm"
+
+
+def test_시도_몸통이_끝나면_ok_예외가_나면_클래스_이름을_적고_같은_예외가_다시_난다():
+    class Boom(Exception):
+        pass
+
+    boom = Boom("메시지는 적지 않는다")
+
+    @timing.timed("weekly", lambda line: None)
+    def handler():
+        with timing.attempt("transport"):
+            pass
+        with pytest.raises(Boom) as raised, timing.attempt("repair"):
+            raise boom
+        assert raised.value is boom
+        return timing.current().attempts
+
+    attempts = handler()
+    assert attempts == [
+        {"kind": "transport", "phase": "db_read", "result": "ok"},
+        {"kind": "repair", "phase": "db_read", "result": "Boom"},
+    ]
+    assert "메시지" not in str(attempts)

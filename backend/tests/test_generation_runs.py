@@ -7,6 +7,7 @@
 """
 
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -114,6 +115,26 @@ def assert_forward(kind, seen):
     assert [order.index(stage) for stage in seen] == sorted({order.index(s) for s in seen}), seen
 
 
+_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_PERIOD_KEY = re.compile(r"m\d\d_m\d\d")
+_ATTEMPT_FIELDS = {"kind", "phase", "period", "attempt", "result"}
+
+
+def assert_attempts_shape(attempts):
+    """`attempts` 의 각 줄은 정해진 칸만 갖고 값은 식별자 · 구간 키 · 정수다. 메시지가 못 든다.
+
+    영문 식별자만 받으므로 한글 오류 문장 · 반 이름 · 요청 사항이 섞이면 여기서 걸린다.
+    """
+    for line in attempts:
+        assert {"kind", "phase", "result"} <= set(line) <= _ATTEMPT_FIELDS, line
+        assert line["kind"] in ("period", "transport", "repair"), line
+        assert all(_NAME.fullmatch(line[key]) for key in ("kind", "phase", "result")), line
+        assert ("period" in line) == ("attempt" in line) == (line["kind"] == "period"), line
+        if "period" in line:
+            assert _PERIOD_KEY.fullmatch(line["period"]), line
+            assert type(line["attempt"]) is int and line["attempt"] in (1, 2), line
+
+
 def spy_masked_memo(monkeypatch, module):
     """`module` 이 `with_masked_memo` 에 넘긴 provider 를 모은다. 동작은 진짜 그대로다.
 
@@ -198,6 +219,44 @@ def test_provider_를_지날_때마다_요청의_프롬프트_판을_적고_수�
     answers, prompts = handler()
     assert answers == ["weekly-v1", "weekly-repair-v1", "weekly-v1", None]  # 답은 그대로 돌아온다
     assert prompts == ["weekly-v1", "weekly-repair-v1"]
+
+
+def test_수리_구간에서_부른_호출만_수리_시도로_적고_답과_예외는_그대로다():
+    class Boom(Exception):
+        pass
+
+    boom = Boom("메시지는 적지 않는다")
+
+    class Provider:
+        def __init__(self, error=None):
+            self.error = error
+
+        def generate_weekly(self, request):
+            if self.error:
+                raise self.error
+            return "답"
+
+    assert PromptNoted(Provider()).generate_weekly(_Request("{}")) == "답"  # 실행 밖은 그냥 부른다
+
+    @timing.timed("weekly", lambda line: None)
+    def handler():
+        provider = PromptNoted(Provider())
+        timing.phase("prompt")
+        first = provider.generate_weekly(_Request("{}", "weekly-v1"))  # 첫 호출은 수리가 아니다
+        timing.phase("repair")
+        repaired = provider.generate_weekly(_Request("{}", "weekly-repair-v1"))
+        with pytest.raises(Boom) as raised:
+            PromptNoted(Provider(boom)).generate_weekly(_Request("{}", "weekly-repair-v1"))
+        assert raised.value is boom
+        return (first, repaired), timing.current().attempts
+
+    answers, attempts = handler()
+    assert answers == ("답", "답")
+    assert attempts == [
+        {"kind": "repair", "phase": "repair", "result": "ok"},
+        {"kind": "repair", "phase": "repair", "result": "Boom"},
+    ]
+    assert_attempts_shape(attempts)
 
 
 def test_가명_치환을_못_지난_요청의_판은_남지_않는다():
@@ -320,6 +379,7 @@ def test_헤더를_붙인_생성은_새_연결로_읽어도_한_줄이고_조회
     assert (row.kind, row.mode, row.model, row.llm_calls) == ("annual_theme", "mock", None, 0)
     assert (row.center_id, row.class_id) == (committed.center, committed.klass)
     assert row.prompt_versions == [ANNUAL_SUBTHEMES_PROMPT_VERSION]  # mock 은 소주제 판 하나
+    assert row.attempts is None  # 다시 한 일이 없으면 비어 있다
     assert {"db_read", "save"} <= set(row.phase_ms)
     assert row.finished_at > row.started_at
 
@@ -334,6 +394,7 @@ def test_헤더를_붙인_생성은_새_연결로_읽어도_한_줄이고_조회
         None,
     )
     assert "center_id" not in body
+    assert body["attempts"] is None
     # 기록에 반 이름 · 요청 사항 · 아이 이름이 들어갈 길이 없다 — 숫자와 이름만이다.
     assert "기록반" not in got.text
 
@@ -361,6 +422,23 @@ def test_판이_없는_끝난_줄의_prompt_versions_는_jsonb_null_이_아니�
         is_null, kind = session.execute(
             text(
                 "SELECT prompt_versions IS NULL, jsonb_typeof(prompt_versions) "
+                "FROM generation_runs WHERE id = :id"
+            ),
+            {"id": rid},
+        ).one()
+    assert (is_null, kind) == (True, None)
+
+
+def test_시도가_없는_끝난_줄의_attempts_는_jsonb_null_이_아니라_SQL_NULL_이다(committed):
+    rid = uuid.uuid4()
+    _post_annual(committed)
+    assert _post_annual(committed, rid).status_code == 409  # 구간을 부르기 전에 끝난다
+
+    # 위 테스트와 같은 이유 — ORM 은 둘 다 None 으로 읽는다.
+    with Session(engine) as session:
+        is_null, kind = session.execute(
+            text(
+                "SELECT attempts IS NULL, jsonb_typeof(attempts) "
                 "FROM generation_runs WHERE id = :id"
             ),
             {"id": rid},
