@@ -110,10 +110,12 @@ export default function DocumentEditor({
   initial,
   onSave,
   server,
+  onEditStateChange,
 }: {
   initial: SavedDocument;
   onSave: (doc: SavedDocument, expected: SavedDocument) => boolean;
   server?: ServerDocumentActions;
+  onEditStateChange?: (state: { dirty: boolean; pending: boolean }) => void;
 }) {
   const [baseline, setBaseline] = useState(initial);
   const [doc, setDoc] = useState(initial);
@@ -192,6 +194,14 @@ export default function DocumentEditor({
     (!!server && !imported && ["observation", "dailyLog", "weeklyLog"].includes(doc.kind));
   // 서버 요청 중에는 입력·저장·확정·삭제가 서로 끼어들지 못한다.
   const working = busy || hwpx.exporting || !!server?.pending;
+  const dirty =
+    editable &&
+    (JSON.stringify(doc.sections) !== JSON.stringify(baseline.sections) ||
+      doc.classNote !== baseline.classNote ||
+      doc.reviewNote !== baseline.reviewNote);
+  useEffect(() => {
+    onEditStateChange?.({ dirty, pending: working });
+  }, [dirty, working, onEditStateChange]);
   function change(index: number, body: string) {
     setDoc((prev) => ({
       ...prev,

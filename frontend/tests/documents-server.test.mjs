@@ -1401,9 +1401,10 @@ const evaluate = (code, modules) => {
   return compiledModule.exports;
 };
 
-function editorHarness(selection) {
+function editorHarness(selection, onEditStateChange) {
   const slots = [];
   let cursor = 0;
+  const effects = [];
   const state = (initial) => {
     const slot = cursor++;
     if (!(slot in slots)) slots[slot] = typeof initial === "function" ? initial() : initial;
@@ -1419,7 +1420,7 @@ function editorHarness(selection) {
     react: {
       useState: state,
       useRef: (initial) => state(() => ({ current: initial }))[0],
-      useEffect: () => {},
+      useEffect: (effect) => effects.push(effect),
     },
     "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
     "next/link": { __esModule: true, default: "link" },
@@ -1446,6 +1447,7 @@ function editorHarness(selection) {
     const current = selection.get();
     tree = Editor({
       initial: current.detail,
+      onEditStateChange,
       onSave: () => {
         throw new Error("Unexpected local save");
       },
@@ -1460,6 +1462,7 @@ function editorHarness(selection) {
         reload: selection.reload,
       },
     });
+    effects.splice(0).forEach((effect) => effect());
   }
   const all = (node) => {
     if (!node || typeof node !== "object") return [];
@@ -1483,6 +1486,44 @@ function editorHarness(selection) {
     text: () => content(tree),
   };
 }
+
+test("일지 편집 상태는 저장 실패 뒤에도 미저장으로 남고 성공 뒤에만 해제된다", async () => {
+  let failing = true;
+  const saving = deferred();
+  const selection = createSelection(
+    {
+      get: async () => doc(1),
+      update: async (_id, input) => {
+        if (failing) {
+          await saving.promise;
+          throw new Error("저장 실패");
+        }
+        return doc(1, { ...input, updatedAt: "t1" });
+      },
+    },
+    describe,
+  );
+  selection.select("document:1", 1);
+  await tick();
+  const states = [];
+  const editor = editorHarness(selection, (state) => states.push(state));
+  assert.deepEqual(states.at(-1), { dirty: false, pending: false });
+  editor.textarea().props.onChange({ target: { value: "보존할 해석" } });
+  editor.render();
+  assert.deepEqual(states.at(-1), { dirty: true, pending: false });
+  const request = editor.button("초안 저장").props.onClick();
+  editor.render();
+  assert.deepEqual(states.at(-1), { dirty: true, pending: true });
+  saving.resolve();
+  await request;
+  editor.render();
+  assert.deepEqual(states.at(-1), { dirty: true, pending: false });
+  assert.equal(editor.textarea().props.value, "보존할 해석");
+  failing = false;
+  await editor.button("초안 저장").props.onClick();
+  editor.render();
+  assert.deepEqual(states.at(-1), { dirty: false, pending: false });
+});
 
 test("실제 편집기는 STALE_WRITE와 reload 실패 때 입력을 보존하고 명시적 성공 뒤 최신 문서로 복구한다", async () => {
   let gets = 0;

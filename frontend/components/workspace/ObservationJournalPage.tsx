@@ -198,6 +198,7 @@ export default function ObservationJournalPage() {
                           type="button"
                           className={ws.recordKid}
                           aria-pressed={c.id === childId}
+                          disabled={busy}
                           onClick={() => {
                             setChildId(c.id);
                             setLeft([]);
@@ -216,6 +217,7 @@ export default function ObservationJournalPage() {
                       <input
                         type="date"
                         aria-label="시작일"
+                        disabled={busy}
                         onClick={(e) => openPicker(e.currentTarget)}
                         value={start}
                         max={end || today()}
@@ -228,6 +230,7 @@ export default function ObservationJournalPage() {
                       <input
                         type="date"
                         aria-label="종료일"
+                        disabled={busy}
                         onClick={(e) => openPicker(e.currentTarget)}
                         value={end}
                         min={start}
@@ -258,6 +261,7 @@ export default function ObservationJournalPage() {
                             <label>
                               <input
                                 type="checkbox"
+                                disabled={busy}
                                 checked={!left.includes(r.id)}
                                 onChange={(e) =>
                                   setLeft((prev) =>
@@ -312,7 +316,7 @@ export default function ObservationJournalPage() {
                 <ul className={ws.jrDocs}>
                   {mine.map((d) => (
                     <li key={d.id}>
-                      <button type="button" onClick={() => setOpenId(d.id)}>
+                      <button type="button" disabled={busy} onClick={() => setOpenId(d.id)}>
                         <b>{d.title}</b>
                         <small>
                           {d.start === d.end ? d.start : `${d.start} ~ ${d.end}`} ·{" "}

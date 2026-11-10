@@ -79,6 +79,8 @@ e2e (playwright)               실제 DB 로
 
 ## 화면 경로 E2E
 
+- 타반 놀이 월간 누락·관찰일지 생성 중 선택 경합·검색 실패와 빈 결과 혼동·기간 이동 뒤 옛 일지 유지에 회귀 검사를 두고, 미저장·저장 실패·이동 취소도 확인한다 — `frontend/tests/cross-review-regressions.test.mjs` · `frontend/tests/routines-server.test.mjs` · `frontend/tests/documents-server.test.mjs`
+
 - 연간 → 월간 → 주간계획안을 API 로 건너뛰지 않고 화면으로 만들고 · 고치고 · 확정해 한글로 받는다 — `frontend/e2e/mentor-pilot.spec.ts` · PR #402
 - 주간 보육일지 확정본을 한글로 받아 교사가 고친 글이 파일 안에 있는지 연다 — `frontend/e2e/routines.spec.ts` 「주간 보육일지 — … 한글 다운로드」
 
