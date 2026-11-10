@@ -10,6 +10,7 @@ import {
 import { ApiError, MswTransportError } from "../api/client";
 import { importDocument, isRecordKind } from "../api/documents";
 import { accountStorageKey } from "../auth/demo-session";
+import { captureSession, SessionChangedError } from "../auth/request-session";
 import { withoutDocumentBodies } from "../privacy/browser-storage";
 const KEY = "saessak.workspace.v1";
 const EVENT = "saessak-workspace-change";
@@ -99,6 +100,15 @@ export function updateWorkspace(update: (data: Workspace) => Workspace) {
 }
 /** 옮기지 못하고 지운 예전 증빙 건수. 숫자만 둔다 — 사람을 식별하지 않는다. 보관함이 한 번 알린다. */
 export const DROPPED_IMPORTS = "saessak.legacyImportsDropped";
+/**
+ * 옮기기가 무언가를 옮기거나 지운 뒤 한 번 울린다. 보관함은 옮기기를 기다리지 않고 먼저 열리므로
+ * 이 신호를 받아 목록과 「못 옮긴 건수」 안내를 다시 읽는다. 같은 탭의 저장은 storage 이벤트가 없다.
+ */
+export const LEGACY_IMPORTS_MOVED = "saessak-legacy-imports-moved";
+export function onLegacyImportsMoved(listener: () => void) {
+  window.addEventListener(LEGACY_IMPORTS_MOVED, listener);
+  return () => window.removeEventListener(LEGACY_IMPORTS_MOVED, listener);
+}
 
 /** 예전 증빙 하나를 지금의 등록(§11 「증빙 등록」)으로 보낸다. 그때도 교사가 원문 확인을 눌렀다. */
 function importLegacy(doc: SavedDocument) {
@@ -148,6 +158,9 @@ function retryLater(e: unknown) {
 }
 async function moveAll() {
   const key = accountStorageKey(KEY);
+  // 시작한 계정의 증빙은 그 계정 세션으로만 올린다. 중간에 로그아웃 · 계정 전환이 일어나면
+  // 지우지도 보내지도 않고 멈춘다 — 다음 문서를 새 계정의 반 · 아동 번호로 보내면 남의 원에 들어간다.
+  const session = captureSession();
   let pending: SavedDocument[] = [];
   try {
     pending = JSON.parse(window.localStorage.getItem(key) ?? "{}").documents.filter(
@@ -155,14 +168,19 @@ async function moveAll() {
     );
   } catch {}
   let dropped = 0;
+  let changed = false;
   for (const doc of pending) {
+    if (!session.isCurrent()) break;
     try {
       await importLegacy(doc);
     } catch (e) {
-      // 망 끊김 · 서버 일시 장애 · 로그인 만료는 문서 탓이 아니다 — 지우지 않고 다음에 다시 옮긴다.
-      if (retryLater(e)) break;
+      // 망 끊김 · 서버 일시 장애 · 로그인 만료 · 세션 바뀜은 문서 탓이 아니다 — 지우지 않고 다음에 다시 옮긴다.
+      if (e instanceof SessionChangedError || retryLater(e)) break;
       dropped += 1;
     }
+    // 응답을 기다리는 사이 계정이 바뀌었으면 지우지 않는다. 옮겼더라도 다음에 한 번 더 올라갈 뿐이다.
+    if (!session.isCurrent()) break;
+    changed = true;
     const data = JSON.parse(window.localStorage.getItem(key) ?? "{}");
     const documents = Array.isArray(data?.documents)
       ? data.documents.filter((d: SavedDocument) => d?.id !== doc.id)
@@ -172,7 +190,9 @@ async function moveAll() {
       JSON.stringify(withoutDocumentBodies({ ...data, documents }, true)),
     );
   }
-  if (dropped) window.sessionStorage.setItem(DROPPED_IMPORTS, String(dropped));
+  if (dropped && session.isCurrent())
+    window.sessionStorage.setItem(DROPPED_IMPORTS, String(dropped));
+  if (changed && session.isCurrent()) window.dispatchEvent(new Event(LEGACY_IMPORTS_MOVED));
 }
 
 export function useWorkspace() {
