@@ -323,17 +323,19 @@ test("A B C G H J — 홈 진입, 7줄을 떠날 때 올림, S-J2 생성·확정
     note(page, "G", { documentId, selectedIds: doc.sources.map((s: { id: number }) => s.id) });
   });
   await test.step("H: 브라우저에서 문서를 확정하고 두 근거 수정은 1건으로 집계", async () => {
-    await page.getByRole("button", { name: /기본 항목 검사|AI 검증하기/ }).click();
-    await expect(page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ })).toHaveCount(
-      1,
-    );
-    await page.getByRole("button", { name: "검사 결과 접기", exact: true }).click();
-    await expect(page.getByText(/기본 항목은 통과했어요/)).toHaveCount(0);
-    await page.getByRole("button", { name: /기본 항목 검사|AI 검증하기/ }).click();
+    // 일과 칠판 밑 일지는 칠판 · 쪽지 모양이다. 근거 날짜를 줄마다 되풀이하지 않고 한 번 센다.
+    await expect(page.getByText(/^근거 \d+건$/)).toHaveCount(1);
+    // 지우기는 휴지통 단추 하나뿐이다.
+    await expect(page.getByRole("button", { name: "일지 삭제", exact: true })).toHaveCount(1);
+    await expect(page.getByRole("checkbox", { name: /원본 기록과 사실이/ })).toHaveCount(1);
+    // 검증을 누르면 끝났다는 표시가 남는다. 테스트 서버는 AI 판정을 끄고 돈다.
+    await page.getByRole("button", { name: "AI 검증하기", exact: true }).click();
     await expect(page.getByText(/기본 항목은 통과했어요/)).toBeVisible();
-    await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
-    await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
-    await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "다시 검증하기", exact: true })).toBeVisible();
+    await page.getByRole("checkbox", { name: /원본 기록과 사실이/ }).check();
+    await page.getByRole("button", { name: "확정", exact: true }).click();
+    await expect(page.getByRole("article", { name: "확정한 일지" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "다시 수정", exact: true })).toBeVisible();
     expect(dbDocument(documentId!)).toEqual({ id: documentId!, status: "CONFIRMED", stale: false });
     await page.getByRole("link", { name: "홈", exact: true }).click();
     // 이미 적힌 일과가 있으면 홈의 일과 줄 자체가 고치러 가는 길이다.

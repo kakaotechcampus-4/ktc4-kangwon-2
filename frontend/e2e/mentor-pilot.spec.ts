@@ -312,14 +312,12 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   const generated = await response;
   expect(generated.status()).toBe(201);
   const created = await generated.json();
-  await expect(
-    page.getByRole("link", { name: "일과 기록에서 고쳐 주세요 →", exact: true }),
-  ).toHaveAttribute("href", /\/routines\?date=.*&class_id=\d+/);
   expect(created.child_id).toBeNull();
-  // 일지는 칠판 밑에 바로 펼쳐진다. 그 자리에서 확정 · 내려받기까지 간다.
+  // 일지는 칠판 밑에 바로 펼쳐진다. 사실은 일과 쪽지로 보이고, 고치려면 위 칠판으로 올라간다.
   await expect(page.getByRole("region", { name: /보육일지$/ })).toBeVisible();
-  await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
-  await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
+  await expect(page.getByRole("button", { name: "칠판에서 고치기 ↑", exact: true })).toBeVisible();
+  await page.getByRole("checkbox", { name: /원본 기록과 사실이/ }).check();
+  await page.getByRole("button", { name: "확정", exact: true }).click();
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "한글 파일로 내려받기", exact: true }).click();
