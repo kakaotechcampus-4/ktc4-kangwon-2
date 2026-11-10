@@ -310,6 +310,15 @@ select.input {
 .secondary:hover {
   background: var(--pg-primary-tint);
 }
+/* 삭제 단추 — .secondary 와 같이 쓴다. 경고 토큰만 쓴다: 글자 alert-ink(흰 종이 8.1:1 · 노랑 쪽지 6.5:1),
+   누르기 전 바탕 alert-soft(글자와 5.8:1). 다른 단추와 모양은 같고 색만 다르다(PM). */
+.danger {
+  border-color: var(--pg-alert-line);
+  color: var(--pg-alert-ink);
+}
+.danger:hover:not(:disabled) {
+  background: var(--pg-alert-soft);
+}
 .page button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -330,6 +339,34 @@ select.input {
 .message {
   background: var(--pg-primary-tint);
   color: var(--pg-success);
+}
+/* 닫을 수 있는 알림 — 글 오른쪽에 × (수민 점검). 휴대폰은 tap44 로 누르는 자리를 44px 까지 넓힌다. */
+.messageBar {
+  position: relative;
+  margin: 16px 0;
+}
+.messageBar > p {
+  margin: 0;
+  padding-right: 52px;
+}
+.messageClose {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  translate: 0 -50%;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--pg-ink-soft);
+  cursor: pointer;
+}
+.messageClose:hover {
+  background: color-mix(in srgb, var(--pg-primary) 12%, transparent);
+  color: var(--pg-ink);
 }
 .error {
   background: var(--pg-peach-tint);

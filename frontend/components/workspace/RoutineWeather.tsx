@@ -33,7 +33,7 @@ export default function RoutineWeather({
       <button
         type="button"
         className={css.weatherButton}
-        aria-label={sky ? `날씨 ${sky} — 바꾸기` : "날씨 고르기"}
+        aria-label={sky ? `날씨 ${sky}, 바꾸기` : "날씨 고르기"}
         aria-expanded={open}
         title={sky ?? "날씨 고르기"}
         disabled={disabled}

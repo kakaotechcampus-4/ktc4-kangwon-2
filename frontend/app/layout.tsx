@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { fontClassName } from "@/lib/fonts";
 import MockProvider from "@/msw/MockProvider";
@@ -22,6 +22,16 @@ export const metadata: Metadata = {
    * 도메인을 옮기면 구글이 새 값을 준다. 그때 이 줄을 바꾼다.
    */
   verification: { google: "mLlrR5jcO4fPHP_DRMfXCW7UVNcCImmBR9XtwUes2f4" },
+};
+
+/**
+ * 노치 · 홈 바가 있는 휴대폰에서 화면 끝까지 쓰고, 가릴 자리는 env(safe-area-inset-*) 로 비운다.
+ * cover 가 없으면 그 값이 늘 0 이라 하단 메뉴 · 온보딩 아래 단추의 safe-area 여백이 먹지 않는다.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

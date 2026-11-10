@@ -112,7 +112,7 @@ async function pickChild(page: Page) {
   await expect(first).toHaveAttribute("aria-pressed", "true");
 }
 
-/** 저장 단추. 글자가 고른 아이 이름을 담으므로(「박서준 기록으로 남기기」) 꼬리말로 찾는다. */
+/** 저장 단추 「남기기」. */
 function saveButton(page: Page) {
   return page.getByRole("button", { name: /남기기$/ });
 }
