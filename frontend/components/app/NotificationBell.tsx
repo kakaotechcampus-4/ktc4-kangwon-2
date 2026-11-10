@@ -74,6 +74,8 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   // 늦게 온 옛 응답이 읽음 처리한 숫자를 되살리지 않게 요청마다 번호를 매긴다.
   const latest = useRef(0);
+  // 읽음 응답을 기다리는 동안 새 알림을 누르거나 화면을 옮기면, 먼저 누른 이동은 버린다.
+  const navTurn = useRef(0);
 
   const load = useCallback(() => {
     const turn = ++latest.current;
@@ -103,6 +105,14 @@ export default function NotificationBell() {
     };
   }, [pathname, load]);
 
+  // 화면을 옮기거나 종이 사라지면 아직 기다리는 이동을 무효로 한다 — 늦게 끝난 옛 클릭이 사용자를 끌고 가지 않게.
+  useEffect(
+    () => () => {
+      navTurn.current += 1;
+    },
+    [pathname],
+  );
+
   const unread = items?.filter((item) => item.read_at === null) ?? [];
 
   /** 숫자는 바로 줄이고, 서버가 받은 뒤 다시 받는다. 보내지 못해도 화면은 계속 쓴다. */
@@ -121,7 +131,10 @@ export default function NotificationBell() {
 
   async function go(item: NotificationItem) {
     panel.current?.hidePopover();
+    const turn = ++navTurn.current;
     await markRead([item.id]);
+    // 읽음은 끝까지 보내되, 그 사이 다른 알림을 눌렀거나 화면이 바뀌었으면 이동하지 않는다.
+    if (turn !== navTurn.current) return;
     // 쿼리만 바뀌는 이동은 Next 가 화면을 다시 세우지 않는다 — 보관함에 있을 때만 통째로 옮긴다.
     if (pathname === "/documents") window.location.assign(hrefOf(item));
     else router.push(hrefOf(item));
