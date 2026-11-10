@@ -202,13 +202,20 @@ def unmask_from(text: str, table: NameTable, original: str) -> str:
         return "(?:" + "|".join(map(re.escape, options)) + ")"
 
     pattern = "".join(spot(i, p) for i, p in enumerate(parts))
-    # 겹치는 자리까지 모두: 각 시작점에서 맞는 가장 긴 글.
-    spans = [
-        (m.start(), m.start() + len(m[1]), m[1]) for m in re.finditer(f"(?=({pattern}))", original)
-    ]
-    spans = [s for s in spans if s[2]]
-    # 앞에서 시작해 이 자리를 덮는 더 긴 맞은 자리가 있으면 그 안에 든 것이다.
-    outer = [s for s in spans if not any(o[0] < s[0] and o[1] >= s[1] for o in spans)]
-    if not outer:
+    # 겹치는 자리까지 모두 훑는다: 각 시작점에서 맞는 가장 긴 글. 시작점은 앞에서부터 온다.
+    # 앞에서 시작한 맞은 자리가 이 자리 끝까지 덮으면 그 안에 든 것이다 — 지금까지의 가장 먼 끝
+    # 하나만 들고 가면 된다(원문이 길어도 한 번 훑기).
+    best: tuple[int, int, str] | None = None
+    reach = -1
+    for m in re.finditer(f"(?=({pattern}))", original):
+        found = m[1]
+        if not found:
+            continue
+        end = m.start() + len(found)
+        if reach < end:
+            if best is None or (len(found), m.start()) < (len(best[2]), best[0]):
+                best = (m.start(), end, found)
+            reach = end
+    if best is None:
         return unmask_as_written(text, table, original)
-    return min(outer, key=lambda s: (len(s[2]), s[0]))[2]
+    return best[2]
