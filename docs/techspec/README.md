@@ -11,7 +11,7 @@
 | [agent.md](agent.md) | 에이전트 설계 — 누가 무엇을 정하나, 호출 구조, 계획 변경 · 재개, 실패 처리 |
 | [validation.md](validation.md) | 검증 — LLM 출력을 저장 전에 거르는 장치와 그것을 고정한 테스트 |
 | [evaluation.md](evaluation.md) | 평가 — 품질을 무엇으로 어떻게 쟀나, 측정 도구를 어떻게 검증했나 |
-| [improvement.md](improvement.md) | 개선 기록 — 문제 → 바꾼 것 → 다시 잰 결과 → 대가 (놀이 연간 v2 · 주간 후보) |
+| [improvement.md](improvement.md) | 개선 기록 — 문제 → 바꾼 것 → 다시 잰 결과 → 대가 (놀이 연간 v2 · 주간 후보) · 고도화로 남긴 한계(§3) |
 
 범위는 계획안(연간 · 월간 · 주간)이다. 일지(보육일지 · 관찰일지) AI는 [docs/evaluation/06](../evaluation/06-ai-quality.md)에 있다.
 근거는 develop의 경로 · ADR · PR이다.
