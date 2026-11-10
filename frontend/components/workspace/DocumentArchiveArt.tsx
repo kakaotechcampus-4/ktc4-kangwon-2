@@ -491,43 +491,6 @@ export function CareSunArt({ className }: { className?: string }) {
   );
 }
 
-/** 날짜 카드의 작은 새싹·하트·꽃. 상태나 평가를 나타내지 않는다. */
-export function CareDayDecor({ variant, className }: { variant: number; className?: string }) {
-  const ornaments = [
-    <g key="sprout" fill="#bbd6ae">
-      <path d="M23 42V25" fill="none" stroke="#a5c59e" strokeWidth="3" strokeLinecap="round" />
-      <path d="M23 31C4 32 5 15 13 19c8 2 10 12 10 12M23 29c1-15 16-18 16-9-1 8-16 9-16 9" />
-    </g>,
-    <path
-      key="heart"
-      d="M24 39C2 26 7 10 16 15c4 2 7 7 8 9 5-16 18-17 17-4-1 8-9 15-17 19"
-      fill="#f5bdb5"
-    />,
-    <g key="flower" fill="#f4ce86">
-      <ellipse cx="24" cy="13" rx="7" ry="10" />
-      <ellipse cx="34" cy="23" rx="10" ry="7" />
-      <ellipse cx="28" cy="34" rx="7" ry="10" />
-      <ellipse cx="14" cy="31" rx="9" ry="7" />
-      <ellipse cx="12" cy="19" rx="9" ry="7" />
-      <circle cx="23" cy="24" r="5" fill="#fffaf0" />
-    </g>,
-    <g key="leaves" fill="#b5d2aa">
-      <path d="M24 43c0-11 4-23 11-31" fill="none" stroke="#a7c79f" strokeWidth="2" />
-      <path d="M27 31c-19-1-23-16-14-14 8 1 14 14 14 14M28 27C23 6 40 2 39 13c0 8-11 14-11 14" />
-    </g>,
-    <path
-      key="violet"
-      d="M24 39C4 28 5 11 15 16c4 1 7 6 9 9 3-16 17-19 17-5-1 9-11 16-17 19"
-      fill="#cdbde3"
-    />,
-  ];
-  return (
-    <svg className={className} viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-      {ornaments[variant % ornaments.length]}
-    </svg>
-  );
-}
-
 /** 하단 작성 카드용 공책. 기존 인라인 SVG와 같은 파스텔 재료를 사용한다. */
 export function CareNotebookArt({ className }: { className?: string }) {
   return (
