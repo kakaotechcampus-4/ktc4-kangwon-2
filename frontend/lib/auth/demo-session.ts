@@ -19,7 +19,7 @@ export function accountStorageKey(base: string): string {
 }
 
 /** 저장소를 읽기만 해서 로그인 상태를 본다. 정리는 하지 않는다. */
-function signedIn(): boolean {
+export function signedIn(): boolean {
   if (typeof window === "undefined") return false;
   try {
     const email = currentAccountEmail();
