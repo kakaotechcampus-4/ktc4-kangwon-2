@@ -1,0 +1,4271 @@
+{
+  "status": "PENDING_HUMAN_REVIEW",
+  "note": "도서관 정보나루 제목 검색 그림책 후보(ADR-072 그림책 보완). Actions run 42775776659 수집. 제목 · 지은이 · 출판사 · 연도 · ISBN · 걸린 주제 낱말만 담는다(소개글 · 표지 · 링크 · 대출 수 없음). 사람이 초등용 · 이상한 책을 지운 뒤 승인한다.",
+  "collected_on": "2026-11-10",
+  "count": 250,
+  "items": [
+    {
+      "source": "data4library",
+      "source_id": "9791163270232",
+      "title": "우리가 만든 나라 이름은 '전쟁'",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "에마 루이스 글·그림 ;김배경 옮김",
+        "publisher": "책속물고기",
+        "publication_year": "2019",
+        "words": [
+          "우리나라"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788911030033",
+      "title": "멋쟁이 낸시의 학교생활 100일",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "제인 오코너 글 ;김영선 옮김",
+        "publisher": "국민서관",
+        "publication_year": "2012",
+        "words": [
+          "생활"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788984286269",
+      "title": "할머니, 어디 가요? 밤 주우러 간다! :옥이네 가을 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "조혜란 그리고 씀",
+        "publisher": "보리",
+        "publication_year": "2010",
+        "words": [
+          "가을"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788958285106",
+      "title": "가을 운동회",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "임광희 글·그림",
+        "publisher": "사계절출판사",
+        "publication_year": "2010",
+        "words": [
+          "가을",
+          "운동"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788984883994",
+      "title": "나의 봄 여름 가을 겨울",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "린리쥔 글;심봉희 옮김",
+        "publisher": "베틀북",
+        "publication_year": "2006",
+        "words": [
+          "가을"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788936454951",
+      "title": "할머니의 여름휴가",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "안녕달",
+        "publisher": "창비",
+        "publication_year": "2016",
+        "words": [
+          "여름"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788984285989",
+      "title": "할머니, 어디가요? 앵두 따러 간다! :옥이네 여름 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "조혜란 그리고 씀",
+        "publisher": "보리",
+        "publication_year": "2009",
+        "words": [
+          "여름"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791160949599",
+      "title": "두더지의 여름 :김상근 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 김상근",
+        "publisher": "사계절(사계절출판사)",
+        "publication_year": "2022",
+        "words": [
+          "여름"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788997279432",
+      "title": "수박 동네 수박 대장",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "히라타 마사히로 글 ;김영주 옮김",
+        "publisher": "북스토리아이",
+        "publication_year": "2017",
+        "words": [
+          "동네"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791185299945",
+      "title": "우리 동네 만화방",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "송언 글 ;강화경 그림",
+        "publisher": "키다리",
+        "publication_year": "2014",
+        "words": [
+          "동네"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791186075296",
+      "title": "우리 동네 달걀왕",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "오하나 글·그림",
+        "publisher": "파란자전거",
+        "publication_year": "2015",
+        "words": [
+          "동네"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791164139880",
+      "title": "흔한남매 겨울밤 대소동 :흔한남매 스페셜 에디션 겨울",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "원작: 흔한남매 ;그림: 유난희",
+        "publisher": "미래엔",
+        "publication_year": "2021",
+        "words": [
+          "겨울"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788936455965",
+      "title": "겨울 이불 :안녕달 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "지은이: 안녕달",
+        "publisher": "창비",
+        "publication_year": "2023",
+        "words": [
+          "겨울"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788984286047",
+      "title": "할머니 어디 가요? 굴 캐러 간다! :옥이네 겨울 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "조혜란 그리고 씀",
+        "publisher": "보리",
+        "publication_year": "2010",
+        "words": [
+          "겨울",
+          "겨울이야기"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788984143364",
+      "title": "미미의 스웨터 :착한 소비, 환경과 개성을 살리는 재탄생이 좋아요!",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "정해영 지음",
+        "publisher": "논장",
+        "publication_year": "2018",
+        "words": [
+          "환경"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791187856481",
+      "title": "엉덩이 날씨",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 사카마키 메구미 ;옮긴이: 장현주",
+        "publisher": "보랏빛소",
+        "publication_year": "2018",
+        "words": [
+          "날씨"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791187287704",
+      "title": "비밀 물고기 :나의 첫 반려동물",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "김성은 글 ;조윤주 그림",
+        "publisher": "천개의바람",
+        "publication_year": "2018",
+        "words": [
+          "동물"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788984140493",
+      "title": "동물원",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "앤서니 브라운 글·그림;장미란 옮김",
+        "publisher": "논장",
+        "publication_year": "2002",
+        "words": [
+          "동물",
+          "동물원"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788952780164",
+      "title": "동물원 가는 길",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "존 버닝햄 그림·글 ;이상희 옮김",
+        "publisher": "시공사",
+        "publication_year": "2014",
+        "words": [
+          "동물",
+          "동물원"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788955824476",
+      "title": "친구 사귀기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "김영진 글·그림",
+        "publisher": "길벗어린이",
+        "publication_year": "2018",
+        "words": [
+          "친구",
+          "새친구"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788965462385",
+      "title": "엘 데포 :특별한 아이와 진실한 친구 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 시시 벨 ;옮김: 고정아",
+        "publisher": "밝은미래",
+        "publication_year": "2016",
+        "words": [
+          "친구",
+          "새친구"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788952754851",
+      "title": "무지개 물고기와 신기한 친구들",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "마르쿠스 피스터 그림·글 ;조경수 옮김",
+        "publisher": "시공사",
+        "publication_year": "2009",
+        "words": [
+          "친구",
+          "새친구"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788986621198",
+      "title": "솔이의 추석 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 이억배",
+        "publisher": "길벗어린이",
+        "publication_year": "2011",
+        "words": [
+          "추석"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791193534267",
+      "title": "호랑호랑 호랑이 추석",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "봄구름 글·그림",
+        "publisher": "작은코도마뱀",
+        "publication_year": "2025",
+        "words": [
+          "추석"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788975606236",
+      "title": "솔이의 추석 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "이억배 글 그림",
+        "publisher": "길벗어린이",
+        "publication_year": "1995",
+        "words": [
+          "추석"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158361174",
+      "title": "하얀 하루",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "김기정 글 ;문종훈 그림",
+        "publisher": "책읽는곰",
+        "publication_year": "2018",
+        "words": [
+          "하루"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788992505581",
+      "title": "멋진 하루",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "안신애 글·그림",
+        "publisher": "고래뱃속",
+        "publication_year": "2016",
+        "words": [
+          "하루"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791165731496",
+      "title": "하루 종일 미술시간",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "하세가와 요시후미 지음 ;김소연 옮김",
+        "publisher": "천개의바람",
+        "publication_year": "2021",
+        "words": [
+          "하루"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791193022078",
+      "title": "지구 레스토랑 :조영글 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "지은이: 조영글",
+        "publisher": "M창비(미디어창비)",
+        "publication_year": "2023",
+        "words": [
+          "지구"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788955823608",
+      "title": "비닐봉지 하나가 :지구를 살린 감비아 여인들",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "미란다 폴 글 ;엄혜숙 옮김",
+        "publisher": "길벗어린이",
+        "publication_year": "2016",
+        "words": [
+          "지구"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791195342075",
+      "title": "우주 괴물의 지구 침공",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글/그림: 김호남",
+        "publisher": "센트럴라이즈드",
+        "publication_year": "2019",
+        "words": [
+          "지구"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788934994237",
+      "title": "(미래의) 미라이 :애니메이션 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "호소다 마모루 원작 ;오선이 옮김",
+        "publisher": "김영사",
+        "publication_year": "2019",
+        "words": [
+          "미래"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791164631254",
+      "title": "떡국의 마음 :설날 덕담 한 그릇",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 천미진 ;그림: 강은옥",
+        "publisher": "키즈엠",
+        "publication_year": "2019",
+        "words": [
+          "설날",
+          "떡국"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788994273228",
+      "title": "베트남 설날 장대 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "쩐 꾸옥 글 ;이구용 옮김",
+        "publisher": "정인출판사",
+        "publication_year": "2011",
+        "words": [
+          "설날"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791190007771",
+      "title": "까치 호랑이는 설날이 제일 싫어",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "박경임 글 ;박서영 그림",
+        "publisher": "Who's Got My Tail(후즈갓마이테일)",
+        "publication_year": "2025",
+        "words": [
+          "설날"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158710507",
+      "title": "세상의 모든 나무를 사막에 심는다면 :도시의 운영을 바꾼 한 여성 식물학자의 꼿꼿한 나무 사랑 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "H. 조셉 홉킨스 글 ;김희정 옮김",
+        "publisher": "청어람미디어",
+        "publication_year": "2017",
+        "words": [
+          "식물"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788992492850",
+      "title": "커다란 나무 같은 사람 :식물을 사랑하는 소녀와 식물학자의 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "이세 히데코 글·그림 ;고향옥 옮김",
+        "publisher": "청어람미디어",
+        "publication_year": "2010",
+        "words": [
+          "식물"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788962740318",
+      "title": "삼신 할머니 :전통문화 창작동화",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글쓴이: 정서하 ;그린이: 최보윤",
+        "publisher": "키움",
+        "publication_year": "2011",
+        "words": [
+          "전통"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788990759405",
+      "title": "삼신 할머니 :전통문화 창작동화",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글쓴이: 정서하 ;그린이: 최보윤",
+        "publisher": "키움",
+        "publication_year": "2011",
+        "words": [
+          "전통"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791192697604",
+      "title": "하찮은 물건들의 졸업식 :박서현 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그린이: 박서현",
+        "publisher": "한림출판사",
+        "publication_year": "2023",
+        "words": [
+          "졸업"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158360993",
+      "title": "여행은 제비 항공",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "모토야스 게이지 글·그림 ;윤수정 옮김",
+        "publisher": "책읽는곰",
+        "publication_year": "2018",
+        "words": [
+          "항공"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158362140",
+      "title": "여행은 구구 항공",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "모토야스 게이지 글·그림 ;윤수정 옮김",
+        "publisher": "책읽는곰",
+        "publication_year": "2020",
+        "words": [
+          "항공"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788965463566",
+      "title": "강아지 항공사에 찾아온 무시무시한 손님",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 홍진기",
+        "publisher": "밝은미래",
+        "publication_year": "2020",
+        "words": [
+          "항공"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788961773010",
+      "title": "덕담 :새해, 너를 위한 기도",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 서정홍 ;그림: 곽수진",
+        "publisher": "다림",
+        "publication_year": "2022",
+        "words": [
+          "새해"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791163500438",
+      "title": "새해 아기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "권정생 글 ;우영 그림",
+        "publisher": "단비",
+        "publication_year": "2021",
+        "words": [
+          "새해"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791199396425",
+      "title": "새해에는 복 산타 :김용희 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 김용희",
+        "publisher": "다그림책",
+        "publication_year": "2025",
+        "words": [
+          "새해"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791160943832",
+      "title": "빨간 열매 :이지은 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 이지은",
+        "publisher": "사계절",
+        "publication_year": "2018",
+        "words": [
+          "열매"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791188609192",
+      "title": "열매 하나",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "전현정 쓰고 ;이유정 그림",
+        "publisher": "파란자전거",
+        "publication_year": "2018",
+        "words": [
+          "열매"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788936455323",
+      "title": "(크리스마스 이야기) 열매의 오두막 :윤정주 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 윤정주",
+        "publisher": "창비",
+        "publication_year": "2018",
+        "words": [
+          "열매"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791192655246",
+      "title": "곤충 열차",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 우시쿠보 료타 ;옮김: 김보나",
+        "publisher": "위즈덤하우스",
+        "publication_year": "2023",
+        "words": [
+          "곤충"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788964964910",
+      "title": "곤충 호텔의 비밀",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "클레르 슈바르츠 글·그림 ;김희진 옮김",
+        "publisher": "토토북",
+        "publication_year": "2023",
+        "words": [
+          "곤충"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791159955624",
+      "title": "곤충 찜질방",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "최이레 글·그림",
+        "publisher": "노란돼지",
+        "publication_year": "2026",
+        "words": [
+          "곤충"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788956180342",
+      "title": "인사를 나눠 드립니다 :이한재 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "지은이: 이한재",
+        "publisher": "킨더랜드",
+        "publication_year": "2021",
+        "words": [
+          "나눔"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788997367450",
+      "title": "안 돼 내 거야! :나누는 법을 배우기 위한 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "엘리센다 로카 글 ;김정하 옮김",
+        "publisher": "노란상상",
+        "publication_year": "2015",
+        "words": [
+          "나눔"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788991941618",
+      "title": "나누면서 채워지는 이상한 여행 :탕가피코 강에서 배우는 나눔의 규칙",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "디디에 레비 글 ;마음물꼬 옮김",
+        "publisher": "고래이야기",
+        "publication_year": "2017",
+        "words": [
+          "나눔"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788955823486",
+      "title": "미안하고 고맙고 사랑해",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "김영진 글·그림",
+        "publisher": "길벗어린이",
+        "publication_year": "2016",
+        "words": [
+          "사랑"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791159952050",
+      "title": "아빠 자판기 :아빠, 사랑, 딸, 놀이",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 조경희",
+        "publisher": "노란돼지",
+        "publication_year": "2021",
+        "words": [
+          "사랑"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791157855506",
+      "title": "브로콜리지만 사랑받고 싶어",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "별다름,서영 그림",
+        "publisher": "키다리",
+        "publication_year": "2021",
+        "words": [
+          "사랑"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791157231010",
+      "title": "세상에서 가장 힘센 것 :지구촌 평화 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "오진희 글 ;김재홍 그림",
+        "publisher": "내인생의책",
+        "publication_year": "2014",
+        "words": [
+          "지구촌"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788994975993",
+      "title": "한가위만 같아라",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 무돌",
+        "publisher": "노란돼지",
+        "publication_year": "2015",
+        "words": [
+          "한가위"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791187043607",
+      "title": "감사해요",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글쓴이: 이정원 ;그린이: 임성희",
+        "publisher": "걸음동무",
+        "publication_year": "2020",
+        "words": [
+          "감사"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788998946470",
+      "title": "마음을 비추는 거울 :지혜·자비·용기·감사의 마음을 길러 주는 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글쓴이: 팀 말닉 ;옮긴이: 김선희",
+        "publisher": "담앤북스",
+        "publication_year": "2015",
+        "words": [
+          "감사"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791191007305",
+      "title": "샐리의 감사 편지",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "코트니 샤인멜,강미경 옮김",
+        "publisher": "두레아이들",
+        "publication_year": "2023",
+        "words": [
+          "감사"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791193147153",
+      "title": "아기 다람쥐 라미의 겨울 놀이",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "그린이·글쓴이: 이선영",
+        "publisher": "걸음동무",
+        "publication_year": "2023",
+        "words": [
+          "겨울놀이"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791168341180",
+      "title": "야옹이 수영 교실",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "신현경 글 ;노예지 그림",
+        "publisher": "인플루엔셜",
+        "publication_year": "2023",
+        "words": [
+          "교실",
+          "수영"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788994077215",
+      "title": "양말 들판",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "무라나카 리에 글 ;김지연 옮김",
+        "publisher": "책과콩나무",
+        "publication_year": "2011",
+        "words": [
+          "들판"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791165734664",
+      "title": "랄라 가족의 즐거운 소풍 :봄 들판 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "카지리 미나코 글·그림 ;최은영 옮김",
+        "publisher": "천개의바람",
+        "publication_year": "2023",
+        "words": [
+          "들판"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788991742536",
+      "title": "바람이 머물다 간 들판에",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "이동진 글·그림",
+        "publisher": "봄봄",
+        "publication_year": "2014",
+        "words": [
+          "들판"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788986621891",
+      "title": "아기너구리네 봄맞이",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 권정생 ;그림: 송진헌",
+        "publisher": "길벗어린이",
+        "publication_year": "2012",
+        "words": [
+          "봄맞이"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791185173566",
+      "title": "숲속 동물들의 봄맞이 운동회",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 스토우 아사에 ;옮김: 김수정",
+        "publisher": "키위북스(Kiwibooks)",
+        "publication_year": "2019",
+        "words": [
+          "봄맞이"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788970943800",
+      "title": "봄맞이 대청소",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "코이데 탄 글;예상렬 옮김",
+        "publisher": "한림출판사",
+        "publication_year": "2004",
+        "words": [
+          "봄맞이"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788937814778",
+      "title": "살랑살랑 고개의 약속",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "키무라 유이치 글;김정화 옮김",
+        "publisher": "대한교과서",
+        "publication_year": "2005",
+        "words": [
+          "약속"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788958287728",
+      "title": "약속",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "니콜라 데이비스 글 ;서애경 옮김",
+        "publisher": "사계절",
+        "publication_year": "2015",
+        "words": [
+          "약속"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788958760191",
+      "title": "할아버지의 약속",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "손정원 글;한병호 그림",
+        "publisher": "느림보",
+        "publication_year": "2005",
+        "words": [
+          "약속"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788984880061",
+      "title": "옛날 옛날에 파리 한 마리를 꿀꺽 삼킨 할머니가 살았는데요",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "심스 태백 지음;김정희 옮김",
+        "publisher": "베틀 북",
+        "publication_year": "2000",
+        "words": [
+          "옛날"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788952709837",
+      "title": "(옛날에)오리 한 마리가 살았는데",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "마틴 워델 글;임봉경 옮김",
+        "publisher": "시공사",
+        "publication_year": "2001",
+        "words": [
+          "옛날"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788990396013",
+      "title": "(인도의 옛 이야기)옛날에 생쥐 한 마리가 있었는데",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "마샤 브라운 그림;엄혜숙 옮김",
+        "publisher": "열린어린이",
+        "publication_year": "2004",
+        "words": [
+          "옛날"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788964961261",
+      "title": "발견! 우리 학교 이곳저곳 :초등 1학년을 위한 학교생활 길잡이",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "이시즈 치히로 글 ;김윤정 옮김",
+        "publisher": "토토북",
+        "publication_year": "2013",
+        "words": [
+          "초등학교"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788970942810",
+      "title": "오빠한테 질 수 없어 :원숭이 오누이 겨울 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "채인선 글 ;배현주 그림",
+        "publisher": "한림출판사",
+        "publication_year": "2019",
+        "words": [
+          "겨울이야기"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788952215659",
+      "title": "빨강이 나무에서 노래해요 :봄, 여름, 가을, 겨울의 색깔 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "조이스 시드먼 글 ;이상희 옮김",
+        "publisher": "살림출판사",
+        "publication_year": "2011",
+        "words": [
+          "겨울이야기"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791165383046",
+      "title": "(반짝반짝 캐치! 티니핑) 로미의 새로운 도전",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "원작·그림: SAMG ;엮음: 아이휴먼 편집부",
+        "publisher": "휴먼큐브",
+        "publication_year": "2022",
+        "words": [
+          "도전"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791190077415",
+      "title": "정치가 소피아의 놀라운 도전",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 안드레아 비티 ;옮김: 김혜진",
+        "publisher": "천개의바람",
+        "publication_year": "2020",
+        "words": [
+          "도전"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158365158",
+      "title": "생쥐 모이의 101번째 도전 :김세진 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "김세진",
+        "publisher": "책읽는곰",
+        "publication_year": "2025",
+        "words": [
+          "도전"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788949100470",
+      "title": "동물원",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "이수지 지음",
+        "publisher": "비룡소",
+        "publication_year": "2004",
+        "words": [
+          "동물원"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788991742857",
+      "title": "만남",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "백지원",
+        "publisher": "봄봄",
+        "publication_year": "2017",
+        "words": [
+          "만남"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791188909315",
+      "title": "만남",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "백지원",
+        "publisher": "봄봄",
+        "publication_year": "2020",
+        "words": [
+          "만남"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791165797577",
+      "title": "폭풍이 :영원한 집을 찾는 길 위에서의 만남",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "궈징 지음",
+        "publisher": "시공사",
+        "publication_year": "2021",
+        "words": [
+          "만남"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788958284055",
+      "title": "눈물바다",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "서현 글·그림",
+        "publisher": "사계절출판사",
+        "publication_year": "2009",
+        "words": [
+          "바다"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158364168",
+      "title": "시끌벅적 바다 여행",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "구도 노리코 글·그림 ;윤수정 옮김",
+        "publisher": "책읽는곰",
+        "publication_year": "2023",
+        "words": [
+          "바다",
+          "여행"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788959761678",
+      "title": "바다탐험대 옥토넛 :외톨이 괴물",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "메오미 지음 ;고정아 옮김",
+        "publisher": "문학수첩리틀북",
+        "publication_year": "2015",
+        "words": [
+          "바다"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791171258352",
+      "title": "이건 어떻게 버려요? :쓰레기 분리배출을 배운 날",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "마리알린 바뱅 그림 ;이정주 옮김",
+        "publisher": "Sigongsa",
+        "publication_year": "2025",
+        "words": [
+          "분리배출"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788932374888",
+      "title": "마법 시장",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "이향안 글 ;윤진현 그림",
+        "publisher": "현암사",
+        "publication_year": "2019",
+        "words": [
+          "시장"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788955827262",
+      "title": "시장에 가면~",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 김정선",
+        "publisher": "길벗어린이",
+        "publication_year": "2023",
+        "words": [
+          "시장"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788945118370",
+      "title": "(바무와 게로)오늘은 시장 보러 가는 날",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "시마다 유카 글·그림;햇살과 나무꾼 옮김",
+        "publisher": "중앙출판사",
+        "publication_year": "2002",
+        "words": [
+          "시장"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788952723925",
+      "title": "괴물들이 사는 나라",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "모리스 샌닥 글·그림 ;강무홍 옮김",
+        "publisher": "시공주니어",
+        "publication_year": "2002",
+        "words": [
+          "여러나라"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788962471656",
+      "title": "말들이 사는 나라",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 윤여림 ;그림: 최미란",
+        "publisher": "위즈덤하우스 미디어그룹",
+        "publication_year": "2019",
+        "words": [
+          "여러나라"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788949110394",
+      "title": "구름 나라",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "존 버닝햄 글·그림 ;고승희 옮김",
+        "publisher": "비룡소",
+        "publication_year": "2009",
+        "words": [
+          "여러나라"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791190077439",
+      "title": "할머니의 용궁 여행",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "권민조 글·그림",
+        "publisher": "천개의바람",
+        "publication_year": "2020",
+        "words": [
+          "여행"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791169794183",
+      "title": "(타키·포오의) 이세계 여행사",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "원작: 캐릭온TV ;그림: 이지운",
+        "publisher": "대원키즈",
+        "publication_year": "2023",
+        "words": [
+          "여행"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788980713752",
+      "title": "까르르 깔깔 :오감이 자라는 동시집",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "시: 이상교 ;그림: 길고은이",
+        "publisher": "미세기",
+        "publication_year": "2015",
+        "words": [
+          "오감"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791160944518",
+      "title": "우주로 간 김땅콩 :윤지회 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 윤지회",
+        "publisher": "사계절",
+        "publication_year": "2019",
+        "words": [
+          "우주"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788994975405",
+      "title": "뿌지직 우주 똥꼬 전쟁",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 안영은 ;그림: 이주혜",
+        "publisher": "노란돼지",
+        "publication_year": "2014",
+        "words": [
+          "우주"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158362485",
+      "title": "우주 관람차 :김성미 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "김성미",
+        "publisher": "책읽는곰",
+        "publication_year": "2021",
+        "words": [
+          "우주"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788991871816",
+      "title": "(일곱 빛깔 요정들의) 운동회",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "강혜숙 글·그림",
+        "publisher": "한울림어린이",
+        "publication_year": "2011",
+        "words": [
+          "운동"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788997381036",
+      "title": "고양이 피터 :난 좋아 내 하얀 운동화",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 에릭 리트윈 ;옮긴이: 이진경",
+        "publisher": "상상의 힘",
+        "publication_year": "2012",
+        "words": [
+          "운동"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788996622468",
+      "title": "출동! 장난감 구조대",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "크리스토퍼 인스 지음 ;김혜진 옮김",
+        "publisher": "천개의바람",
+        "publication_year": "2012",
+        "words": [
+          "장난감"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788952789488",
+      "title": "알렉산더와 장난감 쥐",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "레오 리오니 그림·글 ;김난령 옮김",
+        "publisher": "시공사",
+        "publication_year": "2019",
+        "words": [
+          "장난감"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788934991779",
+      "title": "달의 왕과 사라진 장난감",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "베랑제르 쿠르뉘 글 ;김주경 옮김",
+        "publisher": "김영사",
+        "publication_year": "2020",
+        "words": [
+          "장난감"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788956180021",
+      "title": "초록 거북",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "릴리아 지음",
+        "publisher": "킨더랜드",
+        "publication_year": "2021",
+        "words": [
+          "초록별"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791157852208",
+      "title": "나의 초록 스웨터",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "엄혜숙 글 ;권문희 그림",
+        "publisher": "키다리",
+        "publication_year": "2019",
+        "words": [
+          "초록별"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788958281832",
+      "title": "나는 초록 :류주영 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 류주영",
+        "publisher": "사계절",
+        "publication_year": "2016",
+        "words": [
+          "초록별"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788993672336",
+      "title": "요술빵집의 새싹 한 컵",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 이효선 ;그림: 황적현",
+        "publisher": "책먹는아이",
+        "publication_year": "2015",
+        "words": [
+          "새싹"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791189208141",
+      "title": "안녕? 나는 새싹이야",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "카트리나 미할리츠나 글 ;김선영 옮김",
+        "publisher": "라임",
+        "publication_year": "2019",
+        "words": [
+          "새싹"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788925574066",
+      "title": "조그만 새싹",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "브리타 테켄트럽 글·그림 ;김서정 옮김",
+        "publisher": "알에이치코리아",
+        "publication_year": "2025",
+        "words": [
+          "새싹"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788986621334",
+      "title": "오소리네 집 꽃밭",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 권정생 ;그림: 정승각",
+        "publisher": "길벗어린이",
+        "publication_year": "2012",
+        "words": [
+          "꽃밭"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788993963335",
+      "title": "꽃밭의 장군",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "재닛 차터스 글 ;김혜진 옮김",
+        "publisher": "뜨인돌어린이",
+        "publication_year": "2011",
+        "words": [
+          "꽃밭"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788991742321",
+      "title": "서천꽃밭 한락궁이",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "김춘옥 글 ;한태희 그림",
+        "publisher": "봄봄출판사",
+        "publication_year": "2011",
+        "words": [
+          "꽃밭"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791169811613",
+      "title": "백 개의 꽃씨와 쥐 :제3회 사계절그림책상 대상 수상작",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 이조호",
+        "publisher": "사계절출판사",
+        "publication_year": "2023",
+        "words": [
+          "꽃씨"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791188609871",
+      "title": "돌꽃씨",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "하누 쓰고 그림",
+        "publisher": "파란자전거",
+        "publication_year": "2021",
+        "words": [
+          "꽃씨"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791130662466",
+      "title": "넌 누구니? 꽃씨 심는 초링!",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "지은이: 가토 아주 ;옮긴이: 황세정",
+        "publisher": "다산어린이",
+        "publication_year": "2025",
+        "words": [
+          "꽃씨"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788993242812",
+      "title": "너는 어떤 씨앗이니?",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "최숙희 글·그림",
+        "publisher": "책읽는곰",
+        "publication_year": "2013",
+        "words": [
+          "씨앗"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788955824384",
+      "title": "나쁜 씨앗",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "조리 존 글 ;김경희 옮김",
+        "publisher": "길벗어린이",
+        "publication_year": "2018",
+        "words": [
+          "씨앗"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791190931571",
+      "title": "복숭아 씨앗 발사!",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "사토 메구미 지음 ;황진희 옮김",
+        "publisher": "올리",
+        "publication_year": "2021",
+        "words": [
+          "씨앗"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788992479998",
+      "title": "영산강 아이들 :봄 이야기 - 진달래 먹고",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "만화: 최신오 ;각색: 최금락",
+        "publisher": "거북이북스",
+        "publication_year": "2011",
+        "words": [
+          "진달래"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791124156087",
+      "title": "달토끼 발레단 :하늘하늘 진달래 꽃떡 공연",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 안수민 ;그림: 리서",
+        "publisher": "보랏빛소",
+        "publication_year": "2026",
+        "words": [
+          "진달래"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791168630512",
+      "title": "복숭아꽃 살구꽃 아기 진달래",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "이상교 글 ;양상용 그림",
+        "publisher": "봄봄(봄봄출판사)",
+        "publication_year": "2023",
+        "words": [
+          "진달래"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791168341753",
+      "title": "벚꽃 수영장",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "신현경 글 ;노예지 그림",
+        "publisher": "인플루엔셜",
+        "publication_year": "2024",
+        "words": [
+          "벚꽃"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788955826029",
+      "title": "벚꽃이 피면",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "도고 나리사 글·그림 ;황진희 옮김",
+        "publisher": "길벗어린이",
+        "publication_year": "2021",
+        "words": [
+          "벚꽃"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788961772846",
+      "title": "우리는 벚꽃이야",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "천미진 글 ;신진호 그림",
+        "publisher": "다림",
+        "publication_year": "2022",
+        "words": [
+          "벚꽃"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788936446819",
+      "title": "수박 수영장 :안녕달 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "지은이: 안녕달",
+        "publisher": "창비",
+        "publication_year": "2015",
+        "words": [
+          "수영",
+          "수박"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788936455286",
+      "title": "수영장 가는 날 =염혜원 그림책 /Saturday is swimming day",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 염혜원",
+        "publisher": "창비",
+        "publication_year": "2018",
+        "words": [
+          "수영",
+          "가게"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788964961919",
+      "title": "수박씨를 삼켰어!",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "그렉 피졸리 글·그림 ;김경연 옮김",
+        "publisher": "토토북",
+        "publication_year": "2014",
+        "words": [
+          "수박"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788998751234",
+      "title": "수박이 먹고 싶으면",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "김장성 글 ;유리 그림",
+        "publisher": "이야기꽃",
+        "publication_year": "2017",
+        "words": [
+          "수박"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791190931670",
+      "title": "포도와 모래 괴물",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "사토 메구미 지음 ;황진희 옮김",
+        "publisher": "올리",
+        "publication_year": "2022",
+        "words": [
+          "모래"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791160511086",
+      "title": "모래와 나무",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "양석원 글 ;안주미 그림",
+        "publisher": "씨드북",
+        "publication_year": "2017",
+        "words": [
+          "모래"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788997313280",
+      "title": "모래 물고기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "박준형 글 ;박은미 그림",
+        "publisher": "토마토하우스",
+        "publication_year": "2012",
+        "words": [
+          "모래"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788966350421",
+      "title": "단풍나무 언덕 농장의 동물 친구들",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "앨리스,김서정 옮김",
+        "publisher": "북뱅크",
+        "publication_year": "2015",
+        "words": [
+          "단풍"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791194636694",
+      "title": "단풍반 정라니 :장성은 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "쓰고 그린이: 장성은",
+        "publisher": "풀빛",
+        "publication_year": "2025",
+        "words": [
+          "단풍"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791164137060",
+      "title": "도토리랑 콩콩 :윤지회 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "지은이: 윤지회",
+        "publisher": "미래엔",
+        "publication_year": "2020",
+        "words": [
+          "도토리"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791166371554",
+      "title": "도토리다!",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 루 피콕 ;그림: 야스민 이스마일",
+        "publisher": "이퍼블릭",
+        "publication_year": "2021",
+        "words": [
+          "도토리"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791189768348",
+      "title": "토리토리 도토리야",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "미야니시 타츠야 글·그림 ;도담 옮김",
+        "publisher": "아이노리",
+        "publication_year": "2021",
+        "words": [
+          "도토리"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788959984596",
+      "title": "눈사람 마을의 아이스크림",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "송호정 글 ;효뚠 그림",
+        "publisher": "달리",
+        "publication_year": "2022",
+        "words": [
+          "눈사람"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788956632582",
+      "title": "눈사람 아저씨",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "레이먼드 브리그스",
+        "publisher": "마루벌",
+        "publication_year": "2009",
+        "words": [
+          "눈사람"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788956635019",
+      "title": "눈사람 아저씨와 눈강아지",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "레이먼드 브리그스 원작 ;이명희 옮김",
+        "publisher": "마루벌",
+        "publication_year": "2014",
+        "words": [
+          "눈사람"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158360238",
+      "title": "조금 다른 꽃눈이",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "윤봉선 글·그림",
+        "publisher": "책읽는곰",
+        "publication_year": "2016",
+        "words": [
+          "눈꽃"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788983946164",
+      "title": "눈물이 방울방울 아름다운 꽃 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "이연정 글 ;이유정 그림",
+        "publisher": "미래M&B",
+        "publication_year": "2010",
+        "words": [
+          "눈꽃"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791130662503",
+      "title": "어디 가니? 눈꽃 언덕의 초링!",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "지은이: 가토 아주 ;옮긴이: 황세정",
+        "publisher": "다산어린이",
+        "publication_year": "2025",
+        "words": [
+          "눈꽃"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158362249",
+      "title": "용기를 내, 비닐장갑! :유설화 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "유설화",
+        "publisher": "책읽는곰",
+        "publication_year": "2021",
+        "words": [
+          "장갑"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158361327",
+      "title": "잘했어, 쌍둥이 장갑! :유설화 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "유설화",
+        "publisher": "책읽는곰",
+        "publication_year": "2019",
+        "words": [
+          "장갑"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158363154",
+      "title": "욕심은 그만, 레이스 장갑! :유설화 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "유설화",
+        "publisher": "책읽는곰",
+        "publication_year": "2022",
+        "words": [
+          "장갑"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788943304539",
+      "title": "오늘은 우리 집 김장하는 날",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "채인선 글;방정화 그림",
+        "publisher": "보림",
+        "publication_year": "2006",
+        "words": [
+          "김장"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158733452",
+      "title": "호랭 할매 떡국",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 벼레",
+        "publisher": "제제의숲",
+        "publication_year": "2025",
+        "words": [
+          "떡국"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788955823240",
+      "title": "아빠는 회사에서 내 생각 해?",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "김영진 글·그림",
+        "publisher": "길벗어린이",
+        "publication_year": "2015",
+        "words": [
+          "아빠"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158361112",
+      "title": "아빠의 이상한 퇴근길 :김영진 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "지은이: 김영진",
+        "publisher": "책읽는곰",
+        "publication_year": "2018",
+        "words": [
+          "아빠"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788955823905",
+      "title": "아빠가 달려갈게!",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "김영진 글·그림",
+        "publisher": "길벗어린이",
+        "publication_year": "2017",
+        "words": [
+          "아빠"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158361587",
+      "title": "코딱지 할아버지",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "신순재 글 ;이명애 그림",
+        "publisher": "책읽는곰",
+        "publication_year": "2019",
+        "words": [
+          "할아버지"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788952748645",
+      "title": "망태 할아버지가 온다",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "박연철 글·그림",
+        "publisher": "시공사",
+        "publication_year": "2007",
+        "words": [
+          "할아버지"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788949110059",
+      "title": "우리 할아버지",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "존 버닝햄 글 그림;박상희 옮김",
+        "publisher": "비룡소",
+        "publication_year": "1995",
+        "words": [
+          "할아버지"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158361044",
+      "title": "언니는 돼지야 :신민재 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "[지은이]: 신민재",
+        "publisher": "책읽는곰",
+        "publication_year": "2018",
+        "words": [
+          "언니"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791186621424",
+      "title": "언니는 비밀이 너무 많아",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "시모나 치라올로 지음 ;엄혜숙 옮김",
+        "publisher": "미디어창비",
+        "publication_year": "2017",
+        "words": [
+          "언니"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791188380664",
+      "title": "사라진 옐언니",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 김혜련 ;그림: 정수영",
+        "publisher": "겜툰",
+        "publication_year": "2020",
+        "words": [
+          "언니"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788955822007",
+      "title": "누나가 좋다",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "고대영 글 ;한상언 그림",
+        "publisher": "길벗어린이",
+        "publication_year": "2012",
+        "words": [
+          "누나"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791160512519",
+      "title": "누나가 공룡이라고?",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "흥흥 글 ;조은정 그림",
+        "publisher": "씨드북",
+        "publication_year": "2019",
+        "words": [
+          "누나"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788974740818",
+      "title": "누나는 어디에",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "스벤 누르드크비스트 글·그림 ;김경연 옮김",
+        "publisher": "풀빛",
+        "publication_year": "2016",
+        "words": [
+          "누나"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788936455484",
+      "title": "당근 유치원",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "지은이: 안녕달",
+        "publisher": "창비",
+        "publication_year": "2020",
+        "words": [
+          "유치원"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791157850099",
+      "title": "유치원 버스 아저씨의 비밀",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "가와노우에 에이코,김윤정 옮김",
+        "publisher": "키다리",
+        "publication_year": "2015",
+        "words": [
+          "유치원"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788991871649",
+      "title": "유치원 가기 싫어!",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "스테파니 블레이크 글·그림 ;김영신 옮김",
+        "publisher": "한울림어린이",
+        "publication_year": "2010",
+        "words": [
+          "유치원"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788911029853",
+      "title": "학교 처음 가는 날",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "김하루 글 ;배현주 그림",
+        "publisher": "국민서관",
+        "publication_year": "2012",
+        "words": [
+          "처음"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791188867066",
+      "title": "이런 개구리는 처음이야!",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "올가 데 디오스 글·그림 ;김정하 옮김",
+        "publisher": "노란상상",
+        "publication_year": "2018",
+        "words": [
+          "처음"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791173111402",
+      "title": "(처음 읽는) 삼국지",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "원작: 나관중 ;그림: 한현동",
+        "publisher": "미래엔",
+        "publication_year": "2024",
+        "words": [
+          "처음"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788949111902",
+      "title": "마녀 위니의 생일 파티",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "밸러리 토머스 글 ;조세현 옮김",
+        "publisher": "비룡소",
+        "publication_year": "2008",
+        "words": [
+          "생일"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791167550347",
+      "title": "호랑이 생일날이렷다 :강혜숙 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "지은이: 강혜숙",
+        "publisher": "우리학교",
+        "publication_year": "2022",
+        "words": [
+          "생일"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788955823950",
+      "title": "콩알 특공대와 생일 케이크",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "나카가와 치히로 글 ;이기웅 옮김",
+        "publisher": "길벗어린이",
+        "publication_year": "2017",
+        "words": [
+          "생일"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158363475",
+      "title": "으라차차 라면 가게",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "구도 노리코 글·그림 ;윤수정 옮김",
+        "publisher": "책읽는곰",
+        "publication_year": "2022",
+        "words": [
+          "가게"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788943308827",
+      "title": "(오늘의 일기) 학교 가는 날",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 송언 ;그림: 김동수",
+        "publisher": "보림출판사",
+        "publication_year": "2011",
+        "words": [
+          "가게"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791199015401",
+      "title": "무지개 우체국 :정유진 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "지은이: 정유진",
+        "publisher": "달달books(달달북스)",
+        "publication_year": "2025",
+        "words": [
+          "우체국"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791163930334",
+      "title": "도서관 고양이",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "최지혜 글 ;김소라 그림",
+        "publisher": "한울림",
+        "publication_year": "2020",
+        "words": [
+          "도서관",
+          "고양이"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788995981276",
+      "title": "도서관 생쥐",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글/그림: 다니엘 커크 ;옮김: 신유선",
+        "publisher": "푸른날개",
+        "publication_year": "2008",
+        "words": [
+          "도서관"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788991871687",
+      "title": "도서관 아이",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "채인선 글 ;배현주 그림",
+        "publisher": "한울림어린이",
+        "publication_year": "2010",
+        "words": [
+          "도서관"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788959984688",
+      "title": "다 고쳐요! 달퐁 병원",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "송은미 글 ;안선선 그림",
+        "publisher": "달리",
+        "publication_year": "2023",
+        "words": [
+          "병원"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788994258522",
+      "title": "(꼼꼼 의사와 덜렁 조수의) 수상한 병원",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "유시연 글·그림",
+        "publisher": "파란자전거",
+        "publication_year": "2013",
+        "words": [
+          "병원"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788972594130",
+      "title": "병원 소동",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "한스 아우구스토 레이 그림.글;박향주 옮김",
+        "publisher": "시공사",
+        "publication_year": "1996",
+        "words": [
+          "병원"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788994975719",
+      "title": "별난 요리사의 행복 레시피",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 정설희",
+        "publisher": "노란돼지",
+        "publication_year": "2015",
+        "words": [
+          "요리사"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791187154730",
+      "title": "행복을 주는 요리사",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "쿄 매클리어 글 ;김선희 옮김",
+        "publisher": "봄의정원",
+        "publication_year": "2018",
+        "words": [
+          "요리사"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788911019625",
+      "title": "아빠는 요리사 엄마는 카레이서",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "목온균 글;이루다 그림",
+        "publisher": "국민서관",
+        "publication_year": "2001",
+        "words": [
+          "요리사"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788936455316",
+      "title": "장군님과 농부",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "권정생",
+        "publisher": "창비",
+        "publication_year": "2018",
+        "words": [
+          "농부"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788911126842",
+      "title": "소가 된 게으른 농부",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "이상교 글 ;이준선 그림",
+        "publisher": "국민서관",
+        "publication_year": "2020",
+        "words": [
+          "농부"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791193366042",
+      "title": "거미와 농부",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "안혜경 지음",
+        "publisher": "곰세마리",
+        "publication_year": "2024",
+        "words": [
+          "농부"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788958280378",
+      "title": "사라, 버스를 타다",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "윌리엄 밀러 글;박찬석 옮김",
+        "publisher": "사계절출판사",
+        "publication_year": "2004",
+        "words": [
+          "버스"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791165732257",
+      "title": "마음버스",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 김유 ;그림: 소복이",
+        "publisher": "천개의바람",
+        "publication_year": "2022",
+        "words": [
+          "버스"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158360672",
+      "title": "버스를 타요",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "구도 노리코 글·그림 ;윤수정 옮김",
+        "publisher": "책읽는곰",
+        "publication_year": "2018",
+        "words": [
+          "버스"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788955820904",
+      "title": "두발자전거 배우기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 고대영 ;그림: 김영진",
+        "publisher": "길벗어린이",
+        "publication_year": "2009",
+        "words": [
+          "자전거"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791186797013",
+      "title": "아기 돼지와 자전거와 달님",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "피에레뜨 듀베 글 ;이순영 옮김",
+        "publisher": "북극곰",
+        "publication_year": "2015",
+        "words": [
+          "자전거"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788937844867",
+      "title": "아버지의 자전거",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "이철환 글 ;유기훈 그림",
+        "publisher": "미래엔 컬처그룹",
+        "publication_year": "2009",
+        "words": [
+          "자전거"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791185847375",
+      "title": "빨간 신호등의 비밀",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 양승숙 ;그림: 이정선",
+        "publisher": "에프알아이(FRI)",
+        "publication_year": "2017",
+        "words": [
+          "신호등"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788983393692",
+      "title": "신호등 속의 제비집",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "정채봉 글;주승인 그림",
+        "publisher": "효리원",
+        "publication_year": "2003",
+        "words": [
+          "신호등"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791194148586",
+      "title": "기분 신호등",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 조은수 ;그림: 이진아",
+        "publisher": "다봄",
+        "publication_year": "2026",
+        "words": [
+          "신호등"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788965592464",
+      "title": "꼬마 트럭과 빵빵 친구들",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 셰리 더스키 린커 ;옮김: 박선주",
+        "publisher": "푸른날개",
+        "publication_year": "2019",
+        "words": [
+          "트럭"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788961700733",
+      "title": "트럭은 부지런해요",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "바이런 바튼 글·그림 ;신형건 옮김",
+        "publisher": "보물창고",
+        "publication_year": "2009",
+        "words": [
+          "트럭"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788972593027",
+      "title": "트럭",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "도널드 크루즈 그림·글",
+        "publisher": "시공사",
+        "publication_year": "1996",
+        "words": [
+          "트럭"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788996359784",
+      "title": "(비밀스러운) 한복나라",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 무돌",
+        "publisher": "노란돼지",
+        "publication_year": "2011",
+        "words": [
+          "한복"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791164633296",
+      "title": "한글 품은 한옥",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 김도영",
+        "publisher": "발견",
+        "publication_year": "2022",
+        "words": [
+          "한글"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788983948519",
+      "title": "한글 꽃이 피었습니다",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "강병인 글·글씨",
+        "publisher": "미래M&B",
+        "publication_year": "2018",
+        "words": [
+          "한글"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788936454166",
+      "title": "석수장이 아들:전래동요",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "권문희 그림",
+        "publisher": "창비",
+        "publication_year": "2007",
+        "words": [
+          "전래"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788936454265",
+      "title": "둥그렁 뎅 둥그렁 뎅 :전래동요",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "김종도 그림",
+        "publisher": "창비",
+        "publication_year": "2008",
+        "words": [
+          "전래"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791186843154",
+      "title": "허둥지둥 뚱부인 :중국 전래 동화",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "허요우즈 그림 ;박미경 옮김",
+        "publisher": "우리나비",
+        "publication_year": "2017",
+        "words": [
+          "전래"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788991126428",
+      "title": "플라스틱 섬",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "이명애 지음",
+        "publisher": "Sang(상출판사)",
+        "publication_year": "2014",
+        "words": [
+          "플라스틱"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788911129058",
+      "title": "플라스틱 인간",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "안수민 글 ;이지현 그림",
+        "publisher": "국민서관",
+        "publication_year": "2022",
+        "words": [
+          "플라스틱"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791169813570",
+      "title": "플라스틱 섬",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 이명애",
+        "publisher": "사계절(사계절출판사)",
+        "publication_year": "2025",
+        "words": [
+          "플라스틱"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788989315155",
+      "title": "너는 특별하단다 :작은 나무 사람 펀치넬로 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "맥스 루카도 지음 ;아기장수의 날개 옮김",
+        "publisher": "고슴도치",
+        "publication_year": "2003",
+        "words": [
+          "나무"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788972976189",
+      "title": "초등학생을 위한 나의 라임 오렌지나무 (초등용)",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "J. M. 데 바스콘셀로스",
+        "publisher": "동녘주니어",
+        "publication_year": "2010",
+        "words": [
+          "나무"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791158360573",
+      "title": "열두 달 나무 아이 :최숙희 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "최숙희 글·그림",
+        "publisher": "책읽는곰",
+        "publication_year": "2017",
+        "words": [
+          "나무"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788936454333",
+      "title": "숲 속 재봉사 :최향랑 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "지은이: 최향랑",
+        "publisher": "창비",
+        "publication_year": "2010",
+        "words": [
+          "숲속"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788992505529",
+      "title": "숲 속 사진관",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "이시원 글·그림",
+        "publisher": "고래뱃속",
+        "publication_year": "2015",
+        "words": [
+          "숲속"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788936454432",
+      "title": "숲 속 재봉사와 털뭉치 괴물 :최향랑 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "지은이: 최향랑",
+        "publisher": "창비",
+        "publication_year": "2013",
+        "words": [
+          "숲속"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788984141377",
+      "title": "생각연필",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "이보나 흐미엘레프스카 글, 그림 ;이지원 옮김",
+        "publisher": "논장",
+        "publication_year": "2011",
+        "words": [
+          "연필"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788934930136",
+      "title": "연필 하나",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "알랭 알버그 글 ;손미나 옮김",
+        "publisher": "김영사",
+        "publication_year": "2009",
+        "words": [
+          "연필"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788996570738",
+      "title": "마술 연필을 가진 꼬마곰",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "앤서니 브라운 지음 ;오미숙 옮김",
+        "publisher": "현북스",
+        "publication_year": "2011",
+        "words": [
+          "연필"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788987504001",
+      "title": "오른쪽이와 동네한바퀴",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "백미숙 글;김유대 그림",
+        "publisher": "느림보",
+        "publication_year": "2004",
+        "words": [
+          "바퀴"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788992351775",
+      "title": "바퀴야 다 모여! :석철원 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 석철원",
+        "publisher": "여유당출판사",
+        "publication_year": "2019",
+        "words": [
+          "바퀴"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788969022172",
+      "title": "바퀴 달린 수박",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "김숙분 글 ;박진아 그림",
+        "publisher": "가문비",
+        "publication_year": "2019",
+        "words": [
+          "바퀴"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788997984619",
+      "title": "발명가 로지의 빛나는 실패작",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 안드레아 비티 ;옮김: 김혜진",
+        "publisher": "천개의바람",
+        "publication_year": "2015",
+        "words": [
+          "발명"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791168251007",
+      "title": "놀이 발명가",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "진은영 글·그림",
+        "publisher": "키즈스콜레",
+        "publication_year": "2022",
+        "words": [
+          "발명"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788958282525",
+      "title": "조그만 발명가",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "현덕 글 ;조미애 그림",
+        "publisher": "사계절출판사",
+        "publication_year": "2007",
+        "words": [
+          "발명"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788949110851",
+      "title": "100만 번 산 고양이",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "사노 요코 글·그림;김난주 옮김",
+        "publisher": "비룡소",
+        "publication_year": "2002",
+        "words": [
+          "고양이"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788936454104",
+      "title": "고양이는 나만 따라 해:권윤덕 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "권윤덕 그림과 글",
+        "publisher": "창비",
+        "publication_year": "2005",
+        "words": [
+          "고양이"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788986621136",
+      "title": "강아지똥",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 권정생 ;그림: 정승각",
+        "publisher": "길벗어린이",
+        "publication_year": "2003",
+        "words": [
+          "강아지"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788962477290",
+      "title": "신발 신은 강아지 =A dog wearing shoes",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 고상미",
+        "publisher": "위즈덤하우스",
+        "publication_year": "2016",
+        "words": [
+          "강아지"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788911030224",
+      "title": "강아지 복실이",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "한미호 글 ;김유대 그림",
+        "publisher": "국민서관",
+        "publication_year": "2012",
+        "words": [
+          "강아지"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788952709516",
+      "title": "천둥 케이크",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "패트리샤 폴라코 그림/글 ;임봉경 옮김",
+        "publisher": "시공사",
+        "publication_year": "2011",
+        "words": [
+          "천둥"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788954602792",
+      "title": "천둥 꼬마 선녀 번개 꼬마 선녀",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "한강 글;진선미 그림",
+        "publisher": "문학동네",
+        "publication_year": "2007",
+        "words": [
+          "천둥"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788997824366",
+      "title": "며느리 방귀 천둥방귀 :바른 습관 고운 마음을 길러 주는 우리 옛이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "권규헌 글 ;이소진 그림",
+        "publisher": "꿈꾸는꼬리연",
+        "publication_year": "2014",
+        "words": [
+          "천둥"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791196175207",
+      "title": "알레나의 채소밭",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "소피 비시에르 지음 ;김미정 옮김",
+        "publisher": "단추",
+        "publication_year": "2017",
+        "words": [
+          "채소"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788996622437",
+      "title": "채소가 최고야",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "이시즈 치히로 글 ;엄혜숙 옮김",
+        "publisher": "천개의바람",
+        "publication_year": "2011",
+        "words": [
+          "채소"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791165183165",
+      "title": "채소 이발소",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: 야마다 마치 ;옮김: 봉봉",
+        "publisher": "미운오리새끼",
+        "publication_year": "2024",
+        "words": [
+          "채소"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788956186023",
+      "title": "(코코몽2) 치카치카 양치질을 해요",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 올리브 스튜디오",
+        "publisher": "킨더랜드",
+        "publication_year": "2011",
+        "words": [
+          "양치"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788945123343",
+      "title": "양치질 절대 하지 마!",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "안드레아스 디어센 글;전재민 옮김",
+        "publisher": "JMD중앙출판사",
+        "publication_year": "2006",
+        "words": [
+          "양치"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791192056944",
+      "title": "양치 친구 치카",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "엘리프 요낫 토가이 글 ;서희준 옮김",
+        "publisher": "계수나무",
+        "publication_year": "2025",
+        "words": [
+          "양치"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788961700450",
+      "title": "편식 대장 냠냠이",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "미첼 샤매트 글 ;신형건 옮김",
+        "publisher": "보물창고",
+        "publication_year": "2008",
+        "words": [
+          "편식"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791165349820",
+      "title": "편식 탈출 골고루 상자",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "사와노 아키후미 지음 ;황진희 옮김",
+        "publisher": "올리",
+        "publication_year": "2024",
+        "words": [
+          "편식"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788956632704",
+      "title": "네스 호 괴물의 행운 :편식하는 아이 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글: A. W. 플래허티 ;이명희",
+        "publisher": "마루벌",
+        "publication_year": "2009",
+        "words": [
+          "편식"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791185564258",
+      "title": "눈행성",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "김고은 글·그림",
+        "publisher": "책읽는곰",
+        "publication_year": "2015",
+        "words": [
+          "행성"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788931341430",
+      "title": "수박 행성",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "상자 글 ;이수현 그림",
+        "publisher": "이론과실천",
+        "publication_year": "2022",
+        "words": [
+          "행성"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788934981459",
+      "title": "우리는 이 행성에 살고 있어 - 지구에서 살아가는 법",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "올리버 제퍼스 (지은이), 장미란 (옮긴이)",
+        "publisher": "주니어김영사",
+        "publication_year": "2018",
+        "words": [
+          "행성"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791192655253",
+      "title": "별빛 텐트",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글·그림: 랜디스 블레어 ;옮김: 신수진",
+        "publisher": "위즈덤하우스",
+        "publication_year": "2023",
+        "words": [
+          "별빛"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788965463467",
+      "title": "율마의 별빛 정원 이야기",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글 그림: 김현화",
+        "publisher": "밝은미래",
+        "publication_year": "2019",
+        "words": [
+          "별빛"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9791197775871",
+      "title": "수수바의 별빛 줄넘기 :조미자 그림책",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "글 그림: 조미자",
+        "publisher": "핑거",
+        "publication_year": "2023",
+        "words": [
+          "별빛"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788937811760",
+      "title": "난 형이니까",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "후쿠다 이와오 글·그림;김난주 옮김",
+        "publisher": "대한교과서",
+        "publication_year": "2002",
+        "words": [
+          "형님"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788937845772",
+      "title": "우리 형이니까",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "후쿠다 이와오 글·그림 ;김난주 옮김",
+        "publisher": "미래엔 컬처그룹",
+        "publication_year": "2010",
+        "words": [
+          "형님"
+        ]
+      }
+    },
+    {
+      "source": "data4library",
+      "source_id": "9788949111926",
+      "title": "형보다 커지고 싶어",
+      "description": "",
+      "url": "",
+      "published_at": "2026-11-10",
+      "origin": "도서관 정보나루",
+      "facts": {
+        "authors": "스티븐 켈로그 글·그림 ;조세현 옮김",
+        "publisher": "비룡소",
+        "publication_year": "2008",
+        "words": [
+          "형님"
+        ]
+      }
+    }
+  ]
+}
