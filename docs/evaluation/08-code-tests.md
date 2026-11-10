@@ -137,7 +137,7 @@ e2e (playwright)               실제 DB 로
 
 - 커버리지를 재지 않는다
 - 프런트 테스트가 가짜 `useState` 하네스라 실제 렌더 경로를 전부 안 지난다
-- 영유아 평가 · 놀이 프로젝트형 연간 · 월간은 화면 경로 E2E 가 없다. 영유아 평가는 만든 문서를 보관함에서 열 길부터 없다 — `frontend/components/workspace/DocumentArchiveView.tsx` 의 `ArchiveType` 에 종류가 없음 · 이슈 #496
+- 영유아 평가 · 놀이 프로젝트형 연간 · 월간은 화면 경로 E2E 가 없다. 영유아 평가는 2026-11-10 부터 만들지 않는다(ADR-091). 올린 평가를 보관함에서 열 길은 아직 없다 — `frontend/components/workspace/DocumentArchiveView.tsx` 의 `ArchiveType` 에 종류가 없음 · 이슈 #496
 
 ## 더 모을 근거
 
