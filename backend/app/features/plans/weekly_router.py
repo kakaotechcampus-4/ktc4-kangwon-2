@@ -795,7 +795,11 @@ def regenerate_weekly_cell(
             raise _CELL_NOT_REGENERATABLE
     # 칸 프롬프트에는 저장된 요청 사항과 이 계획안의 다른 칸 값(current_plan · 교사가 고친 값
     # 포함)이 실린다. 둘 다 생성과 같이 가린다(ADR-060).
-    cells = tuple(cell.value for cell in plan.cells if cell.value)
+    # Core 가 싣는 칸만 넣는다 — 다시 만들 칸 자신은 빠진다(weekly_lifecycle `current_values`).
+    target_id = _item_id(item_id)
+    cells = tuple(
+        cell.value for cell in plan.cells if cell.item_id != target_id and cell.value.strip()
+    )
     seen = "\n".join((plan.teacher_memo or "", *cells))
     names = memo_name_table(session, int(plan.classroom_ref), seen, REGEN_MASK_FAILED)
     session.commit()  # 이름표 읽기까지 끝낸다. LLM 을 기다리는 동안 transaction 을 잡지 않는다

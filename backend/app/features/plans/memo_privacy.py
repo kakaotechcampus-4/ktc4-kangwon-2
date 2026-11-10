@@ -111,16 +111,20 @@ class MaskedMemoProvider:
     교사 글은 메모와, 칸 재생성이 맥락으로 싣는 이 계획안의 다른 칸 값(`texts` — 월간
     month_snapshot · 주간 current_plan, 교사가 고친 값 포함)이다.
     수리 요청은 앞 답(그 글에 적힌 표기로 되돌린 것)을 다시 싣는다.
-    그 글에 나온 아이 이름이 요청 어디에든 남아 있으면 부르지 않는다
-    — 「하나씩」처럼 낱말과 겹쳐도 내보내지 않는 쪽을 고른다.
+    그 글에 나온 아이 이름이 요청 본문(user_content) 어디에든 남아 있으면 부르지 않는다
+    — 「하나씩」처럼 낱말과 겹쳐도 내보내지 않는 쪽을 고른다. 지시문(system_prompt)은 코드에
+    박힌 상수라 교사 글이 없어 보지 않는다(본다면 지시문 속 「하나」 「우리」 때문에 늘 막힌다).
     """
 
-    def __init__(self, inner, memo: str, table: NameTable, texts: Sequence[str] = ()) -> None:
+    def __init__(
+        self, inner, memo: str | None, table: NameTable, texts: Sequence[str] = ()
+    ) -> None:
         self._inner = inner
         self._table = table
         sources = [text for text in dict.fromkeys((memo, *texts)) if text]
         self._original = "\n".join(sources)
-        # 요청 본문은 JSON 이다. 글이 들어간 모양(따옴표 안)을 그대로 찾아 바꾼다.
+        # 요청 본문은 JSON 이다. 글을 JSON 문자열 안의 모양(이스케이프 포함)으로 만들어 본문에서
+        # 그 부분 문자열을 바꾼다 — 따옴표 경계는 보지 않아 다른 칸에 들어간 같은 글도 가려진다.
         # 긴 글부터 — 짧은 칸 값이 긴 글 안에 들어 있을 수 있다.
         quoted = lambda text: json.dumps(text, ensure_ascii=False)[1:-1]  # noqa: E731
         self._swaps = [
@@ -139,8 +143,7 @@ class MaskedMemoProvider:
             for real, fake in self._swaps:
                 content = content.replace(real, fake)
             masked = replace(request, user_content=content)
-            text = masked.user_content + masked.system_prompt
-            if any(variant in text for variant in self._names):
+            if any(variant in masked.user_content for variant in self._names):
                 raise MemoMaskFailed
             response = method(masked, *args, **kwargs)
             content = unmask_as_written(response.content, self._table, self._original)
@@ -149,5 +152,7 @@ class MaskedMemoProvider:
         return call
 
 
-def with_masked_memo(provider, memo: str, table: NameTable | None, texts: Sequence[str] = ()):
+def with_masked_memo(
+    provider, memo: str | None, table: NameTable | None, texts: Sequence[str] = ()
+):
     return provider if table is None else MaskedMemoProvider(provider, memo, table, texts)
