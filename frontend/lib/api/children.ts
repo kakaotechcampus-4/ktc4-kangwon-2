@@ -9,6 +9,12 @@ export const createChild = (classId: number, data: ChildInput) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+export const updateChild = (id: number, data: { call_name: string | null }) =>
+  apiRequest<ApiChild>("/api/children/" + id, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
 export const deleteChild = (id: number) =>
   apiRequest<void>("/api/children/" + id, { method: "DELETE" });
 // 발달 추적 — 아이 · 영역별 관찰 기록 수. 기록 본문은 getObservations({ child_id }) 로 따로 받는다.

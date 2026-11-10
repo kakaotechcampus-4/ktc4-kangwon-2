@@ -6,6 +6,9 @@ export interface ChildEntry {
   code?: string;
   id: string;
   name: string;
+  /** 외자 아이를 부르는 이름. 이름과 같이 브라우저에 저장하지 않는다(ADR-013). */
+  callName?: string | null;
+  needsCallName?: boolean;
 }
 
 export type SelectedAge = 3 | 4 | 5;

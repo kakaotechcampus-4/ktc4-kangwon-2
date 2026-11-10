@@ -1,0 +1,23 @@
+{
+  "what": "주간 후보 사람 판정 (연령 · 주제), 3단계 실제 생성(커밋 7e531a61) 후보 117개",
+  "judge": "하민",
+  "date": "2026-11-10",
+  "blind": "후보의 연령 등급(같은 연령 / 혼합연령)은 판정 화면에서 가렸다",
+  "scale": {"good": "○", "mid": "△", "bad": "✗", "none": "판정 안 함 (메모만)"},
+  "groups": {
+    "all":                    {"n": 117, "age": {"good": 103, "mid": 2, "bad": 10, "none": 2}, "theme": {"good": 64, "mid": 31, "bad": 20, "none": 2}},
+    "tier_same_age":          {"n": 25,  "age": {"good": 22,  "mid": 0, "bad": 3,  "none": 0}, "theme": {"good": 8,  "mid": 9,  "bad": 8,  "none": 0}},
+    "tier_mixed_age":         {"n": 92,  "age": {"good": 81,  "mid": 2, "bad": 7,  "none": 2}, "theme": {"good": 56, "mid": 22, "bad": 12, "none": 2}},
+    "a4m11_group":            {"n": 19,  "age": {"good": 14,  "mid": 1, "bad": 3,  "none": 1}, "theme": {"good": 10, "mid": 3,  "bad": 5,  "none": 1}},
+    "a4m11_indoor_same_age":  {"n": 8,   "age": {"good": 7,   "mid": 0, "bad": 1,  "none": 0}, "theme": {"good": 4,  "mid": 1,  "bad": 3,  "none": 0}},
+    "a4m11_indoor_mixed_age": {"n": 33,  "age": {"good": 31,  "mid": 0, "bad": 1,  "none": 1}, "theme": {"good": 19, "mid": 11, "bad": 2,  "none": 1}},
+    "a5m12_group_same_age":   {"n": 3,   "age": {"good": 3,   "mid": 0, "bad": 0,  "none": 0}, "theme": {"good": 1,  "mid": 2,  "bad": 0,  "none": 0}},
+    "a5m12_group_mixed_age":  {"n": 4,   "age": {"good": 3,   "mid": 0, "bad": 1,  "none": 0}, "theme": {"good": 3,  "mid": 0,  "bad": 1,  "none": 0}},
+    "a5m12_indoor_same_age":  {"n": 14,  "age": {"good": 12,  "mid": 0, "bad": 2,  "none": 0}, "theme": {"good": 3,  "mid": 6,  "bad": 5,  "none": 0}},
+    "a5m12_indoor_mixed_age": {"n": 36,  "age": {"good": 33,  "mid": 1, "bad": 2,  "none": 0}, "theme": {"good": 24, "mid": 8,  "bad": 4,  "none": 0}}
+  },
+  "notes": [
+    "근거 원문에 「<스토리톡>」 「<입동, 소설>」 같은 꺾쇠 태그가 그대로 남는다 (4개에 '<> 빼기' 메모)",
+    "두 기록이 섞인 원문 1개, 과목 태그가 이어 붙은 원문 1개는 '잘 못 나옴' · '이상함'으로 판정하지 않았다"
+  ]
+}
