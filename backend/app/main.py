@@ -25,6 +25,7 @@ from app.features.observations.router import router as observations_router
 from app.features.plans.annual_extract import router as annual_extract_router
 from app.features.plans.annual_import import router as annual_import_router
 from app.features.plans.export import router as plans_export_router
+from app.features.plans.generation_runs import router as generation_runs_router
 from app.features.plans.monthly_router import router as monthly_plans_router
 from app.features.plans.play_monthly_router import router as play_monthly_plans_router
 from app.features.plans.router import router as plans_router
@@ -206,6 +207,7 @@ app.include_router(template_profiles_router, prefix="/api", dependencies=_authen
 app.include_router(plans_export_router, prefix="/api", dependencies=_authenticated)
 app.include_router(center_forms_router, prefix="/api", dependencies=_authenticated)
 app.include_router(trends_router, prefix="/api", dependencies=_authenticated)
+app.include_router(generation_runs_router, prefix="/api", dependencies=_authenticated)
 
 
 def _error(status_code: int, code: str, message: str, fields: list[str]) -> JSONResponse:

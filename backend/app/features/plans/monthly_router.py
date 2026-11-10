@@ -101,6 +101,7 @@ from ssuksak.planning.rules.safety_placement import candidate_display_value  # �
 
 from app.db import get_session
 from app.features.plans.annual_content import subthemes_for_month
+from app.features.plans.generation_runs import PromptNoted, RunRecord
 from app.features.plans.memo_privacy import (
     REGEN_MASK_FAILED,
     memo_name_table,
@@ -314,10 +315,13 @@ def _lock_parent(session: Session, parent_id: int, message: str) -> None:
 
 @router.post("", response_model=MonthlyPlanOut, status_code=status.HTTP_201_CREATED)
 @timing.timed("monthly_theme", logging.getLogger("app.server.timing").info)
-def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: CurrentUser):
+def create_monthly_plan(
+    body: CreateMonthlyPlan, session: DbSession, user: CurrentUser, run: RunRecord
+):
     """한 달치를 만들어 DRAFT 로 저장한다. 실패하면 아무것도 남지 않는다."""
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     klass = require_own_class(session, user, body.class_id)
+    run.begin(klass)
     center_id, class_id = user.center_id, klass.id
     names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-060)
     month = _target_month(klass.school_year, body.month)
@@ -374,7 +378,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
         profile_repository=InMemoryTemplateProfileRepository((profile,)),
         # 생성 직전 검사와 같은 Template 저장소. 부를 때 읽는다 — 테스트가 바꿔 끼운다.
         template_repository=profile_service.TEMPLATES,
-        provider=with_masked_memo(provider, body.memo, names),
+        provider=with_masked_memo(PromptNoted(provider), body.memo, names),
         clock=SystemClock(),
         id_generator=UuidGenerator(),
     )

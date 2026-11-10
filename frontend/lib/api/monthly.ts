@@ -1,5 +1,6 @@
 import { apiRequest } from "./client";
 import { downloadHwpx, type ExportFormat } from "./export";
+import { runHeaders } from "./generationRuns";
 import type {
   MonthlyAuditEvent,
   MonthlyInput,
@@ -19,8 +20,11 @@ const cell = (id: number, itemId: string) =>
   "/api/plans/monthly/" + id + "/cells/" + encodeURIComponent(itemId);
 
 /** 동기 생성이라 10 ~ 15초 걸린다. 같은 요청을 다시 보내지 않는다 (§9-1). */
-export const createMonthlyPlan = (data: MonthlyInput, signal?: AbortSignal) =>
-  apiRequest<MonthlyPlan>("/api/plans/monthly", json("POST", data, signal));
+export const createMonthlyPlan = (data: MonthlyInput, signal?: AbortSignal, runId?: string) =>
+  apiRequest<MonthlyPlan>("/api/plans/monthly", {
+    ...json("POST", data, signal),
+    headers: { "Content-Type": "application/json", ...runHeaders(runId) },
+  });
 export const getMonthlyPlan = (id: number, signal?: AbortSignal) =>
   apiRequest<MonthlyPlan>("/api/plans/monthly/" + id, { signal });
 /** 확정본만 서버 서식으로 내려받는다. 초안은 서버가 409 로 막는다. */

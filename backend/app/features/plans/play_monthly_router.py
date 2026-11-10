@@ -82,6 +82,7 @@ from app.db import get_session
 from app.features.centers.models import Center
 from app.features.plans import monthly_llm, play_project
 from app.features.plans import play_monthly_schemas as s
+from app.features.plans.generation_runs import PromptNoted, RunRecord
 from app.features.plans.memo_privacy import memo_name_table, raise_if_mask_failed, with_masked_memo
 from app.features.plans.models import Plan
 from app.features.plans.monthly_router import (
@@ -189,10 +190,13 @@ def _generation_error(error: Exception):
 
 @router.post("", response_model=s.PlayMonthlyPlanOut, status_code=status.HTTP_201_CREATED)
 @timing.timed("monthly_play", _TIMING_LOG.info)
-def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, user: CurrentUser):
+def create_play_monthly_plan(
+    body: s.CreatePlayMonthlyPlan, session: DbSession, user: CurrentUser, run: RunRecord
+):
     """한 달치를 만들어 DRAFT 로 저장한다. 실패하면 아무것도 남지 않는다(기존 월간과 같다)."""
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     klass = require_own_class(session, user, body.class_id)
+    run.begin(klass)
     center_id, class_id, class_name = user.center_id, klass.id, klass.name
     names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-060)
     school_year = klass.school_year
@@ -236,7 +240,7 @@ def create_play_monthly_plan(body: s.CreatePlayMonthlyPlan, session: DbSession, 
     use_case = play_monthly_generation(
         parent_repository=parents,
         plan_repository=InMemoryPlanRepository(),  # 운영 저장은 C 에서 한다
-        provider=with_masked_memo(provider, body.memo, names),
+        provider=with_masked_memo(PromptNoted(provider), body.memo, names),
         clock=SystemClock(),
         id_generator=UuidGenerator(),
         optional_context=trends,

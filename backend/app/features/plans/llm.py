@@ -58,6 +58,7 @@ class EliceThemeTextGenerator:
         if not requests:
             return ()
         timing.phase("prompt")
+        timing.note_prompt(ANNUAL_THEME_PROMPT_VERSION)
         asked = {request.theme_id: request for request in requests}
         user_content = _user_content(requests)
         content = complete_json(

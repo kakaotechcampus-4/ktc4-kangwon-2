@@ -6,6 +6,10 @@
 
 **열린 실행이 없으면 아무것도 안 한다.** 테스트 · 편집 · 다른 기능에서 불려도 영향이 없다. 실행은
 요청이 도는 스레드의 `contextvars` 에만 보인다.
+
+**밖에서 볼 수 있게 두 가지를 열어 둔다**(`observe` · `note_prompt`) — 구간이 바뀔 때와 끝날 때 관측 쪽을
+부르고, 요청이 보낸 프롬프트 판 이름을 모은다. 이것도 숫자 · 이름뿐이다. 관측 쪽이 예외를 내지 않는 것은
+관측 쪽 몫이다 — 여기서 삼키지 않는다.
 """
 
 from __future__ import annotations
@@ -30,6 +34,9 @@ class Run:
         self.phase = first_phase
         self.ms: dict[str, float] = {}
         self.llm_calls = 0
+        # 관측 쪽은 구간이 바뀔 때 `phase(name)`, 끝날 때 `end(run, result, error)` 를 받는다.
+        self.observer = None
+        self.prompts: list[str] = []  # 이 실행이 보낸 프롬프트 판 이름 — 처음 쓴 순서, 중복 없이
         self._started = self._mark = time.perf_counter()
 
     def switch(self, name: str) -> str:
@@ -37,6 +44,8 @@ class Run:
         now = time.perf_counter()
         self.ms[self.phase] = self.ms.get(self.phase, 0.0) + (now - self._mark) * 1000
         self._mark, previous, self.phase = now, self.phase, name
+        if self.observer is not None and name != previous:
+            self.observer.phase(name)
         return previous
 
     def summary(self, outcome: str) -> str:
@@ -106,6 +115,27 @@ def current() -> Run | None:
     return _current.get()
 
 
+def observe(observer) -> None:
+    """지금 실행의 구간 변화와 끝을 `observer` 가 받게 한다. 실행이 없거나 작업 스레드면 아무것도 안 한다."""
+    run = _current.get()
+    if isinstance(run, Run):
+        run.observer = observer
+
+
+def note_prompt(version: str | None) -> None:
+    """이 실행이 보낸 프롬프트 판 이름을 적는다 — 같은 이름은 한 번만, 처음 쓴 순서대로.
+
+    `reserve_llm_call` 처럼 작업 스레드에서도 루트 실행에 적고, 같은 락을 쓴다. 실행이 없으면 아무것도 안 한다.
+    """
+    run = _current.get()
+    if run is None or not version:
+        return
+    root = run.root if isinstance(run, _Worker) else run
+    with _count:
+        if version not in root.prompts:
+            root.prompts.append(version)
+
+
 def phase(name: str) -> None:
     run = _current.get()
     if run is not None:
@@ -141,15 +171,20 @@ def timed(kind: str, emit: Callable[[str], None], first_phase: str = "db_read"):
             run = Run(kind, first_phase)
             token = _current.set(run)
             outcome = "ok"
+            result = failure = None
             try:
-                return handler(*args, **kwargs)
+                result = handler(*args, **kwargs)
+                return result
             except BaseException as error:
+                failure = error
                 code = getattr(error, "status_code", None)
                 outcome = f"http_{code}" if isinstance(code, int) else type(error).__name__
                 raise
             finally:
                 _current.reset(token)
                 emit(run.summary(outcome))
+                if run.observer is not None:
+                    run.observer.end(run, result, failure)
 
         return wrapper
 

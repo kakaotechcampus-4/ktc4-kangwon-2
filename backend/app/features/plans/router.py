@@ -76,6 +76,7 @@ from app.features.plans.annual_content import (
     with_teacher_subthemes,
 )
 from app.features.plans.codec import to_jsonable
+from app.features.plans.generation_runs import RunRecord
 from app.features.plans.llm import theme_text_generator
 from app.features.plans.memo_privacy import (
     mask_memo,
@@ -454,7 +455,7 @@ def _domain_error(error: Exception) -> HTTPException:
 )
 @timing.timed("annual_theme", logging.getLogger("app.server.timing").info)
 def create_annual_plan(
-    body: CreateAnnualPlan, request: Request, session: DbSession, user: CurrentUser
+    body: CreateAnnualPlan, request: Request, session: DbSession, user: CurrentUser, run: RunRecord
 ):
     """12개월치를 만들어 DRAFT 로 저장한다.
 
@@ -462,6 +463,9 @@ def create_annual_plan(
     생기므로 따로 받으면 불일치 경로만 생긴다(§4).
     """
     klass = require_own_class(session, user, body.class_id)
+    if body.format == "PLAY_PROJECT":
+        timing.set_kind("annual_play")
+    run.begin(klass)
     # 요청 사항 속 아이 이름은 LLM 에 보내기 전에 가명으로 바꾼다. 못 바꾸면 여기서 422(ADR-060).
     names = memo_name_table(session, klass.id, body.memo)
     # 연간은 반 하나에 하나다. 막지 않으면 교사가 새로고침하고 다시 눌렀을 때 두 개가
@@ -477,7 +481,6 @@ def create_annual_plan(
     if duplicate is not None:
         raise _ALREADY_EXISTS
     if body.format == "PLAY_PROJECT":
-        timing.set_kind("annual_play")
         return _play_project_plan(session, user, klass, body.memo, names, _disconnected(request))
     if body.form_id is not None and find_own_form(session, user.center_id, body.form_id) is None:
         # 남의 원 양식 번호를 넣어도 통과하면 안 된다. 없는 것과 남의 것을 가르지 않는다(ADR-017).
@@ -527,7 +530,8 @@ def create_annual_plan(
     # **응답을 다 만든 뒤에 확정한다.** 먼저 commit 하면 아래에서 터졌을 때 DB 에는
     # 계획안이 남고 교사는 500 을 본다 — 실패한 줄 알고 다시 눌러 두 개가 생긴다.
     # 저장소가 이미 flush 해두어 commit 전에도 행을 읽을 수 있다.
-    timing.phase("save")
+    # 소주제 단계의 시작 — 생성 기록 단계가 저장으로 먼저 넘어가지 않게(ADR-096).
+    timing.phase("subthemes")
     row = session.scalar(select(Plan).where(Plan.plan_ref == result.plan.plan_id.value))
     plan = result.plan
     try:
@@ -631,7 +635,8 @@ def delete_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> R
 
     **확정본도 지운다**(Human Decision 2026-11-05 하민, ADR-064). 화면에서 확정 취소를 없앴다 —
     확정본을 고치려면 문서 보관함에서 지우고 다시 만든다. 이력 · 근거는 본문(`body`) 안에
-    있어 행과 함께 사라지고, `plans` 를 가리키는 FK 는 없어 고아가 남지 않는다.
+    있어 행과 함께 사라진다. `generation_runs.plan_id` FK 는 `ON DELETE SET NULL` 이라 생성 기록
+    줄은 남고 `plan_id` 만 빈다(ADR-096 D5).
 
     **월간이 딸려 있으면 안 지운다.** 월간은 이 계획안을 부모로 들고 있어서(§9-1
     `parent`), 부모가 사라지면 조회가 깨진다. 월간을 먼저 지워야 한다.
