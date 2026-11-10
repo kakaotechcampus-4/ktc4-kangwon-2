@@ -1424,7 +1424,7 @@ function editorHarness(selection) {
     "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
     "next/link": { __esModule: true, default: "link" },
     "@/lib/workspace/model": workspaceModel,
-    "./WorkspaceUI": { ws: {}, Message: "message", AIHint: "ai-hint", useAIStatus: () => false },
+    "./WorkspaceUI": { ws: {}, Message: "message" },
     "./document-selection": { serverIssues },
     // 실제 invalidFields 를 쓴다 — 서버가 짚은 칸을 화면 이름으로 바꾸는 길이
     // 스텁이면 "어느 칸이 틀렸나" 를 검증하지 못한다.
