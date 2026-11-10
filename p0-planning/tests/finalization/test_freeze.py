@@ -67,7 +67,7 @@ FROZEN_ARTIFACTS = {
         "2fec7d85833ac940cc46cc0bf4bf4ae2ec26cd60d89a418dedcde8649c00771c"
     ),
     "drills/emergency_drill_topics_v0_1_0_draft.json": (
-        "aa0e297825f984fbdd3169732ca84766beee6d7409a1ef978f04fa7a5e636521"
+        "18cff1b7d3eaf940e2cc8dd8168b97900d6924283ba23b63f1e5888dcf3586da"
     ),
     # Human-approved 2026-10-20 (reviewer_pm_001). ADR-027 §5: approval metadata only.
     "templates/monthly_template_a_v0_2_1.json": (
@@ -178,7 +178,7 @@ PENDING_REVIEW_CONTENT = {
     ),
     # Added at approval; content pin (approval metadata excluded).
     "drills/emergency_drill_topics_v0_1_0_draft.json": (
-        "2d014b7682c7107de198da33d86a9b1cd6d91377820d2587d8e6ae8c95454768"
+        "d9783d6c21942bdbf1411f104ecbc2c11c5aea8a3703ea63a6151f3920eb7d48"
     ),
 }
 
