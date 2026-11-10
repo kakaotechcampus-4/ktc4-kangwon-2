@@ -8,8 +8,8 @@
 ```
 
 결과 · 원값 · 다시 재는 방법을 여기 남긴다. **결과 표는 아직 비어 있다 (「측정 전」)** — 측정은 서버에서 사람이 한다.
-도구: `backend/scripts/load_check.py`(부하) · `backend/scripts/loadtest.sh`(띄우기 · 게이트 · 잠금 · 정리) ·
-`backend/scripts/compose.loadtest.yml`(격리 override) · 시험 `backend/tests/test_load_check.py`.
+도구: `backend/scripts/load_check.py`(부하 · 분석 · 예산 판정) · `backend/scripts/loadtest.sh`(띄우기 · 점검 · 잠금 · 정리) ·
+`backend/scripts/loadtest_gate.py`(설정 게이트) · `backend/scripts/compose.loadtest.yml`(격리 override) · 시험 `backend/tests/test_load_check.py`.
 
 ---
 
@@ -51,8 +51,14 @@ S1 의 H 는 LLM 1호출, S2 의 H 는 보통 LLM 2호출의 합이다(수리가
 - **모든 작업은 `loadtest.sh` 를 지난다.** 그 안의 `lt()` 한 함수가 `docker compose --project-directory … --env-file … -f … -f … -p loadtest` 를
   명령줄로 못 박는다. **셸의 `COMPOSE_PROJECT_NAME` 은 override 파일의 `name:` 보다 우선한다** — 파일만 믿으면 운영 이름의 망 · 볼륨으로 렌더링된다.
   그래서 스크립트는 시작할 때 셸의 `COMPOSE_*` 를 지우고, 있었다면 거절한다.
-- 스크립트는 `set -euo pipefail` 이고, **게이트가 어긋나면 `exit 1`** 이다. 같은 게이트를 `up`(db · alembic · backend 각각 바로 앞) ·
-  부하기 실행 · `stage` · `down` 앞에서 다시 돈다. 손으로 붙여 넣는 코드 중 서버 상태를 바꾸는 것은 B(`bash -euo pipefail` 안)와 맨 끝의 `rm -rf` 뿐이다.
+- 스크립트는 `set -euo pipefail` 이고, **게이트(`loadtest_gate.py`)가 어긋나면 `exit 1`** 이다. 같은 게이트를 `up`(db · alembic · backend 각각 바로 앞) ·
+  부하기 실행 · `stage` · `budget` · `final` · `down` 앞에서 다시 돈다. 손으로 붙여 넣는 코드 중 서버 상태를 바꾸는 것은 B(`bash -euo pipefail` 안)와 맨 끝의 `rm -rf` 뿐이다.
+- **게이트가 보는 것**(`docker compose config --format json` — 비밀번호가 들어 있어 화면에 안 찍는다): 프로젝트 이름 `loadtest` · 서비스 `db backend loadgen` 만 ·
+  세 서비스의 `mem_limit` · `memswap_limit`(512m · 1g · 256m) · 호스트 포트 없음 · `restart: "no"` · build 없음 · journald 아님 ·
+  **모든 서비스의 연결 네트워크는 `default` 하나뿐 · `network_mode` 없음** · db 이미지 `postgres:15` · backend/loadgen 이미지 ·
+  backend `LOADTEST=1` · `LLM_MODE` · `IS_SERVER` · `ALLOW_TEST_RESET=0` · DB 호스트 `db` · loadgen 환경변수는 `DATABASE_URL` · `LOADTEST` 뿐 ·
+  **bind mount 는 loadgen 의 `load_check.py` · `out/` 둘뿐, 이름 있는 볼륨은 `loadtest_pgdata` 하나뿐 · 볼륨 `driver_opts` 없음** ·
+  망 `loadtest_default` 172.29.0.0/16 하나 · 설정 어디에도 `ktc4-kangwon-2` · `172.28.` · `journald` 가 없다.
 - 운영 폴더 안에서는 아무것도 하지 않는다. 컨테이너 · 볼륨(`loadtest_pgdata`) · 망(`loadtest_default`) 이름이 전부 `loadtest` 로 시작한다.
 - 이미지는 **빌드하지 않는다.** 지금 도는 운영 backend 이미지에 `ssample-loadtest-backend:457` 태그만 붙여 쓴다. 빌드는 메모리를 먹는다(`docs/deploy.md`).
 - **메모리 상한**: db 512m · backend 1g · **부하기 256m**(부하기는 별도 서비스 `loadgen` — `run backend` 로 돌리면 backend 의 1g 를 물려받아 합이 늘어난다).
@@ -64,9 +70,22 @@ S1 의 H 는 LLM 1호출, S2 의 H 는 보통 LLM 2호출의 합이다(수리가
 - 부하기(`loadgen`)는 backend 와 같은 이미지의 일회용 컨테이너이고 `http://backend:8000` 으로 보낸다. **앱 설정(SECRET_KEY · 엘리스 키 · LLM_MODE)을 주지 않는다.**
   nginx · Next 층은 거치지 않는다.
 - `load_check.py` 는 **풀 수 있는 플래그 없이** 이 조건이 모두 맞아야 돈다: 호스트가 `backend` 하나뿐(localhost · 127.0.0.1 도 거절 — 운영 8000 이 열려 있다),
-  환경에 `LOADTEST=1`, 그리고 `backend`(burst 에서는 DB 호스트도)를 이름 풀이한 주소가 모두 loadtest 망 172.29.0.0/16 안.
-  운영 망에서 `backend` 는 운영 backend(172.28)라서 거기서 멈춘다. `ssample.duckdns.org` 는 어떤 경우에도 거절한다.
+  환경에 `LOADTEST=1`, `backend`(burst 에서는 DB 호스트도)를 이름 풀이한 주소가 모두 loadtest 망 172.29.0.0/16 안, 그리고 `DATABASE_URL` 에 `?` 쿼리 옵션이 없다
+  (`?host=…` 가 호스트를 덮어쓸 수 있다). 운영 망에서 `backend` 는 운영 backend(172.28)라서 거기서 멈춘다. `ssample.duckdns.org` 는 어떤 경우에도 거절한다.
   **이 스크립트는 LLM 을 부르지 않는다.** 돈이 나가는 곳은 loadtest backend 의 LLM 호출이다.
+
+### 배포 잠금 — 단계마다 감싼다
+
+서버 DB 를 바꾸거나 LLM 을 부르는 단계(**`up` · `loadgen setup` · `loadgen burst` · `down`**)는 `loadtest.sh` 가
+`scripts/deploy.sh` 와 **같은 파일 `/tmp/ssuksak-deploy.lock` 에 `flock -w 60`** 을 건 채로 돈다(`deploy.sh` 는 ubuntu 로 같은 파일을 `flock -w 300` 한다).
+
+- **못 잡으면 그 단계를 돌리지 않고 `exit 1`** 이다. (`flock` 이 없어도 마찬가지.)
+- 단계가 끝나거나 죽으면 fd 가 닫혀 **잠금이 저절로 풀린다**(그 단계가 띄운 자식 프로세스까지 끝나면 — `flock` 의 보통 규칙이다). 뒤에 남는 프로세스 · pid 파일이 없다.
+- 읽기 단계(`preflight` · `gate` · `stage` · `budget` · `final`)와 `loadgen analyze`/`budget` 은 잠그지 않는다.
+- **단계 사이는 잠금이 막지 못한다.** 그 사이는 Deploy 워크플로 비활성화가 막는다(아래 「시작 전」). 비활성화 전에 이미 서버로 간 배포는 `preflight` 가 본다.
+- 단계 도중 배포가 오면: `deploy.sh` 가 300초 기다린 뒤 `die "잠금을 못 잡았다 … 서버는 바꾸지 않았다"` 로 **종료 코드 1**(교체 전 실패 — 서버는 그대로)로 끝난다.
+  Actions 에는 실패로 남고 알림이 간다. 끝난 뒤 `gh workflow enable` → 필요하면 다시 올린다.
+- 한계: 옛 `deploy.sh`(잠금이 없는 것)를 손으로 돌리면 이 잠금을 안 본다(`deploy.sh` 의 ADR-078 주석).
 
 ---
 
@@ -83,10 +102,15 @@ S1 의 H 는 LLM 1호출, S2 의 H 는 보통 LLM 2호출의 합이다(수리가
   gh api --paginate repos/kakaotechcampus-4/ktc4-kangwon-2/actions/workflows/deploy.yml/runs \
     --jq '.workflow_runs[] | select(.status != "completed") | [.id, .status, .head_branch, .created_at] | @tsv'
   ```
-  도는 run 이 있으면 **끝나길 기다린다**(취소하지 않는다 — 서버가 반쯤 바뀐다). 서버 쪽(도는 `deploy.sh` · SSM 에서 `InProgress`/`Pending` 인 명령)은
-  `preflight` 가 본다(아래 C). 끝나면 `gh workflow enable Deploy …` 로 켜고, 그 사이 머지된 것이 있으면 한 번 올린다.
-  **못 막으면 미룬다** (develop 머지 = 운영 배포다).
-- [ ] **서버 배포 잠금**: 측정 내내 `/tmp/ssuksak-deploy.lock` 을 쥔다(아래 D). Deploy 를 꺼도 손으로 보낸 SSM 배포는 올 수 있다.
+  도는 run 이 있으면 **끝나길 기다린다**(취소하지 않는다 — 서버가 반쯤 바뀐다). 서버 쪽(도는 `deploy.sh` · 배포 잠금 · SSM 에서
+  `InProgress`/`Pending`/`Cancelling` 인 명령)은 `preflight` 가 본다(아래 C). 끝나면 `gh workflow enable Deploy …` 로 켜고,
+  그 사이 머지된 것이 있으면 한 번 올린다. **못 막으면 미룬다** (develop 머지 = 운영 배포다).
+- [ ] **서버 사전 조건** (한 번에 모았다. `preflight` 가 도구 존재와 SSM 조회를 확인한다):
+  - `ubuntu` 로 들어간다. `docker`(+ compose v2, 5.5 에서 확인) 를 쓸 수 있다 — sudo 가 필요하면 `LT_SUDO=1`.
+  - `python3`(게이트) · `flock`(잠금) · `aws`(SSM 조회) · `openssl`(비밀번호) · `pgrep` · `git` · `curl` 이 있다.
+  - **ubuntu 의 AWS 역할에 `ssm:ListCommands` 권한**이 있다. 미리: `aws ssm list-commands --region ap-northeast-2 --instance-id i-041ebb00937bd371f --max-items 1`
+    이 성공해야 한다. 실패하면 `preflight` 가 FAIL 이다(「없다」로 읽지 않는다).
+  - 운영 backend 컨테이너 `ktc4-kangwon-2-backend-1` 이 Running 이다(`preflight` 가 본다).
 - [ ] **시간대**: 교사 사용이 없는 때, **백업 cron(03:15 KST = 18:15 UTC) 전에 정리까지** 끝낸다. 약 1시간 + 여유 → 02:00 KST 전에 시작.
 - [ ] **어젯밤 백업이 있다**: `ls -t ~/backup | head -2` · `aws s3 ls s3://ktc4-kangwon-2-backup/backup/ | tail -2`. 없으면 `sudo scripts/backup.sh` 를 손으로.
 - [ ] **메모리**: `free -m` 의 available ≥ **2292MB**(세 상한 합 1792 + 운영 여유 500). 아니면 미룬다. swap 사용량도 적어 둔다.
@@ -94,6 +118,52 @@ S1 의 H 는 LLM 1호출, S2 의 H 는 보통 LLM 2호출의 합이다(수리가
 - [ ] **엘리스 이달 누적**: 콘솔(또는 담당자)에서 확인. 월 예산 ₩120,000 에 이번 상한 ₩30,000 을 더해도 넉넉한가.
   사용자가 「크레딧 넉넉」 확인으로 대신하면 그 사실을 아래 결과표에 적는다.
 - [ ] 로컬에서 `pytest tests/test_load_check.py` 통과, 로컬 리허설(아래 「로컬 리허설」)을 한 번 돌렸다.
+
+---
+
+## 측정 계획 (고정)
+
+**이 표 하나가 계획이다.** `load_check.py` 의 `PLAN` · `BASELINE_REQUESTS` 가 같은 값이고, `budget` 이 이 표 전체를 한 번 판정한다.
+
+| 순서 | 시나리오 | 동시 | 반복 | 요청 수 | 비고 |
+|---|---|---|---|---|---|
+| 1 | S1 | 1 | 4 (첫 회 예열) | 4 | 기준선 |
+| 2 | S2 | 1 | 4 (첫 회 예열) | 4 | 기준선 |
+| — | **`budget`** | | | | 기준선 직후 **한 번**. 진행 가능이 아니면 여기서 끝 |
+| 3 | S1 | 10 | 2 | 20 | |
+| 4 | S2 | 10 | 1 | 10 | |
+| 5 | S1 | 20 | 2 | 40 | |
+| 6 | S2 | 20 | 1 | 20 | |
+| 7 | S1 | 40 | 2 | 80 | |
+| 8 | S2 | 40 | 1 | 40 | |
+
+합계: S1 **144**건(기준선 4 + 140) · S2 **74**건(기준선 4 + 70) → 필요한 반 150개(요청마다 새 반이 든다).
+
+**반복을 줄인 이유**: 이전 안(S1 10·20·40 × 3, S2 × 2)은 S1 214 · S2 144건이었다. 판정을 단계마다 다시 하지 않고 기준선 단가로 **한 번** 하므로
+남은 요청 수가 곧 최악 비용이고 02:45 KST 전 종료 시간이다. S1 은 2회(회차 사이 흩어짐 확인), S2 는 요청당 비용이 커서 1회로 줄였다.
+**회차가 적어 p95 는 참고일 뿐이고, 본 지표는 실패 수 · max · LLM 시작 물결이다.**
+
+### 예산 판정 (`budget`) — 계산식
+
+기준선이 끝나면 `bash $LT budget` 을 **한 번** 돌린다. 기준선 로그에서 요청 하나씩(동시 1 이라 요청 = 회차 = 로그 줄 묶음) 실제 원화를 계산한다.
+
+```
+요청당 원화(기준선)     = 그 요청의 llm_usage 줄들(입력 × ₩2.835/1K + 출력 × ₩14.175/1K)의 합
+요청당 최악(시나리오)   = 기준선 요청당 최대 원화 × (요청당 최대 시도 ÷ 기준선 요청당 최소 시도)
+                          요청당 최대 시도: S1 2 · S2 6    기준선 시도 = 그 요청의 llm_call 줄 수(성공 + not_delivered)
+남은 계획 최악          = S1 140건 × 요청당 최악(S1) + S2 70건 × 요청당 최악(S2)
+기준선 지출             = 기준선 요청 8건의 원화 합 (예열 회차 포함)
+진행 가능               ⇔ 남은 계획 최악 ≤ ₩30,000 − 기준선 지출
+```
+
+- **S2 최대 시도 6** = 주제 1 + 소주제 1 + 소주제 개수 수리 1 = 3호출 × 전송 재시도 1회(`plans/llm.py`, `plans/annual_content.py:155` · `:191`). S1 은 초안 1호출 × 2.
+- **기준선 요청 하나라도 이 중 하나면 「멈춤(단가 모름)」**: 201 이 아니다 · `llm_call` 줄이 없다 · `outcome` 이 `ok`/`not_delivered` 가 아니다(`failed` · `timeout` · `budget`) ·
+  성공 호출이 모자란다(S1 1 · S2 2) · `llm_usage` 가 없거나 숫자가 아니거나 성공 호출 수와 안 맞는다 · 기준선 요청이 4건이 아니다.
+  기준선을 다시 돌렸다면 시나리오마다 **가장 최근 기준선 파일만** 본다.
+- 결과: `진행 가능`(종료 코드 0) / `멈춤(단가 모름)` / `멈춤(상한 초과 가능)`(종료 코드 1). **이 한 번의 판정이 표의 남은 burst 전부를 허용한다 — 단계마다 다시 판정하지 않는다.**
+- 이 추정은 관측에 기댄 것이지 보장된 상한이 아니다(캐시 할인을 안 세서 조금 높고, 단가가 기준선보다 커지는 요청은 못 본다).
+  사후 지출 집계(`stage`/`final` 끝)는 보고용이고 판정에 쓰지 않는다. 사람이 누적 지출이 ₩30,000 의 80% 를 넘는지 본다(중단 규칙 I-2).
+- **mock 에서는 `llm_call` 줄이 없어 「멈춤(단가 모름)」이 정상이다.** 서버 real 에서만 의미가 있다.
 
 ---
 
@@ -119,7 +189,8 @@ bash -euo pipefail <<'SH'
 mkdir -p /home/ubuntu/loadtest-457/out
 cd /home/ubuntu/loadtest-457
 git clone --depth 1 --branch feature/load-check https://github.com/kakaotechcampus-4/ktc4-kangwon-2.git src
-cp src/backend/scripts/compose.loadtest.yml src/backend/scripts/load_check.py src/backend/scripts/loadtest.sh .
+cp src/backend/scripts/compose.loadtest.yml src/backend/scripts/load_check.py \
+   src/backend/scripts/loadtest.sh src/backend/scripts/loadtest_gate.py .
 cp /home/ubuntu/ktc4-kangwon-2/docker-compose.yml .
 git -C src log --oneline -1                    # 부하 스크립트 커밋 → 결과표에 적는다
 SH
@@ -134,36 +205,21 @@ bash $LT tag            # 운영 backend 이미지에 ssample-loadtest-backend:4
 bash $LT gate -v        # 어긋나는 것이 하나라도 있으면 exit 1
 ```
 
-`preflight` 가 보는 것: 운영 backend 이미지 · 로그 드라이버, `free -m`, available ≥ 2292MB, 172.29 대역을 쓰는 망 없음, loadtest 볼륨 · 컨테이너 없음,
-**도는 `deploy.sh` 없음, 배포 잠금을 아무도 안 쥐고 있음, SSM 에서 `InProgress`/`Pending` 인 명령 없음**(`LT_SSM_INSTANCE`).
+`preflight` 가 보는 것 (**조회 명령이 실패하면 「없음」이 아니라 FAIL**):
+- 도구: `python3` · `openssl` · `pgrep` · `flock` · `aws`
+- 운영 backend 컨테이너 조회 성공 + **`State.Running` = true**, 이미지 · 로그 드라이버
+- `free -m` available ≥ 2292MB
+- 172.29 대역을 쓰는 망 · loadtest 볼륨 · 컨테이너가 없다 (docker 조회 실패는 FAIL)
+- 도는 `deploy.sh` 없음(`pgrep` 종료 코드 0 = 있음 · 1 = 없음 · 그 밖 = 실패) · 배포 잠금을 아무도 안 쥐고 있음
+- SSM 에서 `InProgress`/`Pending`/`Cancelling` 인 명령 없음(`LT_SSM_INSTANCE` 필수, 조회 실패 = FAIL)
 
-`gate` 가 보는 것(`docker compose config --format json` — 비밀번호가 들어 있어 화면에 찍지 않는다): 프로젝트 이름 `loadtest` · 서비스 `db backend loadgen` 만 ·
-세 서비스의 `mem_limit` · `memswap_limit` (512m · 1g · 256m) · 호스트 포트 없음 · `restart: "no"` · build 없음 · journald 아님 · backend/loadgen 이미지 ·
-backend `LOADTEST=1` · `LLM_MODE=real` · `IS_SERVER=1` · `ALLOW_TEST_RESET=0` · DB 호스트 `db` · **loadgen 환경변수는 `DATABASE_URL` · `LOADTEST` 뿐** ·
-망 `loadtest_default` 172.29.0.0/16 하나 · 볼륨 이름 전부 `loadtest_` · 설정 어디에도 `ktc4-kangwon-2` · `172.28.` · `journald` 가 없다.
-
-### D. 서버 배포 잠금 — 측정 내내 쥔다
-
-`scripts/deploy.sh` 는 ubuntu 쪽에서 `exec 9>/tmp/ssuksak-deploy.lock; flock -w 300 9` 로 잠근다. 같은 파일에 `flock` 을 쥐는 프로세스를 하나 띄운다.
+### D. 띄우기
 
 ```bash
-bash $LT lock           # 이미 도는 배포가 있으면 최대 60초 기다리고, 못 잡으면 exit 1 — 측정하지 않는다
+bash $LT up             # [잠금] gate → db → gate → alembic → gate → backend → 준비될 때까지(최대 60초) → /health/ready → ps
 ```
 
-- 쥐는 것은 `setsid` 로 뗀 `exec sleep`(최대 4시간) 이라 SSM 세션이 끊겨도 유지되고, 잊어도 4시간 뒤 풀린다. pid 는 `~/loadtest-457/deploy-lock.pid`.
-- **잠금을 쥔 동안 배포가 오면**: `deploy.sh` 가 300초 기다린 뒤 `die "잠금을 못 잡았다 — 다른 배포가 300초 넘게 돌고 있다 … 서버는 바꾸지 않았다"` 로 **종료 코드 1**
-  (교체 전 실패 — 서버는 그대로)로 끝난다. Actions 에는 실패로 남고 알림이 간다. Deploy 를 꺼 뒀으니 올 수 있는 것은 이미 큐에 있던 run 이나 손으로 보낸 SSM 명령뿐이다.
-  팀에 미리 알리고, 끝난 뒤 `unlock` → `gh workflow enable` → 필요하면 다시 올린다.
-- 반대로 **측정 도중 `deploy.sh` 가 이미 잠금을 쥐고 있었다면** `lock` 이 실패한다(그래서 시작 전에 쥔다).
-- 한계: 옛 `deploy.sh`(잠금이 없는 것)를 손으로 돌리면 이 잠금을 안 본다(`deploy.sh` 의 ADR-078 주석).
-
-### E. 띄우기
-
-```bash
-bash $LT up             # gate → db → gate → alembic → gate → backend → 준비될 때까지(최대 60초) → /health/ready → ps
-```
-
-### F. 감시 — 측정 내내 켜 둔다
+### E. 감시 — 측정 내내 켜 둔다
 
 **② 운영 감시** (다른 터미널). 운영 backend 로그가 새로 이 줄을 내면 **측정을 멈춘다.** 운영 로그 드라이버가 json-file 이든 journald 든 `docker logs` 로 읽힌다.
 (`LT_SUDO=1` 이면 `${LT_SUDO:+sudo}` 가 sudo 로 펼쳐진다.)
@@ -185,43 +241,42 @@ ${LT_SUDO:+sudo} docker stats --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' \
   ktc4-kangwon-2-backend-1 ktc4-kangwon-2-db-1 loadtest-backend-1 loadtest-db-1 > /home/ubuntu/loadtest-457/out/docker-stats.log
 ```
 
-### G. 단계 실행
+### F. 단계 실행 — 위의 측정 계획대로
 
 ```bash
-L() { bash "$LT" loadgen "$@"; }     # 부하기(load_check.py)를 일회용 loadgen 컨테이너로. 매번 gate 를 먼저 돈다
-S() { bash "$LT" stage "$@"; }       # 로그를 덤프하고 마지막 단계를 분석한다. 인자 = 다음 단계 <시나리오>:<동시>x<반복>
+L() { bash "$LT" loadgen "$@"; }     # 부하기(load_check.py)를 일회용 loadgen 컨테이너로. 매번 gate 를 먼저 돈다. setup · burst 는 [잠금]
+S() { bash "$LT" stage; }            # 로그를 덤프하고 마지막 단계를 분석한다(읽기)
 B=http://backend:8000
 ```
 
 **요청마다 새 반이 든다** (같은 반 · 같은 날 일지는 409, 연간은 반당 하나, 같은 반이면 `FOR UPDATE` 로 저장이 줄을 선다).
-필요한 반 수 = max(S1 총 요청 수, S2 총 요청 수) — 아래 계획이면 S1 214 · S2 144 이므로 220. 모자라면 `setup` 을 다시 돌리면 더해진다.
+필요한 반 수 = max(S1 총 요청 수, S2 총 요청 수) = 144 → 150. 모자라면 `setup` 을 다시 돌리면 더해진다.
 
 ```bash
-L setup --base $B --classes 220 --out /lt/out
+L setup --base $B --classes 150 --out /lt/out
 ```
-
-단계는 **한 번에 하나**, 끝날 때마다 `S` 로 지출과 다음 단계 추정 비용을 보고 이어갈지 정한다.
 
 ```bash
-# 1  기준선 — 첫 회차는 예열로 따로 센다. 비용(₩/건)을 보고 아래 반복 수를 정한다
-L burst --base $B --scenario s1 --n 1 --repeat 4 --warmup 1 --out /lt/out;  S s2:1x4
-L burst --base $B --scenario s2 --n 1 --repeat 4 --warmup 1 --out /lt/out;  S s1:10x3
-# 2  동시 10
-L burst --base $B --scenario s1 --n 10 --repeat 3 --out /lt/out;  S s2:10x2
-L burst --base $B --scenario s2 --n 10 --repeat 2 --out /lt/out;  S s1:20x3
-# 3  동시 20
-L burst --base $B --scenario s1 --n 20 --repeat 3 --out /lt/out;  S s2:20x2
-L burst --base $B --scenario s2 --n 20 --repeat 2 --out /lt/out;  S s1:40x3
-# 4  동시 40
-L burst --base $B --scenario s1 --n 40 --repeat 3 --out /lt/out;  S s2:40x2
-L burst --base $B --scenario s2 --n 40 --repeat 2 --out /lt/out;  S s2:40x2
+# 1~2  기준선 — 첫 회차는 예열로 따로 센다
+L burst --base $B --scenario s1 --n 1 --repeat 4 --warmup 1 --out /lt/out;  S
+L burst --base $B --scenario s2 --n 1 --repeat 4 --warmup 1 --out /lt/out;  S
+bash $LT budget          # ★ 한 번. 「진행 가능」이 아니면(exit 1) 여기서 끝낸다. 진행 가능이면 아래 전부를 허용한다
+# 3~4  동시 10
+L burst --base $B --scenario s1 --n 10 --repeat 2 --out /lt/out;  S
+L burst --base $B --scenario s2 --n 10 --repeat 1 --out /lt/out;  S
+# 5~6  동시 20
+L burst --base $B --scenario s1 --n 20 --repeat 2 --out /lt/out;  S
+L burst --base $B --scenario s2 --n 20 --repeat 1 --out /lt/out;  S
+# 7~8  동시 40
+L burst --base $B --scenario s1 --n 40 --repeat 2 --out /lt/out;  S
+L burst --base $B --scenario s2 --n 40 --repeat 1 --out /lt/out;  S
 ```
 
-**한 줄씩 따로 친다** — 줄마다 `S` 의 표 · 지출 · 운영 감시를 보고 다음 줄을 보낼지 정한다. `L burst` 가 **0 이 아닌 코드**로 끝났으면 다음 줄을 보내지 않는다:
-종료 코드 **3** 은 한도 오류(`LLM_BUDGET_EXCEEDED`)가 나와 남은 회차를 안 보냈다는 뜻이다(결과는 저장됐다). `S` 는 읽기라 그래도 돌려 된다.
-마지막 줄의 `S s2:40x2` 는 마지막 단계의 지출만 보려는 것이다(다음 단계 추정은 무시한다).
+**한 줄씩 따로 친다** — 줄마다 `S` 의 표 · 운영 감시를 보고 다음 줄을 보낼지 정한다. 비용은 `budget` 이 이미 계획 전체를 허용했으므로 단계마다 다시 계산하지 않는다.
+`L burst` 가 **0 이 아닌 코드**로 끝났으면 다음 줄을 보내지 않는다: 종료 코드 **3** 은 한도 오류(`LLM_BUDGET_EXCEEDED`)가 나와 남은 회차를 안 보냈다는 뜻이다(결과는 저장됐다).
+`S` 는 읽기라 그래도 돌려 된다.
 
-놀이형 연간은 기본 제외다(연결을 놓는 대조군). 기준선 비용을 보고 동시 1 · 10 만 넣을지 정한다.
+놀이형 연간은 기본 제외다(연결을 놓는 대조군). 기준선 비용을 보고 동시 1 · 10 만 넣을지 정한다(이 표 밖이면 `budget` 을 다시 계산해야 한다).
 
 전부 끝나면 **전체 표**를 한 번 뽑아 결과에 옮긴다 (마지막 단계 하나가 아니라 전부):
 
@@ -232,7 +287,7 @@ bash $LT final          # 새로 로그를 덤프하고 analyze 를 --last-only 
 `--repeat` 는 회차 사이에 `--pause`(기본 5초) 쉰다. 클라이언트 시간 초과가 생기면 서버가 끝나길 `--settle`(기본 60초) 기다린 뒤 행 수를 센다.
 회차가 길어 터미널이 끊길 수 있으면 `tmux` 안에서 돌린다.
 
-### H. 읽는 법
+### G. 읽는 법
 
 `S` 가 단계마다 이 표를 낸다 (회차를 합친 값).
 
@@ -252,44 +307,40 @@ bash $LT final          # 새로 로그를 덤프하고 analyze 를 --last-only 
 - **pg_stat 최대**: 붙잡힌 연결 · `idle in transaction`. 풀이 막히면 15 근처가 보인다.
 - **unexpected_error**: `경로 + 예외 클래스` 별 건수. `/api/auth/me` 쪽 풀 대기 초과(표본이 맞은 것)와 생성 경로의 것을 가른다.
 - **행 수 대조**: 201 수와 DB 에 실제 저장된 행 수. 「저장됐는데 실패 응답」을 따로 센다(S1 은 commit 뒤 응답을 만들며 연결을 다시 빌린다).
-- **원화 지출**: `llm_usage` 토큰 × 단가(`scripts/llm-usage.sh` 와 같은 sol 단가, 캐시 할인 없음). `outcome=timeout` 은 과금됐을 수 있어 관측된 최대 단가로 셈한다.
-- **비용을 모르는 호출**: usage 가 없거나 불완전한 성공 호출 · `llm_usage` 줄이 없는 성공 호출 · 로그 부족(201 수에서 기대한 성공 호출보다 로그가 적다 — 수집 실패나 옛 덤프) ·
-  단가를 못 본 시간 초과. 하나라도 있으면 다음 단계 판정이 **「멈춤(단가 모름)」** 이다.
-- **다음 단계 추정**: 「관측 최대 단가 기준 추정」 = 다음 단계 요청 수 × **반복** × 요청당 최대 시도(S1 2 · S2 6) × 관측 최대 단가. 누적 지출 + 추정 > ₩30,000 이면 「멈춤(상한 초과 가능)」.
-  실제 비용의 상한이 아니라 관측에 기댄 추정이다.
+- **원화 지출 (끝에 붙는 사후 집계)**: `llm_usage` 토큰 × 단가. 시간 초과는 호출 최대 단가로 센 추정이다. **보고용이다 — 판정(`budget`)에 쓰지 않는다.**
 
-### I. 중단 규칙
+### H. 중단 규칙
 
-다음 중 하나라도 있으면 **다음 단계를 보내지 않는다** (이미 보낸 요청은 못 되돌린다).
+다음 중 하나라도 있으면 **다음 줄을 보내지 않는다** (이미 보낸 요청은 못 되돌린다).
 
 1. 운영 감시 터미널에 새 줄이 떴다 (`outcome=(budget|timeout|failed|not_delivered)` · `unexpected_error`), 또는 운영 `/health/ready` 가 200 이 아니다.
-2. `S` 의 다음 단계 판정이 **「멈춤(단가 모름)」 또는 「멈춤(상한 초과 가능)」** 이다.
+2. `budget` 이 「진행 가능」이 아니다(`exit 1`). 또는 `S` 끝의 사후 누적 지출이 ₩30,000 의 80% 를 넘었다 — 사람이 보고 멈춘다.
 3. `L burst` 가 종료 코드 3 으로 끝났다(`LLM_BUDGET_EXCEEDED`). 스크립트는 남은 회차를 이미 안 보냈다. **60초 뒤** 수동으로 S1 한 건을 보낸다:
    `L burst --base $B --scenario s1 --n 1 --out /lt/out`. 성공이면 429(한도)였다고 기록하고 끝낸다. 계속 503 이면 **키가 지워졌을 수 있다** — 즉시 팀에 알리고 엘리스 콘솔을 확인한다.
 4. `free -m` available 이 600MB 아래이거나 swap 이 늘기 시작한다, 또는 `docker stats` 에서 loadtest 컨테이너가 OOM 으로 죽었다.
 5. 시간이 02:45 KST(정리 전 여유 30분)를 넘겼다.
-6. 배포 잠금을 잃었다 (`~/loadtest-457/deploy-lock.pid` 의 프로세스가 없다).
+6. `L setup`/`L burst`/`up`/`down` 이 「배포 잠금을 … 못 잡았다」로 끝났다 — 배포가 돌고 있다. 그 단계는 돌지 않았다. 배포가 끝날 때까지 기다린다.
 
-### J. 정리 — 이 폴더 안에서만
+### I. 정리 — 이 폴더 안에서만
 
 ```bash
 # 먼저 ② 운영 감시 · ③ 자원 기록 터미널에서 Ctrl-C 로 끈다
 bash $LT final          # 아직 안 뽑았다면
-bash $LT down           # gate → out/backend-final.log 덤프 → down -v → 태그 삭제(-f 없음) → loadtest 볼륨 · 망 · 컨테이너 · 이미지 태그가 0인지, 남으면 exit 1
-bash $LT unlock         # 배포 잠금을 놓는다
+bash $LT down           # [잠금] gate → out/backend-final.log 덤프 → down -v → 태그 삭제(-f 없음) → loadtest 볼륨 · 망 · 컨테이너 · 이미지 태그가 0인지, 남으면 exit 1
 ```
 
-**`rm -rf ~/loadtest-457` 전에 `out/` 를 옮긴다.** `burst-*.json` · `backend-*.log` · `analysis-*.txt` · `docker-stats.log` 를
+**`rm -rf ~/loadtest-457` 전에 `out/` 를 옮긴다.** `burst-*.json` · `backend-*.log` · `analysis-*.txt` · `budget.txt` · `docker-stats.log` 를
 로컬 `docs/evaluation/runs/<날짜>-load-check/` 로 가져온다. **`state.json` 은 옮기지 않는다**(loadtest 토큰 · 비밀번호). 로그에는 프롬프트 · 응답 내용이 없다(숫자와 이름뿐).
 
 ```bash
 rm -rf /home/ubuntu/loadtest-457
-unset LT LT_SUDO LT_SSM_INSTANCE B; unset -f L S
 
-# 운영 확인
+# 운영 확인 (LT_SUDO 를 지우기 전에 — 지운 뒤에는 sudo 없이 docker 를 부르게 된다)
 ${LT_SUDO:+sudo} docker ps --format '{{.Names}} {{.Status}}' | grep ktc4-kangwon-2        # 전부 Up, 재시작 흔적 없음
 curl -sf localhost:8000/health/ready; echo
 free -m; df -h /
+
+unset LT LT_SUDO LT_SSM_INSTANCE B; unset -f L S
 ```
 
 그리고 로컬에서 `gh workflow enable Deploy -R kakaotechcampus-4/ktc4-kangwon-2`.
@@ -300,16 +351,18 @@ free -m; df -h /
 
 서버에서 하기 전에 같은 스크립트로 한 번 돈다. **로컬에서 `LLM_MODE=real` 은 금지다** — mock 으로 배관(가입 · 반 · 일과 기록 · burst · 로그 덤프 · 분석 · 정리)만 본다.
 
-- 작업 폴더를 저장소 밖에 만들고 `docker-compose.yml` · `backend/scripts/compose.loadtest.yml` · `load_check.py` · `loadtest.sh` 를 복사한다.
+- 작업 폴더를 저장소 밖에 만들고 `docker-compose.yml` · `backend/scripts/compose.loadtest.yml` · `load_check.py` · `loadtest.sh` · `loadtest_gate.py` 를 복사한다.
 - 로컬 이미지를 `docker build -t ssample-loadtest-backend:457 -f backend/Dockerfile .` 로 만든다 (서버에서는 `bash $LT tag` 다).
-- `export LT_DIR=<작업 폴더> LT_MODE=mock LT_SKIP_SSM=1` 을 주고 C~J 를 그대로 한다(`tag` · `lock` 은 건너뛴다 — 아래).
-  `LT_MODE=mock` 이면 `.env` 에 `IS_SERVER=0` · 엘리스 줄이 없고, 게이트도 `LLM_MODE=mock` · `IS_SERVER=0` 을 기대한다.
+- `export LT_DIR=<작업 폴더> LT_MODE=mock LT_SKIP_SSM=1 LT_LOCK=none` 을 주고 C~I 를 그대로 한다(`tag` 는 건너뛴다). 이 `LT_*` 변수들은 **`LT_MODE=mock` 일 때만 읽는다** — real 에서는 무시된다.
+  - `LT_MODE=mock` 이면 `.env` 에 `IS_SERVER=0` · 엘리스 줄이 없고, 게이트도 `LLM_MODE=mock` · `IS_SERVER=0` 을 기대한다.
+  - `LT_LOCK=none` 은 macOS 에 `flock` 이 없어서다. 잠금은 아래처럼 Linux 컨테이너에서 따로 본다.
+  - preflight 의 운영 backend 조회는 `LT_PROD_BACKEND=<로컬에서 도는 컨테이너 이름>` 으로 바꿔야 통과한다(없으면 FAIL 이 정상이다).
+    메모리는 `LT_AVAILABLE_MB=3000` 으로 준다.
 - 부하기는 로컬에서도 같은 길이다: loadgen 컨테이너 → `http://backend:8000`. 그래서 가드(`backend` 호스트 · `LOADTEST=1` · 172.29 안)가 그대로 걸린다. 로컬 개발 스택(`localhost:8000`)에는 못 보낸다.
-- 망 대역 172.29.0.0/16 이 로컬 도커 망과 겹치지 않는지 `preflight` 가 본다.
-- **mock 에는 `llm_call` · `llm_usage` 줄이 없다** — LLM 시작 시각 · 원화 계산은 시험(`test_load_check.py`)과 합성 로그로만 확인했다.
-  mock 로그로 `S` 를 돌리면 「로그 부족」으로 다음 단계가 「멈춤(단가 모름)」이 나오는 것이 정상이다.
-  실제 줄 모양은 서버 첫 단계(기준선)에서 처음 본다.
-- `lock` 은 Linux 의 `flock` · `setsid` 가 있어야 한다(macOS 에는 없다). 로컬에서는 backend 이미지 안(`docker run --rm … bash loadtest.sh lock`)에서 쥐고 놓기만 확인했다.
+- **mock 에는 `llm_call` · `llm_usage` 줄이 없다** — `budget` 은 「멈춤(단가 모름)」이 정상이다. 판정식은 시험(`test_load_check.py`)과 합성 로그로만 확인했다.
+  실제 줄 모양은 서버 첫 기준선에서 처음 본다.
+- 배포 잠금: Linux 컨테이너 안에서 `LT_MODE=mock LT_LOCK=/tmp/lt-test.lock` 으로 「다른 프로세스가 쥐고 있으면 `up`/`loadgen burst`/`down`/`locked` 가 안 돈다 · 단계가 끝나면 풀린다」를 확인했다.
+  서버의 `/tmp/ssuksak-deploy.lock` 자체는 실행하지 않았다.
 
 ---
 
@@ -329,7 +382,7 @@ free -m; df -h /
 - 놀이형 · 월간 · 주간 · 관찰일지는 측정하지 않았다.
 - 401 · 403 · 429 는 서버가 `LLM_BUDGET_EXCEEDED` 하나로 묶는다 — 한도(429)와 키 삭제(401)를 구분하지 못한다.
 - 표본은 1초 간격이라 순간 피크를 놓칠 수 있고, 응답이 느리면(예: `/auth/me` 가 풀 대기로 30초) 그동안 표본이 성기다. 로그 시각은 `docker logs -t` 수집 시각(UTC)이라 수 ms 오차가 있다.
-- 지출은 로그의 토큰 × 단가이고 캐시 할인이 없어 실제보다 조금 높다. 시간 초과분은 추정이다. 다음 단계 비용은 **관측 최대 단가에 기댄 추정**이지 보장된 상한이 아니다.
+- 지출은 로그의 토큰 × 단가이고 캐시 할인이 없어 실제보다 조금 높다. 시간 초과분은 추정이다. 계획 전체의 예산 판정(`budget`)은 **기준선 단가에 기댄 추정**이지 보장된 상한이 아니다 — 단가가 기준선보다 큰 요청은 못 본다.
 - 메모리 상한은 컨테이너를 줄일 뿐 운영 컨테이너가 안 죽는다는 보장이 아니다.
 - S1 의 LLM 시작 히스토그램은 전송 재시도와 섞여 참고용이다(풀 병목의 직접 증거는 S2).
 
@@ -347,6 +400,7 @@ free -m; df -h /
 | 부하 스크립트 커밋 | 측정 전 |
 | 운영 커밋 · 이미지 ID | 측정 전 |
 | 엘리스 이달 누적 (시작 전) | 측정 전 |
+| 예산 판정 `budget` 결과 (기준선 지출 · 남은 계획 최악) | 측정 전 |
 | 이번 측정 지출 (시간 초과 추정 포함) | 측정 전 |
 | 서버 `free -m` available (전 → 후) | 측정 전 |
 | 운영 감시에 걸린 것 | 측정 전 |

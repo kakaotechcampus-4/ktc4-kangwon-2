@@ -3,16 +3,17 @@
 #
 #   bash loadtest.sh <명령> [인자]
 #
-#   preflight        읽기만 한다. 메모리 · 망 대역 · 볼륨 · 도는 배포를 본다
+#   preflight        읽기만 한다. 도구 · 운영 backend · 메모리 · 망 대역 · 볼륨 · 도는 배포를 본다
 #   env              .env 를 만든다(이미 있으면 거절)
 #   tag              운영 backend 이미지에 loadtest 태그를 붙인다
-#   gate [-v]        docker compose config 를 JSON 으로 받아 하나라도 어긋나면 exit 1
-#   up               gate → db → gate → alembic → gate → backend → 준비될 때까지
-#   loadgen ARGS…    부하기(load_check.py)를 일회용 컨테이너로. gate 를 먼저 돈다
-#   stage S:NxR      로그를 덤프하고 마지막 단계를 분석한다. 다음 단계(예: s2:10x2)의 최악 비용도
-#   final            전체 표
-#   lock | unlock    서버 배포 잠금(/tmp/ssuksak-deploy.lock)을 쥐고 놓는다
-#   down             gate → 로그 덤프 → down -v → 태그 삭제 → 남은 것이 없는지
+#   gate [-v]        docker compose config 를 JSON 으로 받아 loadtest_gate.py 로 검사. 어긋나면 exit 1
+#   up               [잠금] gate → db → gate → alembic → gate → backend → 준비될 때까지
+#   loadgen ARGS…    부하기(load_check.py)를 일회용 컨테이너로. setup · burst 는 [잠금]
+#   stage            로그를 덤프하고 마지막 단계를 분석한다(읽기)
+#   budget           기준선 로그로 남은 계획 전체의 예산을 한 번 판정한다. 진행 가능이 아니면 exit 1
+#   final            전체 표(읽기)
+#   down             [잠금] gate → 로그 덤프 → down -v → 태그 삭제 → 남은 것이 없는지
+#   locked CMD…      배포 잠금을 잡고 CMD 를 돈다(잠금 확인용)
 #   ps
 #
 # **이 스크립트는 loadtest 프로젝트만 건드린다.** 모든 compose 명령이 `lt()` 하나를 지나고,
@@ -20,14 +21,21 @@
 # 파일 안의 `name:` 보다 우선해서, 파일만 믿으면 운영 이름의 망 · 볼륨으로 렌더링된다.
 # 그래서 시작할 때 셸의 COMPOSE_* 를 지우고, 있었다면 거절한다(오염된 셸이다).
 #
+# **[잠금]** 서버 DB 를 바꾸거나 LLM 을 부르는 단계는 `scripts/deploy.sh` 와 같은 파일 `/tmp/ssuksak-deploy.lock` 에
+# `flock -w 60` 을 건 채로 돈다. 못 잡으면 그 단계를 돌리지 않고 exit 1. 단계가 끝나거나 죽으면 잠금은 저절로 풀린다.
+# 단계 사이는 막지 못한다 — 그 사이는 Deploy 워크플로 비활성화가 막는다(docs/load-check.md).
+#
 # 환경변수(모두 선택):
 #   LT_DIR           작업 폴더. 기본 /home/ubuntu/loadtest-457
 #   LT_MODE          real(기본) | mock — mock 은 로컬 리허설용. real 이면 .env 에 IS_SERVER=1 · 엘리스 값
 #   LT_SUDO=1        docker 앞에 sudo
 #   LT_PROD_ENV · LT_PROD_BACKEND   운영 .env 경로 · 운영 backend 컨테이너 이름
-#   LT_LOCK_FILE · LT_LOCK_SECONDS  배포 잠금 파일 · 최대 쥐는 시간(기본 4시간 — 잊어도 풀린다)
-#   LT_AVAILABLE_MB  preflight 의 available 메모리를 직접 준다(로컬 시험용)
-#   LT_SSM_INSTANCE  SSM 에서 도는 배포 명령을 볼 인스턴스. LT_SKIP_SSM=1 이면 건너뛴다(로컬 리허설만)
+#   LT_SSM_INSTANCE  SSM 에서 도는 배포 명령을 볼 인스턴스(real 에서는 필수)
+#   --- 아래는 mock 일 때만 읽는다(real 에서는 무시 — 서버에서 우회로가 되지 않게) ---
+#   LT_LOCK          잠금 파일 경로. none 이면 잠금을 건너뛴다(flock 이 없는 macOS 리허설)
+#   LT_LOCK_WAIT     잠금을 기다리는 초(기본 60)
+#   LT_AVAILABLE_MB  preflight 의 available 메모리를 직접 준다
+#   LT_SKIP_SSM=1    SSM 확인을 건너뛴다
 set -euo pipefail
 
 polluted=$(env | grep -E '^COMPOSE_(PROJECT_NAME|FILE|PROFILES|ENV_FILES)=' | cut -d= -f1 | tr '\n' ' ' || true)
@@ -40,15 +48,22 @@ fi
 LT_DIR=${LT_DIR:-/home/ubuntu/loadtest-457}
 LT_MODE=${LT_MODE:-real}
 IMAGE=ssample-loadtest-backend:457
-LOCK_FILE=${LT_LOCK_FILE:-/tmp/ssuksak-deploy.lock}
 PROD_ENV=${LT_PROD_ENV:-/home/ubuntu/ktc4-kangwon-2/.env}
 PROD_BACKEND=${LT_PROD_BACKEND:-ktc4-kangwon-2-backend-1}
-# 세 상한 합(512 + 1024 + 256) + 운영 여유 500 (MiB). compose.loadtest.yml 의 mem_limit 와 같이 바꾼다.
+# 세 상한 합(512 + 1024 + 256) + 운영 여유 500 (MiB). compose.loadtest.yml · loadtest_gate.py 의 상한과 같이 바꾼다.
 NEED_AVAILABLE_MB=2292
 
 case "$LT_MODE" in
-  real) WANT_SERVER=1 ;;
-  mock) WANT_SERVER=0 ;;
+  real)
+    WANT_SERVER=1
+    LOCK_FILE=/tmp/ssuksak-deploy.lock
+    LOCK_WAIT=60
+    ;;
+  mock)
+    WANT_SERVER=0
+    LOCK_FILE=${LT_LOCK:-/tmp/ssuksak-deploy.lock}
+    LOCK_WAIT=${LT_LOCK_WAIT:-60}
+    ;;
   *) echo "LT_MODE 는 real | mock" >&2; exit 1 ;;
 esac
 
@@ -64,140 +79,122 @@ lt() {
 
 # ── gate ─────────────────────────────────────────────────────────────────────
 
-GATE_PY='
-import json, os, sys
-from urllib.parse import urlparse
-
-text = sys.stdin.read()
-cfg = json.loads(text)
-verbose = sys.argv[1:] == ["-v"]
-mode, server = os.environ["LT_WANT_MODE"], os.environ["LT_WANT_SERVER"]
-bad = 0
-
-
-def check(ok, label):
-    global bad
-    if ok:
-        if verbose:
-            print("ok   ", label)
-    else:
-        bad += 1
-        print("FAIL ", label)
-
-
-def mib(service, key):
-    try:
-        return int(service.get(key)) // (1 << 20)
-    except (TypeError, ValueError):
-        return None
-
-
-svc = cfg.get("services", {})
-image = "ssample-loadtest-backend:457"
-check(cfg.get("name") == "loadtest", "프로젝트 이름 loadtest")
-check(set(svc) == {"db", "backend", "loadgen"}, "서비스 db backend loadgen 만 (지금 %s)" % sorted(svc))
-for name, limit in (("db", 512), ("backend", 1024), ("loadgen", 256)):
-    for key in ("mem_limit", "memswap_limit"):
-        check(mib(svc.get(name, {}), key) == limit, "%s %s %dm" % (name, key, limit))
-for name, s in svc.items():
-    check(not s.get("ports"), "%s 호스트 포트 없음" % name)
-    check(s.get("restart") == "no", "%s restart no" % name)
-    check("build" not in s, "%s build 없음" % name)
-    check(s.get("logging", {}).get("driver") != "journald", "%s 로그 journald 아님" % name)
-for name in ("backend", "loadgen"):
-    check(svc.get(name, {}).get("image") == image, "%s 이미지 %s" % (name, image))
-check(not svc.get("loadgen", {}).get("depends_on"), "loadgen depends_on 없음")
-env = svc.get("backend", {}).get("environment", {})
-check(env.get("LOADTEST") == "1", "backend LOADTEST=1")
-check(env.get("LLM_MODE") == mode, "backend LLM_MODE=%s (지금 %s)" % (mode, env.get("LLM_MODE")))
-check(env.get("IS_SERVER") == server, "backend IS_SERVER=%s (지금 %s)" % (server, env.get("IS_SERVER")))
-check(env.get("ALLOW_TEST_RESET") == "0", "backend ALLOW_TEST_RESET=0")
-check(urlparse(env.get("DATABASE_URL", "")).hostname == "db", "backend DATABASE_URL 호스트 db")
-check(
-    set(svc.get("loadgen", {}).get("environment", {})) == {"DATABASE_URL", "LOADTEST"},
-    "loadgen 환경변수는 DATABASE_URL · LOADTEST 뿐 (LLM 설정 없음)",
-)
-net = cfg.get("networks", {}).get("default", {})
-check(net.get("name") == "loadtest_default", "망 이름 loadtest_default")
-check(
-    net.get("ipam", {}).get("config") == [{"subnet": "172.29.0.0/16", "gateway": "172.29.0.1"}],
-    "망 대역은 172.29.0.0/16 하나",
-)
-vols = cfg.get("volumes", {})
-check(vols.get("pgdata", {}).get("name") == "loadtest_pgdata", "볼륨 loadtest_pgdata")
-check(all(v.get("name", "").startswith("loadtest_") for v in vols.values()), "모든 볼륨 이름이 loadtest_ 로 시작")
-for needle in ("ktc4-kangwon-2", "172.28.", "journald"):
-    check(needle not in text, "설정 어디에도 %s 없음" % needle)
-sys.exit(1 if bad else 0)
-'
-
 gate() {
   command -v python3 >/dev/null || { echo "FAIL python3 가 없다"; exit 1; }
-  local f
-  for f in .env docker-compose.yml compose.loadtest.yml load_check.py; do
+  local f cfg
+  for f in .env docker-compose.yml compose.loadtest.yml load_check.py loadtest_gate.py; do
     [ -f "$LT_DIR/$f" ] || { echo "FAIL $LT_DIR/$f 가 없다"; exit 1; }
   done
-  local cfg
   cfg=$(lt config --format json) || { echo "FAIL docker compose config 가 실패했다"; exit 1; }
   printf '%s' "$cfg" \
-    | LT_WANT_MODE="$LT_MODE" LT_WANT_SERVER="$WANT_SERVER" python3 -c "$GATE_PY" "$@" \
+    | LT_WANT_MODE="$LT_MODE" LT_WANT_SERVER="$WANT_SERVER" LT_DIR="$LT_DIR" \
+      python3 "$LT_DIR/loadtest_gate.py" "$@" \
     || { echo "게이트 실패 — 멈춘다"; exit 1; }
   [ "${1:-}" = "-v" ] && echo "게이트 통과"
   return 0
 }
 
+# ── 배포 잠금 ────────────────────────────────────────────────────────────────
+# scripts/deploy.sh 는 ubuntu 쪽에서 `exec 9>/tmp/ssuksak-deploy.lock; flock -w 300 9` 로 잠근다. 같은 파일을 같은 방식으로 잠근다.
+# 이 프로세스(= 이 단계)가 끝나거나 죽으면 fd 가 닫혀 잠금이 풀린다. 뒤에 남는 프로세스가 없다.
+
+with_lock() {
+  if [ "$LOCK_FILE" = none ]; then "$@"; return; fi
+  command -v flock >/dev/null || { echo "FAIL flock 이 없다 — 배포 잠금을 못 잡아 이 단계를 돌리지 않는다"; exit 1; }
+  exec 9>"$LOCK_FILE" || { echo "FAIL 잠금 파일을 못 연다: $LOCK_FILE"; exit 1; }
+  flock -w "$LOCK_WAIT" 9 \
+    || { echo "FAIL 배포 잠금($LOCK_FILE)을 ${LOCK_WAIT}초 안에 못 잡았다 — 이 단계를 돌리지 않는다"; exit 1; }
+  "$@"
+}
+
 # ── 준비 ─────────────────────────────────────────────────────────────────────
 
 cmd_preflight() {
-  local bad=0 avail n
-  echo "운영 backend: $(docker inspect "$PROD_BACKEND" --format '{{.Image}} {{.State.Status}} 로그={{.HostConfig.LogConfig.Type}}' 2>&1 || true)"
-  if [ -n "${LT_AVAILABLE_MB:-}" ]; then
+  local bad=0 avail rc state ids subnets names n t
+  ok() { echo "ok   $*"; }
+  fail() { echo "FAIL $*"; bad=1; }
+
+  for t in python3 openssl pgrep; do
+    command -v "$t" >/dev/null && ok "$t 있다" || fail "$t 가 없다"
+  done
+  [ "$LOCK_FILE" = none ] || { command -v flock >/dev/null && ok "flock 있다" || fail "flock 이 없다"; }
+  [ "$LT_MODE" = mock ] && [ "${LT_SKIP_SSM:-0}" = 1 ] || {
+    command -v aws >/dev/null && ok "aws 있다" || fail "aws 가 없다"
+  }
+
+  state=$(docker inspect "$PROD_BACKEND" --format '{{.State.Running}} {{.Image}} 로그={{.HostConfig.LogConfig.Type}}') \
+    || state=""
+  if [ -z "$state" ]; then
+    fail "운영 backend($PROD_BACKEND)를 조회하지 못했다"
+  elif [ "${state%% *}" != true ]; then
+    fail "운영 backend 가 Running 이 아니다: $state"
+  else
+    ok "운영 backend 실행 중: $state"
+  fi
+
+  df -h / | tail -1
+  avail=""
+  if [ "$LT_MODE" = mock ] && [ -n "${LT_AVAILABLE_MB:-}" ]; then
     avail=$LT_AVAILABLE_MB
   elif command -v free >/dev/null; then
     free -m
     avail=$(free -m | awk '/^Mem:/ {print $7}')
-  else
-    avail=""
   fi
-  df -h / | tail -1
   if [ -z "$avail" ]; then
-    echo "FAIL available 메모리를 못 읽었다"; bad=1
+    fail "available 메모리를 못 읽었다"
   elif [ "$avail" -lt "$NEED_AVAILABLE_MB" ]; then
-    echo "FAIL available ${avail}MB < ${NEED_AVAILABLE_MB}MB (세 상한 합 1792 + 운영 여유 500)"; bad=1
+    fail "available ${avail}MB < ${NEED_AVAILABLE_MB}MB (세 상한 합 1792 + 운영 여유 500)"
   else
-    echo "ok   available ${avail}MB >= ${NEED_AVAILABLE_MB}MB"
+    ok "available ${avail}MB >= ${NEED_AVAILABLE_MB}MB"
   fi
-  n=$(docker network inspect $(docker network ls -q) --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' | grep -c '172\.29\.' || true)
-  [ "$n" = 0 ] && echo "ok   172.29 대역 비어 있다" || { echo "FAIL 172.29 대역을 쓰는 망이 있다"; bad=1; }
-  n=$(docker volume ls --format '{{.Name}}' | grep -c '^loadtest' || true)
-  [ "$n" = 0 ] && echo "ok   loadtest 볼륨 없다" || { echo "FAIL loadtest 볼륨이 남아 있다"; bad=1; }
-  n=$(docker ps -a --format '{{.Names}}' | grep -c '^loadtest' || true)
-  [ "$n" = 0 ] && echo "ok   loadtest 컨테이너 없다" || { echo "FAIL loadtest 컨테이너가 남아 있다"; bad=1; }
+
+  if ids=$(docker network ls -q) && subnets=$(docker network inspect $ids --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}'); then
+    n=$(grep -c '172\.29\.' <<<"$subnets" || true)
+    [ "$n" = 0 ] && ok "172.29 대역 비어 있다" || fail "172.29 대역을 쓰는 망이 있다"
+  else
+    fail "docker 망 조회가 실패했다"
+  fi
+  if names=$(docker volume ls --format '{{.Name}}'); then
+    n=$(grep -c '^loadtest' <<<"$names" || true)
+    [ "$n" = 0 ] && ok "loadtest 볼륨 없다" || fail "loadtest 볼륨이 남아 있다"
+  else
+    fail "docker 볼륨 조회가 실패했다"
+  fi
+  if names=$(docker ps -a --format '{{.Names}}'); then
+    n=$(grep -c '^loadtest' <<<"$names" || true)
+    [ "$n" = 0 ] && ok "loadtest 컨테이너 없다" || fail "loadtest 컨테이너가 남아 있다"
+  else
+    fail "docker 컨테이너 조회가 실패했다"
+  fi
+
   # SSM 이 보낸 deploy.sh 는 root 로 시작해 /tmp/ssuksak-deploy.XXXXXX.sh 사본으로 ubuntu 에서 이어 돈다.
-  if pgrep -f 'scripts/deploy\.sh|ssuksak-deploy\.' >/dev/null 2>&1; then
-    echo "FAIL 서버에서 deploy.sh 가 돌고 있다"; bad=1
-  else
-    echo "ok   도는 deploy.sh 없다"
-  fi
-  if command -v flock >/dev/null; then
-    if flock -n "$LOCK_FILE" true 2>/dev/null; then
-      echo "ok   배포 잠금($LOCK_FILE)을 아무도 안 쥐고 있다"
+  # pgrep: 0 = 찾았다 · 1 = 없다 · 그 밖 = 조회 실패. 조회 실패는 「없다」가 아니다.
+  rc=0
+  pgrep -f 'scripts/deploy\.sh|ssuksak-deploy\.' >/dev/null 2>&1 || rc=$?
+  case $rc in
+    0) fail "서버에서 deploy.sh 가 돌고 있다" ;;
+    1) ok "도는 deploy.sh 없다" ;;
+    *) fail "pgrep 이 실패했다 (코드 $rc)" ;;
+  esac
+  if [ "$LOCK_FILE" != none ] && command -v flock >/dev/null; then
+    if ( exec 8>"$LOCK_FILE" && flock -n 8 ); then
+      ok "배포 잠금($LOCK_FILE)을 아무도 안 쥐고 있다"
     else
-      echo "FAIL 배포 잠금($LOCK_FILE)을 누가 쥐고 있다"; bad=1
+      fail "배포 잠금($LOCK_FILE)을 누가 쥐고 있거나 파일을 못 연다"
     fi
-  else
-    echo "--   flock 이 없어 잠금 확인을 건너뛴다(로컬). 서버에서는 lock 이 어차피 flock 을 요구한다"
   fi
-  if [ "${LT_SKIP_SSM:-0}" = 1 ]; then
-    echo "--   SSM 배포 명령 확인을 건너뛴다(LT_SKIP_SSM=1 — 로컬 리허설만)"
+
+  if [ "$LT_MODE" = mock ] && [ "${LT_SKIP_SSM:-0}" = 1 ]; then
+    echo "--   SSM 배포 명령 확인을 건너뛴다(mock · LT_SKIP_SSM=1 — 로컬 리허설만)"
   elif [ -z "${LT_SSM_INSTANCE:-}" ]; then
-    echo "FAIL LT_SSM_INSTANCE 가 없다 — SSM 에서 도는 배포 명령을 확인하지 못했다"; bad=1
+    fail "LT_SSM_INSTANCE 가 없다 — SSM 에서 도는 배포 명령을 확인하지 못했다"
   else
-    n=$(aws ssm list-commands --region ap-northeast-2 --instance-id "$LT_SSM_INSTANCE" \
-      --query "length(Commands[?Status=='InProgress'||Status=='Pending'])" --output text) \
-      || { echo "FAIL SSM 조회가 실패했다"; bad=1; n=""; }
-    if [ -n "$n" ]; then
-      [ "$n" = 0 ] && echo "ok   SSM 에서 도는 명령 없다" || { echo "FAIL SSM 에서 도는 명령이 ${n}개 있다"; bad=1; }
+    # ubuntu 의 역할에 ssm:ListCommands 가 있어야 한다. 조회가 실패하면 「없다」가 아니라 실패다.
+    if n=$(aws ssm list-commands --region ap-northeast-2 --instance-id "$LT_SSM_INSTANCE" \
+      --query "length(Commands[?Status=='InProgress'||Status=='Pending'||Status=='Cancelling'])" --output text); then
+      [ "$n" = 0 ] && ok "SSM 에서 도는 명령 없다" || fail "SSM 에서 도는 명령이 ${n}개 있다 (InProgress · Pending · Cancelling)"
+    else
+      fail "SSM 조회가 실패했다 (ssm:ListCommands 권한?)"
     fi
   fi
   [ "$bad" = 0 ] || { echo "preflight 실패 — 멈춘다"; exit 1; }
@@ -276,13 +273,20 @@ dump_log() {
 }
 
 cmd_stage() {
-  [ $# -eq 1 ] || { echo "사용: stage <시나리오>:<n>x<반복>   예) stage s2:10x2"; exit 1; }
   local f
   gate
   mkdir -p "$LT_DIR/out"
   f=$(dump_log)
-  cmd_loadgen analyze --out /lt/out --backend-log "/lt/out/$f" --next "$1" --last-only \
+  cmd_loadgen analyze --out /lt/out --backend-log "/lt/out/$f" --last-only \
     | tee "$LT_DIR/out/analysis-${f%.log}.txt"
+}
+
+cmd_budget() {
+  local f
+  gate
+  mkdir -p "$LT_DIR/out"
+  f=$(dump_log)
+  cmd_loadgen budget --out /lt/out --backend-log "/lt/out/$f" | tee "$LT_DIR/out/budget.txt"
 }
 
 cmd_final() {
@@ -312,50 +316,6 @@ cmd_down() {
   echo "정리 끝 — loadtest 흔적 없음. out/ 를 옮긴 뒤 $LT_DIR 를 지운다"
 }
 
-# ── 서버 배포 잠금 ───────────────────────────────────────────────────────────
-# scripts/deploy.sh 는 `exec 9>/tmp/ssuksak-deploy.lock; flock -w 300 9` 로 잠근다(ubuntu 쪽에서).
-# 같은 파일에 flock 을 쥐면 그동안 오는 배포는 300초 기다리다 「잠금을 못 잡았다 … 서버는 바꾸지 않았다」 로 1 에 끝난다.
-# 쥐는 프로세스는 `exec sleep` 이다 — 이 pid 를 죽이면 풀린다(sleep 이 열린 fd 를 쥐고 있다).
-
-lock_pid() { cat "$LT_DIR/deploy-lock.pid" 2>/dev/null || true; }
-
-# pid 파일은 **잠금을 잡은 뒤에** 자식이 쓴다. 잠금을 누가 쥐고 있는지(배포가 쥔 것인지 우리 것인지)는
-# `flock -n` 으로는 가를 수 없어서, 파일이 생겼다는 것이 「우리가 잡았다」는 표지다.
-cmd_lock() {
-  command -v flock >/dev/null || { echo "FAIL flock 이 없다"; exit 1; }
-  local pid i
-  pid=$(lock_pid)
-  if [ -n "$pid" ]; then
-    kill -0 "$pid" 2>/dev/null && { echo "거절: 이미 잠금을 쥐고 있다 (pid $pid)"; exit 1; }
-    rm -f "$LT_DIR/deploy-lock.pid"   # 죽은 pid 가 남은 것이다
-  fi
-  setsid bash -c 'exec 8>"$2"; flock -w 60 8 || exit 1; echo $$ > "$1"; exec sleep "$3"'     _ "$LT_DIR/deploy-lock.pid" "$LOCK_FILE" "${LT_LOCK_SECONDS:-14400}" >/dev/null 2>&1 </dev/null &
-  for i in $(seq 70); do
-    pid=$(lock_pid)
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && ! flock -n "$LOCK_FILE" true 2>/dev/null; then
-      echo "배포 잠금을 쥐었다: $LOCK_FILE (pid $pid, 최대 ${LT_LOCK_SECONDS:-14400}초). 끝나면 unlock"
-      return 0
-    fi
-    sleep 1
-  done
-  echo "FAIL 배포 잠금을 못 잡았다 — 다른 배포가 60초 넘게 돌고 있거나 잠금 파일을 못 연다. 측정하지 않는다"
-  exit 1
-}
-
-cmd_unlock() {
-  local pid
-  pid=$(lock_pid)
-  [ -n "$pid" ] || { echo "쥔 잠금이 없다"; return 0; }
-  if [ "$(cat "/proc/$pid/comm" 2>/dev/null || ps -o comm= -p "$pid" 2>/dev/null)" = sleep ]; then
-    kill "$pid"
-  else
-    echo "경고: pid $pid 가 우리 sleep 이 아니다 — 죽이지 않는다"
-  fi
-  rm -f "$LT_DIR/deploy-lock.pid"
-  sleep 1
-  if flock -n "$LOCK_FILE" true 2>/dev/null; then echo "배포 잠금을 풀었다"; else echo "FAIL 잠금이 아직 잡혀 있다"; exit 1; fi
-}
-
 # ── 진입 ─────────────────────────────────────────────────────────────────────
 
 cmd=${1:-}
@@ -365,13 +325,18 @@ case "$cmd" in
   env) cmd_env ;;
   tag) cmd_tag ;;
   gate) gate "${1:--q}" ;;
-  up) cmd_up ;;
-  loadgen) cmd_loadgen "$@" ;;
-  stage) cmd_stage "$@" ;;
+  up) with_lock cmd_up ;;
+  loadgen)
+    case "${1:-}" in
+      setup | burst) with_lock cmd_loadgen "$@" ;;
+      *) cmd_loadgen "$@" ;;
+    esac
+    ;;
+  stage) cmd_stage ;;
+  budget) cmd_budget ;;
   final) cmd_final ;;
-  lock) cmd_lock ;;
-  unlock) cmd_unlock ;;
-  down) cmd_down ;;
+  down) with_lock cmd_down ;;
+  locked) with_lock "$@" ;;
   ps) lt ps ;;
-  *) sed -n '2,22p' "$0"; exit 1 ;;
+  *) sed -n '2,24p' "$0"; exit 1 ;;
 esac

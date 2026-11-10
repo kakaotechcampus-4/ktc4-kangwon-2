@@ -1,6 +1,7 @@
 """부하 측정 스크립트(scripts/load_check.py)의 순수 함수 — 서버도 LLM 도 부르지 않는다."""
 
 import importlib.util
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -10,6 +11,11 @@ _PATH = Path(__file__).resolve().parents[1] / "scripts" / "load_check.py"
 _spec = importlib.util.spec_from_file_location("load_check", _PATH)
 lc = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(lc)
+
+_GATE = Path(__file__).resolve().parents[1] / "scripts" / "loadtest_gate.py"
+_gate_spec = importlib.util.spec_from_file_location("loadtest_gate", _GATE)
+gate = importlib.util.module_from_spec(_gate_spec)
+_gate_spec.loader.exec_module(gate)
 
 DOCKER_LINE = (
     "backend-1  | 2026-11-10T11:35:41.250000000Z 2026-11-10 11:35:41,249 INFO app.server.timing "
@@ -53,7 +59,7 @@ def test_docker_시각이_없으면_앱_시각을_쓰고_관심없는_줄은_버
     assert lc.parse_log_line("INFO:     Application startup complete.") is None
 
 
-def test_원화_계산과_시간초과는_최대_단가로_센다():
+def test_원화_계산과_사후_집계의_시간초과는_호출_최대_단가로_센다():
     assert lc.cost_won(1000, 1000) == pytest.approx(2.835 + 14.175)
 
     def event(kind, **kv):
@@ -67,10 +73,8 @@ def test_원화_계산과_시간초과는_최대_단가로_센다():
             event("llm_call", outcome="timeout"),
         ]
     )
-    biggest = lc.cost_won(2000, 1000)
     assert sp["calls"] == 2
-    assert sp["timeout_won"] == pytest.approx(biggest)
-    assert sp["per_max"] == {"s2": pytest.approx(biggest)}
+    assert sp["timeout_won"] == pytest.approx(lc.cost_won(2000, 1000))
 
 
 def _resolver(*ips):
@@ -116,43 +120,188 @@ def test_DB_호스트도_loadtest_망_안이어야_한다():
         lc.check_db("postgresql://u:p@localhost:5432/ssuksak", _resolver("127.0.0.1"))
 
 
-def test_다음_단계_추정은_반복과_S2_최대_시도를_곱한다():
+def _event(kind, **kv):
+    return {"kind": kind, "kv": kv}
+
+
+def _ok_call(outcome="ok"):
+    return _event("llm_call", outcome=outcome)
+
+
+def _usage(prompt="11140", completion="1011"):
+    return _event("llm_usage", prompt=prompt, completion=completion)
+
+
+def _baseline(scenario, events_by_request, status=201):
+    return [
+        lc.baseline_request(scenario, {"status": status}, events) for events in events_by_request
+    ]
+
+
+def test_기준선_요청은_성공_호출마다_usage_가_있어야_비용을_안다():
+    one = lc.cost_won(11140, 1011)
+    s1 = lc.baseline_request("s1", {"status": 201}, [_ok_call(), _usage()])
+    assert s1 == {"won": pytest.approx(one), "attempts": 1}
+    # 전송 재시도(not_delivered)는 과금 없는 시도로 센다
+    retried = lc.baseline_request(
+        "s1", {"status": 201}, [_ok_call("not_delivered"), _ok_call(), _usage()]
+    )
+    assert retried["attempts"] == 2 and retried["won"] == pytest.approx(one)
+    s2 = lc.baseline_request("s2", {"status": 201}, [_ok_call(), _ok_call(), _usage(), _usage()])
+    assert s2 == {"won": pytest.approx(2 * one), "attempts": 2}
+    # 모르는 경우: usage 없음 · 불완전 · llm_call 없음 · failed · timeout · 201 아님 · S2 호출 부족
+    assert "stop" in lc.baseline_request("s1", {"status": 201}, [_ok_call()])
+    assert "stop" in lc.baseline_request("s1", {"status": 201}, [_ok_call(), _usage("-", "-")])
+    assert "stop" in lc.baseline_request("s1", {"status": 201}, [])
+    assert "stop" in lc.baseline_request("s1", {"status": 201}, [_ok_call("failed"), _usage()])
+    assert "stop" in lc.baseline_request("s1", {"status": 201}, [_ok_call("timeout")])
+    assert "stop" in lc.baseline_request("s1", {"status": 500, "code": "X"}, [_ok_call(), _usage()])
+    assert "stop" in lc.baseline_request("s2", {"status": 201}, [_ok_call(), _usage()])
+
+
+def test_budget_판정_정상_usage없음_failed_상한초과():
     assert lc.MAX_ATTEMPTS == {
         "s1": 2,
         "s2": 6,
     }  # S2: 주제 · 소주제 · 개수 수리 3호출 × 전송 재시도
-    assert lc.parse_next("s2:10x2") == ("s2", 10, 2)
-    with pytest.raises(SystemExit):
-        lc.parse_next("s2:10")
-    assert lc.worst_case_won("s2", 10, 2, 50.0) == 10 * 2 * 6 * 50.0
-    assert lc.worst_case_won("s1", 40, 3, 10.0) == 40 * 3 * 2 * 10.0
+    # 남은 계획: S1 (10+20+40)×2 = 140건, S2 (10+20+40)×1 = 70건
+    assert sum(n * r for n, r in lc.PLAN["s1"]) == 140
+    assert sum(n * r for n, r in lc.PLAN["s2"]) == 70
+
+    def good(won, attempts):
+        return {"won": won, "attempts": attempts}
+
+    # 정상: S1 최대 5원(시도 1) → ×2 = 10원 × 140건. S2 최대 40원(시도 2) → ×3 = 120원 × 70건
+    ok = lc.judge_budget(
+        {"s1": [good(4, 1), good(5, 1), good(4, 1), good(5, 1)], "s2": [good(40, 2)] * 4}
+    )
+    assert ok["verdict"] == "진행 가능"
+    assert ok["worst"] == pytest.approx(140 * 10 + 70 * 120)
+    assert ok["spent"] == pytest.approx(18 + 160)
+    assert ok["room"] == pytest.approx(30_000 - 178)
+    # usage 없음 · failed 있음: 기준선 요청 하나만 비용을 몰라도 멈춘다
+    unknown = {"stop": "usage 가 없거나 불완전하다"}
+    bad = lc.judge_budget({"s1": [good(4, 1)] * 3 + [unknown], "s2": [good(40, 2)] * 4})
+    assert bad["verdict"] == "멈춤(단가 모름)" and bad["reasons"]
+    # 기준선 요청이 모자라도(4건이 아니면) 모른다
+    assert lc.judge_budget({"s1": [good(4, 1)] * 4, "s2": [good(40, 2)] * 3})["reasons"]
+    # 상한 초과: S2 요청당 최대 400원 → ×3 = 1,200 × 70 = 84,000
+    big = lc.judge_budget({"s1": [good(4, 1)] * 4, "s2": [good(400, 2)] * 4})
+    assert big["verdict"] == "멈춤(상한 초과 가능)"
+    # 계산식 경계: 최악 == 여유면 진행 가능, 1원이라도 넘으면 멈춤
+    edge = {"s1": [good(0, 1)] * 4, "s2": [good(0, 2)] * 4}
+    edge["s1"][0] = good(1, 1)  # 기준선 지출 1원 → 여유 29,999
+    edge["s2"][0] = good(0.0, 2)
+    assert lc.judge_budget(edge)["verdict"] == "진행 가능"
 
 
-def _event(kind, scenario="s1", **kv):
-    return {"kind": kind, "kv": kv, "rnd": {"scenario": scenario}}
+def test_DB_URL_에_쿼리_옵션이_있으면_거절한다():
+    lc.check_db("postgresql://u:p@db:5432/ssuksak", _resolver("172.29.0.2"))
+    for url in (
+        "postgresql://u:p@db:5432/ssuksak?host=203.0.113.9",
+        "postgresql://u:p@db:5432/ssuksak?sslmode=disable",
+    ):
+        with pytest.raises(SystemExit):
+            lc.check_db(url, _resolver("172.29.0.2"))
 
 
-def test_비용을_모르는_호출이_있으면_다음_단계는_멈춘다():
-    known = {k: 0 for k in ("usage_incomplete", "usage_missing", "log_gap", "timeout_unpriced")}
-    assert lc.next_verdict(0, 100, 50, known) == "진행 가능"
-    assert lc.next_verdict(29_950, 100, 50, known) == "멈춤(상한 초과 가능)"
-    assert lc.next_verdict(0, 0, 0, known) == "멈춤(단가 모름)"  # 단가를 한 번도 못 봤다
+def _good_config():
+    mib = 1 << 20
+    default_net = {"default": None}
+    return {
+        "name": "loadtest",
+        "services": {
+            "db": {
+                "image": "postgres:15",
+                "restart": "no",
+                "mem_limit": 512 * mib,
+                "memswap_limit": 512 * mib,
+                "networks": dict(default_net),
+                "volumes": [
+                    {"type": "volume", "source": "pgdata", "target": "/var/lib/postgresql"}
+                ],
+            },
+            "backend": {
+                "image": gate.IMAGE,
+                "restart": "no",
+                "mem_limit": 1024 * mib,
+                "memswap_limit": 1024 * mib,
+                "networks": dict(default_net),
+                "environment": {
+                    "LOADTEST": "1",
+                    "LLM_MODE": "real",
+                    "IS_SERVER": "1",
+                    "ALLOW_TEST_RESET": "0",
+                    "DATABASE_URL": "postgresql+psycopg://ssuksak:pw@db:5432/ssuksak",
+                },
+            },
+            "loadgen": {
+                "image": gate.IMAGE,
+                "restart": "no",
+                "mem_limit": 256 * mib,
+                "memswap_limit": 256 * mib,
+                "networks": dict(default_net),
+                "environment": {"LOADTEST": "1", "DATABASE_URL": "postgresql://ssuksak:pw@db/x"},
+                "volumes": [
+                    {
+                        "type": "bind",
+                        "source": "/lt/dir/load_check.py",
+                        "target": "/lt/load_check.py",
+                    },
+                    {"type": "bind", "source": "/lt/dir/out", "target": "/lt/out"},
+                ],
+            },
+        },
+        "networks": {
+            "default": {
+                "name": "loadtest_default",
+                "ipam": {"config": [{"subnet": "172.29.0.0/16", "gateway": "172.29.0.1"}]},
+            }
+        },
+        "volumes": {"pgdata": {"name": "loadtest_pgdata"}},
+    }
 
-    ok = _event("llm_call", outcome="ok")
-    # usage 가 불완전한 성공 호출
-    sp = lc.spend([ok, _event("llm_usage", prompt="-", completion="-")], {"s1": 1})
-    assert sp["unknown"]["usage_incomplete"] == 1
-    assert lc.next_verdict(0, 100, 50, sp["unknown"]) == "멈춤(단가 모름)"
-    # llm_usage 줄이 아예 없는 성공 호출
-    assert lc.spend([ok], {"s1": 1})["unknown"]["usage_missing"] == 1
-    # 단가를 아직 못 본 timeout 만 있는 로그
-    sp = lc.spend([_event("llm_call", outcome="timeout")], {})
-    assert sp["unknown"]["timeout_unpriced"] == 1 and sp["timeout_won"] == 0
-    # 로그 수집 실패: 201 이 있는데 성공 호출 줄이 없다(S2 는 201 하나에 성공 호출 2 이상)
-    assert lc.spend([], {"s1": 1, "s2": 3})["unknown"]["log_gap"] == 7
-    # 아무 문제 없는 로그
-    good = [ok, _event("llm_usage", prompt="1000", completion="1000")]
-    assert not any(lc.spend(good, {"s1": 1})["unknown"].values())
+
+def _failures(cfg):
+    res = gate.results(cfg, json.dumps(cfg), "real", "1", "/lt/dir")
+    return [label for ok, label in res if not ok]
+
+
+def test_gate_는_정상_설정을_통과시키고_위험한_변형_하나하나를_거절한다():
+    assert _failures(_good_config()) == []
+
+    def mutated(change):
+        cfg = _good_config()
+        change(cfg)
+        return _failures(cfg)
+
+    host_net = mutated(lambda c: c["services"]["backend"].update(network_mode="host"))
+    assert any("network_mode" in f for f in host_net)
+    extra_net = mutated(
+        lambda c: c["services"]["backend"]["networks"].update({"ktc4_default": None})
+    )
+    assert any("default 하나뿐" in f for f in extra_net)
+    bind = mutated(
+        lambda c: c["services"]["backend"].update(
+            volumes=[{"type": "bind", "source": "/var/run/docker.sock", "target": "/s"}]
+        )
+    )
+    assert any("bind mount" in f for f in bind)
+    # 허용 목록의 경로라도 다른 서비스가 마운트하면 거절
+    other = mutated(
+        lambda c: c["services"]["db"].update(
+            volumes=[{"type": "bind", "source": "/lt/dir/out", "target": "/lt/out"}]
+        )
+    )
+    assert any("bind mount" in f for f in other)
+    latest = mutated(lambda c: c["services"]["db"].update(image="postgres:latest"))
+    assert any("postgres:15" in f for f in latest)
+    opts = mutated(
+        lambda c: c["volumes"]["pgdata"].update(driver_opts={"type": "nfs", "device": ":/prod"})
+    )
+    assert any("driver_opts" in f for f in opts)
+    named = mutated(lambda c: c["volumes"].update({"other": {"name": "x"}}))
+    assert any("pgdata 하나뿐" in f for f in named)
 
 
 def test_한도_오류가_있는_회차는_남은_회차를_멈춘다():

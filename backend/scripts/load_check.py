@@ -5,7 +5,8 @@
 
     setup    교사 · 원 · 반(요청 수만큼) · 일과 기록을 실제 API 로 만든다
     burst    S1(일지 초안) 또는 S2(주제형 연간)를 N 개 동시에 보낸다
-    analyze  burst 결과 + backend 로그 덤프 → 단계별 표 · 원화 지출 · 다음 단계 최악 비용
+    analyze  burst 결과 + backend 로그 덤프 → 단계별 표 · 사후 원화 지출
+    budget   기준선 로그로 남은 계획 전체의 예산을 한 번 판정한다(진행 가능이 아니면 종료 코드 1)
 
 **돈이 드는 것은 서버 쪽 LLM 호출이다.** 이 스크립트는 LLM 을 부르지 않고 키도 읽지 않는다.
 `LLM_MODE` 를 정하는 것은 부하를 받는 backend 의 환경이다.
@@ -62,6 +63,13 @@ COMPLETION_WON_PER_1K = 14.175
 MAX_ATTEMPTS = {"s1": 2, "s2": 6}
 BUDGET_CAP_WON = 30_000
 
+# 고정 측정 계획(docs/load-check.md 의 표와 같다). 기준선 뒤 `budget` 이 계획 전체를 한 번 판정한다.
+# 기준선: 시나리오마다 동시 1 × 4회(첫 회는 예열). 그다음 (동시, 반복) 순서.
+BASELINE_REQUESTS = 4
+PLAN = {"s1": ((10, 2), (20, 2), (40, 2)), "s2": ((10, 1), (20, 1), (40, 1))}
+# 기준선 요청 하나가 성공하려면 필요한 성공 LLM 호출 수. S1 은 초안 1, S2 는 주제 + 소주제 2.
+MIN_OK_CALLS = {"s1": 1, "s2": 2}
+
 PG_SQL = (
     "SELECT state, count(*) FROM pg_stat_activity "
     "WHERE datname = current_database() AND backend_type = 'client backend' "
@@ -113,8 +121,16 @@ def check_target(base: str, environ, resolver=socket.getaddrinfo) -> None:
 
 
 def check_db(url: str, resolver=socket.getaddrinfo) -> None:
-    """pg_stat 표본과 행 수 대조가 읽는 DB 도 loadtest 망 안이어야 한다."""
-    check_inside(urlparse(url).hostname or "", resolver)
+    """pg_stat 표본과 행 수 대조가 읽는 DB 도 loadtest 망 안이어야 한다.
+
+    `?host=…` 같은 접속 옵션은 URL 의 호스트를 덮어쓸 수 있어서 쿼리가 있으면 거절한다.
+    """
+    parsed = urlparse(url)
+    if parsed.query:
+        raise SystemExit(
+            "거절: DATABASE_URL 에 쿼리 옵션(?…)이 있다. 호스트를 덮어쓸 수 있어 받지 않는다."
+        )
+    check_inside(parsed.hostname or "", resolver)
 
 
 def percentile(values, p: float):
@@ -533,7 +549,13 @@ def load_rounds(out: Path) -> list[dict]:
     for f in sorted(out.glob("burst-*.json")):
         data = json.loads(f.read_text())
         for rnd in data["rounds"]:
-            rnd = {**rnd, "scenario": data["scenario"], "n": data["n"], "t0": iso(rnd["t0_utc"])}
+            rnd = {
+                **rnd,
+                "scenario": data["scenario"],
+                "n": data["n"],
+                "t0": iso(rnd["t0_utc"]),
+                "file": f.name,
+            }
             tag = " 예열" if rnd["warmup"] else ""
             rnd["label"] = f"{data['scenario'].upper()} n={data['n']}{tag}"
             rounds.append(rnd)
@@ -644,131 +666,152 @@ def analyze_stage(label: str, rnds: list[dict], events: list[dict], a) -> None:
     print("\n".join(histogram(offsets, a.bin)))
 
 
-def spend(events: list[dict], created: dict | None = None) -> dict:
-    """원화 지출. 시간 초과(`outcome=timeout`)는 과금됐을 수 있어 최대 관측 단가로 센다.
+def spend(events: list[dict]) -> dict:
+    """사후 집계 — **보고용이다. 판정에 쓰지 않는다**(판정은 `budget` 이 기준선으로 한 번 한다).
 
-    **비용을 모르는 호출을 0원으로 치지 않는다.** 아래 넷은 따로 세고, 하나라도 있으면 멈춘다.
-      usage_incomplete  llm_usage 줄은 있는데 토큰이 숫자가 아니다(응답에 usage 가 없거나 깨졌다)
-      usage_missing     llm_call 은 성공인데 짝이 되는 llm_usage 줄이 없다
-      log_gap           201 수에서 기대한 성공 호출(S1 1 · S2 2 이상)보다 로그의 성공 호출이 적다
-                        — 로그 수집이 실패했거나 덤프가 옛것이다
-      timeout_unpriced  시간 초과인데 아직 한 번도 단가를 못 봤다
+    시간 초과(`outcome=timeout`)는 과금됐을 수 있어 관측된 최대 호출 단가로 센 추정이다.
     """
-    costs: dict = {}
-    usage_lines = incomplete = 0
+    costs = []
     for e in events:
         if e["kind"] != "llm_usage":
             continue
-        usage_lines += 1
         p, c = e["kv"].get("prompt", "-"), e["kv"].get("completion", "-")
         if p.isdigit() and c.isdigit():
-            scenario = e["rnd"]["scenario"] if e["rnd"] else None
-            costs.setdefault(scenario, []).append((int(p), int(c), cost_won(int(p), int(c))))
-        else:
-            incomplete += 1
-    flat = [x for v in costs.values() for x in v]
-    overall_max = max((x[2] for x in flat), default=0.0)
-    per_max = {s: max(x[2] for x in v) for s, v in costs.items() if s}
-    calls = [e for e in events if e["kind"] == "llm_call"]
-    ok_calls = [e for e in calls if e["kv"].get("outcome") == "ok"]
-    timeouts = [e for e in calls if e["kv"].get("outcome") == "timeout"]
-    timeout_won, unpriced = 0.0, 0
-    for e in timeouts:
-        unit = per_max.get(e["rnd"]["scenario"] if e["rnd"] else None, overall_max)
-        timeout_won += unit
-        unpriced += unit == 0
-    created = created or {}
-    expected_ok = created.get("s1", 0) + 2 * created.get("s2", 0)
-    unknown = {
-        "usage_incomplete": incomplete,
-        "usage_missing": max(0, len(ok_calls) - usage_lines),
-        "log_gap": max(0, expected_ok - len(ok_calls)),
-        "timeout_unpriced": unpriced,
-    }
+            costs.append((int(p), int(c), cost_won(int(p), int(c))))
+    biggest = max((x[2] for x in costs), default=0.0)
+    timeouts = sum(e["kind"] == "llm_call" and e["kv"].get("outcome") == "timeout" for e in events)
     return {
-        "calls": len(flat),
-        "prompt": sum(x[0] for x in flat),
-        "completion": sum(x[1] for x in flat),
-        "ok_won": sum(x[2] for x in flat),
-        "timeouts": len(timeouts),
-        "timeout_won": timeout_won,
-        "per_max": per_max,
-        "overall_max": overall_max,
-        "unknown": unknown,
-        "expected_ok": expected_ok,
-        "observed_ok": len(ok_calls),
-        "failed": sum(e["kv"].get("outcome") == "failed" for e in calls),
+        "calls": len(costs),
+        "prompt": sum(x[0] for x in costs),
+        "completion": sum(x[1] for x in costs),
+        "ok_won": sum(x[2] for x in costs),
+        "timeouts": timeouts,
+        "timeout_won": timeouts * biggest,
+        "biggest_call": biggest,
     }
 
 
-def parse_next(text: str) -> tuple[str, int, int]:
-    """`s2:10x2` → (s2, 10, 2). 다음 단계의 시나리오 · 동시 요청 수 · 반복 수."""
-    m = re.fullmatch(r"(s1|s2):(\d+)x(\d+)", text)
-    if not m:
-        raise SystemExit(f"--next 는 시나리오:동시x반복 꼴이다. 예) s2:10x2 (받은 값: {text!r})")
-    return m.group(1), int(m.group(2)), int(m.group(3))
-
-
-def worst_case_won(scenario: str, n: int, repeat: int, unit: float) -> float:
-    """다음 단계 추정 = 요청 수 × 반복 × 요청당 최대 시도 × 관측 최대 단가."""
-    return n * repeat * MAX_ATTEMPTS[scenario] * unit
-
-
-def next_verdict(total: float, worst: float, unit: float, unknown: dict) -> str:
-    """비용을 모르는 호출이 있거나 단가를 한 번도 못 봤으면 계산이 맞아도 멈춘다."""
-    if unit == 0 or any(unknown.values()):
-        return "멈춤(단가 모름)"
-    return "진행 가능" if total + worst <= BUDGET_CAP_WON else "멈춤(상한 초과 가능)"
-
-
-def print_spend(sp: dict, next_stage: tuple[str, int, int] | None) -> None:
+def print_spend(sp: dict) -> None:
     total = sp["ok_won"] + sp["timeout_won"]
-    print("\n=== 원화 지출 (llm_usage 단가: scripts/llm-usage.sh, VAT 별도, 캐시 할인 없음) ===")
+    print(
+        "\n=== 원화 지출 — 사후 집계, 판정에 쓰지 않는다 (단가: scripts/llm-usage.sh, VAT 별도) ==="
+    )
     tokens = f"입력 {sp['prompt']:,} · 출력 {sp['completion']:,} 토큰"
     print(f"  성공 호출 {sp['calls']}건 · {tokens} → ₩{sp['ok_won']:,.0f}")
-    print(f"  시간 초과 {sp['timeouts']}건 × 최대 관측 단가 → ₩{sp['timeout_won']:,.0f} (추정)")
-    print(f"  합계 ₩{total:,.0f} / 상한 ₩{BUDGET_CAP_WON:,}")
-    units = {k.upper(): round(v, 1) for k, v in sp["per_max"].items()}
-    print(f"  호출 1회 최대 관측 단가(원): {units}")
-    labels = {
-        "usage_incomplete": "usage 가 없거나 불완전한 llm_usage 줄",
-        "usage_missing": "llm_usage 줄이 없는 성공 호출",
-        "log_gap": f"로그 부족(기대 성공 호출 ≥{sp['expected_ok']} · 관측 {sp['observed_ok']})",
-        "timeout_unpriced": "단가를 못 본 시간 초과",
-    }
-    found = [f"{labels[k]} {n}" for k, n in sp["unknown"].items() if n]
-    print(f"  비용을 모르는 호출: {' · '.join(found) if found else '없음'}")
-    if sp["failed"]:
-        print(f"  (참고) outcome=failed {sp['failed']}건 — 과금 여부 불명, 합계에 넣지 않았다")
-    if next_stage is None:
-        return
-    scenario, n, repeat = next_stage
-    unit = sp["per_max"].get(scenario, sp["overall_max"])
-    worst = worst_case_won(scenario, n, repeat, unit)
     print(
-        f"\n=== 다음 단계 {scenario}:{n}x{repeat} — 관측 최대 단가 기준 추정 "
-        f"(요청 {n} × 반복 {repeat} × 요청당 최대 시도 {MAX_ATTEMPTS[scenario]} × 단가) ==="
+        f"  시간 초과 {sp['timeouts']}건 × 호출 최대 ₩{sp['biggest_call']:,.1f}"
+        f" → ₩{sp['timeout_won']:,.0f} (추정)"
     )
-    if unit == 0:
-        print("  단가를 아직 한 번도 못 봤다 — 기준선(동시 1)부터 잰다")
-    elif scenario not in sp["per_max"]:
-        print(f"  ({scenario.upper()} 관측이 없어 전체 최대 단가 ₩{unit:,.1f} 로 센다)")
-    verdict = next_verdict(total, worst, unit, sp["unknown"])
-    after = f"₩{total + worst:,.0f} / ₩{BUDGET_CAP_WON:,}"
-    print(f"  추정 ₩{worst:,.0f} → 지출 합계 {after} : {verdict}")
+    print(f"  합계 ₩{total:,.0f} / 상한 ₩{BUDGET_CAP_WON:,}   (캐시 할인을 안 세서 조금 높다)")
 
 
-def cmd_analyze(a) -> None:
-    out = Path(a.out)
-    rounds = load_rounds(out)
-    if not rounds:
-        raise SystemExit(f"{out} 에 burst-*.json 이 없다.")
+# ── budget: 기준선으로 계획 전체를 한 번 판정 ────────────────────────────────
+
+
+def baseline_request(scenario: str, request: dict, events: list[dict]) -> dict:
+    """기준선 요청 하나 → {"won", "attempts"}, 비용을 알 수 없으면 {"stop": 이유}.
+
+    동시 1 이라 요청 하나가 회차 하나다. 그 회차의 `llm_call` · `llm_usage` 가 그 요청의 것이다.
+    """
+    if request.get("status") != 201:
+        return {"stop": f"요청이 201 이 아니다 ({classify(request)[0]})"}
+    calls = [e for e in events if e["kind"] == "llm_call"]
+    if not calls:
+        return {"stop": "llm_call 줄이 없다 (로그 수집 실패, 또는 mock)"}
+    # not_delivered 는 모델에 닿지 못한 재시도다(과금 없음). 그 밖의 비정상은 비용을 알 수 없다.
+    bad = sorted({e["kv"].get("outcome") for e in calls} - {"ok", "not_delivered"})
+    if bad:
+        return {"stop": f"llm_call outcome={','.join(map(str, bad))}"}
+    ok = [e for e in calls if e["kv"].get("outcome") == "ok"]
+    if len(ok) < MIN_OK_CALLS[scenario]:
+        return {"stop": f"성공 호출이 {len(ok)}건뿐이다 (최소 {MIN_OK_CALLS[scenario]})"}
+    usage = [e for e in events if e["kind"] == "llm_usage"]
+    numeric = [
+        e
+        for e in usage
+        if e["kv"].get("prompt", "-").isdigit() and e["kv"].get("completion", "-").isdigit()
+    ]
+    if len(usage) != len(ok) or len(numeric) != len(usage):
+        return {
+            "stop": "usage 가 없거나 불완전하다 "
+            f"(성공 {len(ok)} · llm_usage {len(usage)} · 숫자 {len(numeric)})"
+        }
+    won = sum(cost_won(int(e["kv"]["prompt"]), int(e["kv"]["completion"])) for e in numeric)
+    return {"won": won, "attempts": len(calls)}
+
+
+def judge_budget(baseline: dict) -> dict:
+    """`baseline[시나리오]` = 요청별 결과 목록 → 판정.
+
+    요청당 최악(시나리오) = 기준선 요청당 최대 원화 × (요청당 최대 시도 ÷ 기준선 요청당 최소 시도)
+    남은 계획 최악       = Σ 시나리오 (남은 요청 수 × 반복) × 요청당 최악
+    진행 가능            ⇔ 남은 계획 최악 ≤ 상한 − 기준선 지출
+    기준선 요청 하나라도 비용을 모르면 「멈춤(단가 모름)」. 이 판정 한 번이 남은 burst 전부를 정함.
+    """
+    reasons, spent, worst, detail = [], 0.0, 0.0, {}
+    for scenario in ("s1", "s2"):
+        results = baseline.get(scenario, [])
+        if len(results) != BASELINE_REQUESTS:
+            reasons.append(
+                f"{scenario.upper()} 기준선 요청이 {len(results)}건이다 (필요 {BASELINE_REQUESTS})"
+            )
+        reasons += [f"{scenario.upper()}: {r['stop']}" for r in results if "stop" in r]
+        good = [r for r in results if "stop" not in r]
+        if not good:
+            continue
+        spent += sum(r["won"] for r in good)
+        factor = MAX_ATTEMPTS[scenario] / min(r["attempts"] for r in good)
+        per_request = max(r["won"] for r in good) * factor
+        requests = sum(n * repeat for n, repeat in PLAN[scenario])
+        worst += requests * per_request
+        detail[scenario] = {
+            "max_won": max(r["won"] for r in good),
+            "factor": factor,
+            "per_request": per_request,
+            "requests": requests,
+        }
+    room = BUDGET_CAP_WON - spent
+    if reasons:
+        verdict = "멈춤(단가 모름)"
+    elif worst <= room:
+        verdict = "진행 가능"
+    else:
+        verdict = "멈춤(상한 초과 가능)"
+    return {
+        "verdict": verdict,
+        "reasons": reasons,
+        "spent": spent,
+        "worst": worst,
+        "room": room,
+        "detail": detail,
+    }
+
+
+def print_budget(j: dict) -> None:
+    print("=== 예산 판정 — 기준선 단가로 계획 전체를 한 번 (단계마다 다시 판정하지 않는다) ===")
+    for scenario, d in j["detail"].items():
+        print(
+            f"  {scenario.upper()}: 기준선 요청당 최대 ₩{d['max_won']:,.1f}"
+            f" × (최대 시도 {MAX_ATTEMPTS[scenario]}"
+            f" ÷ 기준선 최소 시도) {d['factor']:.2f} = 요청당 최악 ₩{d['per_request']:,.1f}"
+            f" · 남은 요청 {d['requests']}건 → ₩{d['requests'] * d['per_request']:,.0f}"
+        )
+    for reason, n in Counter(j["reasons"]).items():
+        print(f"  모름: {reason}" + (f" × {n}" if n > 1 else ""))
+    print(
+        f"  기준선 지출 ₩{j['spent']:,.0f} · 남은 계획 최악 ₩{j['worst']:,.0f}"
+        f" · 여유 ₩{j['room']:,.0f} (상한 ₩{BUDGET_CAP_WON:,} − 기준선 지출)"
+    )
+    print(f"  판정: {j['verdict']}")
+
+
+def read_events(log: Path, rounds: list[dict]) -> list[dict]:
+    """backend 로그 → 관심 있는 줄. `rnd` 에 회차를 붙인다(llm_call 은 시작, 나머지는 찍힌 시각)."""
     events = []
-    for line in Path(a.backend_log).read_text(errors="replace").splitlines():
+    for line in log.read_text(errors="replace").splitlines():
         ev = parse_log_line(line)
         if ev is None:
             continue
-        # llm_call 은 시작 시각으로, 나머지는 찍힌 시각으로 회차를 정한다.
         at = (
             llm_start_time(ev["ts"], float(ev["kv"].get("ms", 0)))
             if ev["kind"] == "llm_call"
@@ -776,6 +819,36 @@ def cmd_analyze(a) -> None:
         )
         ev["rnd"] = assign(at, rounds)
         events.append(ev)
+    return events
+
+
+def cmd_budget(a) -> None:
+    rounds = load_rounds(Path(a.out))
+    events = read_events(Path(a.backend_log), rounds)
+    baseline: dict = {}
+    for scenario in ("s1", "s2"):
+        files = sorted({r["file"] for r in rounds if r["scenario"] == scenario and r["n"] == 1})
+        if not files:
+            continue
+        newest = files[-1]  # 기준선을 다시 돌렸으면 가장 최근 것만 본다
+        results = []
+        for rnd in (r for r in rounds if r["file"] == newest):
+            mine = [e for e in events if e["rnd"] is rnd]
+            for request in rnd["requests"]:
+                results.append(baseline_request(scenario, request, mine))
+        baseline[scenario] = results
+    j = judge_budget(baseline)
+    print_budget(j)
+    if j["verdict"] != "진행 가능":
+        sys.exit(1)
+
+
+def cmd_analyze(a) -> None:
+    out = Path(a.out)
+    rounds = load_rounds(out)
+    if not rounds:
+        raise SystemExit(f"{out} 에 burst-*.json 이 없다.")
+    events = read_events(Path(a.backend_log), rounds)
     loose = sum(e["rnd"] is None for e in events)
     print(f"백엔드 로그 {len(events)}줄 읽음 (회차에 못 붙인 줄 {loose})")
     print(f"회차 {len(rounds)} · 요청 {sum(len(r['requests']) for r in rounds)}")
@@ -786,10 +859,7 @@ def cmd_analyze(a) -> None:
     shown = [rounds[-1]["label"]] if a.last_only else list(by_label)
     for label in shown:
         analyze_stage(label, by_label[label], events, a)
-    created = {"s1": 0, "s2": 0}
-    for rnd in rounds:
-        created[rnd["scenario"]] += len(rnd["ok_class_ids"])
-    print_spend(spend(events, created), parse_next(a.next) if a.next else None)
+    print_spend(spend(events))
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -825,12 +895,14 @@ def main(argv=None) -> None:
     z = sub.add_parser("analyze", help="burst 결과 + backend 로그 → 표")
     common(z, base=False)
     z.add_argument("--backend-log", required=True, help="docker compose logs -t backend 덤프")
-    z.add_argument(
-        "--next", help="다음 단계 시나리오:동시x반복. 예) s2:10x2 — 추정 비용 · 판정을 낸다"
-    )
     z.add_argument("--bin", type=float, default=5.0, help="LLM 시작 히스토그램 칸(초)")
     z.add_argument("--last-only", action="store_true", help="마지막 단계 표만 (지출은 누적 전체)")
     z.set_defaults(fn=cmd_analyze)
+
+    g = sub.add_parser("budget", help="기준선 로그로 남은 계획 전체의 예산을 한 번 판정한다")
+    common(g, base=False)
+    g.add_argument("--backend-log", required=True, help="기준선 뒤에 덤프한 backend 로그")
+    g.set_defaults(fn=cmd_budget)
 
     args = p.parse_args(argv)
     try:
