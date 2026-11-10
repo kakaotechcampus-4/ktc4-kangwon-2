@@ -92,6 +92,12 @@ function readDropped() {
   }
 }
 
+/** `?foreign=` 은 `received` 나 반 번호만 받는다. 그 밖의 값은 없는 것으로 본다. */
+function foreignOf(value: string | null): number | "received" | null {
+  if (value === "received") return value;
+  return value !== null && /^[1-9]\d*$/.test(value) ? Number(value) : null;
+}
+
 export default function DocumentsPage() {
   const [entry] = useClientState(
     () => {
@@ -101,6 +107,7 @@ export default function DocumentsPage() {
         daily: false,
         weekly: null,
         docId: "",
+        foreign: null,
       };
       if (typeof window === "undefined") return blank;
       const query = new URLSearchParams(window.location.search);
@@ -116,6 +123,8 @@ export default function DocumentsPage() {
         weekly: kind === "weeklyLog" ? { start: day("start"), end: day("end") } : null,
         // 다른 화면에서 문서 하나를 바로 열 때. 모르는 id 면 보관함을 연다.
         docId: documentServerId(query.get("id") ?? "") === null ? "" : (query.get("id") as string),
+        // 상단바 알림이 여는 길. 받은 요청 칸(`received`) 또는 남의 반 하나(서버 반 번호).
+        foreign: foreignOf(query.get("foreign")),
       };
     },
     {
@@ -124,6 +133,7 @@ export default function DocumentsPage() {
       daily: false,
       weekly: null as { start: string; end: string } | null,
       docId: "",
+      foreign: null as number | "received" | null,
     },
   );
   // 서버로 옮기지 못하고 지운 예전 증빙 건수(`moveLegacyImports`). 한 번만 알린다.
@@ -728,6 +738,7 @@ export default function DocumentsPage() {
   if (mode === "library")
     return (
       <DocumentArchiveView
+        initialForeign={entry.foreign}
         header={
           <>
             {head}

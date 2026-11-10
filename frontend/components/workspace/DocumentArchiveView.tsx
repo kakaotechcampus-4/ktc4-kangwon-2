@@ -175,6 +175,7 @@ export default function DocumentArchiveView({
   onCreate,
   detail,
   header,
+  initialForeign,
 }: {
   classes: ClassroomEntry[];
   classId: string;
@@ -193,6 +194,8 @@ export default function DocumentArchiveView({
   detail: ReactNode;
   /** 페이지 제목 · 설명 · 기존 생성 액션. **오른쪽 본문 안에만** 그린다. */
   header: ReactNode;
+  /** 상단바 알림이 연 칸(`?foreign=`). 받은 요청 칸이거나 남의 반 하나다. 없으면 내 반 보관함이다. */
+  initialForeign?: number | "received" | null;
 }) {
   // 생성 화면에서 돌아오면 선택된 문서에 맞춰 탐색도 시작한다.
   // 이후 목록 탐색은 이 상태를 그대로 쓰므로 다른 종류의 편집기가 끼어들지 않는다.
@@ -240,9 +243,12 @@ export default function DocumentArchiveView({
   const [mobileList, setMobileList] = useState(false);
   // 같은 원 남의 반과 받은 열람 요청 (ADR-059). 고르면 오른쪽 본문 자리를 그 칸이 쓴다.
   const access = useClassAccess();
-  const [foreign, setForeign] = useState<number | "received" | null>(null);
+  const [foreign, setForeign] = useState<number | "received" | null>(initialForeign ?? null);
   const foreignRoom =
     typeof foreign === "number" ? access.others.find((c) => c.id === foreign) : undefined;
+  // 알림이 가리킨 반이 목록에 없으면(지워졌거나 못 불러왔으면) 빈 칸 대신 내 반 보관함으로 돌아간다.
+  // 목록을 받기 전에는 없는 것이 아니다 — 아래에서 「불러오는 중」을 보인다.
+  if (access.loaded && typeof foreign === "number" && !foreignRoom) setForeign(null);
 
   const classroom = classes.find((c) => c.id === classId);
   const serverClassId = classId ? classServerId(classId) : null;
@@ -400,12 +406,13 @@ export default function DocumentArchiveView({
     />
   );
   // 남의 반 · 받은 요청을 고르면 내 반 보관함 대신 그 칸이 선다.
-  const foreignBody =
-    foreign === "received" ? (
-      <ReceivedPanel items={access.received} onChanged={access.reload} />
-    ) : foreignRoom ? (
-      <ForeignClassPanel key={foreignRoom.id} room={foreignRoom} onChanged={access.reload} />
-    ) : null;
+  const foreignBody = !access.loaded ? (
+    <p className={ws.hint}>불러오는 중…</p>
+  ) : foreign === "received" ? (
+    <ReceivedPanel items={access.received} onChanged={access.reload} />
+  ) : foreignRoom ? (
+    <ForeignClassPanel key={foreignRoom.id} room={foreignRoom} onChanged={access.reload} />
+  ) : null;
 
   if (!classId || !classroom || foreign !== null) {
     return (

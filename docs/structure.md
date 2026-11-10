@@ -80,6 +80,7 @@ app/
 | `documents` | 일지 · 평가 문서. 다른 기능은 `service.py` 창구로 읽는다 |
 | `trends` | 트렌드 소재. 승인은 저장소 파일이고 큐가 아니다(ADR-016) |
 | `evaluation` | 평가제 대조 — 라우터 GET · PUT · 판정 규칙 · 지표 카탈로그(resources/evaluation) · 자기 점검 체크 저장(`evaluation_checks`, ADR-022) |
+| `notifications` | 상단바 알림함 — 열람 요청이 오고 답이 나온 사건의 화면 안 알림(`notifications`, ADR-097). 다른 기능은 `service.py` 의 `notify` · `mark_request_read` 로만 부른다 |
 
 ### 규칙
 
