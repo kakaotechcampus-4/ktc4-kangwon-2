@@ -17,6 +17,7 @@ from app.shared.childCode import (
     one_syllable,
     table_for_text,
     unmask,
+    unmask_as_written,
     unmask_from,
 )
 
@@ -90,6 +91,17 @@ def test_부르는_이름은_가명에_같은_꼴을_붙여_가리고_그_꼴로
     )
     original = "민이가 블록을 쌓았다."
     assert unmask_from("가람이가 블록을 쌓았다.", table, original) == original
+    # 모델이 새로 쓴 글도 원문에 적힌 부르는 이름 그대로 돌아온다.
+    assert unmask_as_written("가람이가 탑을 올린다.", table, original) == "민이가 탑을 올린다."
+    # 모델이 조사를 바꿔 맨 가명을 쓰면 외자 글자로 — 가명이 그대로 남지 않는다.
+    assert unmask_as_written("가람과 블록", table, original) == "민과 블록"
+
+
+def test_부르는_이름_없이_외자_낱말로만_적어도_맨_가명을_외자_글자로_되돌린다():
+    original = "민은 블록을 쌓았다."
+    table = table_for_text(load_pool(), [("김민", "가람", None)], [], original)
+    code = next(c for c, real in table.restoring.items() if real == "김민")
+    assert unmask_as_written(f"{code}이가 탑을 올린다.", table, original) == "민이가 탑을 올린다."
 
 
 def test_부르는_이름은_외자_글자나_등록_이름으로_시작해야_한다():
@@ -208,6 +220,42 @@ def test_되돌리면_등록된_전체_이름이_나온다():
     # 성을 뗀 표기로 들어갔어도 복원은 등록 이름으로 한다.
     table = NameTable({"박서준": "민준"})
     assert unmask(mask("서준이가 놀았다", table), table) == "박서준이가 놀았다"
+
+
+def test_모델이_쓴_글은_원문에_적힌_표기로_되돌린다():
+    # 다른 반 「김하늘」의 「하늘」이 원문 낱말과 겹쳐 가려졌다. 등록 실명으로 돌리면
+    # 사실에 없던 「김하늘」이 생긴다 — 원문에 적힌 「하늘」로 돌린다.
+    table = NameTable({"이가명": "도담", "김하늘": "하람"})
+    original = "이가명이 하늘을 보며 구름 모양을 이야기했다."
+    written = "도담이 하람을 보며 구름을 이야기한다."
+    assert unmask_as_written(written, table, original) == "이가명이 하늘을 보며 구름을 이야기한다."
+    # 교사가 성을 빼고 적었으면 그 표기로.
+    assert unmask_as_written("도담이가 웃었다", table, "가명이가 웃었다") == "가명이가 웃었다"
+
+
+def test_원문에_그_아이_표기가_없으면_가명을_그대로_둔다():
+    # 등록 실명을 새로 만들어 넣는 것이 바로 막으려는 일이다.
+    table = NameTable({"김하늘": "하람"})
+    assert unmask_as_written("하람과 놀았다", table, "모래를 팠다") == "하람과 놀았다"
+
+
+def test_원문에서_못_찾은_옮긴_글도_등록_실명을_만들지_않는다():
+    # 함수 동작 확인: 옮긴 글을 원문에서 못 찾으면 등록 실명(「김여름」) 대신 원문 표기로 돌린다.
+    # (연간 가져오기는 원문에 그대로 있는 글만 남겨서 지금은 이 갈래에 닿지 않는다.)
+    table = NameTable({"김여름": "가을"})
+    assert unmask_from("7월 가을과 물놀이", table, "7월 여름 물놀이") == "7월 여름과 물놀이"
+
+
+def test_옮긴_글이_원문_여러_곳에_맞으면_다른_자리_안에_들지_않은_가장_짧은_것이다():
+    # 원문에 「김여름이 …」와 7월 주제 「여름」이 함께 있다.
+    # 처음 맞은 곳을 주면 주제가 「김여름」이 된다.
+    table = NameTable({"김여름": "가을"})
+    original = "김여름이 수영을 했다.\n7월 여름 물놀이"
+    assert unmask_from("가을", table, original) == "여름"
+    # 전체 이름을 적은 문장은 그 안의 「여름이 웃었다」가 아니라 문장 그대로 돌아온다.
+    assert unmask_from("가을이 웃었다", table, "김여름이 웃었다") == "김여름이 웃었다"
+    # 원문에 전체 이름뿐이면 그것이다.
+    assert unmask_from("가을", table, "김여름이 수영을 했다.") == "김여름"
 
 
 def test_긴_이름을_먼저_바꾼다():

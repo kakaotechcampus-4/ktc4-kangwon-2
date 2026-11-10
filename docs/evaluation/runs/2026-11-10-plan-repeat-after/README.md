@@ -47,3 +47,4 @@
 | `README.md` | 이 문서 |
 | `compare.md` | `plan_repeat_compare.py` 출력(시간 · 이름 다양성) |
 | `analysis.md` | `plan_repeat_analyze.py` 출력(반복 · 한 계획안 안 중복) |
+| `evidence_by_cell.md` | `evidence_by_cell.py` 출력(칸 묶음별 근거 종류 · 10회 근거 가짓수) |

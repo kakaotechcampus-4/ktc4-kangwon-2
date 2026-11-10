@@ -36,13 +36,15 @@ export async function signup(name: string, email: string, password: string): Pro
  * 비밀번호를 바꾼다 (`PATCH /api/auth/password`).
  *
  * 지금 비밀번호가 틀리면 422 `VALIDATION_FAILED` 에 `current_password` 가 담겨 온다.
+ * 서버는 바꾸기 전 토큰을 모두 끊고 새 토큰을 준다(ADR-092) — 저장하지 않으면 다음 요청이 401 이다.
  */
 export async function changePassword(current: string, next: string): Promise<void> {
-  await apiRequest<void>("/api/auth/password", {
+  const result = await apiRequest<AuthResult>("/api/auth/password", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ current_password: current, new_password: next }),
   });
+  saveToken(result.token);
 }
 
 export async function login(email: string, password: string): Promise<AuthResult> {
