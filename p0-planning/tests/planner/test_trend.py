@@ -11,6 +11,7 @@ from ssuksak.planning.domain.provenance import EvidenceSourceType
 from ssuksak.planning.domain.teacher_memo import TEACHER_MEMO_EVIDENCE, without_memo_evidence
 from ssuksak.planning.domain.trend import TREND_CONTEXT, TrendItem, TrendKind, select_trends, trend_kind
 from ssuksak.planning.planner.trend import (
+    lyric_hits,
     split_trend_applied,
     trend_name_hits,
     trend_share_excess,
@@ -95,3 +96,50 @@ def test_trend_evidence_is_a_marker_and_absent_context_means_no_trend():
     assert usable_trends((ok,)) == (trend,)
     assert usable_trends((OptionalContextResult(TREND_CONTEXT, OptionalContextStatus.ERROR),)) == ()
     assert usable_trends(()) == ()
+
+
+# ADR-072 결정 12: 가사를 옮기지 않는다 — 따옴표 · 줄바꿈으로 묶인 글이 노래 가사 꼴이면 그 후보를 고쳐 쓴다.
+LYRICS = {
+    "곰 세 마리 — 반복 낱말": "곰 세 마리 율동: “곰 세 마리가 한 집에 있어 아빠곰 엄마곰 애기곰 아빠곰은 뚱뚱해 엄마곰은 날씬해 애기곰은 너무 귀여워”를 부른다.",
+    "산토끼 — 같은 구절 반복": "산토끼 놀이: ‘산토끼 토끼야 어디를 가느냐 깡충깡충 뛰면서 어디를 가느냐’ 노래에 맞춰 뛴다.",
+    "나비야 — 같은 낱말이 잇달아": "나비 놀이: 「나비야 나비야 이리 날아오너라 노랑나비 흰나비 춤을 추며 오너라」를 함께 부른다.",
+    "생일 노래 — 줄바꿈": "생일 축하 놀이: 함께 부른다.\n생일 축하합니다\n생일 축하합니다\n사랑하는 우리 친구\n생일 축하합니다",
+    "반짝반짝 — 곧은 따옴표": '별 놀이: "반짝반짝 작은 별 아름답게 비치네 동쪽 하늘에서도 서쪽 하늘에서도 반짝반짝 작은 별"을 부른다.',
+}
+NOT_LYRICS = {
+    "노래 제목만": "곰 세 마리 율동: 동요 「곰 세 마리」에 맞춰 아빠 · 엄마 · 아기 곰 동작을 흉내 낸다.",
+    "짧은 후렴": "나비 놀이: ‘나비야 나비야’ 부분에서 두 팔을 펄럭인다.",
+    "교사 발문": "낙엽 놀이: “나뭇잎은 무슨 색일까? 빨간 나뭇잎과 노란 나뭇잎을 찾아볼까?” 하고 묻는다.",
+    "따옴표 밖의 되풀이 설명": "낙엽 놀이: 낙엽을 모아 낙엽 왕관을 만들고, 낙엽 비를 뿌리고, 낙엽 왕관을 쓰고 낙엽 비 속을 걷는다.",
+    "짝이 어긋난 따옴표": "도구 놀이: 3주 ‘도구를 움직이는 힘'에서는 도구를 움직이는 다양한 힘을 알아보고 도구를 움직이는 방법을 놀이로 표현해 본다. 4주 ‘안전한 도구 사용’",
+    "여러 줄 순서": "낙엽 놀이: 순서\n1. 낙엽을 모은다\n2. 낙엽으로 모양을 만든다\n3. 종이에 붙인다",
+}
+
+
+@pytest.mark.parametrize("text", LYRICS.values(), ids=LYRICS.keys())
+def test_lyric_hits_find_quoted_or_line_broken_lyrics(text):
+    assert lyric_hits({"together[0]": text}) == ("together[0]",)
+
+
+@pytest.mark.parametrize("text", NOT_LYRICS.values(), ids=NOT_LYRICS.keys())
+def test_lyric_hits_leave_titles_questions_and_plain_prose(text):
+    assert lyric_hits({"together[0]": text}) == ()
+
+
+def test_lyric_hits_known_false_positive_and_misses():
+    """결정적 검사의 한계를 고정한다. 바꾸려면 이 테스트를 같이 고친다(ADR-072 결정 12)."""
+    # 오탐: 따옴표 안의 구령 · 말놀이도 같은 구절을 되풀이하면 가사로 본다 — 고쳐 쓰기 한 번이면 끝난다.
+    chant = "걷기 놀이: “하나 둘 하나 둘 앞으로 걸어요 하나 둘 하나 둘 뒤로 걸어요”라고 말하며 걷는다."
+    assert lyric_hits({"a": chant}) == ("a",)
+    # 오탐: 짧은 줄 목록이 같은 머리말을 되풀이해도 가사로 본다(후보 글에 목록 줄바꿈이 드물어 두었다).
+    listing = "영역:\n의사소통 - 듣기와 말하기 - 바른 태도로 듣고 말한다.\n의사소통 - 듣기와 말하기 - 생각을 말한다."
+    assert lyric_hits({"a": listing}) == ("a",)
+    # 곧은 작은따옴표는 보지 않는다 — 문단을 건너 짝이 지어진다. 그래서 그 안의 가사도 놓친다.
+    apostrophe = "주제: '생활도구' 주제로 도구를 움직이는 힘을 알아보고, 도구를 움직이는 힘'에서는 도구를 움직이는 다양한 힘을 본다."
+    assert lyric_hits({"a": apostrophe}) == ()
+    # 놓침: 따옴표 · 줄바꿈 없이 본문에 풀어 쓴 가사.
+    inline = "곰 놀이: 곰 세 마리가 한 집에 있어 아빠곰 엄마곰 애기곰 아빠곰은 뚱뚱해 엄마곰은 날씬해 하고 부른다."
+    assert lyric_hits({"a": inline}) == ()
+    # 놓침: 되풀이 없는 가사 한 줄, 20자 아래 인용.
+    assert lyric_hits({"a": "노래: “학교 종이 땡땡땡 어서 모이자 선생님이 우리를 기다리신다”"}) == ()
+    assert lyric_hits({"a": "노래: 「퐁당퐁당 돌을 던지자」"}) == ()
