@@ -631,7 +631,7 @@ test("서버 문서는 서버로만 확정을 되돌리고 AI 검증을 확정 �
 });
 
 // ── 선택과 서버 응답 순서 ────────────────────────────────────────────────
-const { createSelection, serverIssues, BUSY, MOVED } =
+const { createSelection, serverIssues, BUSY, MOVED, LEFT } =
   await import("../components/workspace/document-selection.ts");
 const workspaceModel = await import("../lib/workspace/model.ts");
 const privacy = await import("../lib/privacy/browser-storage.ts");
@@ -1559,7 +1559,7 @@ test("실제 편집기는 STALE_WRITE와 reload 실패 때 입력을 보존하�
   assert.equal(selection.get().detail.updatedAt, "t2");
   assert.equal(editor.textarea().props.value, "최신 문서에서 다시 작성한 해석");
   const page = read("DocumentsPage.tsx");
-  assert.match(page, /reload:\s*selection\.reload/);
+  assert.match(page, /reload:\s*pinned\.reload/);
 });
 
 // ── 확정 취소 · 변경된 근거 반영 ──────────────────────────────────────────
@@ -1906,8 +1906,8 @@ test("확정 취소·근거 반영 성공 뒤에는 문서 목록도 다시 읽�
   const page = read("DocumentsPage.tsx");
   // 근거 반영은 사라진 근거 처리를 함께 보낼 수 있어 인자를 받는다.
   for (const [action, call] of [
-    ["unconfirm", "selection.unconfirm()"],
-    ["refresh", "selection.refresh(resolutions)"],
+    ["unconfirm", "pinned.unconfirm()"],
+    ["refresh", "pinned.refresh(resolutions)"],
   ]) {
     const start = page.indexOf(`        ${action}: async (`);
     assert.ok(start > -1, action);
@@ -1916,7 +1916,7 @@ test("확정 취소·근거 반영 성공 뒤에는 문서 목록도 다시 읽�
     assert.ok(body.includes("reloadList()"), `${action} 뒤 목록 갱신`);
   }
   // 동시 수정 복구용 reload 를 근거 반영으로 대체하지 않는다.
-  assert.match(page, /reload:\s*selection\.reload/);
+  assert.match(page, /reload:\s*pinned\.reload/);
 });
 test("후속 #6 v1-mock은 본문 밖 표식으로 매핑하고 일반 버전은 그대로 읽는다", () => {
   const mock = documents.toDocument({
@@ -2239,4 +2239,59 @@ test("3차-9 저장하고 반영 · 버리고 반영", async () => {
   dropped.editor.button("편집 버리고 반영").props.onClick();
   await again;
   assert.deepEqual(dropped.calls, ["refresh"]);
+});
+
+test("「저장하고 반영」 중 다른 문서를 열면 반영을 새 문서로 보내지 않는다 (#476 하민 점검)", async () => {
+  const put = deferred();
+  const calls = [];
+  const selection = createSelection(
+    {
+      get: async (id) => doc(Number(id.slice("document:".length))),
+      update: (id) => {
+        calls.push("update " + id);
+        return put.promise;
+      },
+      confirm: async () => doc(1),
+      refresh: async (id) => {
+        calls.push("refresh " + id);
+        return doc(Number(id.slice("document:".length)));
+      },
+      remove: async () => {},
+    },
+    describe,
+  );
+  selection.select("document:1", 1);
+  await tick();
+  // 편집기 A 가 받은 작업. 저장이 끝나면 같은 작업 묶음으로 반영을 잇는다.
+  const editorA = selection.pin();
+  const saving = editorA.save(SECTIONS, "교사 검토 전");
+  await tick();
+  // 저장 응답 전에 A 를 닫고 B 를 연다.
+  selection.select("document:2", 2);
+  await tick();
+  put.resolve(doc(1, { updatedAt: "t1" }));
+  await saving;
+
+  await assert.rejects(editorA.refresh(), (e) => e.message === LEFT);
+  assert.deepEqual(calls, ["update document:1"]);
+  assert.equal(selection.get().detail.id, "document:2");
+
+  // A → B → A 로 돌아와도 예전 편집기의 작업은 나가지 않는다 — 새로 연 편집기만 쓴다.
+  selection.select("document:1", 1);
+  await tick();
+  await assert.rejects(editorA.refresh(), (e) => e.message === LEFT);
+  await selection.pin().refresh();
+  assert.deepEqual(calls, ["update document:1", "refresh document:1"]);
+});
+
+test("편집기에는 지금 연 문서에 묶인 작업만 준다", () => {
+  for (const name of ["DocumentsPage.tsx", "use-server-document.ts"]) {
+    const src = readFileSync(new URL(`../components/workspace/${name}`, import.meta.url), "utf8");
+    assert.ok(src.includes("selection.pin()"), name);
+    assert.doesNotMatch(
+      src,
+      /selection\.(save|saveAndConfirm|refresh|reload|unconfirm|reconfirm|remove)\b/,
+      name,
+    );
+  }
 });
