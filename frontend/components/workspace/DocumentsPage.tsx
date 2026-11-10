@@ -11,7 +11,7 @@ import {
   type Section,
 } from "@/lib/workspace/model";
 import { invalidFields } from "@/lib/api/client";
-import { DROPPED_IMPORTS } from "@/lib/workspace/store";
+import { DROPPED_IMPORTS, onLegacyImportsMoved } from "@/lib/workspace/store";
 import { listRecords } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import {
@@ -77,6 +77,15 @@ type Candidate = { id: string; date: string; label: string };
 /** 렌더마다 새 배열이 생기면 useMemo 가 매번 다시 돈다. */
 const NO_ROUTINES: RoutineLine[] = [];
 
+/** 서버로 옮기지 못하고 지운 예전 증빙 건수(`moveLegacyImports`). */
+function readDropped() {
+  try {
+    return Number(window.sessionStorage.getItem(DROPPED_IMPORTS)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 export default function DocumentsPage() {
   const [entry] = useClientState(
     () => {
@@ -116,13 +125,7 @@ export default function DocumentsPage() {
     },
   );
   // 서버로 옮기지 못하고 지운 예전 증빙 건수(`moveLegacyImports`). 한 번만 알린다.
-  const [dropped] = useClientState(() => {
-    try {
-      return Number(window.sessionStorage.getItem(DROPPED_IMPORTS)) || 0;
-    } catch {
-      return 0;
-    }
-  }, 0);
+  const [dropped, setDropped] = useClientState(readDropped, 0);
   useEffect(() => {
     try {
       window.sessionStorage.removeItem(DROPPED_IMPORTS);
@@ -252,6 +255,21 @@ export default function DocumentsPage() {
       setListStatus("error");
     }
   }
+
+  // 보관함은 예전 증빙 옮기기를 기다리지 않고 먼저 열린다. 옮기기가 끝나면 목록과 안내를 다시 읽는다.
+  // 의존성 없이 매번 다시 건다 — 늘 지금의 reloadList · classId 를 부른다.
+  useEffect(() =>
+    onLegacyImportsMoved(() => {
+      const count = readDropped();
+      if (count) {
+        setDropped(count);
+        try {
+          window.sessionStorage.removeItem(DROPPED_IMPORTS);
+        } catch {}
+      }
+      void reloadList();
+    }),
+  );
 
   // 마운트할 때 한 번. 일지를 고치거나 만들어도 계획안 목록은 바뀌지 않는다.
   useEffect(() => {

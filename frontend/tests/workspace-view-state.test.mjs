@@ -318,7 +318,10 @@ function documentsHarness({
     "next/link": { default: "link", __esModule: true },
     "@/lib/workspace/model": workspaceModel,
     // 보관함은 브라우저 저장소를 읽지 않는다. 옮기지 못한 예전 증빙 건수의 열쇠만 쓴다.
-    "@/lib/workspace/store": { DROPPED_IMPORTS: "saessak.legacyImportsDropped" },
+    "@/lib/workspace/store": {
+      DROPPED_IMPORTS: "saessak.legacyImportsDropped",
+      onLegacyImportsMoved: () => () => {},
+    },
     "@/lib/api/client": { isUnauthenticated: () => false, invalidFields },
     "@/lib/api/records": { listRecords: async () => [] },
     "@/lib/api/documents": {
