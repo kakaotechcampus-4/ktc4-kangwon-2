@@ -10,7 +10,7 @@
 
 ```
 배포 브랜치에 push  →  .github/workflows/deploy.yml
-                 올릴 커밋을 SHA 로 고정 → AWS 자격증명 → SSM 으로 배포 명령 → 끝날 때까지 대기
+                 같은 커밋의 CI 성공을 기다림(실패면 안 올림) → 올릴 커밋을 SHA 로 고정 → AWS 자격증명 → SSM 으로 배포 명령 → 끝날 때까지 대기
                  → (교체 뒤 실패하면 서버가 마지막 성공 배포로 자동 롤백) → Health check → 실패하면 Discord 알림
 ```
 
@@ -138,7 +138,8 @@ run 기록의 커밋과 서버 로그의 「배포 … <sha>」 줄을 맞춰 �
   pytest 가 가짜 서버로만 보고, 알림 갈래는 워크플로 안이라 단위 테스트가 없다 — 가짜 스크립트로 손 시험만 했다.
   응답 코드만 봐서 화면 내용이 깨진 경우 · 기능 버그는 못 잡고, 이 기능이 머지된 뒤 첫 성공 배포 전에는 되돌아갈 기록이 없으며, 마이그레이션 판정(ADR-073)이 거절하는 롤백과
   롤백 뒤에도 브랜치 끝이 그대로인 것은 사람이 한다 — ADR-078 「한계」
-- 배포 브랜치에 머지하면 **CI 가 실패해도 배포된다.** `ci.yml` 과 `deploy.yml` 이 따로 돈다
+- **CI 를 기다리는 배포는 아직 운영에서 한 번도 안 돌았다.** push 배포는 같은 커밋의 CI(push)가 성공해야 나가게 했다(`scripts/wait-ci.sh` ·
+  `deploy.yml` 「CI 기다리기」) — 다음 develop→main 머지가 첫 회다. 손 배포(`workflow_dispatch`)는 CI 를 기다리지 않는다
 - **마이그레이션을 건너는 롤백은 PR 하나까지만 된다.** `deploy.sh` 가 올리기 전에 DB 리비전을 읽어, 그 리비전을 들여온 PR 의
   머지 직전 커밋으로는 `alembic upgrade` 를 건너뛰어 되감고 그 밖은 checkout 전에 멈춘다 — `scripts/deploy.sh` · ADR-073.
   건너뛰어도 되는 근거는 CI `backend (rollback compat)` 다. 머지 직전 코드가 PR 의 새 DB 에서 도는지 pytest 로 시험한다 — `.github/workflows/ci.yml`.
@@ -178,3 +179,8 @@ run 기록의 커밋과 서버 로그의 「배포 … <sha>」 줄을 맞춰 �
   `backend/tests/test_deploy_script.py` · ADR-094
 - [x] main 배포 첫 회 — 2026-11-11 00:20 KST #529 머지 `8fbeb0ea` push 배포([run 42843300103](https://github.com/kakaotechcampus-4/ktc4-kangwon-2/actions/runs/42843300103)):
   「올릴 커밋」 · 서버 로그 「배포 8fbeb0ea…」 가 같고, 직전 성공 `e5e5e883`, 서버 안 「health/ready 200 · 화면 200 (1회째)」 · 밖 `health/ready 200 (1회째)` · 서버 종료 코드 0
+- [ ] CI 를 기다리는 배포 첫 회 — 다음 develop→main 머지에서 「CI 기다리기」가 CI 성공을 본 뒤에 배포가 시작되는지(run 의 두 job 시각).
+  판정은 `backend/tests/test_wait_ci_script.py`(성공 · 실패 5종 · 더 새 push 가 취소 · 뒤따를 배포 없는 취소 · 조회 실패 · 시간 초과,
+  그리고 잠금 안의 「아직 브랜치 끝인지」 — 성공했지만 대체된 커밋은 안 올림)와
+  2026-11-11 실제 커밋 손 시험이 본다 — `8fbeb0ea`@main(CI 성공) 통과, `d07b8ada`@develop(CI 실패) 막음,
+  `083d2848`@develop(CI 취소, 브랜치 끝은 이미 `4d5a5bed`) 건너뜀, `8fbeb0ea`@develop(그 브랜치의 CI 없음) · 없는 커밋은 시간 초과로 막음
