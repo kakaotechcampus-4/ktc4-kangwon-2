@@ -374,6 +374,38 @@ test("A1 아이 · 영역을 골랐으면 떠날 때 저장하고 이동하며 �
   assert.match(view.text(), /저장됨/);
 });
 
+test("A1 떠나며 저장하는 중 다른 링크를 눌러도 떠나지 않고, 저장이 실패하면 글이 남는다 (#487 하민 점검)", async (t) => {
+  let fail;
+  const saved = [];
+  const view = recordsPage(t, {
+    addRecord: (body) => (
+      saved.push(body),
+      new Promise((_, reject) => {
+        fail = reject;
+      })
+    ),
+  });
+  const leave = leaving();
+  await view.flush();
+  await view.press("김하늘");
+  await view.press("사회관계");
+  view.type(view.fact(), "블록 세 개를 쌓았다.");
+  await view.flush();
+
+  assert.equal(leave.go("/routines"), true);
+  await view.flush();
+  assert.equal(saved.length, 1);
+  // 저장 응답 전에 두 번째 앱 링크를 누른다.
+  assert.equal(leave.go("/documents"), true, "저장 중에도 이동을 붙잡는다");
+  await view.flush();
+  assert.equal(saved.length, 1, "두 번째 누르기가 저장을 또 보내지 않는다");
+
+  fail(new Error("서버가 잠깐 못 받았어요."));
+  await view.flush();
+  assert.deepEqual(leave.clicked, []);
+  assert.equal(view.fact().props.value, "블록 세 개를 쌓았다.");
+});
+
 test("A1 아이를 안 골랐으면 쪽지를 띄우고, 「버리고 이동」을 눌러야 떠난다", async (t) => {
   const saved = [];
   const view = recordsPage(t, { addRecord: async (body) => (saved.push(body), {}) });
@@ -511,6 +543,40 @@ test("A2 사실을 적고 멈추면 AI 가 영역 하나를 점선으로 제안�
 
   await view.press("사회관계");
   assert.equal(textOf(view.pickedDomain()), "사회관계");
+});
+
+test("A2 글을 바꾸거나 저장한 뒤에는 옛 글의 영역 제안이 남지 않는다 (#487 하민 점검)", async (t) => {
+  instantTimers(t);
+  const asked = [];
+  const view = recordsPage(t, {
+    suggestRecordDomain: async (...args) => (asked.push(args), "사회관계"),
+    addRecord: async () => ({ ...RECORD, id: "observation:5" }),
+  });
+  const dotted = () =>
+    view
+      .nodes()
+      .filter((n) => n.props["data-suggested"])
+      .map(textOf);
+  await view.flush();
+  view.type(view.fact(), "친구에게 같이 만들자고 말했다.");
+  await view.flush();
+  assert.deepEqual(dotted(), ["사회관계"]);
+
+  // 다른 내용의 짧은 글로 바꾼다 — 다시 묻지 않는 길이라도 옛 제안은 사라져야 한다.
+  view.type(view.fact(), "울었다");
+  await view.flush();
+  assert.deepEqual(dotted(), []);
+  assert.equal(asked.length, 1);
+
+  // 제안을 받아 저장한 뒤, 다음 기록의 짧은 글에도 옛 제안이 붙지 않는다.
+  view.type(view.fact(), "친구에게 같이 만들자고 말했다.");
+  await view.flush();
+  await view.press("김하늘");
+  await view.press("사회관계");
+  await submitForm(view);
+  view.type(view.fact(), "울었다");
+  await view.flush();
+  assert.deepEqual(dotted(), []);
 });
 
 test("A2 제안이 없으면 점선도 없다", async (t) => {
