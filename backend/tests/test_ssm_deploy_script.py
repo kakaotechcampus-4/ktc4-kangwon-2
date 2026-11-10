@@ -11,6 +11,7 @@
 
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -140,13 +141,88 @@ def test_보낸_직후_InvocationDoesNotExist_는_다시_물어_본다(ssm):
     assert ssm.polls() == 3  # 두 번 물러서고 세 번째에 읽었다
 
 
-def test_다른_조회_오류는_다시_묻지_않고_오류_글을_찍고_1이다(ssm):
-    # 권한이 없는데 InvocationDoesNotExist 처럼 재시도하면 30분을 기다리고 124 로 끝난다
-    proc = ssm("Success", FAKE_GET_FAIL_FIRST="99", FAKE_FAIL_TEXT="AccessDeniedException")
+def test_처음_읽기_전의_InvocationDoesNotExist_는_세지_않는다(ssm):
+    # 보낸 직후 명령이 아직 등록되지 않은 정상이다. 네 번을 넘겨도 포기하지 않는다
+    proc = ssm("Success", FAKE_CODE="0", FAKE_GET_FAIL_FIRST="6", SSM_WAIT_TRIES="50")
 
-    assert proc.returncode == 1, proc.stdout + proc.stderr
-    assert "AccessDeniedException" in proc.stdout
-    assert ssm.polls() == 1
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert ssm.polls() == 7
+
+
+@pytest.mark.parametrize("errors", [1, 2, 3])
+def test_처음_읽기_전의_일시_오류도_세_번까지는_다시_물어_본다(ssm, errors):
+    # send-command 가 성공했으면 서버는 이미 명령을 받았다.
+    # 첫 조회의 네트워크 · throttling 오류에 1 로 끝내면 안 된다
+    proc = ssm(
+        "Success",
+        FAKE_CODE="0",
+        FAKE_GET_FAIL_FIRST=str(errors),
+        FAKE_FAIL_TEXT="ThrottlingException",
+        SSM_WAIT_TRIES="50",
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert ssm.polls() == errors + 1
+
+
+@pytest.mark.parametrize("text", ["AccessDeniedException", "ThrottlingException"])
+def test_처음_읽기_전에도_조회_오류가_연속_네_번째면_오류를_찍고_124다(ssm, text):
+    # 예전에는 첫 조회의 InvocationDoesNotExist 아닌 오류가 바로 1 이었다. 서버는 이미 돌고 있다
+    proc = ssm("Success", FAKE_GET_FAIL_FIRST="99", FAKE_FAIL_TEXT=text, SSM_WAIT_TRIES="50")
+
+    assert proc.returncode == 124, proc.stdout + proc.stderr
+    assert text in proc.stdout
+    assert "서버는 아직 돌 수 있다" in proc.stdout
+    assert ssm.polls() == 4  # 오류 4번(세 번 다시 물었다). 50번 다 묻지 않았다
+
+
+def test_처음_읽기_전_오류의_세기도_읽기에_성공하면_다시_시작한다(ssm):
+    # 오류 3번 → 읽기(InProgress) → 오류 3번 → 읽기.
+    # 처음 읽기 전의 3번도 합쳐서 6번이지만 연속은 3번뿐이다
+    proc = ssm(
+        "InProgress InProgress InProgress InProgress InProgress InProgress InProgress Success",
+        FAKE_CODE="0",
+        FAKE_CALL_PLAN="e e e r e e e r",
+        SSM_WAIT_TRIES="50",
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert ssm.polls() == 8
+
+
+def test_상태가_바뀔_때와_6번째_조회마다_대기_줄을_stdout_에_찍는다(ssm):
+    statuses = "Pending InProgress InProgress InProgress InProgress InProgress InProgress Success"
+    proc = ssm(statuses, FAKE_CODE="0", SSM_WAIT_TRIES="50")
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    waits = [line for line in proc.stdout.splitlines() if line.startswith("대기 — ")]
+    assert waits == [
+        "대기 — 상태 Pending (1/50)",  # 처음 읽은 상태
+        "대기 — 상태 InProgress (2/50)",  # 바뀔 때
+        "대기 — 상태 InProgress (6/50)",  # 6번째 조회마다(약 1분) — 바뀌지 않아도
+    ]
+    assert proc.stderr == ""  # stdout 으로만 나간다
+
+
+def test_읽기_전에는_상태_대신_못_읽음을_알린다(ssm):
+    proc = ssm("Success", FAKE_CODE="0", FAKE_GET_FAIL_FIRST="2", SSM_WAIT_TRIES="50")
+
+    waits = [line for line in proc.stdout.splitlines() if line.startswith("대기 — ")]
+    assert waits == ["대기 — 아직 상태를 못 읽음 (1/50)"]  # 바뀐 것은 한 번뿐. 읽은 뒤 끝났다
+
+
+def test_대기_줄은_deploy_yml_이_뽑는_결과_줄_접두사로_시작하지_않는다(ssm):
+    # deploy.yml 의 결과 줄 `grep -E '^(되돌렸다 → |…)'` 와 겹치면 알림이 대기 줄을 집어 간다
+    workflow = (ROOT / ".github" / "workflows" / "deploy.yml").read_text()
+    match = re.search(r"grep -E '(\^\([^']*\))'", workflow)
+    assert match, "deploy.yml 에서 결과 줄 grep 을 못 찾았다"
+    result_line = re.compile(match.group(1))
+    statuses = "Pending InProgress InProgress InProgress InProgress InProgress InProgress Success"
+
+    proc = ssm(statuses, FAKE_CODE="0", SSM_WAIT_TRIES="50")
+
+    waits = [line for line in proc.stdout.splitlines() if line.startswith("대기 — ")]
+    assert waits and not any(result_line.match(line) for line in proc.stdout.splitlines())
 
 
 @pytest.mark.parametrize("errors", [1, 2, 3])

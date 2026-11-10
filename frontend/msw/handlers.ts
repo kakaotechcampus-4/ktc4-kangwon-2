@@ -15,7 +15,7 @@ import {
 import type { Greetings } from "../lib/api/centers";
 import type { DayWeather, Sky } from "../lib/api/routines";
 import { findClass, listClasses, addClass, classNameTaken, patchClass } from "./data/classes";
-import { hasChild, listChildren, addChild, removeChild } from "./data/children";
+import { hasChild, listChildren, addChild, removeChild, setCallName } from "./data/children";
 import {
   findPlan,
   listPlans,
@@ -561,7 +561,8 @@ export const handlers = [
     const id = Number(params.classId);
     if (!findClass(id)) return missing();
     const b = await body(request);
-    if (!b || !text(b.name) || Object.keys(b).some((k) => k !== "name")) return bad("name");
+    if (!b || !text(b.name) || Object.keys(b).some((k) => k !== "name" && k !== "call_name"))
+      return bad("name");
     const klass = findClass(id);
     if (klass && !klass.consent_confirmed_at)
       return failure(
@@ -569,7 +570,17 @@ export const handlers = [
         "법정대리인 동의를 확인한 반에만 아이를 넣을 수 있습니다.",
         "class_id",
       );
-    return HttpResponse.json(addChild(id, b.name.trim()), { status: 201 });
+    const callName = text(b.call_name) ? b.call_name.trim() : null;
+    return HttpResponse.json(addChild(id, b.name.trim(), callName), { status: 201 });
+  }),
+  http.patch("*/api/children/:id", async ({ request, params }) => {
+    const s = await scenario(request, "child-update");
+    if (s) return s;
+    const id = Number(params.id);
+    if (!hasChild(id)) return missing();
+    const b = await body(request);
+    if (!b || Object.keys(b).some((k) => k !== "call_name")) return bad("call_name");
+    return HttpResponse.json(setCallName(id, text(b.call_name) ? b.call_name.trim() : null));
   }),
   http.delete("*/api/children/:id", async ({ request, params }) => {
     const s = await scenario(request, "child-delete");

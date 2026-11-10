@@ -56,7 +56,7 @@ def judge_auto(session: Session, center_id: int, now: datetime) -> dict[str, jud
             class_ids,
             plans,
             daily_logs,
-            min_plans_per_class=class_rule["plan"]["min_per_class"],
+            min_plans_per_month=class_rule["plan"]["min_per_month"],
         ),
         "4-2": judge.judge_4_2(
             child_window, child_ids, assessments, min_per_child=child_rule["min_per_child"]
