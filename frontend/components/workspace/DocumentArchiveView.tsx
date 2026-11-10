@@ -64,6 +64,8 @@ export type ArchiveDoc = {
   childId: string;
   start: string;
   status: "draft" | "confirmed";
+  /** 확정한 뒤 근거가 바뀌었다 (§11). 목록에 「다시 확인 필요」를 붙인다. */
+  stale: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -1067,13 +1069,10 @@ function DayStrip({
       >
         {days.map((d, i) => {
           const found = docsFor(d);
-          // 한 날짜에 여러 장이면 가장 센 상태를 표시하고, 아래 카드에서 각각 확인한다.
-          // 한 날짜에 여러 장이면 아직 검토 중인 것이 있는지만 본다.
-          const state = !found.length
-            ? "none"
-            : found.some((x) => archiveStatus(x) === "draft")
-              ? "draft"
-              : "confirmed";
+          // 한 날짜에 여러 장이면 가장 손이 갈 상태를 표시하고, 아래 카드에서 각각 확인한다.
+          const states = found.map(archiveStatus);
+          const state =
+            (["draft", "stale", "confirmed"] as const).find((s) => states.includes(s)) ?? "none";
           return (
             <button
               type="button"
@@ -1155,7 +1154,7 @@ function JournalCard({
 function Legend() {
   return (
     <div className={styles.legend}>
-      {(["confirmed", "draft", "none"] as ArchiveStatus[]).map((s) => (
+      {(["confirmed", "stale", "draft", "none"] as ArchiveStatus[]).map((s) => (
         <span key={s}>
           <i data-state={s} />
           {ARCHIVE_STATUS_LABEL[s]}

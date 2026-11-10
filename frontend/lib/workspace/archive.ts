@@ -7,8 +7,7 @@
  */
 export type ArchiveOrder = {
   source: "document" | "plan";
-  /** 브라우저에만 있는 등록 증빙은 서버 번호가 없다. */
-  serverId: number | null;
+  serverId: number;
   createdAt: string;
 };
 
@@ -22,5 +21,5 @@ export function byArchiveOrder(a: ArchiveOrder, b: ArchiveOrder): number {
   const newer = Date.parse(b.createdAt) - Date.parse(a.createdAt);
   if (newer) return newer;
   if (a.source !== b.source) return a.source === "document" ? -1 : 1;
-  return (b.serverId ?? 0) - (a.serverId ?? 0);
+  return b.serverId - a.serverId;
 }

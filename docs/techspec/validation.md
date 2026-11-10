@@ -16,6 +16,11 @@
 ```
 
 - **수리 대상은 정해진 칸 안의 문제뿐이다.** 문장 정책 · 근거 선택 · 근거에 없는 사실 · 후보 형식이 여기에 든다. 칸이 빠지거나 요청하지 않은 칸 · 주차 불일치처럼 구조가 깨진 답은 고쳐 쓰게 하지 않는다 — `planner/weekly.py` `REPAIRABLE`
+- **월간 수리는 고칠 수 있는 곳을 좁힌다** — `planner/service.py` · `planner/validation.py`
+  1. 호출 없이 먼저 맞춘다. 근거 id는 맞는데 라벨만 다르면 Catalog 라벨로 바꾼다(`canonicalize_reference_labels`). 새 생성이 아니라 계약 정규화라 `rule_version`은 그대로다.
+  2. 그래도 남으면 LLM 수리 1회. LLM은 지적받은 칸, 그 지적이 허락한 필드만 담은 패치를 돌려준다(`repair_targets`).
+  3. 패치는 통째로 받거나 통째로 버린다. 지적받지 않은 칸 · 허락되지 않은 필드를 건드린 패치, 한 칸에 온 패치 두 개는 버리고 `REPAIR_PATCH_REJECTED`로 기록한다. 지적받지 않은 칸은 한 글자도 바뀌지 않는다.
+  4. 라벨을 맞추지 못한 근거 · 알 수 없는 근거 id는 LLM 수리 없이 반려한다. 호출은 많아야 2번이다.
 - 순서를 바꾸지 않는다. 형식이 깨진 출력은 뒤 단계에 넣지 않는다.
 - 공통 검사는 한 곳에 둔다 — `backend/app/shared/gates/` · `p0-planning/src/ssuksak/planning/planner/`
 
@@ -43,6 +48,7 @@
 |---|---|---|
 | Golden — 가짜 LLM | `p0-planning/tests/finalization/golden/` (`yearly` · `monthly_rule` · `monthly_llm` · `weekly_rule` · `weekly_llm` · `cell_regeneration` · `weekly_cell_regeneration` · `play_project_selection`) | 고정한 LLM 답에 대해 **Application이 무엇을 하나**. 통과 · 수리 · 반려 · 저장 안 함. 모델 문장은 기대값으로 굳히지 않는다(ADR-023) |
 | 승인 자료 동결 | `p0-planning/tests/finalization/test_freeze.py` | Template · 근거 창고 · Catalog · 법정 Rule의 SHA. 자료가 바뀌면 Golden이 통과해도 여기서 먼저 실패한다 |
+| 월간 수리 범위 | `p0-planning/tests/planner/test_monthly_planner.py` (`test_failed_repair_fails_closed_after_exactly_two_calls` · `test_a_repair_leaves_every_non_target_cell_byte_identical` · `test_a_patch_for_a_cell_no_finding_names_is_rejected_whole` · `test_an_unknown_reference_id_is_still_never_repaired`) | 호출 최대 2번 · 지적받지 않은 칸은 그대로 · 허락 밖 패치는 통째로 버림 · 모르는 id는 수리 안 함 |
 | 실패 시 저장 안 함 | `backend/tests/test_plans_error_mapping.py`(생성기 결과가 계약을 어기면 500 `GENERATION_FAILED` · 저장 안 됨) · `p0-planning/tests/application/test_weekly_generation.py::test_verifier_failure_saves_nothing` | 생성이 실패하면 DB에 아무것도 남지 않는다 |
 | 놀이 연간 재개 | `p0-planning/tests/application/test_play_project_generation.py` | 실패 구간만 한 번 · 겹친 후보만 한 번 · 같은 `row_key` · 요청 반영 후보는 안 바꿈 · 멈추면 저장 안 함 |
 | 겹침 검사기의 한계 | `p0-planning/tests/planner/test_play_dup_pairs.py` | 사람이 라벨한 같은 놀이 24짝 · 다른 놀이 18짝. 지금 선이 못 잡는 짝은 xfail로 남겨, 검사기를 바꾸면 바로 보이게 했다 |

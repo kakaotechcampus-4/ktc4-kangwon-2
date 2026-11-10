@@ -135,6 +135,10 @@ def world(db_session, teacher):
     mine = _seed(db_session, "가원", "a@example.com")
     other = _seed(db_session, "나원", "b@example.com")
     teacher.center_id = mine["center"]
+    # 원 설정(토요일)을 바꾸는 교사다 — 원을 만든 교사로 둔다(ADR-087).
+    db_session.add(teacher)
+    db_session.flush()
+    db_session.get(Center, mine["center"]).created_by = teacher.id
     return {"session": db_session, "mine": mine, "other": other, "monthly": _monthly(mine)}
 
 

@@ -45,6 +45,7 @@ const MONTHLY_NEW = {
   "@/lib/api/generationRuns": { newRunId: () => "run-1" },
   "@/lib/api/onboarding": {},
   "@/lib/api/templateProfiles": {},
+  "@/lib/api/centers": {},
   "@/lib/monthly/section-labels": monthlyLabels,
   "@/lib/onboarding/settings": {},
   "@/lib/onboarding/types": { MONTH_ORDER, ageSelectionLabel: stub, selectedAgesFor: stub },
@@ -329,6 +330,8 @@ for (const [format, url] of [
         getAnnualPlan: async () => annual,
       },
       "@/lib/api/onboarding": { syncClass: async () => 31, syncCenter: async () => 7 },
+      // 월별 주제형은 불러올 때 원 설정을 읽어 원 기본 양식을 바꿀 수 있는지 본다(ADR-087).
+      "@/lib/api/centers": { getCenterSettings: async () => ({ can_edit: true }) },
       "@/lib/api/templateProfiles": {
         listMonthlyTemplates: async () => ({ items: [template] }),
         listReadyTemplateProfiles: async () => ({ items: [] }),

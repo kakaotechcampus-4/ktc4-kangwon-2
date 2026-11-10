@@ -24,6 +24,9 @@ def own_center(db_session, teacher):
     `create_center` 는 `center_id IS NULL` 일 때만 붙인다 — 이미 원이 있는 교사가
     POST 하면 행만 생기고 붙지는 않는다. 그래서 **응답 id 가 아니라 /auth/me 를 본다.**
     """
+    # 원을 만든 교사로 남는다(centers.created_by, ADR-087) — 진짜 행이어야 한다.
+    db_session.add(teacher)
+    db_session.flush()
     client.post("/api/centers", json=CENTER)
     center_id = client.get("/api/auth/me").json()["center_id"]
     assert center_id, "원이 붙지 않았다"

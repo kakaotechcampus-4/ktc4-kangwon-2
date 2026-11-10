@@ -34,4 +34,8 @@ class Form(Base):
     hidden_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), comment="감춘 시각. null 이면 목록에 보인다 (ADR-026)"
     )
+    uploaded_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        comment="올린 계정(ADR-087). 이 교사와 원을 만든 교사만 지운다. NULL 은 이 결정 전 양식",
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

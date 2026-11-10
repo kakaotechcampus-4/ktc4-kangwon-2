@@ -98,7 +98,7 @@ def check_sections(
     source_texts: Sequence[str],
     valid_source_ids: set[int],
     *,
-    stage: Literal["generate", "edit", "confirm", "reconfirm", "verify"],
+    stage: Literal["generate", "edit", "confirm", "reconfirm", "verify", "rewrite"],
     extras: InputExtras = NO_EXTRAS,
 ) -> list[str]:
     """틀린 칸을 전부 모아 `fields` 로 돌려준다. 비어 있으면 통과다.
@@ -109,6 +109,7 @@ def check_sections(
     `stage` 는 로그에만 쓴다. 모델 출력이 걸린 것(generate)과 교사가 고친 글이 걸린 것(edit)은
     따로 세야 2단이 모델 오류를 몇 건 잡았는지 나온다.
     reconfirm 은 「다시 검토」 뒤 교사가 보낸 글이다 (documents/review.py).
+    rewrite 는 모델이 고쳐 쓴 문장을 넣은 글이다 (documents/rewrite.py).
 
     `extras` 는 `input_extras` 가 만든 근거 상황 · 날짜다. 숫자 대조에만 쓴다.
     """
