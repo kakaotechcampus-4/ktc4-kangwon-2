@@ -26,6 +26,8 @@ export function withoutChildMetadata<T>(value: T, child = false): T {
 }
 
 const WORKSPACE = "saessak.workspace.v1";
+/** 목업 DB 키 앞머리. 뒤에 계정이 붙는다(`msw/data/store.ts`). */
+const MOCK_DB = "saessak.mswSS.v1:";
 /** 화면이 아직 읽는 것은 계획안의 서버 ID 뿐이다 (`PlanStart`). 일지 · 관찰 문서는 서버에 있다. */
 const PLAN_KINDS = new Set(["annual", "monthly", "weekly", "daily"]);
 
@@ -63,8 +65,13 @@ export function sanitizeBrowserChildMetadata(): string[] {
     for (const key of keys) {
       if (!key?.startsWith("saessak.")) continue;
       // 서버 데이터가 아닌 개발용 mock 캐시는 복구 원본이 아니므로 폐기한다.
-      if (key.startsWith("saessak.mswSS.v1:")) {
+      // 그 계정의 반 설정과 목업 id 연결도 같이 버린다 — 남기면 다시 로그인했을 때 없는 목업 반을
+      // 불러 404 가 난다(점검 X-E3). 실제 서버 연결(`apiLinks.v1:backend:`)은 건드리지 않는다.
+      if (key.startsWith(MOCK_DB)) {
+        const account = key.slice(MOCK_DB.length);
         storage.removeItem(key);
+        storage.removeItem(`saessak.classSettings:${account}`);
+        storage.removeItem(`saessak.apiLinks.v1:development-mock:${account}`);
         continue;
       }
       const raw = storage.getItem(key);

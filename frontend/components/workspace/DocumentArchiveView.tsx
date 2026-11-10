@@ -35,7 +35,6 @@ import {
   AnnualCover,
   CareArt,
   CareSunArt,
-  CareDayDecor,
   CareNotebookArt,
   MonthlyCover,
   ObservationArt,
@@ -137,11 +136,11 @@ function PeriodNav({
   return (
     <div className={styles.periodBar}>
       <div className={styles.periodNav}>
-        <button type="button" aria-label="이전 기간" onClick={onPrev}>
+        <button type="button" className="tap44" aria-label="이전 기간" onClick={onPrev}>
           <Icon name="chevronLeft" />
         </button>
         <strong>{label}</strong>
-        <button type="button" aria-label="다음 기간" onClick={onNext}>
+        <button type="button" className="tap44" aria-label="다음 기간" onClick={onNext}>
           <Icon name="chevron" />
         </button>
       </div>
@@ -230,6 +229,14 @@ export default function DocumentArchiveView({
   }
   const [planPreview, setPlanPreview] = useState<PlanPreviewTarget | null>(null);
   const previewRef = useRef<HTMLElement>(null);
+  const typeRef = useRef<HTMLDivElement>(null);
+  // 휴대폰에서는 종류를 고르면 다섯 칸이 가로로 구르는 칩 줄이 된다 — 고른 칩이 화면 밖에 서지 않게 그 자리까지 민다.
+  useEffect(() => {
+    const grid = typeRef.current;
+    const picked = grid?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!grid || !picked || !globalThis.matchMedia?.("(max-width: 760px)").matches) return;
+    grid.scrollLeft += picked.getBoundingClientRect().left - grid.getBoundingClientRect().left - 8;
+  }, [type]);
   const [mobileList, setMobileList] = useState(false);
   // 같은 원 남의 반과 받은 열람 요청 (ADR-059). 고르면 오른쪽 본문 자리를 그 칸이 쓴다.
   const access = useClassAccess();
@@ -767,6 +774,7 @@ export default function DocumentArchiveView({
               <div className={styles.scopeTabs}>
                 <button
                   type="button"
+                  className="tap44"
                   aria-pressed={scope === "dailyLog"}
                   onClick={() => {
                     setScope("dailyLog");
@@ -777,6 +785,7 @@ export default function DocumentArchiveView({
                 </button>
                 <button
                   type="button"
+                  className="tap44"
                   aria-pressed={scope === "weeklyLog"}
                   onClick={() => {
                     setScope("weeklyLog");
@@ -883,7 +892,12 @@ export default function DocumentArchiveView({
   /** 문서 종류 다섯 칸. 상세 화면에서는 그리지 않는다. */
   function typeGrid() {
     return (
-      <div className={styles.typeGrid} data-tour="archive-types">
+      <div
+        ref={typeRef}
+        className={styles.typeGrid}
+        data-tour="archive-types"
+        data-overview={type === null || undefined}
+      >
         {TYPES.map((t) => (
           <button
             type="button"
@@ -908,12 +922,16 @@ export default function DocumentArchiveView({
     );
   }
 
+  // 휴대폰(760px 아래)에서는 문서를 고르면 목록 화면을 걷고 문서 한 장만 본다 — 「목록으로」로 돌아온다.
+  const docScreen =
+    openDoc && editingId === openDoc.id ? "edit" : previewKey && !mobileList ? "view" : undefined;
+
   return (
-    <div className={styles.archive}>
+    <div className={styles.archive} data-doc={docScreen}>
       <ArchiveHeader>{header}</ArchiveHeader>
       {rail}
       <div className={styles.content}>
-        {openDoc && editingId === openDoc.id ? (
+        {docScreen === "edit" ? (
           <>
             <button
               type="button"
@@ -1081,18 +1099,23 @@ function DayStrip({
               aria-pressed={d === day}
               onClick={() => onPickDay(d)}
             >
-              <span className={styles.date}>{shortDate(d)}</span>
-              <span className={styles.dow}>{WEEKDAY[i]}</span>
-              <span className={styles.mark} data-state={state}>
-                {state === "none" ? null : <Icon name="check" />}
+              {/* 보이는 칸은 숫자 · 요일 · 아이콘뿐이다. 읽어 주는 이름은 숨긴 글 한 줄이 맡는다. */}
+              <span className={styles.date} aria-hidden="true">
+                <span className={styles.month}>{shortDate(d).split(".")[0]}.</span>
+                {shortDate(d).split(".")[1]}
               </span>
-              <span className={styles.state}>{ARCHIVE_STATUS_LABEL[state]}</span>
-              <CareDayDecor variant={i} className={styles.dayDecor} />
+              <span className={styles.dow} aria-hidden="true">
+                {WEEKDAY[i]}
+              </span>
+              <StatusMark state={state} className={styles.state} />
+              <span className="sr-only">
+                {`${longDate(d)} ${WEEKDAY[i]}요일 · ${ARCHIVE_STATUS_LABEL[state]}`}
+              </span>
             </button>
           );
         })}
       </div>
-      <div className={styles.docGrid} style={{ marginTop: 12 }}>
+      <div className={styles.docGrid}>
         {picked.map((d) => (
           <JournalCard key={d.id} doc={d} cover={cover} art={art} onOpen={onOpen} />
         ))}
@@ -1156,11 +1179,54 @@ function Legend() {
     <div className={styles.legend}>
       {(["confirmed", "stale", "draft", "none"] as ArchiveStatus[]).map((s) => (
         <span key={s}>
-          <i data-state={s} />
+          <StatusMark state={s} />
           {ARCHIVE_STATUS_LABEL[s]}
         </span>
       ))}
     </div>
+  );
+}
+
+/** `2026-11-10` → `11월 10일`. 날짜 칸을 읽어 줄 때 쓴다. */
+const longDate = (date: string) => {
+  const [, m, d] = date.split("-").map(Number);
+  return `${m}월 ${d}일`;
+};
+
+/**
+ * 상태 아이콘 넷 — 색이 달라도 모양으로 갈린다(색을 못 가리는 교사도 읽게).
+ * 확정 = 체크 동그라미 · 검토 중 = 반쯤 찬 동그라미 · 다시 확인 = 느낌표 세모 · 미작성 = 점선 빈 동그라미.
+ * 말은 범례가 알려 준다. 그림은 읽지 않는다(aria-hidden).
+ */
+function StatusMark({ state, className }: { state: ArchiveStatus; className?: string }) {
+  return (
+    <svg
+      className={`${styles.statusMark} ${className ?? ""}`}
+      data-state={state}
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {state === "confirmed" && (
+        <>
+          <circle cx="10" cy="10" r="8.2" />
+          <path d="m6.4 10.2 2.5 2.5 4.8-5" />
+        </>
+      )}
+      {state === "draft" && (
+        <>
+          <circle cx="10" cy="10" r="8.2" />
+          <path d="M10 1.8a8.2 8.2 0 0 0 0 16.4z" data-fill />
+        </>
+      )}
+      {state === "stale" && (
+        <>
+          <path d="M10 2.2 18.2 17H1.8z" />
+          <path d="M10 7.6v4.2M10 14.2v.1" />
+        </>
+      )}
+      {state === "none" && <circle cx="10" cy="10" r="8" />}
+    </svg>
   );
 }
 

@@ -32,6 +32,7 @@ const onboardingApi = await import("../lib/api/onboarding.ts");
 const routinesRoute = await import("../lib/workspace/routines-route.ts");
 const onboardingTypes = await import("../lib/onboarding/types.ts");
 const childMark = await import("../lib/workspace/child-mark.ts");
+const recordStack = await import("../lib/workspace/record-stack.ts");
 const homeBlocks = await import("../lib/workspace/home-blocks.ts");
 const recordContext = await import("../lib/workspace/record-context.ts");
 const journalDay = await import("../lib/workspace/journal-day.ts");
@@ -626,6 +627,7 @@ function page(
   });
   const calendar = compile("../components/workspace/RoutineCalendar.tsx", {
     "react/jsx-runtime": runtime,
+    react: app.react,
     "./WorkspaceUI": { ws: {} },
   });
   const weatherMark = compile("../components/workspace/RoutineWeather.tsx", {
@@ -753,6 +755,11 @@ function page(
     dones: () => find("textarea").filter((n) => n.props["aria-label"] === "실제로 한 것"),
     checkboxes: () => find("input").filter((node) => node.props.type === "checkbox"),
     cards: () => find("article"),
+    /** 달력의 날짜 단추. 휴대폰에서 접힐 날(`data-off-week`)은 빼고 날짜 숫자만 준다. */
+    weekDays: () =>
+      find("button")
+        .filter((n) => n.props["data-day"] !== undefined && !n.props["data-off-week"])
+        .map((n) => String([n.props.children].flat()[0])),
     empties: () => find("empty").map((node) => node.props.title),
     loading: () => all(view.tree()).some((node) => node?.props?.["aria-busy"] === "true"),
     errors: () => find("message").map((node) => String(node.props.children ?? "")),
@@ -1076,7 +1083,7 @@ test("지운 줄은 임시본에 표시만 하고, 올릴 때 서버가 지운�
   const view = page(t, api.api);
   timers(t);
   await view.flush();
-  view.rowButton(0, "일과 지우기").props.onClick();
+  view.rowButton(0, "일과 삭제").props.onClick();
   await pause(t, view);
   assert.deepEqual(view.nameValues(), ["바깥놀이"]);
   assert.deepEqual(api.only("draft")[0].input.removed, [1]);
@@ -1585,7 +1592,10 @@ function recordsPage(
     "@/components/app/Posty": { Posty: "posty" },
     "@/components/app/ChildPicker": { ChildNote: "child-note" },
     "@/components/app/icons": { Icon: "icon" },
-    "@/lib/workspace/child-mark": { markFor: () => ({ tone: 0 }) },
+    "./CircleMark": { CircleMark: "circle-mark" },
+    "@/lib/workspace/journal-day": journalDay,
+    "@/lib/workspace/child-mark": { ...childMark, markFor: () => ({ tone: 0 }) },
+    "@/lib/workspace/record-stack": recordStack,
     "@/lib/hooks/use-client-state": { useClientState: (read) => app.state(read) },
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.
@@ -1887,6 +1897,8 @@ function quickRecordsPage(
       ws: {},
     },
     "@/components/app/icons": { Icon: "icon" },
+    "@/lib/workspace/journal-day": journalDay,
+    "@/components/app/DomainTag": { DomainTag: "domain-tag" },
     "@/components/app/Posty": { Posty: "posty" },
     // 이번 주 주간 일지 칸은 따로 테스트한다. 여기서는 자리만 둔다.
     "./WeeklyJournalCard": {
@@ -2141,6 +2153,8 @@ function homePage(
     "next/link": { default: "link" },
     "@/components/app/AppLayout": { PageContainer: "container" },
     "@/components/app/icons": { Icon: "icon" },
+    "@/lib/workspace/journal-day": journalDay,
+    "@/components/app/DomainTag": { DomainTag: "domain-tag" },
     "@/components/workspace/WorkspaceUI": { useClasses: () => box.classes },
     "@/components/workspace/domain-look": domainLook,
     "@/lib/api/records": records.api,
@@ -2354,7 +2368,7 @@ test("기록이 한 건도 없는 반에서는 빈 칸을 칠하지 않는다", 
   await view.flush();
   view.button("누구 기록인지 고르기").props.onClick();
   await view.flush();
-  assert.ok(view.text().includes("한 줄씩 쌓이면"), view.text());
+  assert.ok(!view.text().includes("연노랑 칸은"), view.text());
 
   await pickChild(view, "김하늘");
   await pickDomain(view);
@@ -2409,7 +2423,7 @@ test("홈 빠른 기록 — 영역은 아무것도 안 고른 채 열리고, 고
 
   assert.deepEqual(view.checkedDomains(), [], "영역 칸은 비어 있는 채로 열린다");
   assert.equal(view.saveButton(), undefined, "영역을 고르기 전에는 눌리지 않는다");
-  assert.ok(view.text().includes("영역을 골라야 남길 수 있어요"), view.text());
+  assert.ok(view.text().includes("영역을 고르면 남길 수 있어요"), view.text());
 
   await pickDomain(view, "사회관계");
   assert.deepEqual(view.checkedDomains(), ["사회관계"]);
@@ -2761,6 +2775,7 @@ function journalCard(
       react: app.react,
       "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning() {} },
     }),
+    "@/lib/workspace/journal-day": journalDay,
     "react/jsx-runtime": runtime,
     react: app.react,
     "next/link": { default: "link" },
@@ -3071,13 +3086,15 @@ function dailyCard(t, { dailies = [], day, create } = {}) {
     react: app.react,
     "./WorkspaceUI": { Message: "message", ws: {} },
     "@/components/app/Posty": { Posty: "posty" },
-    "./DocumentEditor": { __esModule: true, default: "document-editor" },
+    // 일일 일지는 칠판 모양 편집기(DailyJournalBoard)로 연다. 여기서는 열렸는지만 본다.
+    "./DailyJournalBoard": { __esModule: true, default: "document-editor" },
+    "./DailyJournal.module.css": { __esModule: true, default: {} },
     "./use-server-document": {
       useServerDocument: (id) => ({
         doc: id ? { id, sections: [] } : null,
         status: "ready",
         error: "",
-        server: undefined,
+        server: id ? {} : undefined,
       }),
     },
     "@/lib/api/onboarding": { classServerId: (id) => (id === "class-1" ? 7 : null) },
@@ -3129,4 +3146,60 @@ test("3차-4 날짜를 바꾸면 이전 날 일지 편집기를 닫고, 늦은 �
   await late.view.flush();
   assert.equal(late.state().openId, "", "만들던 날이 아니면 열지 않는다");
   assert.equal(editorOpen(late.view), undefined);
+});
+
+// ── 쪽지 접기 (휴대폰 · 데스크톱 모두 CSS 가 이 표시를 따른다) ──────────────────
+
+test("이름 있는 쪽지는 접어 두고, 이름 없는 새 줄은 펴 둔다 — 누르면 그 쪽지만 편다", async (t) => {
+  const api = recorder({ rows: [row({ id: 1 }), row({ id: 2, name: "바깥놀이" })] });
+  const view = page(t, api.api);
+  await view.flush();
+  const folded = () => view.cards().map((card) => !!card.props["data-folded"]);
+  assert.deepEqual(folded(), [true, true]);
+  view.button("+ 줄 추가").props.onClick();
+  await view.flush();
+  // 이름이 없는 줄을 접으면 이름 칸이 안 보여 적을 수 없다.
+  assert.deepEqual(folded(), [true, true, false]);
+  globalThis.requestAnimationFrame = () => 0;
+  t.after(() => delete globalThis.requestAnimationFrame);
+  const open = all(view.cards()[1]).find((node) => node?.props?.["data-fold-toggle"] === "open");
+  open.props.onClick();
+  await view.flush();
+  assert.deepEqual(folded(), [true, false, false]);
+});
+
+test("데스크톱도 접는다 — 접기 규칙이 화면 폭 조건(@media) 밖에 있다", () => {
+  const css = readFileSync(
+    new URL("../components/workspace/Workspace.module.css", import.meta.url),
+    "utf8",
+  );
+  // @media 덩어리를 통째로 걷어 낸 나머지 — 어느 폭에서나 걸리는 규칙만 남는다.
+  let flat = "";
+  for (let i = 0; i < css.length; i++) {
+    if (!css.startsWith("@media", i)) {
+      flat += css[i];
+      continue;
+    }
+    let depth = 0;
+    for (i = css.indexOf("{", i); i < css.length; i++) {
+      if (css[i] === "{") depth++;
+      else if (css[i] === "}" && --depth === 0) break;
+    }
+  }
+  assert.match(flat, /\.routineRow\[data-folded\] > :not\(\.rowFold\) \{\s*display: none;/);
+  assert.match(flat, /\.routineRow\[data-folded\] > \.rowFold \{\s*display: flex;/);
+  assert.match(flat, /\.rowMeta \.rowFoldUp \{\s*display: inline-flex;/);
+});
+
+test("달력은 고른 날이 든 주 밖의 날에 표시를 단다 — 「한 달 ▾ / 한 주 ▴」 단추가 펴고 접는다", async (t) => {
+  const api = recorder();
+  const view = page(t, api.api);
+  await view.flush();
+  // 2026-10-06(화). 10월 1일이 목요일이라 그 주는 4일(일) ~ 10일(토)이다.
+  assert.deepEqual(view.weekDays(), ["4", "5", "6", "7", "8", "9", "10"]);
+  const toggle = view.button("한 달 모두 보기");
+  assert.equal(toggle.props["aria-expanded"], false);
+  toggle.props.onClick();
+  await view.flush();
+  assert.equal(view.button("한 주만 보기").props["aria-expanded"], true);
 });

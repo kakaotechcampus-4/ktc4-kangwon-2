@@ -34,10 +34,24 @@ export function markFor(childId: string): ChildMark {
   return { tone: sum % MARK_TONES };
 }
 
-/** 쪽지에 적는 글자 — 성을 뺀 이름의 첫 글자. 두 글자 이름이면 첫 글자 그대로다. */
-export function markLetter(name: string): string {
+/** 한 글자 표식 — 성을 뺀 이름의 첫 글자. 두 글자 이름이면 첫 글자 그대로다. */
+function oneLetter(name: string): string {
   const chars = Array.from(name.trim());
   return (chars.length >= 3 ? chars[1] : chars[0]) ?? "";
+}
+
+/**
+ * 쪽지에 적는 글자. 평소에는 한 글자다.
+ *
+ * 같은 반(`classNames`)에 한 글자가 같은 아이가 있으면 **이름 끝 두 글자**로 쓴다 —
+ * 정하린 · 김하늘이 둘 다 「하」면 표식으로 아이가 안 갈린다(점검 O-E1).
+ */
+export function markLetter(name: string, classNames: readonly string[] = []): string {
+  const one = oneLetter(name);
+  const own = name.trim();
+  const clash = classNames.some((other) => other.trim() !== own && oneLetter(other) === one);
+  if (!clash) return one;
+  return Array.from(own).slice(-2).join("");
 }
 
 /** 한 아이의 기록 상태. */
@@ -117,4 +131,13 @@ export function tallyLabel(tally: ChildTally): string {
   if (tally.days === null) return "아직 없어요";
   const when = tally.days === 0 ? "오늘" : `${tally.days}일 전`;
   return `${when} · ${tally.week}번`;
+}
+
+/** 교실에서 부르는 이름 — 성을 떼고 받침이 있으면 「이」를 붙인다. 「김하늘」 → 「하늘이」, 「나래」 → 「나래」. */
+export function calledName(name: string) {
+  const chars = Array.from(name.trim());
+  const given = chars.length >= 3 ? chars.slice(1).join("") : chars.join("");
+  const last = given.charCodeAt(given.length - 1) - 0xac00;
+  const closed = last >= 0 && last < 11172 && last % 28 !== 0;
+  return `${given}${closed ? "이" : ""}`;
 }

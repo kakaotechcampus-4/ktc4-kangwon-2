@@ -296,7 +296,7 @@ export default function OnboardingLayout({
 
           {footer && (
             <div
-              className={`sticky bottom-0 flex flex-none flex-col-reverse items-stretch gap-2 bg-paper px-6 pb-5 pt-3 sm:flex-row sm:items-center sm:justify-end sm:px-10 ${stage ? "md:static md:col-start-2 md:row-start-2 md:flex-col-reverse md:items-stretch md:justify-start md:border-l md:border-shell md:bg-ivory md:px-7 md:pb-8" : ""}`}
+              className={`sticky bottom-0 flex flex-none flex-col-reverse items-stretch gap-2 bg-paper px-6 pb-[calc(20px+env(safe-area-inset-bottom,0px))] pt-3 sm:flex-row sm:items-center sm:justify-end sm:px-10 ${stage ? "md:static md:col-start-2 md:row-start-2 md:flex-col-reverse md:items-stretch md:justify-start md:border-l md:border-shell md:bg-ivory md:px-7 md:pb-8" : ""}`}
             >
               {footer}
             </div>

@@ -25,3 +25,20 @@ export function greetingFor(d: Date): string {
   if (h < 18) return "좋은 오후예요, 선생님 👋";
   return "좋은 저녁이에요, 선생님 🌙";
 }
+
+/** 이름 끝의 호칭. 교사가 이름 칸에 호칭까지 적는 일이 잦다. */
+const TITLE_END = /\s*(선생님|교사|쌤)$/;
+
+/**
+ * 「김하늘 선생님」 — 이름 뒤 호칭을 한 번만 붙인다.
+ *
+ * 이름이 이미 「선생님」으로 끝나면 적은 그대로 두고, 「교사」 · 「쌤」으로 끝나면 떼고
+ * 「선생님」을 붙인다. 사이드바 · 교사 메뉴 · 설정이 같이 쓴다 — 한 곳만 고치면 화면마다
+ * 다른 이름이 보인다.
+ */
+export function teacherTitle(name: string | null | undefined): string {
+  const written = (name ?? "").trim();
+  const base = written.replace(TITLE_END, "").trim();
+  if (!base) return "선생님";
+  return written.endsWith("선생님") ? written : `${base} 선생님`;
+}

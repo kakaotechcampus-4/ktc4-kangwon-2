@@ -44,7 +44,7 @@ import { Posty } from "@/components/app/Posty";
 import { WorkspacePage, Empty, JournalTabs, Message, Notice, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
 import RoutineCalendar, { koreanDay, monthRange } from "./RoutineCalendar";
-import RoutineClock from "./RoutineClock";
+import RoutineClock, { clockText } from "./RoutineClock";
 import RoutineWeather from "./RoutineWeather";
 import RoutineRowExtras from "./RoutineRowExtras";
 import { useDayExtras } from "./use-day-extras";
@@ -1110,12 +1110,17 @@ export default function RoutinesPage() {
                   </RowCard>
                 ))}
                 <div className={ws.rowTools}>
-                  <button type="button" className={ws.rowTool} disabled={!!busy} onClick={addRow}>
+                  <button
+                    type="button"
+                    className={`${ws.rowTool} tap44`}
+                    disabled={!!busy}
+                    onClick={addRow}
+                  >
                     + 줄 추가
                   </button>
                   <button
                     type="button"
-                    className={ws.rowTool}
+                    className={`${ws.rowTool} tap44`}
                     disabled={!!busy}
                     aria-expanded={template !== null}
                     onClick={() => setTemplate(template ? null : {})}
@@ -1178,7 +1183,12 @@ function SaveStatus({ state, onRetry }: { state: SaveState["state"] | null; onRe
   );
 }
 
-/** 「기본 일과표로」 — 이 하루의 줄을 표로 둔다. 요일에만 더하는 줄은 「{요일}만」을 누른다. */
+/**
+ * 「기본 일과표로」 — 이 하루의 순서 · 시간 · 이름을 반 기본 일과표로 둔다 (ADR-085).
+ *
+ * 칠판에 테이프로 붙인 흰 종이 한 장이다. 손글씨 제목과 한 문장으로 「무엇을 하는 칸인가」를 먼저 말한다.
+ * 요일에만 하는 줄(특별활동 같은)은 「{요일}만」을 누른다 — 그 줄은 그 요일에만 깔린다.
+ */
 function TemplatePanel({
   rows,
   weekday,
@@ -1197,17 +1207,28 @@ function TemplatePanel({
 }) {
   const named = rows.filter((row) => row.name.trim());
   return (
-    <section className={css.template} aria-label="반 기본 일과표">
-      <p>이 하루의 순서 · 시간 · 이름을 새 날마다 깔아요. 적은 글은 옮기지 않아요.</p>
+    <section className={css.template} aria-labelledby="routine-template-title">
+      <span className={css.tape} aria-hidden="true" />
+      <h3 id="routine-template-title">기본 일과표</h3>
+      <p className={css.templateLead}>
+        지금 칠판의 일과 순서와 시간을 기본으로 둬요. 다음부터 새 날을 열면 이 일과가 미리 깔려
+        있어요.
+      </p>
+      <p className={css.templateSub}>
+        적어 둔 「실제로 한 것」은 옮기지 않아요.
+        {weekday && ` ${weekday}요일에만 하는 일과는 「${weekday}요일만」에 체크해 두세요.`}
+      </p>
       <ul>
         {named.map((row) => (
           <li key={row.key}>
-            <span>
-              {row.start || row.end ? `${row.start} ~ ${row.end}  ` : ""}
-              {row.name.trim()}
+            <span className={css.templateRow}>
+              <span className={css.templateTime}>
+                {row.start || row.end ? clockText(row.start, row.end) : "시간 없음"}
+              </span>
+              <b>{row.name.trim()}</b>
             </span>
             {weekday && (
-              <label>
+              <label className={css.dayOnly}>
                 <input
                   type="checkbox"
                   checked={!!picks[row.key]}
@@ -1219,11 +1240,11 @@ function TemplatePanel({
           </li>
         ))}
       </ul>
-      <div className={ws.actions}>
-        <button type="button" className={ws.secondary} onClick={onSave}>
+      <div className={css.templateActions}>
+        <button type="button" className={ws.primary} onClick={onSave}>
           기본 일과표로 두기
         </button>
-        <button type="button" className={ws.rowTool} onClick={onCancel}>
+        <button type="button" className={ws.secondary} onClick={onCancel}>
           닫기
         </button>
       </div>
@@ -1280,11 +1301,44 @@ function RowCard({
   children?: ReactNode;
 }) {
   const set = (field: Field) => (value: string) => onEdit(row.key, field, value);
-  // 「계획한 것」을 교사가 펼쳤으면 글을 다 지워도 접지 않는다. 글이 있는지만 보고 접었더니
-  // 적다가 백스페이스로 비우는 순간 칸이 닫혀 커서를 잃었다(덕철 점검).
+  /**
+   * 쪽지를 이름 · 시간 한 줄로 접어 둔다 — 여섯 장을 다 펴면 휴대폰은 칠판이 세 화면,
+   * 데스크톱도 두 화면 반이다. 누르면 그 쪽지만 편다.
+   * 이름이 없거나 고칠 곳이 있는 쪽지는 늘 펴 둔다 — 요약판이 그 칸으로 커서를 보낸다.
+   */
+  const [unfolded, setUnfolded] = useState(false);
+  const canFold = !!row.name.trim() && !error;
+  const folded = canFold && !unfolded;
+  const foldOpen = useRef<HTMLButtonElement>(null);
+  const foldClose = useRef<HTMLButtonElement>(null);
+  // 누른 단추가 사라지므로 커서를 맞은편 단추로 옮긴다.
+  const fold = (open: boolean) => {
+    setUnfolded(open);
+    requestAnimationFrame(() => (open ? foldClose : foldOpen).current?.focus());
+  };
+  // 「계획한 것」을 교사가 펼쳤으면 글을 다 지워도 접지 않는다(덕철 점검).
   const [planOpen, setPlanOpen] = useState(false);
   return (
-    <article className={ws.routineRow} data-tone={row.tone} data-lean={row.tone % 2}>
+    <article
+      className={ws.routineRow}
+      data-tone={row.tone}
+      data-lean={row.tone % 2}
+      data-folded={folded || undefined}
+      // 펴 있는 쪽지 안을 누르면 그대로 펴 둔다 — 새 줄에 이름을 적기 시작하면 바로 접혀
+      // 글칸이 사라졌다. 접기는 교사가 ▴ 를 눌렀을 때만.
+      onFocus={() => !folded && setUnfolded(true)}
+    >
+      <button
+        ref={foldOpen}
+        type="button"
+        className={ws.rowFold}
+        data-fold-toggle="open"
+        aria-expanded={false}
+        onClick={() => fold(true)}
+      >
+        <span className={ws.rowFoldName}>{row.name}</span>
+        <span className={ws.rowFoldTime}>{clockText(row.start, row.end)}</span>
+      </button>
       <div className={ws.routineHead}>
         {(reflecting || row.reflected) && (
           <button
@@ -1326,14 +1380,27 @@ function RowCard({
           />
           <button
             type="button"
-            className={ws.rowTool}
-            aria-label={`${index + 1}번째 일과 지우기`}
-            title="이 일과 지우기"
+            className={`${ws.rowTool} tap44`}
+            aria-label={`${index + 1}번째 일과 삭제`}
+            title="이 일과 삭제"
             disabled={busy}
             onClick={() => onRemove(row.key)}
           >
             ×
           </button>
+          {canFold && (
+            <button
+              ref={foldClose}
+              type="button"
+              className={`${ws.rowFoldUp} tap44`}
+              aria-expanded={true}
+              aria-label={`${index + 1}번째 일과 접기`}
+              title="접기"
+              onClick={() => fold(false)}
+            >
+              ▴
+            </button>
+          )}
         </div>
       </div>
 
@@ -1357,7 +1424,7 @@ function RowCard({
         open={planOpen || !!row.plan}
         onToggle={(e) => setPlanOpen(e.currentTarget.open)}
       >
-        <summary>{row.plan ? "계획한 것" : "계획한 것 적기"} ▾</summary>
+        <summary className="tap44">{row.plan ? "계획한 것" : "계획한 것 적기"} ▾</summary>
         <textarea
           aria-label="계획한 것"
           placeholder="계획한 것"
@@ -1375,7 +1442,7 @@ function RowCard({
         <div className={ws.rowTools}>
           <button
             type="button"
-            className={ws.revert}
+            className={`${ws.revert} tap44`}
             disabled={busy}
             onClick={() => onRevert(row.key)}
           >
@@ -1407,7 +1474,7 @@ function ProblemBoard({ items }: { items: Problem[] }) {
             <li key={item.rowKey}>
               <span className={ws.problemNo}>{item.at}</span>
               <span className={ws.problemText}>
-                {item.at}번째 일과 — {item.text}
+                {item.at}번째 일과: {item.text}
               </span>
               <button
                 type="button"

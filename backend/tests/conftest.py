@@ -122,3 +122,17 @@ def teacher():
         yield user
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "real_db: 진짜 Postgres 를 쓰는 테스트. CI 가 따로 한 단계로 돌린다"
+    )
+
+
+def pytest_collection_modifyitems(items):
+    # `_schema` 는 마이그레이션을 올리는 세션 픽스처라 실 DB 를 쓰는 테스트는 모두 거친다.
+    # `db_session` 으로 가르면 안 된다 — 그걸 안 쓰고 `_schema` 만 받아 직접 연결하는 테스트가 있다.
+    for item in items:
+        if "_schema" in item.fixturenames:
+            item.add_marker(pytest.mark.real_db)

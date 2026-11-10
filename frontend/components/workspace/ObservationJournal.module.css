@@ -29,6 +29,10 @@
   border-style: dashed !important;
   color: var(--pg-ink-soft) !important;
 }
+/* 기록 없는 아이를 골라도 글자가 흐린 색으로 남아 검은 칩 위에서 안 읽혔다. 고른 칩은 다른 칩처럼 흰 글자. */
+.kidNone[aria-pressed="true"] {
+  color: var(--pg-paper) !important;
+}
 .kidNone small {
   font-size: 11.5px;
   font-weight: 500;

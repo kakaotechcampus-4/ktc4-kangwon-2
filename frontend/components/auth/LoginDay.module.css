@@ -1,0 +1,92 @@
+/* 로그인 · 가입 왼쪽의 하루 장면 — 시안 15번 「화면 전체가 하루」.
+   생김새는 landing.css 「3. 하루」를 그대로 쓰고, 로그인 왼쪽 칸(1440 폭에서 624px)에 맞춰 바꾼 것만 여기 둔다.
+   landing.css 는 `.lp .x` 두 단계라, 여기서는 세 단계 이상으로 적어 이긴다. */
+
+.wrap:global(.lp) {
+  background: transparent;
+}
+
+/* 소개 화면은 시계 · 시간표 | 생각 · 창 두 칸이었다. 좁은 칸이라 한 줄로 쌓는다 */
+.wrap .day {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "clock" "scene" "time" "quote" "win";
+  align-items: start;
+  transition: color 0.8s;
+}
+.wrap .day:global(.night) {
+  color: var(--pg-board-ink);
+}
+
+.wrap .day .clock {
+  grid-area: clock;
+  font-size: 88px;
+}
+.wrap .day .scene {
+  grid-area: scene;
+  margin-top: 6px;
+  line-height: 1.5;
+}
+.wrap .day .time {
+  grid-area: time;
+  margin-top: 16px;
+}
+.wrap .day .time :global(.track) {
+  margin-top: 0;
+}
+.wrap .day .time :global(.marks button) {
+  line-height: 1.4;
+}
+.wrap .day .quote {
+  grid-area: quote;
+  margin-top: 18px;
+  min-height: 2.9em;
+  font-size: 22px;
+}
+
+/* 기록 창 — 시안 12번 「겹쳐 쌓인 장면」. 창 뒤에 종이 두 장을 비스듬히 깔아 장면이 여러 장 이어진다는 느낌을 준다.
+   창(.window)은 모서리를 자르느라 넘침을 숨기므로 종이는 바깥 틀(.win)에 붙인다 */
+.wrap .day .win {
+  grid-area: win;
+  position: relative;
+  isolation: isolate;
+  margin: 18px 14px 0 4px;
+}
+.wrap .day .win::before,
+.wrap .day .win::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 1px rgb(52 49 47 / 0.12),
+    0 16px 30px -24px rgb(52 49 47 / 0.5);
+}
+.wrap .day .win::before {
+  rotate: 3deg;
+  translate: 12px 8px;
+  background: #f4efe6;
+}
+.wrap .day .win::after {
+  rotate: -2deg;
+  translate: -6px 10px;
+  background: #faf7f1;
+}
+.wrap .day .win :global(.window) {
+  margin-top: 0;
+}
+
+/* 여섯 장면을 한 칸에 겹쳐 둔다 — 창 높이는 가장 긴 장면에 맞춰지고, 장면이 바뀌어도 흔들리지 않는다 */
+.wrap .day .win :global(.win-body) {
+  display: grid;
+  height: auto;
+}
+.wrap .day .win :global(.view) {
+  position: relative;
+  inset: auto;
+  grid-area: 1 / 1;
+}
+.wrap .day .win :global(.arch-days i) {
+  white-space: nowrap;
+}

@@ -110,21 +110,21 @@ export function LegalSection({ heading, children }: SectionProps) {
 export function LegalFooter({ width = "max-w-[760px]" }: { width?: string }) {
   return (
     <footer
-      className={`mx-auto mt-8 flex ${width} flex-wrap items-center justify-between gap-3 border-t border-line px-1 py-6 text-[12px] text-ink-soft`}
+      className={`mx-auto mt-8 flex ${width} flex-wrap items-center justify-between gap-3 border-t border-line px-1 py-6 text-[12px] text-ink-soft max-sm:px-4`}
     >
       <span>Ssample · 쌤플 — 강원대 2팀 · 카카오테크캠퍼스 4기</span>
       <span className="flex items-center gap-4">
-        <Link href="/privacy" className="hover:text-ink">
+        <Link href="/privacy" className="tap44 hover:text-ink">
           개인정보처리방침
         </Link>
-        <Link href="/terms" className="hover:text-ink">
+        <Link href="/terms" className="tap44 hover:text-ink">
           이용약관
         </Link>
         <a
           href="https://github.com/kakaotechcampus-4/ktc4-kangwon-2"
           target="_blank"
           rel="noreferrer"
-          className="hover:text-ink"
+          className="tap44 hover:text-ink"
         >
           문의
         </a>

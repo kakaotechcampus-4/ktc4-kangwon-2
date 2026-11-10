@@ -3,10 +3,19 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, type CSSProperties, type MouseEvent } from "react";
+import { useEffect, useSyncExternalStore, type CSSProperties, type MouseEvent } from "react";
+import { signedIn } from "@/lib/auth/demo-session";
 import { LegalFooter } from "@/components/legal/LegalPage";
+import { Posty } from "@/components/app/Posty";
+import DayViews from "./DayViews";
 import { startLanding } from "./landing-engine";
 import "./landing.css";
+
+/** 로그인 상태는 저장소에만 있다. 뒤로 가기로 돌아온 화면(bfcache)도 다시 읽는다. */
+function onPageShow(done: () => void) {
+  window.addEventListener("pageshow", done);
+  return () => window.removeEventListener("pageshow", done);
+}
 
 /**
  * 로그인 전에 보는 소개 화면(`/welcome`) — 스크롤하면 장면이 바뀌는 인터랙티브판.
@@ -22,6 +31,11 @@ import "./landing.css";
 export default function InteractiveLanding() {
   useEffect(() => startLanding(), []);
   const router = useRouter();
+  // 로그인한 교사가 뒤로 가기로 여기 오면 「로그인 · 시작하기」만 보여 로그인이 풀린 줄 알았다(덕철 점검).
+  // 들어가는 길은 「시작하기」 하나다(PM, 덕철 점검 f1-9). 로그인했으면 메인, 아니면 로그인 화면 —
+  // 처음 온 교사는 로그인 화면 아래 「아직 계정이 없으신가요? 회원가입」으로 간다.
+  const signed = useSyncExternalStore(onPageShow, signedIn, () => false);
+  const start = signed ? "/" : "/login";
 
   /**
    * 로그인 · 가입 화면으로 갈 때 뚝 바뀌지 않고 겹쳐 사라지게 한다(View Transitions).
@@ -71,10 +85,7 @@ export default function InteractiveLanding() {
           </a>
         </nav>
         <div className="nav-end">
-          <Link className="nav-login" href="/login" onClick={fadeTo}>
-            로그인
-          </Link>
-          <Link className="nav-cta" href="/signup" onClick={fadeTo}>
+          <Link className="nav-cta" href={start} onClick={fadeTo}>
             시작하기
           </Link>
         </div>
@@ -99,7 +110,7 @@ export default function InteractiveLanding() {
               관찰부터 일과, 일지, 평가와 계획안까지. 선생님의 문서 업무를 한곳에 모았어요.
             </p>
             <div className="hero-cta">
-              <Link className="btn" href="/signup" onClick={fadeTo}>
+              <Link className="btn" href={start} onClick={fadeTo}>
                 우리 반으로 시작하기
               </Link>
               <a className="btn ghost" href="#try">
@@ -149,13 +160,15 @@ export default function InteractiveLanding() {
 
         <section className="promise" aria-label="쌤플의 약속">
           <ul>
-            <li>
-              <strong>아이 이름은 가명으로</strong>
-              <span>AI에 전달할 때는 가명으로 바꾸고, 초안에는 원래 이름을 보여줘요.</span>
-            </li>
+            {/* 덕철 점검 — 문서를 대신 써 주는 일이 쌤플의 본업이라 첫머리에 둔다. 「확인만」이라고는
+                쓰지 않는다. 초안을 읽고 고치는 것이 교사 몫이다(해석형 문서, CLAUDE.md). */}
             <li>
               <strong>확정은 선생님이</strong>
-              <span>AI가 만든 건 초안이에요. 선생님이 읽고 수정한 뒤 확정해요.</span>
+              <span>문서 초안은 쌤플 AI가 써요. 선생님은 읽어 보고 고칠 곳만 고쳐 확정해요.</span>
+            </li>
+            <li>
+              <strong>아이 이름은 가명으로</strong>
+              <span>AI에는 가명으로 보내요. 실제 이름은 AI에 전달되지 않아요.</span>
             </li>
             <li>
               <strong>한글 파일 그대로</strong>
@@ -218,7 +231,7 @@ export default function InteractiveLanding() {
                 style={
                   {
                     right: "2%",
-                    top: "8%",
+                    top: "12%",
                     "--c": "var(--sage)",
                     animationDelay: "-1s",
                   } as CSSProperties
@@ -302,7 +315,7 @@ export default function InteractiveLanding() {
                 style={
                   {
                     left: "14%",
-                    top: "6%",
+                    top: "11%",
                     "--c": "var(--clay)",
                     animationDelay: "-3.5s",
                   } as CSSProperties
@@ -355,9 +368,52 @@ export default function InteractiveLanding() {
                 <i id="trackDot"></i>
               </div>
               <div className="marks" id="marks"></div>
-              <div className="mini" aria-hidden="true">
-                <div className="pad" data-pad id="miniPad"></div>
-                <p className="mini-cap" id="miniCap"></p>
+              {/* 오늘의 흐름 — 여섯 단계를 3 + 3 두 줄로. 칩은 landing-engine 이 채우고, 지금 단계 칩 위에
+                  포스티가 빨간 화살표를 「영차」 하고 들어 선다. 장면이 바뀌면 다음 칩으로 옮겨 간다(PM 11-10). */}
+              <div className="flow-box" aria-hidden="true">
+                <p className="flow-cap">오늘의 흐름</p>
+                <ol className="flow" id="dayFlow"></ol>
+                <div className="flow-guide" id="flowGuide">
+                  <span className="flow-heave">
+                    <Posty pose="heave" tone="note" face="heave" size={48} label={null} />
+                  </span>
+                  {/* 빨간 입체 블록 화살표 — 앞면 · 윗면(밝게) · 오른 옆면(어둡게)을 따로 칠해 두께를 낸다.
+                      머리 끝(x 16)이 칩 가운데에 온다 — landing-engine 의 FLOW_TIP 과 같은 값. */}
+                  <span className="flow-sign">
+                    <svg viewBox="0 0 44 48">
+                      <defs>
+                        <linearGradient id="flowSignGloss" x1="0" y1="0" x2="0.35" y2="1">
+                          <stop offset="0" stopColor="#f2635a" />
+                          <stop offset="0.55" stopColor="#e53935" />
+                          <stop offset="1" stopColor="#cf2c2a" />
+                        </linearGradient>
+                      </defs>
+                      <g className="flow-sign-top">
+                        <path d="M9 6H23L29 1H15Z" />
+                        <path d="M23 24H31L37 19H29Z" />
+                        <path d="M1 24H9L15 19H7Z" />
+                      </g>
+                      <g className="flow-sign-side">
+                        <path d="M23 6L29 1V19L23 24Z" />
+                        <path d="M31 24L37 19L22 41L16 46Z" />
+                      </g>
+                      <path className="flow-sign-face" d="M9 6H23V24H31L16 46L1 24H9Z" />
+                      <path className="flow-sign-shine" d="M11.6 9V21.5M4.6 26.4 11.8 37" />
+                    </svg>
+                  </span>
+                  {/* 힘쓰는 표시 — 땀 한 방울과 짧은 힘줄 */}
+                  <svg className="flow-sweat" viewBox="0 0 16 14">
+                    <path
+                      className="drop"
+                      d="M4.5 2.5C6.6 5.4 7.6 7 7.6 8.6A3.1 3.1 0 0 1 1.4 8.6C1.4 7 2.4 5.4 4.5 2.5Z"
+                    />
+                    <path
+                      className="tick"
+                      d="M9.8 0.8 10.6 4M13.4 1.6 12.3 4.6M15.8 4.8 13.7 6.2"
+                    />
+                  </svg>
+                  <span className="flow-yeongcha">영차!</span>
+                </div>
               </div>
             </div>
             <div>
@@ -374,182 +430,7 @@ export default function InteractiveLanding() {
                   <span id="winTitle">관찰 기록</span>
                 </div>
                 <div className="win-body">
-                  <div className="view" data-view="0">
-                    <span className="tag note">관찰 기록</span>
-                    <div className="field">
-                      <label>아이 · 영역 · 언제</label>
-                      <div
-                        style={{ marginTop: "6px", display: "flex", flexWrap: "wrap", gap: "6px" }}
-                      >
-                        <span className="tag plum">아이 A</span>
-                        <span className="tag sage">자연탐구</span>
-                        <span className="tag note">오전 바깥놀이</span>
-                      </div>
-                    </div>
-                    <div className="field">
-                      <label>본 대로 적기</label>
-                      <div className="lined" id="obsLine"></div>
-                    </div>
-                    <div className="row-btn">
-                      <span className="pill-btn soft">말로 적기</span>
-                      <span className="pill-btn">남기기</span>
-                    </div>
-                  </div>
-                  <div className="view" data-view="1">
-                    <div className="chalkmini" id="chalk">
-                      <div
-                        className="slip"
-                        style={{ background: "var(--plum)", "--r": "-1.5deg" } as CSSProperties}
-                      >
-                        <b>
-                          등원 · 자유놀이 <small>07:30</small>
-                        </b>
-                        좋아하는 영역에서 놀이
-                      </div>
-                      <div
-                        className="slip"
-                        style={{ background: "var(--clay)", "--r": "1deg" } as CSSProperties}
-                      >
-                        <b>
-                          실내놀이 <small>09:20</small>
-                        </b>
-                        블록으로 길 만들기
-                      </div>
-                      <div
-                        className="slip"
-                        style={{ background: "var(--sage)", "--r": "1.4deg" } as CSSProperties}
-                      >
-                        <b>
-                          오전 간식 <small>10:40</small>
-                        </b>
-                        스스로 손 씻고 먹기
-                      </div>
-                      <div
-                        className="slip"
-                        style={{ background: "var(--note)", "--r": "-1deg" } as CSSProperties}
-                      >
-                        <b>
-                          바깥놀이 <small>11:00</small>
-                        </b>
-                        낙엽 모아 색깔별로
-                      </div>
-                    </div>
-                  </div>
-                  <div className="view doc" data-view="2">
-                    <h3 className="doc-h">일일 보육일지 · 11월 4일</h3>
-                    <div className="r fact">
-                      <b>사실</b>
-                      <span>
-                        <em>선생님이 적은 그대로</em>바깥놀이에서 도토리를 크기별로 줄 세웠다.
-                        친구가 와서 같이 세웠다.
-                      </span>
-                    </div>
-                    <div className="r gen" id="gen1">
-                      <b>놀이 모습</b>
-                      <span>
-                        <em>초안</em>도토리를 크기별로 늘어놓으며 크기를 비교하는 모습을 보였다.
-                      </span>
-                    </div>
-                    <div className="r gen" id="gen2">
-                      <b>내일 이어갈 것</b>
-                      <span>
-                        <em>초안</em>무게나 길이로도 비교해 볼 수 있게 자연물을 더 준비한다.
-                      </span>
-                    </div>
-                  </div>
-                  <div className="view doc oj" data-view="3">
-                    <h3 className="doc-h">관찰일지 · 아이 A · 11월</h3>
-                    <div className="picks" id="ojPicks">
-                      <span>11.02 블록으로 다리 만들기</span>
-                      <span>11.03 모래에 물길 파기</span>
-                      <span>11.04 도토리 크기별로 줄 세우기</span>
-                    </div>
-                    <div className="r fact">
-                      <b>관찰 내용</b>
-                      <span>
-                        <em>선생님이 적은 기록 3건 그대로</em>블록으로 다리를 만들었다. 모래에
-                        물길을 파고 「바다야」라고 말했다. 도토리를 크기별로 줄 세웠다.
-                      </span>
-                    </div>
-                    <div className="r gen" id="oj1">
-                      <b>해석</b>
-                      <span>
-                        <em>초안</em>크기와 모양을 비교하고 물길을 바꿔 보며 주변 사물을 탐색하는
-                        모습이 이어졌다.
-                      </span>
-                    </div>
-                    <div className="r gen" id="oj2">
-                      <b>배움</b>
-                      <span>
-                        <em>초안 · 누리과정 자연탐구</em>주변 세계와 자연에 대해 지속적으로 궁금증을
-                        가진다.
-                      </span>
-                    </div>
-                  </div>
-                  <div className="view doc" data-view="4">
-                    <h3 className="doc-h">일일 보육일지 · 11월 4일</h3>
-                    <div className="r fact">
-                      <b>사실</b>
-                      <span>
-                        바깥놀이에서 도토리를 크기별로 줄 세웠다. 친구가 와서 같이 세웠다.
-                      </span>
-                    </div>
-                    <div className="r">
-                      <b>놀이 모습</b>
-                      <span>도토리를 크기별로 늘어놓으며 크기를 비교해 보았다.</span>
-                    </div>
-                    <div className="stamp" id="stamp">
-                      확정
-                    </div>
-                    <div className="files">
-                      <div className="file">
-                        <i>HWPX</i>11월 4일 보육일지.hwpx
-                      </div>
-                    </div>
-                    <div className="arch">
-                      <span className="arch-h">문서 보관함 · 보육일지</span>
-                      <div className="arch-days">
-                        <i>11.2 월</i>
-                        <i>11.3 화</i>
-                        <i className="new">11.4 수</i>
-                        <i className="off">11.5 목</i>
-                        <i className="off">11.6 금</i>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="view" data-view="5">
-                    <span className="tag sage">주간 기록 · 11월 2일 – 6일</span>
-                    <div className="week" id="week">
-                      <div>
-                        <span>월</span>
-                        <strong>2</strong>
-                        <em>기록 전</em>
-                      </div>
-                      <div>
-                        <span>화</span>
-                        <strong>3</strong>
-                        <em>기록 전</em>
-                      </div>
-                      <div>
-                        <span>수</span>
-                        <strong>4</strong>
-                        <em>기록 전</em>
-                      </div>
-                      <div>
-                        <span>목</span>
-                        <strong>5</strong>
-                        <em>기록 전</em>
-                      </div>
-                      <div>
-                        <span>금</span>
-                        <strong>6</strong>
-                        <em>기록 전</em>
-                      </div>
-                    </div>
-                    <div className="row-btn" style={{ marginTop: "22px" }}>
-                      <span className="pill-btn">주간 보육일지 만들기</span>
-                    </div>
-                  </div>
+                  <DayViews />
                 </div>
               </div>
               <p className="day-label" id="dayLabel"></p>
@@ -894,11 +775,11 @@ export default function InteractiveLanding() {
               <b>쌤플.</b>
             </h2>
             <div>
-              <Link className="btn" href="/signup" onClick={fadeTo}>
+              <Link className="btn" href={start} onClick={fadeTo}>
                 우리 반으로 시작하기
               </Link>
             </div>
-            <small>설치 없이 브라우저에서 바로 시작해요. 요금은 받지 않아요.</small>
+            <small>설치 없이 브라우저에서 바로 시작해요.</small>
           </div>
         </section>
       </main>

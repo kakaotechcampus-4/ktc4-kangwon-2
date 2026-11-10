@@ -19,9 +19,6 @@ export function shiftDays(date: string, days: number): string {
   return `${at.getUTCFullYear()}-${month}-${day}`;
 }
 
-/** 「10.23」 — 쪽지에 큰 글씨로 쓰는 날짜. */
-export const shortDate = (date: string) => date.slice(5).replace("-", ".");
-
 /** 월~금만 본다. 주간 교육계획이 월~금이고, 주말은 일지를 쓰지 않는다. */
 function weekday(date: string): boolean {
   const day = new Date(`${date}T00:00:00Z`).getUTCDay();
