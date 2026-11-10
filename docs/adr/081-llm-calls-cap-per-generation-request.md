@@ -30,7 +30,8 @@
 2. **스레드를 합쳐서 센다.** 세는 곳은 요청의 `Run` 하나다. `timing.in_thread` 로 열린 작업자는 그 `Run` 을 가리킬 뿐 자기 수를 갖지 않는다(작업자가 또 스레드를 열어도 같다).
    검사와 증가는 `timing.reserve_llm_call(limit)` 이 한 락 안에서 한다 — 스레드 여럿이 동시에 와도 합이 상한을 넘지 않는다. 상한 값은 backend(`client.py`)가 쥐고 p0-planning 은 받아서 비교만 한다.
 3. **48 은 정책 값이고 설계상 최대(24)의 2배다.** 같게 두면 다음에 정상 경로를 하나 더하는 변경이 운영에서 조용히 500 이 된다. 상한의 일은 반복문이 새는 것을 막는 것이지 정상 경로를 재는 것이 아니다.
-   **진짜 최대는 CI 테스트가 지킨다** — `test_play_project_llm_cap.py` 가 `play_project.generate` 를 끝까지 돌려 최악 경로(네 구간 모두 실패 · 모두 겹침 · 모든 시도의 첫 전송이 끊김)가 정확히 24번이고 상한 안에서 저장까지 가는지 본다.
+   **생성 오케스트레이션의 최악 경로는 CI 테스트가 지킨다** — `test_play_project_llm_cap.py` 가 `play_project.generate` 를 끝까지 돌려 최악 경로(네 구간 모두 실패 · 모두 겹침 · 모든 시도의 첫 전송이 끊김)가 정확히 24번이고 상한 안에서 계획안이 나오는지 본다.
+   모델 자리의 provider 와 소켓을 여는 안쪽만 가짜라, 실제 어댑터 · SSE · DB 저장(라우터)은 이 테스트 밖이다.
    경로가 늘어 이 숫자가 바뀌면 테스트가 먼저 깨지고, 그때 아래 표와 이 값을 같이 고친다.
 4. **전용 오류 `LlmCallCapExceeded(LlmFailed)`.** `app.shared.llm` 에서 내보낸다. `LlmFailed` 의 하위라 계약은 그대로다 — 라우터가 `LlmFailed` 로 잡는 곳은 모두 `isinstance` 로 거르므로
    `GENERATION_FAILED`(500, 「다시 시도」)로 같이 간다. `_NotDelivered` 가 아니라서 `_once_more` 는 다시 보내지 않는다.

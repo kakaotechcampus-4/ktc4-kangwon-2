@@ -2,7 +2,9 @@
 
 모델 자리에는 정해 둔 답을 내는 provider 를 두고, **답마다 실제 `post_stream` 을 한 번 지나게 한다**
 (`post_stream` → `_once_more` → `_llm_call`). 그래서 스레드 4개 · 재시도 · 상한은 진짜 코드가 센다.
-망만 가짜다 — `_post_stream`(소켓을 여는 안쪽)을 갈아끼워 첫 시도를 「닿지 못함」으로 끊는다.
+가짜는 둘이다 — 모델 자리의 provider(실제 어댑터 · 메모 가리개를 건너뛴다)와
+`_post_stream`(소켓을 여는 안쪽, 첫 시도를 「닿지 못함」으로 끊는다).
+생성 오케스트레이션의 최악 경로만 본다 — SSE · DB 저장(라우터)은 보지 않는다.
 """
 
 import json
@@ -117,7 +119,7 @@ def generate():
     return box
 
 
-def test_설계상_최악의_경로는_24번이고_상한_안에서_저장까지_간다(monkeypatch):
+def test_설계상_최악의_경로는_24번이고_상한_안에서_계획안이_나온다(monkeypatch):
     """네 구간 모두 실패해 다시 부르고, 모두 겹쳐 다시 만들고, 시도마다 첫 전송이 끊긴다."""
     provider = Scripted(monkeypatch, reject_first=True, overlap=True, undelivered_first=True)
 
