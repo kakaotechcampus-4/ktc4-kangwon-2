@@ -5,12 +5,18 @@
 
 import io
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from urllib import error as urllib_error
 
 import pytest
 from ssuksak import timing
+from ssuksak.planning import YearlyApplicationError
+from ssuksak.planning.application.monthly_errors import MonthlyApplicationError
 
-from app.shared.llm import LlmFailed
+from app.features.plans import monthly_router, play_monthly_router, weekly_router
+from app.features.plans import router as plans_router
+from app.shared.llm import LlmCallCapExceeded, LlmFailed
 from app.shared.llm import client as llm
 
 BODY = json.dumps({"choices": [{"message": {"content": "{}"}}]}).encode()
@@ -30,11 +36,13 @@ class Net:
     def __init__(self, monkeypatch, *steps):
         self.steps = list(steps)
         self.calls = 0
+        self._lock = threading.Lock()  # 스레드 여럿이 부르는 테스트가 있다
         monkeypatch.setattr(llm.urllib_request, "urlopen", self)
 
     def __call__(self, *args, **kwargs):
-        self.calls += 1
-        step = self.steps.pop(0)
+        with self._lock:
+            self.calls += 1
+            step = self.steps.pop(0)
         if isinstance(step, BaseException):
             raise step
         return io.BytesIO(step)
@@ -54,7 +62,7 @@ def in_run(used, call):
         run.llm_calls = used
         try:
             box["result"] = call()
-        except LlmFailed as error:
+        except LlmCallCapExceeded as error:
             box["error"] = error
 
     handler()
@@ -89,6 +97,7 @@ def test_재시도도_상한에_센다(monkeypatch):
 
     assert "상한" in str(box["error"])
     assert net.calls == 1
+    assert box["run"].llm_calls == llm.MAX_LLM_CALLS_PER_RUN
 
 
 def test_스트림에도_상한이_걸린다(monkeypatch):
@@ -119,3 +128,83 @@ def test_생성_요청_밖에서는_상한이_없다(monkeypatch):
     for _ in range(count):
         post()
     assert net.calls == count
+
+
+def test_상한은_스레드로_나뉜_작업을_합쳐서_센다(monkeypatch):
+    """놀이형 연간처럼 `in_thread` 로 연 스레드도 요청 하나의 횟수에 쌓인다."""
+    net = Net(monkeypatch, *[BODY] * 4)
+    threads = 4
+    start = threading.Barrier(threads)
+
+    def worker():
+        start.wait(5)
+        try:
+            post()
+        except LlmCallCapExceeded as error:
+            return error
+        return None
+
+    def fan_out():
+        with ThreadPoolExecutor(threads) as pool:
+            jobs = [pool.submit(timing.in_thread(worker)) for _ in range(threads)]
+            return [job.result() for job in jobs]
+
+    box = in_run(llm.MAX_LLM_CALLS_PER_RUN - 2, fan_out)
+
+    results = box["result"]
+    assert sum(error is None for error in results) == 2
+    assert sum(isinstance(error, LlmCallCapExceeded) for error in results) == 2
+    assert net.calls == 2  # 막힌 둘은 망에 나가지 않았다
+    assert box["run"].llm_calls == llm.MAX_LLM_CALLS_PER_RUN
+
+
+def test_상한에_걸리면_내용_없는_한_줄을_남기고_llm_call_줄은_남기지_않는다(monkeypatch):
+    Net(monkeypatch, BODY)
+    # app.main 이 불린 뒤엔 `app.server` 가 propagate 하지 않아 caplog 가 못 본다 — 로거를 갈아낀다.
+    lines = []
+    for level in ("info", "warning"):
+        monkeypatch.setattr(llm.timing_logger, level, lambda fmt, *args: lines.append(fmt % args))
+
+    box = in_run(llm.MAX_LLM_CALLS_PER_RUN, post)
+
+    assert lines == [
+        f"llm_cap_hit run={box['run'].id} kind=annual_play "
+        f"used={llm.MAX_LLM_CALLS_PER_RUN} limit={llm.MAX_LLM_CALLS_PER_RUN}"
+    ]
+
+
+def test_상한_오류는_다시_보내지_않는다():
+    calls = []
+
+    def send():
+        calls.append(1)
+        raise LlmCallCapExceeded("상한")
+
+    with pytest.raises(LlmCallCapExceeded):
+        llm._once_more(send)
+    assert calls == [1]
+    assert not issubclass(LlmCallCapExceeded, llm._NotDelivered)
+
+
+def _wrapped(error_type, cause):
+    """Core 가 provider 오류를 자기 것으로 감싼 모양 — 원인은 `__cause__` 에 있다."""
+    error = error_type("theme_text_generation_failed", "wrapped")
+    error.__cause__ = cause
+    return error
+
+
+def test_상한_오류는_LlmFailed_와_같은_계약_코드로_간다():
+    """생성 라우터는 `isinstance` 로 거른다 — 하위 클래스도 `GENERATION_FAILED`(500) 로 같다."""
+    mappers = (
+        # 놀이형 연간 · 놀이 월간은 원인 사슬을, 나머지는 Core 가 감싼 오류의 `__cause__` 를 본다.
+        lambda cause: plans_router._play_project_generation_error(cause),
+        lambda cause: plans_router._generation_error(_wrapped(YearlyApplicationError, cause)),
+        lambda cause: monthly_router._generation_error(_wrapped(MonthlyApplicationError, cause)),
+        lambda cause: weekly_router._generation_error(_wrapped(MonthlyApplicationError, cause)),
+        lambda cause: play_monthly_router._generation_error(cause),
+    )
+    for map_error in mappers:
+        capped, plain = map_error(LlmCallCapExceeded("상한")), map_error(LlmFailed("실패"))
+        assert capped.status_code == plain.status_code == 500
+        assert capped.detail == plain.detail
+        assert capped.detail["code"] == "GENERATION_FAILED"
