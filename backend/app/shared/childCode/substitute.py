@@ -8,8 +8,9 @@
 """
 
 import re
+from collections.abc import Iterable
 
-from .names import name_variants
+from .names import call_suffix, name_variants
 from .pool import SubstitutionError, has_final
 
 __all__ = ["NameTable", "SubstitutionError", "mask", "unmask", "unmask_from"]
@@ -20,11 +21,24 @@ class NameTable:
 
     입력은 {등록 실명: 가명} 이다. children 테이블의 name -> code 를 그대로 넘긴다.
     치환할 때는 성을 뗀 이름까지 찾고, 되돌릴 때는 등록 실명으로 돌린다.
+
+    `calls` 는 (등록 실명, 부르는 이름) 이다. 부르는 이름은 가명에 같은 꼴을 붙여 바꾸고
+    그 꼴 그대로 되돌린다 -- 김민 · 민이 · 가람 이면 "민이가" -> "가람이가" -> "민이가".
     """
 
-    def __init__(self, names: dict[str, str]) -> None:
+    def __init__(self, names: dict[str, str], calls: Iterable[tuple[str, str]] = ()) -> None:
         masking: dict[str, str] = {}
         restoring: dict[str, str] = {}
+
+        def claim(variant: str, code: str) -> None:
+            # 두 아이의 이름이 겹치면(김하나·박하나 -> 둘 다 "하나") 어느 쪽인지 알 수 없다.
+            if variant in masking and masking[variant] != code:
+                raise SubstitutionError(
+                    f"같은 표기를 두 아이가 쓴다: {variant}. "
+                    "이 호출에서는 전체 이름만 치환하도록 표를 좁힌다"
+                )
+            masking[variant] = code
+
         for real, code in names.items():
             if not real or not code:
                 raise SubstitutionError("실명 또는 가명이 비어 있다")
@@ -39,13 +53,17 @@ class NameTable:
                 raise SubstitutionError(f"가명이 중복됐다: {code}. 되돌릴 수 없다")
             restoring[code] = real
             for variant in name_variants(real):
-                # 두 아이의 이름이 겹치면(김하나·박하나 -> 둘 다 "하나") 어느 쪽인지 알 수 없다.
-                if variant in masking and masking[variant] != code:
-                    raise SubstitutionError(
-                        f"같은 표기를 두 아이가 쓴다: {variant}. "
-                        "이 호출에서는 전체 이름만 치환하도록 표를 좁힌다"
-                    )
-                masking[variant] = code
+                claim(variant, code)
+        for real, call in calls:
+            if real not in names:
+                raise SubstitutionError("부르는 이름의 아이가 표에 없다")
+            try:
+                form = names[real] + call_suffix(real, call)
+            except ValueError as exc:
+                raise SubstitutionError(str(exc)) from exc
+            if restoring.setdefault(form, call) not in (call, real):
+                raise SubstitutionError(f"가명이 중복됐다: {form}. 되돌릴 수 없다")
+            claim(call, form)
         # 가명이 다른 아이의 표기와 겹치면 복원할 때 누구인지 알 수 없다.
         # 박민준 -> "도현" 인데 최도현이 같은 반에 있으면, 치환 결과의 "도현" 이
         # 박민준의 가명인지 최도현의 실명인지 구분되지 않는다.
@@ -124,7 +142,8 @@ def unmask_from(text: str, table: NameTable, original: str) -> str:
     def spot(index: int, part: str) -> str:
         if index % 2 == 0:
             return re.escape(part)
-        options = sorted({part, *name_variants(restoring[part])}, key=len, reverse=True)
+        forms = [variant for variant, code in table.masking.items() if code == part]
+        options = sorted({part, *forms}, key=len, reverse=True)
         return "(?:" + "|".join(map(re.escape, options)) + ")"
 
     found = re.search("".join(spot(i, p) for i, p in enumerate(parts)), original)

@@ -10,7 +10,7 @@
 `backfill` 은 다시 돌려도 된다 — 비어 있는 칸만 채운다.
 
 Revision ID: 6aca7868e15a
-Revises: 7ee95b0e8ac0
+Revises: b7d2e9a4c1f3
 Create Date: 2026-11-09 12:00:00.000000
 """
 
@@ -20,7 +20,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "6aca7868e15a"
-down_revision: str | Sequence[str] | None = "7ee95b0e8ac0"
+down_revision: str | Sequence[str] | None = "b7d2e9a4c1f3"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

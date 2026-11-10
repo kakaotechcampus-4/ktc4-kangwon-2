@@ -5,6 +5,7 @@ from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
+from test_child_code import BARE_MESSAGES
 
 from app.config import settings
 from app.features.centers.models import Center, Child, Class
@@ -330,6 +331,50 @@ def test_masking_failure_never_calls_jev(db_session, real, monkeypatch):
     res = client.post(f"/api/documents/{doc.id}/verify")
     assert res.status_code == 422
     assert res.json()["error"]["code"] == "VALUE_INVALID"
+    assert real == []
+
+
+ONE_SYLLABLE_FACT = "이가명이 민이와 블록으로 탑을 3층까지 쌓았다."
+
+
+def _with_one_syllable_child(session, doc, call_name, text=ONE_SYLLABLE_FACT):
+    """같은 반 외자 아이 김민을 넣고, 첫 기록에 그 아이를 적는다(기본 「민이와」)."""
+    session.add(Child(class_id=doc.class_id, name="김민", code="가람", call_name=call_name))
+    source = session.query(DocumentSource).filter_by(document_id=doc.id, source_id=200).one()
+    source.text = text
+    fact = session.query(DocumentSection).filter_by(document_id=doc.id, heading="사실").one()
+    fact.body = "\n\n".join([source.text, FACTS[1]])
+    session.flush()
+
+
+def test_one_syllable_call_name_is_masked_before_jev(db_session, real):
+    doc = _document(db_session)
+    _with_one_syllable_child(db_session, doc, "민이")
+    res = client.post(f"/api/documents/{doc.id}/verify")
+    assert res.status_code == 200, res.json()
+    assert "민이와" not in real[0] and "가람이와" in real[0]
+
+
+@pytest.mark.parametrize("call_name", [None, "민이"])
+def test_other_one_syllable_forms_are_masked_before_jev(db_session, real, call_name):
+    # 부르는 이름(민이)을 등록해도 「민은」 · 「민아」가 원문으로 나가면 안 된다(3차 점검 2번).
+    doc = _document(db_session)
+    text = "이가명이 민아 하고 불렀다. 민은 블록으로 탑을 3층까지 쌓았다."
+    _with_one_syllable_child(db_session, doc, call_name, text)
+    res = client.post(f"/api/documents/{doc.id}/verify")
+    assert res.status_code == 200, res.json()
+    assert "민아" not in real[0] and "민은" not in real[0]
+    assert "가람아" in real[0] and "가람은" in real[0]
+
+
+@pytest.mark.parametrize("call_name", [None, "민이"])
+def test_bare_one_syllable_never_calls_jev(db_session, real, call_name):
+    doc = _document(db_session)
+    _with_one_syllable_child(db_session, doc, call_name, "이가명이 민 옆에서 탑을 3층까지 쌓았다.")
+    res = client.post(f"/api/documents/{doc.id}/verify")
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "VALUE_INVALID"
+    assert res.json()["error"]["message"] == BARE_MESSAGES[call_name]
     assert real == []
 
 
