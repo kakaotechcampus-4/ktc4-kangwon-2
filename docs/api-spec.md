@@ -43,8 +43,12 @@ login    { "email": "a@b.kr", "password": "여덟자이상" }                   
 me       GET /api/auth/me                                               → 200  위 user 모양
 
 비밀번호 PATCH /api/auth/password
-         { "current_password": "지금 것", "new_password": "여덟자이상" }      → 204
+         { "current_password": "지금 것", "new_password": "여덟자이상" }      → 200  위 응답 모양(새 토큰)
 ```
+
+**비밀번호를 바꾸면 그 전에 나간 토큰은 모두 401 이다**([ADR-092](adr/092-token-version-and-kakao-link-reset.md)).
+다른 기기 · 다른 사람이 쥔 토큰도 끊긴다. 바꾼 브라우저는 응답의 새 토큰으로 갈아 끼운다 —
+안 바꾸면 다음 요청이 401 이다.
 
 **비밀번호를 바꿀 자리가 있어야 한다.** 다른 곳에서 쓰던 비밀번호로 가입한 교사가
 바꿀 길이 없으면 계정을 새로 만드는 수밖에 없다. 크롬은 자기가 저장해 둔 비밀번호가
@@ -83,6 +87,10 @@ me       GET /api/auth/me                                               → 200 
 
 **처음이면 계정을 만들고, 같은 이메일 계정이 있으면 거기에 잇는다.** 응답은 늘 200 이다 —
 `center_id` 가 null 이면 온보딩으로 간다(§0 과 같다).
+
+**이을 때 그 계정의 비밀번호와 그 전 토큰을 끊는다**([ADR-092](adr/092-token-version-and-kakao-link-reset.md)).
+이메일 가입은 메일 주인인지 확인하지 않아서, 그 비밀번호를 누가 만들었는지 서버는 모른다.
+이은 뒤에는 카카오로만 들어온다. 이미 이어진 계정이 다시 카카오로 들어올 때는 끊지 않는다.
 
 | code | HTTP | 언제 |
 |---|---|---|
@@ -155,6 +163,7 @@ me       GET /api/auth/me                                               → 200 
 | `CLASS_ACCESS_REQUIRED` | 403 | 같은 원 다른 반이다. 그 반 주인의 승인이 필요하다(§2-2) |
 | `CLASS_READ_ONLY` | 403 | 승인받아 보기만 된다. 고치기 · 확정 · 삭제는 주인만(§2-2) |
 | `STALE_WRITE` | 409 | 다른 화면이 먼저 고쳤다. 최신을 불러온 뒤 다시 수정 (§9-3 월간 `expected_revision` · §6-1 · §7 놀이 프로젝트형 연간 `expected_revision` · §9-7 놀이 중심 월간 `expected_revision` · §9-4 포인터 `expected_profile_ref` · §11 문서 `updated_at` · §11 문서 생성 중 근거가 거듭 바뀜) |
+| `RATE_LIMITED` | 429 | 같은 IP 에서 요청이 너무 잦다. **앱이 아니라 nginx 가 낸다**(`nginx/app-routes.conf`). 로그인 · 가입 · 카카오 · 비밀번호 바꾸기는 분당 10번, 생성 POST(연간 · 월간 · 주간 · 칸 재생성 · 연간 가져오기 추출 · 일지 초안 · 일지 검증)는 합쳐서 분당 6번이고, 둘 다 한꺼번에 10번까지 먼저 받는다. 같은 주소의 목록 GET 은 세지 않는다. 1분쯤 뒤 다시 |
 
 **409 가 넷이다.** 상태 코드가 같아도 FE 가 띄울 문구가 다르므로 `code` 로 갈라 본다 —
 "연간부터 확정해주세요" / "이미 있습니다, 기존 것으로 이동" / "확정된 문서는 수정할 수 없어요".
@@ -904,7 +913,8 @@ summary  80자 이하
   - 못 채운 횟수 · 주는 `memo_notices` 에 `RULE_CONFLICT` 로 온다(예: 「교통안전: 2주차에는 넣지 못했어요」).
   - 요청으로 놓인 후보는 「요청 사항」 Evidence 를 갖는다. 놓인 뒤에는 교사가 [후보 두기]로 바꿀 수 있다. 생활안전 횟수 요청은 알림만 한다.
 - **아이 이름은 가명으로 나간다**(§9 「자유 입력 필드」). 메모에 그 원 아이 이름(다른 반 아이 포함)이 있으면 메모 글만 가명으로 바꿔 보내고 답을 되돌린다.
-  저장된 메모가 실리는 칸 재생성(월간 §9-3 · 주간 §9-6)도 같다.
+  저장된 메모가 실리는 칸 재생성(월간 §9-3 · 주간 §9-6)도 같다. 칸 재생성은 맥락으로 싣는 이 계획안의
+  다른 칸 값(교사가 고친 값 포함)도 같이 가린다. 답은 교사가 적은 표기 그대로 되돌린다.
   바꿀 수 없으면(두 아이가 같은 이름을 쓰는 등) 또는 보낼 요청에 그 이름이 남아 있으면 **LLM 을 부르지 않고**
   422 `VALUE_INVALID` `["memo"]` — 화면은 「이름을 빼고 다시 적어 주세요」를 띄운다. 아무것도 저장되지 않는다.
 - **안전교육 개수 · 주차 요청**(「재난 안전교육 3회 이상」)을 Rule 이 배치하는 것은 다음 단계다(ADR-060 결정 2). 지금은 `RULE_CONFLICT` 로 알린다.
@@ -994,7 +1004,7 @@ safety_education 값           traffic_safety · missing_and_abduction_preventio
           "play_name": { "item_id": "item_1", "value": "살랑살랑 봄바람을 느껴요",
                          "evidence": [],
                          "generation": { "method": "RULE_LLM", "rule_id": "play_project.generate",
-                                         "rule_version": "play-project-planner-v7" } },
+                                         "rule_version": "play-project-planner-v8" } },
           "materials": { "item_id": "item_2", "value": "…", "evidence": [], "generation": { "…": "위와 같다" } },
           "support_direction": { "item_id": "item_3", "value": "…", "evidence": [], "generation": { "…": "위와 같다" } },
           "learning": { "item_id": "item_4", "value": "자연탐구 - 자연과 더불어 살기 - 자연을 탐구하며 …\n신체운동·건강 - … - …",
@@ -1041,7 +1051,7 @@ generation                     §4 의 generation 과 같은 객체
 - **`learning.value` 는 서버가 그린 공식 문구**다 — 「영역 - 내용범주 - 내용」 줄을 줄바꿈으로 잇는다. LLM 이 영역 · 범주 이름을 쓰지 않는다.
 - **`learning.evidence` 는 2~3개**, `source_type` 은 `CURRICULUM`, `source_id` 는 누리과정 내용 ID(`nuri2019.1.1.1`), `source_version` 은 카탈로그 판(`nuri-curriculum-content-v0.1.0`)이다.
 - **`play_name` · `materials` · `support_direction` 의 `evidence` 는 `[]` 다.** 쓴 기관 자료가 없고, 쓰지 않은 출처를 달지 않는다(ADR-042 §3).
-- **모든 칸의 `generation` 은** `{ method: "RULE_LLM", rule_id: "play_project.generate", rule_version: "play-project-planner-v7" }` 다.
+- **모든 칸의 `generation` 은** `{ method: "RULE_LLM", rule_id: "play_project.generate", rule_version: "play-project-planner-v8" }` 다.
 - `audit` 은 싣지 않는다. §7-1 이 별도로 준다. 배움도 `item_id` 는 있지만 글자 편집은 받지 않는다.
 
 **호출 단위** (ADR-077, ADR-043 §5 를 대체) — 한 요청이다. 서버가 Core 를 네 구간 동시에 한 번씩 부른다. 첫 호출에는 다른 구간의 놀이명(`avoid_play_names`)이 없고,
@@ -2204,9 +2214,11 @@ value   문자열.  필수.  빈 문자열도 받는다(칸을 비운다 — 상
 - LLM 을 기다리는 동안 다른 화면이 고치거나 확정했으면 **새 결과를 버리고** `STALE_WRITE` /
   `ALREADY_CONFIRMED` 409 다. 실패하면 칸 · revision 이 그대로다. 오류는 §9-1 생성과 같다
   (`LLM_BUDGET_EXCEEDED` · `DEPENDENCY_UNAVAILABLE` 503 · `GENERATION_FAILED` 500).
-- 저장된 요청 사항(`memo`)이 칸 프롬프트에 실린다. 그 속 아이 이름을 가명으로 못 바꾸거나 보낼 요청에 그 이름이
-  남아 있으면(다른 칸 값에 이름이 들어 있는 등) **LLM 을 부르지 않고** 422 `VALUE_INVALID` `["memo"]` 다(§4 「요청 사항」).
-  재생성 화면에는 요청 사항을 고치는 칸이 없어서 메시지는 「이 칸은 직접 고쳐 주세요」다. 주간 칸 재생성도 같다.
+- 저장된 요청 사항(`memo`)과 이 계획안의 다른 칸 값(교사가 고친 값 포함)이 칸 프롬프트에 실린다. 둘 다 그 원
+  아이 이름(다른 반 포함)을 가명으로 바꿔 보낸다. 못 바꾸거나 보낼 요청에 그 이름이 남아 있으면 **LLM 을 부르지 않고**
+  422 `VALUE_INVALID` `["memo"]` 다(§4 「요청 사항」). 메모가 비어도 칸 값 때문에 날 수 있고, 그때도 `fields` 는 `["memo"]` 다.
+  재생성 화면에는 요청 사항을 고치는 칸이 없어서 메시지는 「요청 사항이나 계획안 칸에 아이 이름이 있어 … 이 칸은 직접 고쳐 주세요」다.
+  주간 칸 재생성도 같다.
 
 ### 안전 배치 — `PUT /api/plans/monthly/{id}/safety-weeks/{week_id}`
 
@@ -3924,7 +3936,7 @@ ALREADY_REGISTERED       같은 아동 · 종류 · 겹치는 기간의 증빙�
 ```
 1  스키마      위 거절 규칙                      서버.  모델 없음
 2  추출 대조   사실 == sources 원문              서버.  문자열 비교.  모델 없음
-               해석의 숫자 ⊂ 사실 · 근거 날짜 · 상황의 숫자
+               해석의 숫자 ⊂ 사실 · 근거 날짜 · 상황의 숫자 (반 연령 · 영역 수 표현은 뺌)
 3  LLM Judge   미관찰 내용 · 근거 없는 해석 검사    LLM
 4  교사 확인    UI 체크 하나 → API checks 세 필드    사람
 ```
@@ -4031,6 +4043,8 @@ GET    /api/documents/{id}/export/hwp                            hwpx 파일 (?f
 **해석에 사실에 없는 숫자가 있으면 `sections.해석` 으로 거절한다.**
 상황에 든 숫자는 사실과 같이 친다. 근거 날짜(연 · 월 · 일)는 **날짜 표현 안의 숫자에만** 쓴다 —
 「11월 4일」 「11/4」의 4 는 교사가 준 날짜라 통과지만, 같은 문서의 「블록 4개」는 사실에 4 가 없으면 거절이다(ADR-088).
+문서 바깥에서 오는 값 둘도 **그 표현 안의 그 값만** 통과다 — 「만 N세」의 N 이 반 연령(`age_min`~`age_max`)일 때,
+「5개 영역」(누리과정 영역 수)일 때. 「만 3세」를 만 4세 반 문서에 쓰거나 「3개 영역」처럼 다른 수를 쓰면 그대로 대조한다(#85).
 지원은 앞으로의 계획이라 새 숫자가 나와도 된다.
 
 **`PUT` 이 `사실` 을 바꾸면 거절한다.** 원본과 일치해야 한다는 규칙이 그대로 적용된다.
