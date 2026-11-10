@@ -747,6 +747,42 @@ def test_create_document_masks_other_class_child_names(db_session, monkeypatch):
     assert "최옆반과" in by_heading["해석"]
 
 
+def test_draft_does_not_put_other_class_full_name_where_a_word_was(db_session, monkeypatch):
+    # 다른 반 「김하늘」의 「하늘」이 사실의 낱말 「하늘을 보며」와 겹쳐 가려진다.
+    # 모델이 가린 글을 받아 쓰면, 등록 실명으로 되돌릴 때 초안에 「김하늘」이 생겼다.
+    _, klass, child = _make_center_class_child(db_session)
+    other_class = Class(
+        center_id=klass.center_id,
+        name="달빛반",
+        school_year=2026,
+        age_min=4,
+        age_max=4,
+        teacher_name="박선생",
+    )
+    db_session.add(other_class)
+    db_session.flush()
+    db_session.add(Child(class_id=other_class.id, name="김하늘", code="하람"))
+    db_session.flush()
+    fact = "이가명이 하늘을 보며 구름 모양을 이야기했다."
+    record = _observation(db_session, klass, child, 5, fact)
+
+    def fake_generate(kind, masked_facts, curriculum=()):
+        # 받은 글을 그대로 다시 싣는다 — 실제로 발급된 가명이 답에 들어가게.
+        # 사실은 {fact, date, domain, context} 로 간다 (ADR-088).
+        return (
+            f"{masked_facts[0]['fact']} 하늘의 모양을 말로 표현하는 경험을 한다.",
+            "다음 바깥놀이에서 구름 그림책을 함께 보며 이야기를 이어 가면 좋을 것 같다.",
+        )
+
+    monkeypatch.setattr("app.features.documents.draft._generate", fake_generate)
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201, response.text
+    by_heading = {s["heading"]: s["body"] for s in response.json()["sections"]}
+    assert "하늘을 보며" in by_heading["해석"]
+    assert "김하늘" not in by_heading["해석"]
+
+
 def test_create_document_name_mask_failure_never_calls_llm(db_session, monkeypatch):
     from app.shared.childCode import SubstitutionError
 

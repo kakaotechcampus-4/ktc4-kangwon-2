@@ -11,13 +11,19 @@ from app.shared.llm.client import (
     post_stream,
     require_config,
 )
-from app.shared.llm.errors import LlmBudgetExceeded, LlmFailed, LlmUnavailable
+from app.shared.llm.errors import (
+    LlmBudgetExceeded,
+    LlmCallCapExceeded,
+    LlmFailed,
+    LlmUnavailable,
+)
 
 __all__ = [
     "JEV_MODEL",
     "MODEL",
     "TIMEOUT_SECONDS",
     "LlmBudgetExceeded",
+    "LlmCallCapExceeded",
     "LlmFailed",
     "LlmUnavailable",
     "complete_json",
