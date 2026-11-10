@@ -101,6 +101,45 @@ def test_registering_a_child_issues_a_pseudonym_from_the_pool(session):
     assert session.commits == 1
 
 
+def test_one_syllable_child_is_flagged_and_takes_a_call_name(session):
+    # 화면은 needs_call_name 으로 「부르는 이름」 칸을 띄운다 — 외자 판별을 서버 한 곳에 둔다.
+    plain = client.post("/api/classes/1/children", json={"name": "이승석"}).json()
+    assert (plain["needs_call_name"], plain["call_name"]) == (False, None)
+
+    created = client.post("/api/classes/1/children", json={"name": "김민", "call_name": "민이"})
+    assert created.status_code == 201
+    assert (created.json()["needs_call_name"], created.json()["call_name"]) == (True, "민이")
+
+
+def test_call_name_can_be_added_later_and_cleared(session):
+    child_id = client.post("/api/classes/1/children", json={"name": "김민"}).json()["id"]
+
+    added = client.patch(f"/api/children/{child_id}", json={"call_name": "민이"})
+    assert added.status_code == 200
+    assert added.json()["call_name"] == "민이"
+    cleared = client.patch(f"/api/children/{child_id}", json={"call_name": None})
+    assert cleared.json()["call_name"] is None
+
+
+@pytest.mark.parametrize("name,call_name", [("김민", "콩이"), ("김민", "민"), ("이승석", "승석이")])
+def test_call_name_must_extend_the_one_syllable_name(session, name, call_name):
+    # 가명에 같은 꼴을 붙여 보내야 한다 — 「민」으로 시작하지 않으면 붙일 꼴을 모른다.
+    response = client.post("/api/classes/1/children", json={"name": name, "call_name": call_name})
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == ["call_name"]
+    assert session.children == []
+
+
+def test_call_name_shared_with_another_child_is_refused(session):
+    client.post("/api/classes/1/children", json={"name": "김민", "call_name": "민이"})
+    other = client.post("/api/classes/1/children", json={"name": "박민"}).json()["id"]
+
+    response = client.patch(f"/api/children/{other}", json={"call_name": "민이"})
+
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == ["call_name"]
+
+
 def test_a_name_without_a_final_consonant_gets_a_matching_pseudonym(session):
     expected = load_pool().allocate("김하나", set())
     code = client.post("/api/classes/1/children", json={"name": "김하나"}).json()["code"]
