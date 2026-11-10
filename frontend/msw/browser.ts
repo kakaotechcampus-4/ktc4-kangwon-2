@@ -22,7 +22,7 @@ const CONTROLLER_TIMEOUT_MS = 5000;
 export const runtime: { starting?: Promise<unknown> } = {};
 
 /** mock이 아니라 실제 Next.js Route Handler가 응답하는 경로 — 진단 대상에서 제외한다. */
-const REAL_ROUTE_PREFIXES = ["/api/assistant", "/api/templates/extract"];
+const REAL_ROUTE_PREFIXES = ["/api/templates/extract"];
 
 /**
  * 핸들러가 없는 /api 요청을 조용히 흘려보내지 않고 콘솔 에러로 알린다.
@@ -33,7 +33,7 @@ const REAL_ROUTE_PREFIXES = ["/api/assistant", "/api/templates/extract"];
 export const handleUnhandledRequest: UnhandledRequestCallback = (request, print) => {
   const { pathname } = new URL(request.url);
   // 경로 자체이거나 그 하위 경로일 때만 실제 Route Handler로 본다.
-  // startsWith만 쓰면 /api/assistant-wrong 같은 오타까지 조용히 빠져나간다.
+  // startsWith만 쓰면 /api/templates/extract-wrong 같은 오타까지 조용히 빠져나간다.
   const isRealRoute = REAL_ROUTE_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );

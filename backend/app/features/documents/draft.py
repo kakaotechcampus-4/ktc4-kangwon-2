@@ -16,7 +16,7 @@ from typing import Protocol
 
 from ssuksak.adapters.v1_curriculum import v1_curriculum_catalog
 
-from app.shared.childCode import NameTable, SubstitutionError, mask, unmask
+from app.shared.childCode import NameTable, SubstitutionError, mask, unmask_as_written
 from app.shared.llm import LlmFailed, LlmUnavailable, complete_json, is_mock
 
 # 문서의 generation.rule_version 으로 남는다. `_generate` 의 만드는 방식이 바뀌면 올린다.
@@ -178,8 +178,11 @@ def draft_sections(
     except SubstitutionError as exc:
         raise DraftFailed(NAME_MASK_FAILED) from exc
 
+    # 가명을 되돌릴 때 교사가 적은 표기를 찾는 원문. 표를 만든 글처럼 사실 · 상황을 둘 다 넣는다.
+    original = "\n".join([*(s.text for s in sources), *(s.context or "" for s in sources)])
+
     def restore(text: str) -> str:
-        return text if table is None else unmask(text, table)
+        return text if table is None else unmask_as_written(text, table, original)
 
     curriculum = _curriculum_for(domains) if kind == "observation" else []
     interpretation, support = _generate(kind, masked, curriculum, examples)

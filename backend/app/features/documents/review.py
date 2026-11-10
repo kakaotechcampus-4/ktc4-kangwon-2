@@ -188,6 +188,12 @@ def resolution_trail(copies, plan):
     ]
 
 
+def class_ages(session: Session, class_id: int) -> range:
+    """반 연령. 해석의 「만 N세」를 숫자 대조에서 빼는 데만 쓴다 (`input_extras`, #85)."""
+    klass = session.get(Class, class_id)
+    return range(klass.age_min, klass.age_max + 1) if klass else range(0)
+
+
 def locked_review(session: Session, user: User, document_id: int, *, read_only: bool = False):
     """모든 쓰기와 같은 잠금 순서다. 다른 센터·반의 원본은 반환하지 않는다.
 
@@ -397,7 +403,7 @@ def reconfirm(session: Session, user: User, document_id: int, body: DocumentReco
         texts,
         set(ids),
         stage="reconfirm",
-        extras=input_extras(copy for copy, _, _ in survivors),
+        extras=input_extras((copy for copy, _, _ in survivors), class_ages(session, doc.class_id)),
     )
     if fields:
         fail("VALIDATION_FAILED", "입력값을 확인해주세요.", fields, 422)
