@@ -41,6 +41,13 @@ export interface DocumentGateway {
 
 export const BUSY = "앞선 요청이 끝난 뒤에 다시 시도해주세요.";
 export const MOVED = "다른 문서로 옮겨 확정하지 않았어요. 저장한 내용은 그대로입니다.";
+export const LEFT = "다른 문서로 옮겨 이 작업을 하지 않았어요.";
+
+/** 편집기가 열린 순간의 문서와 선택 번호. `pin()` 으로 받은 작업은 이 문서에만 나간다. */
+interface Scope {
+  id: string;
+  generation: number;
+}
 
 const EMPTY: SelectionState = { active: "", detail: null, status: "ready", error: "", pending: "" };
 
@@ -55,8 +62,17 @@ export function createSelection(api: DocumentGateway, describe: (error: unknown)
     for (const listener of listeners) listener();
   };
 
-  /** 한 작업의 대상은 시작할 때 정해진다. 끝날 때 선택을 다시 읽지 않는다. */
-  async function mutate<T>(work: (doc: ServerDocument, mine: number) => Promise<T>): Promise<T> {
+  /**
+   * 한 작업의 대상은 시작할 때 정해진다. 끝날 때 선택을 다시 읽지 않는다.
+   * `scope` 가 있으면 그 문서 · 그 선택 번호일 때만 시작한다 — 「저장하고 반영」처럼
+   * 작업 두 개를 잇는 편집기가, 그 사이 다른 문서를 열어도 뒤 작업을 새 문서로 보내지 않는다.
+   */
+  async function mutate<T>(
+    work: (doc: ServerDocument, mine: number) => Promise<T>,
+    scope?: Scope,
+  ): Promise<T> {
+    if (scope && (scope.id !== state.active || scope.generation !== generation))
+      throw new Error(LEFT);
     const doc = state.detail;
     if (!doc || doc.id !== state.active || state.pending) throw new Error(BUSY);
     const mine = generation;
@@ -88,12 +104,12 @@ export function createSelection(api: DocumentGateway, describe: (error: unknown)
   }
 
   /** 문서 하나를 서버 응답으로 갈아끼운다. 그 사이 옮겼으면 화면은 건드리지 않는다. */
-  function replace(call: (localId: string) => Promise<ServerDocument>) {
+  function replace(call: (localId: string) => Promise<ServerDocument>, scope?: Scope) {
     return mutate(async (doc, mine) => {
       const next = await call(doc.id);
       if (mine === generation) set({ detail: next });
       return next;
-    });
+    }, scope);
   }
 
   async function load(localId: string, mine: number) {
@@ -101,6 +117,56 @@ export function createSelection(api: DocumentGateway, describe: (error: unknown)
     if (mine !== generation) return null;
     set({ detail, status: "ready", error: "" });
     return detail;
+  }
+
+  /** 문서를 바꾸는 작업들. `scope` 가 없으면 그때그때 고른 문서에 나간다. */
+  function actions(scope?: Scope) {
+    return {
+      /** 명시적으로 최신 내용을 불러온다. 실패하면 기존 상세와 편집기를 유지한다. */
+      reload: () => mutate((doc) => load(doc.id, ++generation), scope),
+
+      /** 저장·확정·삭제는 한 번에 하나만. 화면이 막혀 있어도 여기서 한 번 더 막는다. */
+      save: (sections: Section[], reviewNote: string, classNote?: string) =>
+        mutate((doc, mine) => update(doc, mine, sections, reviewNote, classNote), scope),
+
+      /**
+       * 저장과 확정은 하나의 작업이다.
+       *
+       * 대상은 시작할 때 잡은 문서 하나뿐이다 — `await` 뒤에 선택을 다시 읽으면
+       * A 를 저장하고 B 를 확정하게 된다. 그 사이 다른 문서로 옮겼으면 확정하지 않는다.
+       */
+      saveAndConfirm: (sections: Section[], reviewNote: string, classNote?: string) =>
+        mutate(async (doc, mine) => {
+          await update(doc, mine, sections, reviewNote, classNote);
+          if (mine !== generation) throw new Error(MOVED);
+          const confirmed = await api.confirm(doc.id);
+          if (mine === generation) set({ detail: confirmed });
+          return confirmed;
+        }, scope),
+
+      /** 확정 취소와 근거 다시 반영. 서버가 준 문서를 그대로 쓴다 — 상태를 지어내지 않는다. */
+      unconfirm: () => replace(api.unconfirm, scope),
+      refresh: (resolutions?: SourceResolution[]) =>
+        replace((localId) => api.refresh(localId, resolutions), scope),
+      reconfirm: (input: ReconfirmInput) =>
+        mutate(async (doc, mine) => {
+          if (!api.reconfirm) throw new Error("재확정 API가 연결되지 않았어요.");
+          const next = await api.reconfirm(doc.id, input);
+          if (mine === generation) set({ detail: next });
+          return next;
+        }, scope),
+
+      remove: () =>
+        mutate(async (doc) => {
+          await api.remove(doc.id);
+          // 지운 문서를 그대로 보고 있으면(다시 골랐더라도) 닫는다.
+          // 다른 문서를 보고 있으면 그 문서는 건드리지 않는다.
+          if (state.active !== doc.id) return;
+          // 이 문서의 진행 중인 상세 요청도 여기서 무효가 된다.
+          generation += 1;
+          set({ active: "", detail: null, status: "ready", error: "" });
+        }, scope),
+    };
   }
 
   return {
@@ -150,56 +216,19 @@ export function createSelection(api: DocumentGateway, describe: (error: unknown)
       });
     },
 
-    /** 명시적으로 최신 내용을 불러온다. 실패하면 기존 상세와 편집기를 유지한다. */
-    reload: () => mutate((doc) => load(doc.id, ++generation)),
-
     /** 방금 만든 문서를 다시 받아오지 않고 연다. 선택이 바뀌므로 이전 요청은 무효다. */
     adopt(detail: ServerDocument) {
       generation += 1;
       set({ active: detail.id, detail, status: "ready", error: "" });
     },
 
-    /** 저장·확정·삭제는 한 번에 하나만. 화면이 막혀 있어도 여기서 한 번 더 막는다. */
-    save: (sections: Section[], reviewNote: string, classNote?: string) =>
-      mutate((doc, mine) => update(doc, mine, sections, reviewNote, classNote)),
+    ...actions(),
 
     /**
-     * 저장과 확정은 하나의 작업이다.
-     *
-     * 대상은 시작할 때 잡은 문서 하나뿐이다 — `await` 뒤에 선택을 다시 읽으면
-     * A 를 저장하고 B 를 확정하게 된다. 그 사이 다른 문서로 옮겼으면 확정하지 않는다.
+     * 지금 연 문서에 묶인 작업들. 편집기에는 이것을 준다 — 편집기가 들고 있는 작업은
+     * 열던 문서에만 나가고, 그 사이 다른 문서를 열었으면 시작하지 않는다(LEFT).
      */
-    saveAndConfirm: (sections: Section[], reviewNote: string, classNote?: string) =>
-      mutate(async (doc, mine) => {
-        await update(doc, mine, sections, reviewNote, classNote);
-        if (mine !== generation) throw new Error(MOVED);
-        const confirmed = await api.confirm(doc.id);
-        if (mine === generation) set({ detail: confirmed });
-        return confirmed;
-      }),
-
-    /** 확정 취소와 근거 다시 반영. 서버가 준 문서를 그대로 쓴다 — 상태를 지어내지 않는다. */
-    unconfirm: () => replace(api.unconfirm),
-    refresh: (resolutions?: SourceResolution[]) =>
-      replace((localId) => api.refresh(localId, resolutions)),
-    reconfirm: (input: ReconfirmInput) =>
-      mutate(async (doc, mine) => {
-        if (!api.reconfirm) throw new Error("재확정 API가 연결되지 않았어요.");
-        const next = await api.reconfirm(doc.id, input);
-        if (mine === generation) set({ detail: next });
-        return next;
-      }),
-
-    remove: () =>
-      mutate(async (doc) => {
-        await api.remove(doc.id);
-        // 지운 문서를 그대로 보고 있으면(다시 골랐더라도) 닫는다.
-        // 다른 문서를 보고 있으면 그 문서는 건드리지 않는다.
-        if (state.active !== doc.id) return;
-        // 이 문서의 진행 중인 상세 요청도 여기서 무효가 된다.
-        generation += 1;
-        set({ active: "", detail: null, status: "ready", error: "" });
-      }),
+    pin: () => actions({ id: state.active, generation }),
   };
 }
 
