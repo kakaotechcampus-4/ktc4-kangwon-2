@@ -53,9 +53,13 @@ class TooLong(ValueError):
 
 @dataclass(frozen=True)
 class Source:
+    """근거 사본 한 줄. 초안 모델이 받는 칸과 같다 — `{fact, date, domain, context}` (ADR-088)."""
+
     source_id: int
     date: date | None
     text: str
+    domain: str | None = None
+    context: str | None = None
 
 
 @dataclass(frozen=True)
@@ -132,11 +136,19 @@ def record_line(source: Source, kind: str) -> str:
     """근거 한 줄. 주간 · 관찰일지는 날짜가 판정의 일부라 요일을 붙인다.
 
     「화요일에 했다」 같은 문장을 기록과 견주려면 기록에도 요일이 있어야 한다.
+    영역 · 상황이 있으면 뒤에 붙인다. 초안 모델이 상황을 보고 쓴 장소 · 함께한 사람을
+    검토가 「기록에 없는 일」로 읽지 않게 하려는 것이다.
     """
-    if source.date is None or kind == "dailyLog":
-        return source.text
-    d = source.date
-    return f"{d.month}/{d.day}({WEEKDAYS[d.weekday()]}) {source.text}"
+    line = source.text
+    if source.date is not None and kind != "dailyLog":
+        d = source.date
+        line = f"{d.month}/{d.day}({WEEKDAYS[d.weekday()]}) {line}"
+    meta = [
+        f"{name}: {value}"
+        for name, value in (("영역", source.domain), ("상황", source.context))
+        if value
+    ]
+    return f"{line} [{' · '.join(meta)}]" if meta else line
 
 
 def build_questions(
