@@ -12,6 +12,7 @@ import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { daysBetween, markFor, STALE_DAYS } from "@/lib/workspace/child-mark";
 import { DOMAIN_LOOK } from "@/lib/workspace/domain-look";
 import { today } from "@/lib/workspace/model";
+import { dayLabel } from "@/lib/workspace/journal-day";
 import type { ApiChildTracking, ApiClass, ApiObservation } from "@/lib/api/types";
 import { Icon } from "@/components/app/icons";
 import { ChildNote } from "@/components/app/ChildPicker";
@@ -164,7 +165,7 @@ export default function ChildTrackingPage() {
           <p>쪽지 하나가 아이 한 명이에요. 누르면 그 아이 기록이 펼쳐져요.</p>
         </div>
         {/* 관찰 기록 아래 화면이다. 관찰일지 만들기 화면과 같은 자리 · 같은 말로 돌아간다. */}
-        <Link href="/records" className={styles.back}>
+        <Link href="/records" className={`${styles.back} tap44`}>
           ← 관찰 기록
         </Link>
       </header>
@@ -239,7 +240,10 @@ function Board({
         {line.sub && <p className={styles.boardSub}>{line.sub}</p>}
       </div>
       {line.target && (
-        <Link href={recordsHref(classId, line.target.child_id)} className={styles.boardGo}>
+        <Link
+          href={recordsHref(classId, line.target.child_id)}
+          className={`${styles.boardGo} tap44`}
+        >
           기록 작성 →
         </Link>
       )}
@@ -374,7 +378,7 @@ function ChildDetail({
               <li key={domain} data-tone={look?.tone} data-empty={count ? undefined : true}>
                 {look && (
                   <i aria-hidden="true">
-                    <Icon name={look.icon} width={17} height={17} />
+                    <Icon name={look.icon} width={14} height={14} />
                   </i>
                 )}
                 <span>{domain}</span>
@@ -439,7 +443,7 @@ function Timeline({ records, writeHref }: { records: ApiObservation[]; writeHref
               const look = DOMAIN_LOOK[record.domain];
               return (
                 <article className={styles.slipLine} key={record.id}>
-                  <time dateTime={record.date}>{shortDate(record.date)}</time>
+                  <time dateTime={record.date}>{dayLabel(record.date)}</time>
                   <div>
                     <span className={styles.domainTag} data-tone={look?.tone}>
                       {look && <Icon name={look.icon} width={12} height={12} />}
@@ -477,10 +481,4 @@ function TrackingState({
       {children}
     </div>
   );
-}
-
-/** 「2026-11-03」 을 「11.03」 으로. 달 제목이 해를 이미 말한다. */
-function shortDate(date: string) {
-  const [, m, d] = date.split("-");
-  return m && d ? `${m}.${d}` : date;
 }

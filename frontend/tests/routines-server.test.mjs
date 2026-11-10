@@ -32,6 +32,7 @@ const onboardingApi = await import("../lib/api/onboarding.ts");
 const routinesRoute = await import("../lib/workspace/routines-route.ts");
 const onboardingTypes = await import("../lib/onboarding/types.ts");
 const childMark = await import("../lib/workspace/child-mark.ts");
+const recordStack = await import("../lib/workspace/record-stack.ts");
 const homeBlocks = await import("../lib/workspace/home-blocks.ts");
 const recordContext = await import("../lib/workspace/record-context.ts");
 const journalDay = await import("../lib/workspace/journal-day.ts");
@@ -1585,7 +1586,10 @@ function recordsPage(
     "@/components/app/Posty": { Posty: "posty" },
     "@/components/app/ChildPicker": { ChildNote: "child-note" },
     "@/components/app/icons": { Icon: "icon" },
-    "@/lib/workspace/child-mark": { markFor: () => ({ tone: 0 }) },
+    "./CircleMark": { CircleMark: "circle-mark" },
+    "@/lib/workspace/journal-day": journalDay,
+    "@/lib/workspace/child-mark": { ...childMark, markFor: () => ({ tone: 0 }) },
+    "@/lib/workspace/record-stack": recordStack,
     "@/lib/hooks/use-client-state": { useClientState: (read) => app.state(read) },
     "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning: () => {} },
     // 관찰 영역 축은 서버 설정에서 온다. 여기서 보는 것은 길 · 저장이라 기본 축으로 둔다.

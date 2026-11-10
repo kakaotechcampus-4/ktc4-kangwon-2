@@ -2,6 +2,8 @@ import { http, HttpResponse } from "msw";
 import { failure } from "./scenarios";
 import { findClass } from "./data/classes";
 import { listChildren } from "./data/children";
+import { findCenterSettings } from "./data/centers";
+import { AXES } from "../lib/workspace/observation-axis";
 import type { ApiObservation } from "../lib/api/types";
 
 /**
@@ -52,7 +54,9 @@ export const observationHandlers = [
       .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
     // 이 화면에서 적은 것이 없으면 다음 목업(관찰일지 · 보육일지 시연 자료)으로 넘긴다 (browser.ts).
     if (!items.length) return;
-    return HttpResponse.json({ items });
+    // 아이별 기록 화면은 child_id 로 한 아이만 묻는다 — 거르지 않으면 반 기록이 다 섞여 나왔다.
+    const childId = Number(new URL(request.url).searchParams.get("child_id"));
+    return HttpResponse.json({ items: items.filter((r) => !childId || r.child_id === childId) });
   }),
   http.post("*/api/observations/domain-suggest", async ({ request }) => {
     const b = await body(request);
@@ -115,6 +119,28 @@ export const observationHandlers = [
     if (new URL(request.url).searchParams.get("include_impact") !== "true")
       return new HttpResponse(null, { status: 204 });
     return HttpResponse.json({ review_impact: impact() });
+  }),
+  // 아이별 기록 수 (api-spec §2-1 「발달 추적」). 이 화면에서 적은 기록을 센다 — 없으면 모두 0.
+  // 원이 쓰는 영역 축은 0 이어도 다 담고, 다른 축 영역은 1건 이상일 때만 붙인다.
+  http.get("*/api/classes/:classId/children/tracking", ({ params }) => {
+    const room = findClass(Number(params.classId));
+    if (!room) return failure("NOT_FOUND", "반을 찾을 수 없습니다.", "class_id");
+    const axis = AXES[findCenterSettings(room.center_id).observation_axis];
+    const items = listChildren(room.id).map((child) => {
+      const mine = records.filter((r) => r.class_id === room.id && r.child_id === child.id);
+      const by_domain: Record<string, number> = Object.fromEntries(axis.map((d) => [d, 0]));
+      for (const r of mine) by_domain[r.domain] = (by_domain[r.domain] ?? 0) + 1;
+      const last = mine.reduce<string | null>((at, r) => (at && at > r.date ? at : r.date), null);
+      return {
+        child_id: child.id,
+        name: child.name,
+        code: child.code,
+        total: mine.length,
+        last_date: last,
+        by_domain,
+      };
+    });
+    return HttpResponse.json({ items });
   }),
   // 오늘 일과 — `?mswRoutines=1` 일 때만. 아니면 아무것도 안 돌려 handlers.ts 의 목업으로 넘긴다.
   http.get("*/api/routines", ({ request }) => {
