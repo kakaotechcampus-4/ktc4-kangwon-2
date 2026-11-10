@@ -169,9 +169,10 @@ def update_observation(
 ) -> ObservationResponse:
     observation = _own(session, user, observation_id, lock=True)[0]
     _check_axis(session, user, observation.class_id, body.domain)
+    domain_moved = observation.domain != body.domain
     for field, value in body.model_dump().items():
         setattr(observation, field, value)
-    observation_changed(session, observation_id, observation.fact, observation.date)
+    observation_changed(session, observation_id, observation, domain_moved=domain_moved)
     session.commit()
     return _response(_own(session, user, observation_id))
 
@@ -180,6 +181,6 @@ def update_observation(
 def delete_observation(observation_id: int, session: DbSession, user: CurrentUser) -> None:
     observation = _own(session, user, observation_id, lock=True)[0]
     require_own_class(session, user, observation.class_id)
-    observation_changed(session, observation_id, None, None)
+    observation_changed(session, observation_id, None)
     session.delete(observation)
     session.commit()

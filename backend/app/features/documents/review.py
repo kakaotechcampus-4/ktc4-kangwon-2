@@ -28,7 +28,7 @@ from app.features.documents.stale import document_changed
 from app.features.observations.models import Observation
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.ownership import require_own_class
-from app.shared.gates.sections import check_sections, join_facts
+from app.shared.gates.sections import check_sections, input_extras, join_facts
 
 
 def fail(code: str, message: str, fields: list[str], status: int = 409):
@@ -392,7 +392,13 @@ def reconfirm(session: Session, user: User, document_id: int, body: DocumentReco
             survivors.append((copy, copy.source_id, row.after))
     texts = [text for _, _, text in survivors]
     ids = [new_id for _, new_id, _ in survivors]
-    fields = check_sections(body.sections, texts, set(ids), stage="reconfirm")
+    fields = check_sections(
+        body.sections,
+        texts,
+        set(ids),
+        stage="reconfirm",
+        extras=input_extras(copy for copy, _, _ in survivors),
+    )
     if fields:
         fail("VALIDATION_FAILED", "입력값을 확인해주세요.", fields, 422)
 

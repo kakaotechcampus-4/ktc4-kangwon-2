@@ -3,7 +3,8 @@
 **전파는 연쇄다.** 관찰 기록을 고치면 그걸 쓴 일일 보육일지가, 그 일지를 쓴 주간 보육일지가
 `stale` 이 된다. 멈출 때까지 따라간다. 문서를 지우지 않는다 — 교사가 보고 판단한다.
 
-**판정은 사본과 원본의 문자열 비교다.** 모델이 개입하지 않는다 (3단 게이트의 2단).
+**판정은 사본과 원본의 문자열 비교다.** 관찰 기록은 사실 · 날짜 · 영역 · 상황을 본다(ADR-088).
+모델이 개입하지 않는다 (3단 게이트의 2단).
 사본은 `document_sources` 에 생성 시점 그대로 남아 있다.
 
 `stale` 을 되돌려 `false` 로 만드는 일은 여기서 하지 않는다. 교사가 다시 보는 것이 목적이라
@@ -14,11 +15,12 @@
 import datetime
 from dataclasses import dataclass
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.features.centers.models import Class
 from app.features.documents.models import Document, DocumentSource
+from app.features.observations.models import Observation
 
 
 @dataclass(frozen=True)
@@ -39,14 +41,38 @@ def _sources(center_id: int | None):
 
 
 def observation_changed(
-    session: Session, observation_id: int, fact: str | None, date: datetime.date | None
+    session: Session,
+    observation_id: int,
+    observation: Observation | None,
+    *,
+    domain_moved: bool = False,
 ) -> None:
-    """관찰 기록이 바뀌었거나(`fact`·`date`) 사라졌다(둘 다 None).
+    """관찰 기록이 바뀌었거나(`observation` 은 고친 뒤 값) 사라졌다(None).
 
-    **사본과 같은 문서는 건드리지 않는다** — 영역·상황만 고쳤으면 사실은 그대로다.
-    `class_id` · `child_id` 는 §10 이 수정을 막으므로 비교하지 않는다.
+    사본과 사실 · 날짜 · 영역 · 상황 중 하나라도 다르면 `stale` 이다 (ADR-088). 영역은
+    종이의 행을, 상황은 관찰 칸 글과 AI 입력을 바꾼다 — 확정한 글과 다른 종이가 나간다.
+
+    **영역 · 상황 사본이 없는 옛 문서(NULL, 「다시 확인」)는** 종이가 지금 원본 영역을 따른다.
+    그래서 원본 영역이 실제로 바뀌었을 때(`domain_moved`)만 `stale` 이다. 상황은 옛 종이에
+    쓰이지 않아 보지 않는다. `class_id` · `child_id` 는 §10 이 수정을 막으므로 비교하지 않는다.
     """
-    source_changed(session, "observation", observation_id, fact, date)
+    query = _sources(None).where(
+        DocumentSource.source_kind == "observation",
+        DocumentSource.source_id == observation_id,
+    )
+    if observation is not None:
+        differs = [
+            DocumentSource.text != observation.fact,
+            DocumentSource.date.is_distinct_from(observation.date),
+            and_(DocumentSource.domain.is_not(None), DocumentSource.domain != observation.domain),
+            and_(
+                DocumentSource.context.is_not(None), DocumentSource.context != observation.context
+            ),
+        ]
+        if domain_moved:
+            differs.append(DocumentSource.domain.is_(None))
+        query = query.where(or_(*differs))
+    _mark(session, set(session.scalars(query)))
 
 
 def source_changed(

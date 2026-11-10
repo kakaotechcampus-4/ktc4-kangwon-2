@@ -703,8 +703,9 @@ def test_create_document_masks_child_names_before_generation(db_session, monkeyp
     response = client.post("/api/documents", json=_create_body(klass, child, [record]))
 
     assert response.status_code == 201
-    assert "이가명" not in seen["facts"][0] and "가명" not in seen["facts"][0]
-    assert "도담" in seen["facts"][0]
+    fact = seen["facts"][0]["fact"]
+    assert "이가명" not in fact and "가명" not in fact
+    assert "도담" in fact
     # 돌아온 글은 교사에게 주기 전에 실명으로 되돌린다.
     by_heading = {s["heading"]: s["body"] for s in response.json()["sections"]}
     assert by_heading["해석"].startswith("이가명 해석")
@@ -729,7 +730,8 @@ def test_create_document_masks_other_class_child_names(db_session, monkeypatch):
     seen = {}
 
     def fake_generate(kind, masked_facts, curriculum=()):
-        seen["facts"] = masked_facts
+        # 사실마다 {fact, date, domain, context} 로 간다 (ADR-088).
+        seen["facts"] = [f["fact"] for f in masked_facts]
         return (
             "도담 해석입니다. 하람과 함께한 기록에 드러난 사실만 근거로 씁니다.",
             "도담 지원입니다. 다음 활동에서 교사가 할 방법을 적습니다.",
@@ -766,8 +768,9 @@ def test_draft_does_not_put_other_class_full_name_where_a_word_was(db_session, m
 
     def fake_generate(kind, masked_facts, curriculum=()):
         # 받은 글을 그대로 다시 싣는다 — 실제로 발급된 가명이 답에 들어가게.
+        # 사실은 {fact, date, domain, context} 로 간다 (ADR-088).
         return (
-            f"{masked_facts[0]} 하늘의 모양을 말로 표현하는 경험을 한다.",
+            f"{masked_facts[0]['fact']} 하늘의 모양을 말로 표현하는 경험을 한다.",
             "다음 바깥놀이에서 구름 그림책을 함께 보며 이야기를 이어 가면 좋을 것 같다.",
         )
 
@@ -809,7 +812,8 @@ def _capture_generation(monkeypatch, interpretation=DEFAULT_INTERPRETATION):
     seen = {}
 
     def fake_generate(kind, masked_facts, curriculum=()):
-        seen["facts"] = masked_facts
+        # 사실마다 {fact, date, domain, context} 로 간다 (ADR-088).
+        seen["facts"] = [f["fact"] for f in masked_facts]
         return interpretation, "도담 지원입니다. 다음 활동에서 교사가 할 방법을 적습니다."
 
     monkeypatch.setattr("app.features.documents.draft._generate", fake_generate)
@@ -1461,7 +1465,7 @@ def test_create_document_redrafts_from_the_latest_record_when_it_changes_meanwhi
     seen = []
 
     def generate_while_teacher_edits(kind, masked_facts, curriculum=()):
-        seen.append(list(masked_facts))
+        seen.append([f["fact"] for f in masked_facts])
         if len(seen) == 1:
             record.fact = "개미를 5분 동안 바라보았다."
             db_session.flush()

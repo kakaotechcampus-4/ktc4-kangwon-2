@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 # 있어도 직접 import 한다 — ADR-002 가 「두 번째 규칙을 완화해서 해결했다」고 정한 지점이다.
 from app.db import get_session
 from app.features.auth.models import User
-from app.features.centers.models import Child, Class
+from app.features.centers.models import Center, Child, Class
 from app.features.documents.draft import (
     KIND_LABELS,
     NAME_MASK_FAILED,
@@ -60,7 +60,7 @@ from app.features.documents.schemas import (
 )
 from app.features.documents.stale import SourceImpact, document_changed
 from app.features.documents.verify import name_table, verify_sections
-from app.features.observations.models import Observation
+from app.features.observations.models import AXES, DEFAULT_AXIS, Observation
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import (
@@ -70,7 +70,7 @@ from app.shared.auth.ownership import (
 )
 from app.shared.childCode import CallNameNeeded, SubstitutionError
 from app.shared.gates.judge import JUDGED_KINDS, MAX_SENTENCES, TooLong
-from app.shared.gates.sections import check_sections, join_facts
+from app.shared.gates.sections import check_sections, input_extras, join_facts
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -171,18 +171,35 @@ def _sources(session: Session, document_id: int) -> list[DocumentSource]:
 
 
 def _observation_domains(session: Session, sources: list[DocumentSource]) -> dict[int, str]:
-    """관찰 기록 근거의 영역. 사본에 두지 않고 원본에서 읽는다.
+    """관찰 기록 근거의 영역. **사본에 있으면 사본, 없으면 지금 원본이다** (ADR-088).
 
-    영역만 고치면 사실은 그대로라 `stale` 이 아니다(stale.py). 그러니 사본에 남겨 둘 이유가
-    없고, 교사가 나중에 고친 영역이 종이에 그대로 나가는 게 맞다. 원본이 사라졌으면 빠진다.
+    사본이 없는(NULL) 것은 이 칸이 생기기 전에 만든 문서 중 채우기 규칙이 확실하지 않다고 본
+    「다시 확인」 행이다. 그때는 예전처럼 원본을 읽는다. 원본도 사라졌으면 빠진다.
     """
-    ids = [s.source_id for s in sources if s.source_kind == "observation"]
+    known = {
+        s.source_id: s.domain
+        for s in sources
+        if s.source_kind == "observation" and s.domain is not None
+    }
+    ids = [s.source_id for s in sources if s.source_kind == "observation" and s.domain is None]
     if not ids:
-        return {}
+        return known
     rows = session.execute(
         select(Observation.id, Observation.domain).where(Observation.id.in_(ids))
     )
-    return {observation_id: domain for observation_id, domain in rows}
+    return {observation_id: domain for observation_id, domain in rows} | known
+
+
+def center_axis(session: Session, class_id: int) -> str:
+    """그 반의 원이 **지금** 쓰는 관찰 영역 축."""
+    center_id = select(Class.center_id).where(Class.id == class_id).scalar_subquery()
+    axis = session.scalar(select(Center.observation_axis).where(Center.id == center_id))
+    return axis or DEFAULT_AXIS
+
+
+def document_axis(session: Session, doc: Document) -> str:
+    """문서의 영역 축. 만들 때 찍은 사본이 없으면(옛 문서) 원의 지금 축이다 (ADR-088)."""
+    return doc.observation_axis or center_axis(session, doc.class_id)
 
 
 def _period(start: date, end: date) -> str:
@@ -220,6 +237,7 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
         status=doc.status,
         origin=doc.origin,
         stale=doc.stale,
+        observation_axis=doc.observation_axis,
         sections=[
             DocumentSectionItem(heading=s.heading, body=s.body, source_ids=s.source_ids)
             for s in sections
@@ -227,8 +245,10 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
         sources=[
             DocumentSourceItem(
                 id=s.source_id,
+                source_kind=s.source_kind,
                 date=s.date,
                 domain=domains.get(s.source_id) if s.source_kind == "observation" else None,
+                context=s.context,
                 text=s.text,
                 class_id=s.class_id,
                 child_id=s.child_id,
@@ -432,7 +452,12 @@ def _sources_changed(session: Session, copies: list[DocumentSource]) -> bool:
             same = row is not None and (row.fact_text(), row.date) == (copy.text, copy.date)
         elif copy.source_kind == "observation":
             row = observations.get(copy.source_id)
-            same = row is not None and (row.fact, row.date) == (copy.text, copy.date)
+            same = row is not None and (row.fact, row.date, row.domain, row.context) == (
+                copy.text,
+                copy.date,
+                copy.domain,
+                copy.context,
+            )
         else:
             row = documents.get(copy.source_id)
             fact = session.scalar(
@@ -496,6 +521,8 @@ def _create_document(
     copies: list[DocumentSource] = []
     # 관찰 기록에 교사가 고른 누리과정 영역. 관찰일지 배움 칸을 그 영역의 내용에 잇는다.
     domains: set[str] = set()
+    # 관찰 기록 근거 문서만 영역 축을 가진다 (ADR-088).
+    axis: str | None = None
     if body.kind != "weeklyLog" and body.source_kind != "dailyLog":
         # 나머지 종류는 근거가 하나로 정해져 있다. 보낸 값이 반영되지 않는데 받으면
         # 교사는 고른 대로 만들어진 줄 안다.
@@ -617,6 +644,8 @@ def _create_document(
                 )
             )
     else:
+        # 문서는 원이 지금 쓰는 축으로 만든다. 종이 양식이 축마다 다르다 (ADR-088).
+        axis = center_axis(session, body.class_id)
         by_id = {
             o.id: o
             for o in session.scalars(
@@ -632,6 +661,8 @@ def _create_document(
                 or source.class_id != body.class_id
                 or (body.child_id is not None and source.child_id != body.child_id)
                 or not (body.start <= source.date <= body.end)
+                # 원이 축을 바꾸기 전에 쓴 기록이다. 이 문서의 양식에 그 영역 줄이 없다.
+                or source.domain not in AXES[axis]
             ):
                 fields.append(f"sources.{source_id}")
                 continue
@@ -643,6 +674,8 @@ def _create_document(
                     class_id=source.class_id,
                     child_id=source.child_id,
                     date=source.date,
+                    domain=source.domain,
+                    context=source.context,
                     text=source.fact,
                 )
             )
@@ -652,8 +685,11 @@ def _create_document(
     facts = [c.text for c in copies]
     try:
         # 교사는 옆 반 아이 이름도 적는다. 검증 · 계획안 메모와 같게 원 전체 아이로 표를 만든다.
-        table = name_table(session, body.class_id, "\n".join(facts))
-        drafted = draft_sections(body.kind, facts, body.source_ids, table, sorted(domains))
+        # 상황(`context`)도 모델로 나간다 — 표를 만드는 글에 같이 넣는다(ADR-088).
+        table = name_table(
+            session, body.class_id, "\n".join([*facts, *(c.context or "" for c in copies)])
+        )
+        drafted = draft_sections(body.kind, copies, body.source_ids, table, sorted(domains))
     except CallNameNeeded as exc:
         # 교사가 고칠 수 있다 — 부르는 이름을 적거나 낱말을 바꾼다. 다시 시도해도 안 된다.
         raise _error(
@@ -683,7 +719,9 @@ def _create_document(
             for d in drafted
         ),
     ]
-    if check_sections(sections, facts, set(body.source_ids), stage="generate"):
+    if check_sections(
+        sections, facts, set(body.source_ids), stage="generate", extras=input_extras(copies)
+    ):
         raise _error(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "GENERATION_FAILED",
@@ -730,6 +768,7 @@ def _create_document(
         generation_rule_id=rule_id(body.kind),
         generation_rule_version=rule_version(),
         review_note="",
+        observation_axis=axis,
     )
     session.add(doc)
     session.flush()
@@ -797,7 +836,11 @@ def update_document(
             raise _invalid(["sections"])
         sources = _sources(session, document_id)
         fields = check_sections(
-            body.sections, [s.text for s in sources], {s.source_id for s in sources}, stage="edit"
+            body.sections,
+            [s.text for s in sources],
+            {s.source_id for s in sources},
+            stage="edit",
+            extras=input_extras(sources),
         )
         if fields:
             raise _invalid(fields)
@@ -942,7 +985,11 @@ def verify_document(
             session.scalars(select(DocumentSection).where(DocumentSection.document_id == doc.id))
         )
     fields = check_sections(
-        sections, [s.text for s in sources], {s.source_id for s in sources}, stage="verify"
+        sections,
+        [s.text for s in sources],
+        {s.source_id for s in sources},
+        stage="verify",
+        extras=input_extras(sources),
     )
     if fields:
         # 1 · 2단에 걸린 글은 3단에 보내지 않는다 (CLAUDE.md 「3단 게이트」 — 순서를 바꾸지 않는다).
@@ -1042,7 +1089,11 @@ def confirm_document(
             session.scalars(select(DocumentSection).where(DocumentSection.document_id == doc.id))
         )
         fields = check_sections(
-            stored, [s.text for s in sources], {s.source_id for s in sources}, stage="confirm"
+            stored,
+            [s.text for s in sources],
+            {s.source_id for s in sources},
+            stage="confirm",
+            extras=input_extras(sources),
         )
         if fields:
             raise _invalid(fields)
@@ -1127,11 +1178,15 @@ def refresh_document(
     # 전부 확인한 뒤에 한꺼번에 바꾼다. 도중에 거절하면 사본이 반쯤 바뀐 채 남지 않는다.
     # 사본 목록은 문서 잠금 아래에서 다시 읽는다 — 근거를 바꾸는 길은 전부 이 잠금을 지난다.
     sources = _sources(session, document_id)
-    # 사본 순서 그대로 (텍스트, 날짜, 상태) 이거나 사라졌으면 None 이다.
-    fresh: list[tuple[str, date, str | None] | None] = []
+    # 사본 순서 그대로 (텍스트, 날짜, 상태, 영역, 상황) 이거나 사라졌으면 None 이다.
+    fresh: list[tuple[str, date, str | None, str | None, str | None] | None] = []
     missing: list[str] = []
     missing_ids: set[int] = set()
     unconfirmed: list[str] = []
+    # 영역 축은 문서가 만들 때 찍은 것이다. 옛 문서(NULL)는 원의 지금 축으로 정해 찍는다.
+    observed = any(c.source_kind == "observation" for c in sources)
+    axis = document_axis(session, doc) if observed else None
+    off_axis: list[str] = []
     for copy in sources:
         field = f"sources.{copy.source_id}"
         if copy.source_kind == "observation":
@@ -1143,7 +1198,18 @@ def refresh_document(
                 missing_ids.add(copy.source_id)
                 fresh.append(None)
             else:
-                fresh.append((observation.fact, observation.date, None))
+                if observation.domain not in AXES[axis]:
+                    # 다른 축의 영역으로 옮긴 기록이다. 이 문서의 양식에 그 줄이 없다 (ADR-088).
+                    off_axis.append(field)
+                fresh.append(
+                    (
+                        observation.fact,
+                        observation.date,
+                        None,
+                        observation.domain,
+                        observation.context,
+                    )
+                )
             continue
         if copy.source_kind == "routine":
             routine = session.get(RoutineRecord, copy.source_id)
@@ -1158,7 +1224,7 @@ def refresh_document(
                 missing_ids.add(copy.source_id)
                 fresh.append(None)
             else:
-                fresh.append((routine.fact_text(), routine.date, None))
+                fresh.append((routine.fact_text(), routine.date, None, None, None))
             continue
         source = session.get(Document, copy.source_id)
         fact = session.scalar(
@@ -1175,7 +1241,7 @@ def refresh_document(
             unconfirmed.append(field)
             fresh.append(None)
         else:
-            fresh.append((fact, source.start_date, source.status))
+            fresh.append((fact, source.start_date, source.status, None, None))
     plan = None
     # **살아 있는 근거를 고르면 검사한다** (#180 수린님 리뷰). 전에는 `missing and ...` 이라
     # 사라진 근거가 없으면 `resolutions` 를 통째로 무시하고 200 을 냈다. 교사가 고른
@@ -1223,8 +1289,16 @@ def refresh_document(
             "근거 일일 보육일지를 먼저 확정해주세요.",
             unconfirmed,
         )
+    if off_axis:
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "GATE_BLOCKED",
+            "이 문서와 다른 관찰 영역 축의 기록이 있어 다시 불러올 수 없습니다. "
+            "지금 영역으로 문서를 새로 만들어주세요.",
+            off_axis,
+        )
 
-    survivors: list[tuple[DocumentSource, int, str, date, str | None]] = []
+    survivors: list[tuple[DocumentSource, int, str, date, str | None, str | None, str | None]] = []
     dropped: list[DocumentSource] = []
     for copy, current in zip(sources, fresh, strict=True):
         pick = plan.get(copy.source_id) if plan else None
@@ -1232,7 +1306,7 @@ def refresh_document(
             if pick is None:
                 dropped.append(copy)
             else:
-                survivors.append((copy, pick.id, pick.fact_text(), pick.date, None))
+                survivors.append((copy, pick.id, pick.fact_text(), pick.date, None, None, None))
             continue
         assert current is not None
         survivors.append((copy, copy.source_id, *current))
@@ -1241,8 +1315,9 @@ def refresh_document(
     # 같은 트랜잭션이라 아래가 실패하면 흔적도 남지 않는다. 문서는 DRAFT 그대로다.
     for entry in resolution_trail(sources, plan) if plan else []:
         session.add(DocumentSourceResolution(document_id=doc.id, actor_user_id=user.id, **entry))
-    for copy, new_id, text, day, source_status in survivors:
+    for copy, new_id, text, day, source_status, domain, context in survivors:
         copy.source_id, copy.text, copy.date, copy.source_status = new_id, text, day, source_status
+        copy.domain, copy.context = domain, context
     if plan:
         for copy in dropped:
             session.delete(copy)
@@ -1261,6 +1336,8 @@ def refresh_document(
             .where(DocumentSection.document_id == doc.id, DocumentSection.heading == "사실")
             .values(body=join_facts([copy.text for copy, *_ in survivors]))
         )
+    if axis is not None:
+        doc.observation_axis = axis
     doc.stale = False
     doc.updated_at = datetime.now(UTC)
     session.commit()
