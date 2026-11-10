@@ -22,6 +22,7 @@ from app.features.documents.router import router as documents_router
 from app.features.evaluation.router import router as evaluation_router
 from app.features.forms.router import center_router as center_forms_router
 from app.features.forms.router import router as forms_router
+from app.features.notifications.router import router as notifications_router
 from app.features.observations.router import router as observations_router
 from app.features.plans.annual_extract import router as annual_extract_router
 from app.features.plans.annual_import import router as annual_import_router
@@ -193,6 +194,7 @@ app.include_router(classes_router, prefix="/api", dependencies=_authenticated)
 app.include_router(daycares_router, prefix="/api", dependencies=_authenticated)
 app.include_router(children_router, prefix="/api", dependencies=_authenticated)
 app.include_router(class_access_router, prefix="/api", dependencies=_authenticated)
+app.include_router(notifications_router, prefix="/api", dependencies=_authenticated)
 app.include_router(documents_router, prefix="/api", dependencies=_authenticated)
 app.include_router(documents_export_router, prefix="/api", dependencies=_authenticated)
 app.include_router(documents_rewrite_router, prefix="/api", dependencies=_authenticated)
