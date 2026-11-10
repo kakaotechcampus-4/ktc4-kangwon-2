@@ -768,8 +768,9 @@ def test_draft_does_not_put_other_class_full_name_where_a_word_was(db_session, m
 
     def fake_generate(kind, masked_facts, curriculum=()):
         # 받은 글을 그대로 다시 싣는다 — 실제로 발급된 가명이 답에 들어가게.
+        # 사실은 {fact, date, domain, context} 로 간다 (ADR-088).
         return (
-            f"{masked_facts[0]} 하늘의 모양을 말로 표현하는 경험을 한다.",
+            f"{masked_facts[0]['fact']} 하늘의 모양을 말로 표현하는 경험을 한다.",
             "다음 바깥놀이에서 구름 그림책을 함께 보며 이야기를 이어 가면 좋을 것 같다.",
         )
 

@@ -167,7 +167,8 @@ def draft_sections(
     except SubstitutionError as exc:
         raise DraftFailed(NAME_MASK_FAILED) from exc
 
-    original = "\n".join(facts)
+    # 가명을 되돌릴 때 교사가 적은 표기를 찾는 원문. 표를 만든 글처럼 사실 · 상황을 둘 다 넣는다.
+    original = "\n".join([*(s.text for s in sources), *(s.context or "" for s in sources)])
 
     def restore(text: str) -> str:
         return text if table is None else unmask_as_written(text, table, original)
