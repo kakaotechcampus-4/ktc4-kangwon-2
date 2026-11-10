@@ -306,7 +306,7 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
   const response = page.waitForResponse(
     (r) => r.url().endsWith("/api/documents") && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "오늘 일지 만들기 →", exact: true }).click();
+  await page.getByRole("button", { name: /^(오늘|이날) 일지 만들기 →$/ }).click();
   const generated = await response;
   expect(generated.status()).toBe(201);
   const created = await generated.json();

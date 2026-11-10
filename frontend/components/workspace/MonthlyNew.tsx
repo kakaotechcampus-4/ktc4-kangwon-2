@@ -623,8 +623,9 @@ export default function MonthlyNew({
         <GenerationRing
           // 놀이 중심형은 활동 후보가 8개씩으로 늘어(ADR-065) 예전 기억을 버리려고 kind 를 바꿨다.
           kind={play ? "monthly:PLAY_PROJECT:v0.3" : "monthly:MONTHLY_THEME"}
-          // Sol 실측: 주제형 28초(2026-10-31) · 38초, 놀이 중심형(후보 8개씩) 55.5 · 51.6 · 55.0초(2026-11-06).
-          expect={play ? 55 : 35}
+          // 배포 서버 실측(2026-11-10, 10회씩, docs/evaluation/runs/2026-11-10-plan-repeat-after):
+          // 주제형 중앙 17.5 · 최대 18.5초, 놀이 중심형 중앙 48.3 · 최대 52.9초.
+          expect={play ? 55 : 20}
           title={`${month}월 월간계획안을 만들고 있어요`}
           done={done}
           steps={

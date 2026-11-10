@@ -598,12 +598,15 @@ function page(
     confirm = true,
     extras = { plan: null, observations: [] },
     yesterday = null,
+    journalDoc = null,
   } = {},
 ) {
   const confirms = browser({ rooms, primaryClassId, search, confirm });
   const pushed = [];
   /** 「오늘 일지 만들기」가 넘긴 근거 목록. 화면을 떠나지 않으므로 `pushed` 로는 못 본다. */
   const journals = [];
+  /** 「일지 열기」가 연 그날 일지 id. */
+  const opens = [];
 
   const app = host();
   let mutations = routineMutationBarriers.get(api);
@@ -678,7 +681,8 @@ function page(
       default: "daily-journal",
       DailyJournalEditor: "daily-journal-editor",
       useDailyJournal: () => ({
-        doc: null,
+        doc: journalDoc,
+        open: (id) => void opens.push(id),
         busy: false,
         error: "",
         yesterday,
@@ -724,6 +728,7 @@ function page(
     confirms,
     pushed,
     journals,
+    opens,
     unmount: app.cleanup,
     flush: view.flush,
     render: view.render,
@@ -1142,6 +1147,27 @@ test("올리기가 실패하면 일지를 만들지 않고 적은 글자를 그�
   assert.equal(view.dones()[0].props.value, "블록을 쌓았다");
 });
 
+test("그날 일지가 이미 있으면 「일지 열기」로 그 일지를 연다 — 새로 만들지 않는다(409)", async (t) => {
+  const api = recorder({ rows: [row({ id: 1 })] });
+  const doc = { id: "document:7", start: TODAY, status: "draft", stale: false };
+  const view = page(t, api.api, { journalDoc: doc });
+  await view.flush();
+  assert.equal(view.button("일지 만들기"), undefined, "있는 날에는 만들기 단추가 없다");
+  view.button("일지 열기").props.onClick();
+  await view.flush();
+  assert.deepEqual(view.opens, ["document:7"]);
+  assert.deepEqual(view.journals, [], "새로 만들지 않는다");
+  assert.deepEqual(api.only("draft"), []);
+});
+
+test("지난 날에는 「오늘」이라 하지 않는다 — 「이날 일지 만들기」", async (t) => {
+  const api = recorder({ rows: [row({ id: 1, date: "2026-10-02" })] });
+  const view = page(t, api.api, { search: "?date=2026-10-02&class_id=3" });
+  await view.flush();
+  assert.ok(view.button("이날 일지 만들기 →"));
+  assert.equal(view.button("오늘 일지 만들기"), undefined);
+});
+
 test("두 번 눌러도 한 번만 올리고 한 번만 만든다", async (t) => {
   const api = recorder();
   const view = page(t, api.api);
@@ -1154,6 +1180,47 @@ test("두 번 눌러도 한 번만 올리고 한 번만 만든다", async (t) =>
   await view.flush();
   assert.equal(api.only("draft").length, 1);
   assert.equal(view.journals.length, 1);
+});
+
+test("올리는 사이 멈춤 저장 시간이 지나도 옛 줄로 임시본을 덮지 않는다 — 같은 일과를 두 번 만들지 않는다", async (t) => {
+  const api = recorder();
+  const save = api.api.saveDraft;
+  let release = () => {};
+  api.api.saveDraft = (input, options) =>
+    input.promote && !options?.keepalive
+      ? new Promise((resolve) => {
+          release = () => resolve(save(input, options));
+        })
+      : save(input, options);
+  const view = page(t, api.api);
+  timers(t);
+  await view.flush();
+  view.type(view.dones()[0], "블록을 쌓았다");
+  await view.flush();
+  view.button("오늘 일지 만들기").props.onClick();
+  await view.flush();
+  // 올리는 요청이 도는 사이 멈춤 저장 시간이 지난다. 화면 줄은 아직 일과 번호가 없다.
+  t.mock.timers.tick(AUTOSAVE_MS);
+  await view.flush();
+  release();
+  await settle();
+  await settle();
+
+  assert.deepEqual(
+    api.only("draft").map((c) => c.input.promote),
+    [true],
+    "올린 글을 임시본으로 또 보내지 않는다",
+  );
+  const [draft] = [...api.drafts.values()];
+  assert.equal(draft.promoted, true);
+  assert.ok(draft.rows.every((r) => r.id !== null || !r.execution));
+  // 다시 열고 떠나도 같은 일과를 또 만들지 않는다.
+  view.unmount();
+  const again = page(t, api.api);
+  await again.flush();
+  again.unmount();
+  await settle();
+  assert.equal(api.rows().filter((r) => r.execution === "블록을 쌓았다").length, 1);
 });
 
 // ── 늦게 온 응답 (기존 보호 장치 회귀) ─────────────────────────────────────
@@ -1336,6 +1403,44 @@ test("「활동」 줄의 회색 후보를 누르면 실제로 한 것에 넣고
   assert.equal(view.dones()[0].props.value, "낙엽 모자이크");
   assert.equal(view.button("낙엽 모자이크 했어요"), undefined, "넣은 후보는 다시 안 뜬다");
   assert.deepEqual(api.only("draft")[0].input.rows[0].activities, ["낙엽 모자이크"]);
+});
+
+test("맞다고 한 활동은 서버가 받는 만큼만 — 이름은 50자로 자르고, 한 줄 11번째는 넣지 않고 알린다", async (t) => {
+  const long = "가".repeat(60);
+  const ten = Array.from({ length: 10 }, (_, i) => `활동${i + 1}`);
+  const api = recorder({
+    rows: [
+      row({ id: 1, name: "활동", execution: "" }),
+      row({
+        id: 2,
+        name: "활동",
+        position: 3,
+        start: "11:00:00",
+        end: "11:30:00",
+        execution: "",
+        activities: ten,
+      }),
+    ],
+  });
+  const plan = { group: [long, "열한째"], special: [], all: [] };
+  const view = page(t, api.api, { extras: { plan, observations: [] } });
+  timers(t);
+  await view.flush();
+
+  view.rowButton(0, `${long} 했어요`).props.onClick();
+  await pause(t, view);
+  const sent = api.only("draft").at(-1).input.rows;
+  assert.deepEqual(sent[0].activities, ["가".repeat(50)], "서버의 50자 칸에 맞춘다");
+  assert.equal(sent[0].activities[0].length, 50);
+  assert.equal(view.dones()[0].props.value, long, "실제로 한 것에는 다 넣는다");
+  assert.equal(view.rowButton(0, `${long} 했어요`), undefined, "넣은 후보는 다시 안 뜬다");
+
+  const before = api.only("draft").length;
+  view.rowButton(1, "열한째 했어요").props.onClick();
+  await pause(t, view);
+  assert.equal(api.only("draft").length, before, "바뀐 게 없어 보내지 않는다");
+  assert.equal(view.dones()[1].props.value, "");
+  assert.match(view.text(), /한 줄에 10개까지/);
 });
 
 test("그 밖의 줄은 「계획 보기」로 골라 넣는다", async (t) => {

@@ -1109,6 +1109,37 @@ def test_확정본_종이는_확정_때_박은_반영과_활동을_싣는다(db_
     assert (copy.reflected, copy.activities) == (None, None)
 
 
+def test_확정본_종이의_반영_표기는_확정_때_원_설정이다_뒤에_바꿔도_그대로(db_session, mine):
+    """원이 「(반영)」을 「(놀이반영)」으로 바꿔도 낸 확정본 종이는 그대로다 (ADR-086 결정 7)."""
+    klass, _ = mine
+    center = db_session.get(Center, klass.center_id)
+    center.reflect_mark = "(반영)"
+    outdoor = _routine(
+        db_session,
+        klass,
+        position=0,
+        start=None,
+        end=None,
+        name="바깥놀이",
+        execution="둑을 쌓았다.",
+    )
+    outdoor.reflected = True
+    doc = _daily_log(db_session, klass, [outdoor], status="DRAFT")
+    assert (
+        client.post(f"/api/documents/{doc.id}/confirm", json={"checks": CHECKS}).status_code == 200
+    )
+    assert db_session.get(Document, doc.id).reflect_mark == "(반영)"
+
+    center.reflect_mark = "(놀이반영)"
+    db_session.flush()
+    _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+    assert rows[1][3] == "(반영) 둑을 쌓았다."
+
+    # 확정을 풀면 박은 표기도 푼다 — 초안 종이는 지금 원 설정을 쓴다.
+    assert client.post(f"/api/documents/{doc.id}/unconfirm").status_code == 200
+    assert db_session.get(Document, doc.id).reflect_mark is None
+
+
 def test_확정본_종이는_확정_때_박은_일과_이름_시간_계획_순서를_싣는다(db_session, mine):
     """확정본 종이는 확정 뒤 어느 칸도 바뀌지 않는다 — 일과 기록 원본을 고쳐도 사본을 읽는다."""
     klass, _ = mine

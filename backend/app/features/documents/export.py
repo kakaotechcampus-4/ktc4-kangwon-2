@@ -26,8 +26,8 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.features.centers.models import Center, Class
 from app.features.documents.models import Document, DocumentSection, DocumentSource
+from app.features.documents.paper import current_reflect_mark
 from app.features.documents.router import (
     DbSession,
     _error,
@@ -255,10 +255,12 @@ def _daily_log(
             ["source_kind"],
         )
     # 어제 지원을 반영한 줄은 원이 고른 표기를 앞에 붙인다. 표시는 사실 글에 없다 (ADR-086).
-    mark = session.scalar(
-        select(Center.reflect_mark)
-        .where(Center.id == Class.center_id)
-        .where(Class.id == doc.class_id)
+    # 확정본은 확정 때 박은 표기다 — 원 설정을 바꿔도 확정본 종이는 그대로다(결정 7).
+    # NULL 은 초안이거나 이 칸이 생기기 전에 확정한 옛 문서라 지금 원 설정을 읽는다.
+    mark = (
+        doc.reflect_mark
+        if doc.reflect_mark is not None
+        else current_reflect_mark(session, doc.class_id)
     )
     routines = _stamped_lines(sources) or _routine_lines(session, doc, sources)
     rows = [

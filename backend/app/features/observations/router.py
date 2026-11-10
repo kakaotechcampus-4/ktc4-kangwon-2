@@ -156,6 +156,8 @@ def suggest_domain(
 def check_missing(observation_id: int, session: DbSession, user: CurrentUser) -> MissingResponse:
     """저장한 기록에 상황 · 행동 · 아이 반응이 있는지 본다(ADR-082). 기록은 건드리지 않는다."""
     observation = _own(session, user, observation_id)[0]
+    # 같은 원이라도 남의 반 기록으로 AI 를 부르지 못하게 반 권한을 본다. 읽기라 승인받은 반은 된다.
+    require_own_class(session, user, observation.class_id, read_only=True)
     return MissingResponse(
         missing=assist.missing_parts(
             session, observation.class_id, observation.fact, observation.context

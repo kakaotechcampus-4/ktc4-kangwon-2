@@ -4,7 +4,6 @@ import hashlib
 import json
 import re
 from dataclasses import FrozenInstanceError
-from pathlib import Path
 
 import pytest
 
@@ -19,7 +18,7 @@ from ssuksak.planning.domain.provenance import EvidenceSourceType
 from ssuksak.planning.evidence.models import ExtractionQuality, ReusePolicy
 from ssuksak.planning.evidence.ports import InstitutionEvidenceRepository
 
-EXPECTED_FILE_SHA = "3bbe06f8d7c6ae317d3cb7bc1649a4b6b3585d359716cbd8aff0beb66dccf569"
+EXPECTED_FILE_SHA = "d680b955ce8efb39b0cd42107e2424af32c54dbf807b525ee5a7242657a5e562"
 EXPECTED_CONTENT_SHA = "4e01195eea06f28c71548b7c091ad8223b322b155e54f2bcbab957132f9cd7cd"
 
 
@@ -35,7 +34,7 @@ def store():
 
 def test_approved_artifact_bytes_and_lf_are_frozen():
     raw = DEFAULT_EVIDENCE_STORE_PATH.read_bytes()
-    assert len(raw) == 12_506_326
+    assert len(raw) == 12_506_806
     assert b"\r" not in raw
     assert hashlib.sha256(raw).hexdigest() == EXPECTED_FILE_SHA
 
@@ -47,6 +46,38 @@ def test_real_store_contract_and_counts(store, payload):
     assert payload["source_text_layer_count"] == 326
     assert payload["source_image_only_count"] == 23
     assert store.content_sha256 == EXPECTED_CONTENT_SHA
+
+
+def test_removal_reasons_cover_ids_and_followup_review_preserves_original_audit(payload):
+    build = payload["build"]
+    removed = set(build["removed_record_ids"])
+    assert len(removed) == len(build["removed_record_ids"]) == 43
+    assert set(build["removal_reasons"]) == removed
+    original = build["privacy_review"]
+    assert (
+        original["reviewed_records"],
+        original["removed_records"],
+        original["kept_records"],
+    ) == (74, 42, 32)
+    assert (
+        original["decisions_sha256"]
+        == "ab6810e6173d276fdde506b31e64fdd4ab3226e43a701a15c673e424335c64e9"
+    )
+    ids = [
+        record_id
+        for review in build["privacy_review_addenda"]
+        for record_id in review["removed_record_ids"]
+    ]
+    assert len(ids) == len(set(ids)) == 1
+    assert set(ids) <= removed
+    assert original["removed_records"] + len(ids) == len(removed)
+    for review in build["privacy_review_addenda"]:
+        assert review["removed_records"] == len(review["removed_record_ids"])
+        assert review["decision_ref"] and review["source_commit"] and review["reviewer_id"]
+        assert all(
+            build["removal_reasons"][record_id] == review["reason_code"]
+            for record_id in review["removed_record_ids"]
+        )
 
 
 def test_new_repositories_share_one_loaded_store(store):
@@ -66,8 +97,12 @@ def test_shipped_data_carries_only_pseudonymous_institution_fields(payload):
     """ADR-079: 다시 빌드해도 실명 · 유형 · 실명 경로가 data 에 돌아오지 않는다."""
     path = re.compile(r"references/samples/[^/]+/([0-9a-f]{12})\.pdf")
     for record in payload["records"]:
-        assert re.fullmatch(r"inst_\d{3}", record.get("institution_id", "inst_000")), record["record_id"]
-        assert path.fullmatch(record["source_path"])[1] == record["source_sha256"][:12], record["record_id"]
+        assert re.fullmatch(r"inst_\d{3}", record.get("institution_id", "inst_000")), record[
+            "record_id"
+        ]
+        assert path.fullmatch(record["source_path"])[1] == record["source_sha256"][:12], record[
+            "record_id"
+        ]
     for source in payload["source_hash_manifest"]:
         assert path.fullmatch(source["path"])[1] == source["sha256"][:12], source["path"]
     for data_file in DEFAULT_EVIDENCE_STORE_PATH.parents[1].rglob("*.json"):
@@ -108,7 +143,9 @@ def test_content_pin_is_enforced(payload):
         ({}, False),
     ],
 )
-def test_loader_accepts_supported_store_versions_and_keeps_the_one_read(payload, version, supported):
+def test_loader_accepts_supported_store_versions_and_keeps_the_one_read(
+    payload, version, supported
+):
     altered = dict(payload)
     altered["ingestion_version"] = version
     altered["build"] = {"content_sha256": evidence_content_sha256(altered)}

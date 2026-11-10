@@ -34,7 +34,9 @@ from ..venue_policy import VENUE_GUIDANCE, VENUE_POLICY_TAG, venue_memo
 
 # v7 (ADR-077, 2026-11-09): per-candidate Rule hints (play_seeds); periods run in parallel, so
 # the first call carries no other period's plays.
-PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v7" + VENUE_POLICY_TAG
+# v8 (ADR-090, 2026-11-10): plays are not split or levelled by age; ages only screen out
+# materials · ways of playing unsafe or unsuitable for that age.
+PLAY_PROJECT_PROMPT_VERSION = "play-project-planner-v8" + VENUE_POLICY_TAG
 LEARNING_MIN, LEARNING_MAX = 2, 3  # 2026-10-24 decision
 TEXT_FIELDS = ("play_name", "materials", "support_direction")
 
@@ -45,9 +47,11 @@ SYSTEM_PROMPT = (
     "rows 는 교사가 골라 쓸 놀이 후보다 — 모두 서로 다른 놀이로 쓴다. "
     "원마다 갖춘 자료가 다르므로 후보마다 필요한 자료의 종류가 서로 다양하게 한다. "
     "avoid_play_names 는 같은 연간의 다른 시기에 이미 있는 놀이다 — 그 놀이와 같거나 소재 · 놀이 방식이 비슷한 놀이는 쓰지 않는다. "
+    "놀이는 유아의 관심에서 시작하므로 연령에 따라 놀이를 나누거나 놀이의 수준 · 표현을 달리 쓰지 않는다 — "
+    "ages 는 그 연령 유아에게 위험하거나 맞지 않는 재료 · 놀이 방식을 쓰지 않는 데만 참고한다. "
     # 2026-10-24 decision: tone rules measured from the reference yearly plan; no reference
     # sentence is sent as an example.
-    "play_name 은 그 시기 · 연령 유아의 호기심이 떠오르는 놀이 이름이다 — 유아에게 말을 거는 해요체 · 감탄 · 질문으로 "
+    "play_name 은 그 시기 유아의 호기심이 떠오르는 놀이 이름이다 — 유아에게 말을 거는 해요체 · 감탄 · 질문으로 "
     "10~25자 안팎으로 쓰고, 후보 중 여러 개에는 살랑살랑 · 보글보글 같은 의성어 · 의태어를 넣는다. "
     "필요하면 「~ 놀이」 「~ 구성하기」처럼 놀이 종류를 끝에 붙인다. "
     # v5 (2026-10-25 decision): materials name what to prepare. Not a banned-word list — an exact

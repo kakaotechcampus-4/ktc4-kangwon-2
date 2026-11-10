@@ -104,6 +104,14 @@ class Document(Base):
             "NULL 은 초안이거나 이 칸이 생기기 전에 확정한 옛 문서다(지금 값을 읽는다)"
         ),
     )
+    reflect_mark: Mapped[str | None] = mapped_column(
+        String(10),
+        comment=(
+            "일일 보육일지를 확정할 때 원이 쓰던 「반영」 표기(ADR-086 결정 7). "
+            "확정본 종이는 이 값을 쓴다 — 확정 뒤 원 설정을 바꿔도 그대로다. "
+            "NULL 은 초안이거나 이 칸이 생기기 전에 확정한 옛 문서다(지금 원 설정을 읽는다)"
+        ),
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

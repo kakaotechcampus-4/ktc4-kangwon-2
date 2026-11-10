@@ -16,7 +16,7 @@ from typing import Protocol
 
 from ssuksak.adapters.v1_curriculum import v1_curriculum_catalog
 
-from app.shared.childCode import NameTable, SubstitutionError, mask, unmask
+from app.shared.childCode import NameTable, SubstitutionError, mask, unmask_as_written
 from app.shared.llm import LlmFailed, LlmUnavailable, complete_json, is_mock
 
 # 문서의 generation.rule_version 으로 남는다. `_generate` 의 만드는 방식이 바뀌면 올린다.
@@ -156,7 +156,8 @@ def draft_sections(
     - 상황(`context`)에도 이름이 들어올 수 있어 사실과 같이 가린다.
       표를 만들 때도 상황을 같이 넣는다.
     `domains` 는 관찰 기록에 교사가 고른 누리과정 영역이다. 관찰일지 배움 칸의 근거가 된다.
-    `examples` 는 아이가 안 나오는 말투 예시다(`style.pick_examples` 가 이름 있는 문장을 이미 뺐다).
+    `examples` 는 아이가 안 나오는 말투 예시다(`style.pick_examples` 가 가명표로 아이가 나오는
+    문장을 이미 뺐다). 그래도 사실과 같은 표로 한 번 더 가린다.
     """
 
     def hide(text: str) -> str:
@@ -172,11 +173,16 @@ def draft_sections(
             }
             for s in sources
         ]
+        # 예시는 아이가 안 나오는 문장만 왔지만(style.py), 사실과 같은 표로 한 번 더 가린다.
+        examples = [hide(e) for e in examples]
     except SubstitutionError as exc:
         raise DraftFailed(NAME_MASK_FAILED) from exc
 
+    # 가명을 되돌릴 때 교사가 적은 표기를 찾는 원문. 표를 만든 글처럼 사실 · 상황을 둘 다 넣는다.
+    original = "\n".join([*(s.text for s in sources), *(s.context or "" for s in sources)])
+
     def restore(text: str) -> str:
-        return text if table is None else unmask(text, table)
+        return text if table is None else unmask_as_written(text, table, original)
 
     curriculum = _curriculum_for(domains) if kind == "observation" else []
     interpretation, support = _generate(kind, masked, curriculum, examples)

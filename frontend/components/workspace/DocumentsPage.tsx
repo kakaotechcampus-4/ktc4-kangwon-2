@@ -583,13 +583,16 @@ export default function DocumentsPage() {
       ? `/routines${routinesQuery(entry.classId, start)}`
       : routinesPath(classId, start);
 
+  // 편집기에는 지금 연 문서에 묶인 작업을 준다. 「저장하고 반영」 사이 다른 문서를 열어도
+  // 뒤 작업이 새 문서로 나가지 않는다.
+  const pinned = selection.pin();
   const serverActions = serverCurrent
     ? {
         stale: serverCurrent.stale,
         pending: chosen.pending !== "",
-        reload: selection.reload,
+        reload: pinned.reload,
         reconfirm: async (input: ReconfirmInput) => {
-          const next = await selection.reconfirm(input);
+          const next = await pinned.reconfirm(input);
           void reloadList();
           return next;
         },
@@ -598,7 +601,7 @@ export default function DocumentsPage() {
           reviewNote: string,
           classNote?: string,
         ) => {
-          const saved = await selection.save(sections, reviewNote, classNote);
+          const saved = await pinned.save(sections, reviewNote, classNote);
           void reloadList();
           return saved;
         },
@@ -607,22 +610,22 @@ export default function DocumentsPage() {
           reviewNote: string,
           classNote?: string,
         ) => {
-          const confirmed = await selection.saveAndConfirm(sections, reviewNote, classNote);
+          const confirmed = await pinned.saveAndConfirm(sections, reviewNote, classNote);
           void reloadList();
           return confirmed;
         },
         unconfirm: async () => {
-          const next = await selection.unconfirm();
+          const next = await pinned.unconfirm();
           void reloadList();
           return next;
         },
         refresh: async (resolutions?: SourceResolution[]) => {
-          const next = await selection.refresh(resolutions);
+          const next = await pinned.refresh(resolutions);
           void reloadList();
           return next;
         },
         remove: async () => {
-          await selection.remove();
+          await pinned.remove();
           setMessage("문서를 삭제했어요.");
           await reloadList();
         },

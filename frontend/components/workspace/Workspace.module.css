@@ -3431,6 +3431,14 @@ button.recordBlank:disabled {
 .ojNotes li[data-tone="nature"] {
   background: var(--pg-sage);
 }
+/* 쪽지마다 그 관찰 기록을 여는 「고치기」 — 본문 뒤 작은 글씨 */
+.ojNotes a {
+  display: block;
+  margin-top: 6px;
+  color: var(--pg-ink);
+  font-size: 13px;
+  text-underline-offset: 3px;
+}
 .ojNotes small {
   display: block;
   margin-bottom: 4px;

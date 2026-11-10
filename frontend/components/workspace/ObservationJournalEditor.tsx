@@ -322,14 +322,20 @@ export default function ObservationJournalEditor({
                     {domain && ` · ${domain}`}
                   </small>
                   {s.text}
+                  <Link
+                    href={`/records?class=${encodeURIComponent(doc.classId)}&record=${encodeURIComponent(s.id)}`}
+                    aria-label={`${shortDate(s.date)} 기록 고치기`}
+                  >
+                    고치기 →
+                  </Link>
                 </li>
               );
             })}
           </ul>
           <EmptyDomains doc={doc} domains={domains} />
           <p className={ws.ojChalk}>
-            쪽지는 교사가 적은 원문이라 여기서 못 고쳐요.{" "}
-            <Link href="/records">관찰 기록에서 고치기 →</Link>
+            쪽지는 교사가 적은 원문이라 여기서 못 고쳐요. 쪽지의 「고치기」를 누르면 관찰 기록에서
+            그 기록을 열어요.
           </p>
           {server.stale && (
             <div className={ws.ojStale}>
