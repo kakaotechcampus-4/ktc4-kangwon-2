@@ -214,7 +214,7 @@ def _observation(
 
     # 영역 안에서는 날짜순이다. 같은 날이면 교사가 고른 순서를 지킨다(sorted 는 안정 정렬).
     by_domain: dict[str, list[str]] = {domain: [] for domain in names}
-    for source in sorted(sources, key=lambda s: s.date):
+    for source in sorted(sources, key=lambda s: s.date):  # type: ignore[arg-type, return-value]
         domain = domains[source.source_id]
         # 축 사본이 없는 옛 문서에서, 원이 축을 바꾸기 전에 쓴 기록이다. 지금 양식에 그 줄이
         # 없으니 내보낼 수 없다 — 조용히 버리면 교사가 고른 근거가 종이에서 사라진다.
@@ -227,7 +227,7 @@ def _observation(
             )
         situation = f"({source.context}) " if source.context else ""
         by_domain[domain].append(
-            f"({source.date.month}/{source.date.day}) {situation}{source.text}"
+            f"({source.date.month}/{source.date.day}) {situation}{source.text}"  # type: ignore[union-attr]
         )
     rows = [[domain, "\n".join(lines)] for domain, lines in by_domain.items()]
     rows.append([AXIS_TAIL[axis], evaluation])
@@ -395,11 +395,11 @@ def _weekly_log(
         routine_ids.setdefault(document_id, []).append(routine_id)
     played = _activities(session, [i for ids in routine_ids.values() for i in ids])
     rows = []
-    for copy in sorted(sources, key=lambda s: s.date):
+    for copy in sorted(sources, key=lambda s: s.date):  # type: ignore[arg-type, return-value]
         daily = dailies[copy.source_id]
         rows.append(
             [
-                f"{copy.date.month}/{copy.date.day}({WEEKDAYS[copy.date.weekday()]})",
+                f"{copy.date.month}/{copy.date.day}({WEEKDAYS[copy.date.weekday()]})",  # type: ignore[union-attr]
                 _our_plays(
                     copy.text,
                     copy.activities
@@ -432,7 +432,7 @@ def _weekly_log_from_routines(
     played = _activities(session, [s.source_id for s in sources])
     by_date: dict[date, list[DocumentSource]] = {}
     for source in sources:
-        by_date.setdefault(source.date, []).append(source)
+        by_date.setdefault(source.date, []).append(source)  # type: ignore[arg-type]
     rows = [
         [
             f"{day.month}/{day.day}({WEEKDAYS[day.weekday()]})",

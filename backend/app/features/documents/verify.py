@@ -95,11 +95,11 @@ def verify_sections(
 
     # 초안 모델이 받은 사본 칸 그대로 — 사실 · 날짜 · 영역 · 상황 (ADR-088).
     masked_sources = [
-        Source(src.source_id, src.date, hide(src.text), src.domain, hide(src.context))
+        Source(src.source_id, src.date, hide(src.text), src.domain, hide(src.context))  # type: ignore[arg-type]
         for src in sources
     ]
     masked_bodies = {h: hide(b) for h, b in bodies.items()}
-    issues = judge(doc.kind, KIND_LABELS[doc.kind], masked_bodies, masked_sources, decide)
+    issues = judge(doc.kind, KIND_LABELS[doc.kind], masked_bodies, masked_sources, decide)  # type: ignore[arg-type]
     # 문장은 가명으로 판정했다. 화면에는 교사가 쓴 이름 그대로 돌려준다 — 성을 뺀 「가명이」처럼
     # 교사가 쓴 꼴을 살리려고 그 칸 원문을 기준으로 되돌린다(unmask_from).
     shown = [

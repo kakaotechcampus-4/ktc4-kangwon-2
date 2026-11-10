@@ -199,7 +199,8 @@ class WeatherChoice(BaseModel):
 
     class_id: int
     date: datetime.date
-    sky: Literal[SKIES] | None
+    # SKIES 는 튜플 변수를 Literal 로 펼쳐 쓴 것이라 mypy 가 그 값을 모른다.
+    sky: Literal[SKIES] | None  # type: ignore[valid-type]
 
 
 class RoutineMutationResponse(RoutineResponse):

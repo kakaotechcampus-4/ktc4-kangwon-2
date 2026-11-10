@@ -132,13 +132,15 @@ def judge_4_1(
     roster = set(class_ids)
     months = set(window.months())
     # 입력 유일성을 계약이 보장하지 않는다 — 같은 문서를 두 번 세면 거짓 충족. id 로 하나만 남긴다.
-    plans = {p.plan_id: p for p in plans if p.class_id in roster and (p.year, p.month) in months}
-    daily_logs = {
+    plan_by_id = {
+        p.plan_id: p for p in plans if p.class_id in roster and (p.year, p.month) in months
+    }
+    log_by_id = {
         log.document_id: log
         for log in daily_logs
         if log.class_id in roster and window.contains(log.day)
     }
-    plans, daily_logs = list(plans.values()), list(daily_logs.values())
+    plans, daily_logs = list(plan_by_id.values()), list(log_by_id.values())
     plan_counts = Counter((plan.class_id, plan.year, plan.month) for plan in plans)
     log_days: dict[int, set[date]] = defaultdict(set)
     for log in daily_logs:

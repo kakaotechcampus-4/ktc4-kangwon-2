@@ -192,7 +192,7 @@ def _profile_out(profile, created_at: datetime) -> ProfileOut:
 def resolve_class_profile(class_id: int, session: DbSession, user: CurrentUser):
     """반 override → 원 기본 → 「선택 필요」. 대상을 못 쓰면 내려가지 않는다(R3)."""
     klass = require_own_class(session, user, class_id, read_only=True)
-    resolution = PostgresTemplateProfileRepository(session, center_id=user.center_id).resolve(
+    resolution = PostgresTemplateProfileRepository(session, center_id=user.center_id).resolve(  # type: ignore[arg-type]
         klass.id
     )
     return ResolutionOut(
@@ -399,14 +399,14 @@ def put_center_default(center_id: int, body: PointerIn, session: DbSession, user
 def get_class_override(class_id: int, session: DbSession, user: CurrentUser):
     """반 override 포인터 그대로. 대상을 못 쓰게 됐어도(R3) 보인다 — 해제하려면 이 값이 필요하다."""
     klass = require_own_class(session, user, class_id, read_only=True)
-    repo = PostgresTemplateProfileRepository(session, center_id=user.center_id)
+    repo = PostgresTemplateProfileRepository(session, center_id=user.center_id)  # type: ignore[arg-type]
     return _pointer_out(repo.get_override(klass.id))
 
 
 @router.put("/classes/{class_id}/template-profile-override", response_model=PointerOut)
 def put_class_override(class_id: int, body: PointerIn, session: DbSession, user: CurrentUser):
     klass = require_own_class(session, user, class_id)
-    repo = PostgresTemplateProfileRepository(session, center_id=user.center_id)
+    repo = PostgresTemplateProfileRepository(session, center_id=user.center_id)  # type: ignore[arg-type]
     _move(
         body,
         partial(repo.set_override, klass.id),

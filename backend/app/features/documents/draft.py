@@ -224,7 +224,7 @@ def _curriculum_for(domains: Sequence[str]) -> list[dict[str, str]]:
 def _generate(
     kind: str,
     masked_facts: list[dict[str, str | None]],
-    curriculum: list[dict[str, str]] = (),
+    curriculum: Sequence[dict[str, str]] = (),
     examples: Sequence[str] = (),
 ) -> tuple[str, str]:
     """가명으로 바뀐 사실(`{fact, date, domain, context}`)만 받는다. 여기서 실명을 볼 일이 없다."""

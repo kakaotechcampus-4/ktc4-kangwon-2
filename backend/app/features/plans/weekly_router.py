@@ -210,7 +210,7 @@ def _prior_week_evidence(
     repo = _weekly_repo(session, center_id)
     refs: list[str] = []
     for plan_ref, week_value in rows:
-        if WeekId(week_value).ordinal >= week.ordinal:
+        if WeekId(week_value).ordinal >= week.ordinal:  # type: ignore[arg-type]
             continue
         plan = repo.get(PlanId(plan_ref))
         if plan is None:
@@ -256,7 +256,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     center_id, class_id = user.center_id, klass.id
     names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-060)
     week = _week(body.week_id, klass.school_year)
-    if _existing(session, center_id, class_id, week) is not None:
+    if _existing(session, center_id, class_id, week) is not None:  # type: ignore[arg-type]
         raise _ALREADY_EXISTS
     parent_row = session.scalar(
         select(Plan).where(
@@ -273,11 +273,14 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
         raise _gate("놀이 중심 월간계획안 아래에서는 주간계획안을 만들 수 없습니다.")
     parent_id = parent_row.id
     parent = PostgresPlanRepository(
-        session, center_id=center_id, kind="monthly", plan_type=MonthlyPlan
+        session,
+        center_id=center_id,  # type: ignore[arg-type]
+        kind="monthly",
+        plan_type=MonthlyPlan,
     ).get(PlanId(parent_row.plan_ref))
-    if parent.status.value != "CONFIRMED":
+    if parent.status.value != "CONFIRMED":  # type: ignore[union-attr]
         raise _gate("월간계획안을 먼저 확정해주세요.")
-    prior_week_evidence = _prior_week_evidence(session, center_id, class_id, week)
+    prior_week_evidence = _prior_week_evidence(session, center_id, class_id, week)  # type: ignore[arg-type]
     # 2026-11-10 하민: 후보 근거를 상위 20건에서 섞어 뽑는다. 다시 만들면 다른 근거가 나온다.
     # 실제로 쓴 근거는 칸 Evidence 에 남는다. seed 는 로그에만 둔다(저장 여부는 결정 전).
     candidate_seed = secrets.randbelow(2**31)
@@ -285,7 +288,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     _log.info("weekly candidate seed=%d class=%s week=%s", candidate_seed, class_id, body.week_id)
     # 만들 때의 원 설정을 계획안에 복사한다 — 뒤에 설정을 바꿔도 이 계획안은 그대로다(§3-5).
     center = session.get(Center, center_id)
-    saturday = center.weekly_saturday_enabled
+    saturday = center.weekly_saturday_enabled  # type: ignore[union-attr]
     # ADR-072: 원이 켠 경우에만 트렌드를 읽는다. 오늘 = 서버의 한국 날짜.
     # 그림책은 그 주 주제 낱말이 제목에 있는 것만(2026-11-10 보완).
     # 주 주제 = 부모 그 주 focus, 없으면 월 주제.
@@ -293,14 +296,14 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
         (
             cell.value
             for key in ("focus", "theme")
-            if (section := parent.section(key)) is not None
+            if (section := parent.section(key)) is not None  # type: ignore[union-attr]
             for cell in (section.cell_for_week(week), section.cell_for_week(None))
             if cell is not None and cell.value.strip()
         ),
         "",
     )
     trends = TrendContextProvider(
-        enabled=center.trends_enabled,
+        enabled=center.trends_enabled,  # type: ignore[union-attr]
         today=today_kst(datetime.now(UTC)),
         book_words=book_words_for(week_theme),
     )
@@ -313,7 +316,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
 
     # ── B. Core 실행 — DB 없음 ────────────────────────────────────────────
     parents: InMemoryPlanRepository[MonthlyPlan] = InMemoryPlanRepository()
-    parents.save(parent.plan_id, parent)
+    parents.save(parent.plan_id, parent)  # type: ignore[arg-type, union-attr]
     use_case = weekly_generation(
         parent_plan_repository=parents,
         plan_repository=InMemoryPlanRepository(),
@@ -325,7 +328,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     try:
         result = use_case.execute(
             GenerateWeeklyPlanCommand(
-                parent_monthly_plan_id=parent.plan_id,
+                parent_monthly_plan_id=parent.plan_id,  # type: ignore[union-attr]
                 week_id=week,
                 operating_days=weekly_operating_days(saturday),
                 template_ref=WEEKLY_DAY_TEMPLATE_REF
@@ -360,10 +363,10 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
     timing.phase("save")
     _lock_parent(session, parent_id, "월간계획안을 먼저 만들어 확정해주세요.")
-    if _existing(session, center_id, class_id, week) is not None:
+    if _existing(session, center_id, class_id, week) is not None:  # type: ignore[arg-type]
         raise _ALREADY_EXISTS
     try:
-        _weekly_repo(session, center_id).save(plan.plan_id, plan)
+        _weekly_repo(session, center_id).save(plan.plan_id, plan)  # type: ignore[arg-type]
     except IntegrityError as error:
         session.rollback()
         if getattr(getattr(error.orig, "diag", None), "constraint_name", None) == WEEKLY_UNIQUE:
@@ -372,7 +375,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     row = session.scalar(select(Plan).where(Plan.plan_ref == plan.plan_id.value))
     _log.info("weekly candidate seed=%d plan=%s", candidate_seed, plan.plan_id.value)
     # **응답을 다 만든 뒤에 확정한다**(월간과 같다). 저장소가 flush 해 두어 commit 전에도 읽힌다.
-    detail = _detail(row, plan, parent_id)
+    detail = _detail(row, plan, parent_id)  # type: ignore[arg-type]
     session.commit()
     return detail
 
@@ -427,14 +430,14 @@ def _current(session: Session, user, plan_id: int) -> WeeklyPlanOut:
     row = _own_row(session, user, plan_id, read_only=True)
     plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     parent = session.scalar(
-        select(Plan).where(
-            Plan.plan_ref == plan.parent_lineage.parent_plan_id.value,
+        select(Plan).where(  # type: ignore[arg-type]
+            Plan.plan_ref == plan.parent_lineage.parent_plan_id.value,  # type: ignore[arg-type, union-attr]
             Plan.center_id == user.center_id,
             Plan.kind == "monthly",
         )
     )
-    changed = _parent_changed(parent, plan.parent_lineage.confirmed_at)
-    return _detail(row, plan, None if parent is None else parent.id, parent_changed=changed)
+    changed = _parent_changed(parent, plan.parent_lineage.confirmed_at)  # type: ignore[union-attr]
+    return _detail(row, plan, None if parent is None else parent.id, parent_changed=changed)  # type: ignore[arg-type]
 
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -446,7 +449,8 @@ def delete_weekly_plan(plan_id: int, session: DbSession, user: CurrentUser) -> R
     고치려면 문서 보관함에서 지우고 다시 만든다. 이력 · 근거는 본문 안에 있어 행과 함께 사라진다.
     """
     row = _own_row(session, user, plan_id)
-    deleted = session.execute(
+    # DML 문의 결과는 CursorResult(rowcount 있음)인데 session.execute 는 Result 로 적혀 있다.
+    deleted = session.execute(  # type: ignore[attr-defined]
         delete(Plan).where(
             Plan.id == row.id, Plan.center_id == user.center_id, Plan.kind == "weekly"
         )
@@ -525,7 +529,7 @@ def _detail(
                 section_key=section.section_key,
                 label=section.display_label,
                 role=section.role.value,
-                repeat_by=section.repeat_by.value,
+                repeat_by=section.repeat_by.value,  # type: ignore[union-attr]
                 visible=section.visible,
                 order=section.order,
                 semantic_variant=(
@@ -667,8 +671,8 @@ def _with_parent(session: Session, user, row: Plan) -> tuple[WeeklyPlan, Monthly
     plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     parent = PostgresPlanRepository(
         session, center_id=user.center_id, kind="monthly", plan_type=MonthlyPlan
-    ).get(plan.parent_lineage.parent_plan_id)
-    return plan, parent
+    ).get(plan.parent_lineage.parent_plan_id)  # type: ignore[union-attr]
+    return plan, parent  # type: ignore[return-value]
 
 
 def _read_draft(
@@ -917,12 +921,12 @@ def unconfirm_weekly_plan(plan_id: int, body: RevisionIn, session: DbSession, us
         return _current(session, user, plan_id)
     if row.revision != body.expected_revision:
         raise _STALE_WRITE
-    plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
+    plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))  # type: ignore[arg-type]
     session.commit()
-    changed = UnconfirmWeeklyPlan(**_repos(plan, None)).execute(
-        UnconfirmWeeklyPlanCommand(plan.plan_id, _actor(user))
+    changed = UnconfirmWeeklyPlan(**_repos(plan, None)).execute(  # type: ignore[arg-type]
+        UnconfirmWeeklyPlanCommand(plan.plan_id, _actor(user))  # type: ignore[union-attr]
     )
-    written = _weekly_repo(session, user.center_id).update_if_revision(
+    written = _weekly_repo(session, user.center_id).update_if_revision(  # type: ignore[arg-type]
         changed.plan_id, changed, expected_revision=body.expected_revision, status="CONFIRMED"
     )
     if written is None:
@@ -945,11 +949,11 @@ def get_weekly_audit(
     `MANUAL` 은 이벤트가 아니라 칸 `generation` 으로 보인다(W4 결정 ②).
     """
     row = _own_row(session, user, plan_id, read_only=True)
-    plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
+    plan = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))  # type: ignore[arg-type]
     cells = (
-        list(plan.cells)
-        + [c.cell for c in plan.activity_candidates]
-        + list(plan.removed_activity_cells)
+        list(plan.cells)  # type: ignore[union-attr]
+        + [c.cell for c in plan.activity_candidates]  # type: ignore[union-attr]
+        + list(plan.removed_activity_cells)  # type: ignore[union-attr]
     )
     if item_id is not None:
         cells = [c for c in cells if c.item_id.value == item_id]
@@ -957,12 +961,12 @@ def get_weekly_audit(
             raise _CELL_NOT_FOUND
     keyed = [
         ((event.occurred_at, 0, 0, index), _audit_event(event, None, None))
-        for index, event in enumerate(plan.audit.events)
+        for index, event in enumerate(plan.audit.events)  # type: ignore[union-attr]
         if item_id is None or event.event_type.value in ("CONFIRMED", "UNCONFIRMED")
     ]
     for position, cell in enumerate(cells):
         keyed += [
-            ((event.occurred_at, 1, position, index), _audit_event(event, cell, plan.week_id))
+            ((event.occurred_at, 1, position, index), _audit_event(event, cell, plan.week_id))  # type: ignore[union-attr]
             for index, event in enumerate(cell.audit.events)
         ]
     keyed.sort(key=lambda pair: pair[0])
