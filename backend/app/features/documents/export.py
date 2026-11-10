@@ -31,6 +31,7 @@ from app.features.documents.router import (
 )
 from app.features.observations.models import AXES
 from app.features.routines.models import RoutineRecord
+from app.features.routines.weather import day_weather
 from app.shared.auth.dependency import CurrentUser
 from app.shared.hwpx import Format, download, fill_grid, fill_table
 
@@ -43,6 +44,8 @@ OBSERVATION_HEADER_ROWS = 1
 # 일일 보육일지 양식의 머리행(시간 · 일과 · 활동계획 · 활동실행) 줄 수.
 # 그 아래가 일과 원형 한 줄, 꼬리 한 줄이다.
 DAILY_LOG_HEADER_ROWS = 1
+# 일일 보육일지 양식 제목 아래 머리 줄의 자리 글자 (scripts/build_journal_templates.py).
+DAILY_HEAD_PLACEHOLDER = "날짜 · 날씨"
 # 주간 보육일지 양식의 머리행(날짜 · 그날의 놀이와 일과) 줄 수.
 WEEKLY_LOG_HEADER_ROWS = 1
 WEEKDAYS = "월화수목금토일"
@@ -213,6 +216,21 @@ def _daily_log(
             # 종이에서 칸 자체가 사라지면 제출할 때 손으로 그려 넣어야 한다.
             ["반 운영 특이사항", doc.class_note.strip()],
         ],
+        lines={DAILY_HEAD_PLACEHOLDER: _daily_head(session, doc)},
+    )
+
+
+def _daily_head(session: Session, doc: Document) -> str:
+    """제목 아래 머리 줄 — `날짜 : 2026년 9월 22일 (화)      날씨 : 맑음` (ADR-089).
+
+    날씨는 교사가 고른 값, 없으면 자동 값이다. 둘 다 없으면 「날씨 :」 뒤를 비워 손으로 적게 둔다.
+    미세먼지는 싣지 않는다 — 실물 양식에 칸이 없다.
+    """
+    day = doc.start_date
+    sky = day_weather(session, doc.class_id, day).sky or ""
+    return (
+        f"날짜 : {day.year}년 {day.month}월 {day.day}일 ({WEEKDAYS[day.weekday()]})"
+        f"{' ' * 6}날씨 : {sky}"
     )
 
 
