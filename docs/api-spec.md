@@ -3582,7 +3582,8 @@ promote            true 면 같은 트랜잭션에서 그날 일과 기록으로
 ```
 
 - **응답 `200`** — `{ "draft": { class_id, date, revision, rows, removed, promoted, updated_at },
-  "items": null, "review_impact": null }`. 저장할 때마다 `revision` 이 1 오르고 `promoted` 는 `false` 다
+  "items": null, "review_impact": null }`. 저장할 때마다 `revision` 이 1 오르고, `promoted` 는 이번 요청의 `promote` 그대로다 —
+  임시본만 두면 `false`, 올리면(`promote: true`) `true` 다. 올린 뒤 다시 고쳐 임시본만 두면 다시 `false` 다(2026-11-10 고침)
 - **올리면(`promote: true`)** `items` 에 그날 일과 기록 전부(목록 조회와 같은 순서), `review_impact` 에
   위 「저장 뒤 재검토 안내」와 같은 모양이 온다. `draft.rows` 의 새 줄에는 만든 일과 기록 번호가 붙고 `removed` 는 빈다
   - 올리는 줄은 **손댔거나(`touched`) 이미 올라간 줄 중 한 칸이라도 적힌 줄**이다. 깔아 두기만 한 줄 · 통째로 빈 줄은 안 올린다
