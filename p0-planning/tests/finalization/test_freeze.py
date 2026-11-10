@@ -111,8 +111,9 @@ FROZEN_ARTIFACTS = {
         "8d9930211f3cc5b993f08b263bb08266391eab686606a369f5b8e6384cb1ceaf"
     ),
     # Human-approved 2026-11-02 (reviewer_ai_lead_001): privacy exclusions, unchanged entry decisions.
+    # ADR-079 §10: follow-up audit metadata only; original review and content SHA unchanged.
     "evidence/institution_evidence_v0_2_0.json": (
-        "3bbe06f8d7c6ae317d3cb7bc1649a4b6b3585d359716cbd8aff0beb66dccf569"
+        "d680b955ce8efb39b0cd42107e2424af32c54dbf807b525ee5a7242657a5e562"
     ),
     "evidence/monthly_evidence_semantic_classification_v0_2_0.json": (
         "3e95638b0603873e41592317d8849d273e99bd324575f3884a1a6d986ad7216b"

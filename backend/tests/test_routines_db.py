@@ -298,6 +298,24 @@ def test_일일_보육일지_없이_일과_기록으로_주간을_만든다(db_s
     assert _facts(payload) == "\n\n".join(s["text"] for s in payload["sources"])
 
 
+def test_상세_근거는_종류를_같이_준다(mine):
+    """주간의 근거는 일일 문서 또는 일과 기록이다. 번호만 주면 화면이 둘을 가르지 못해
+    일과 31 을 문서 31 로 연다(「원본 보기」)."""
+    record = _routine(mine["sun"]).json()
+    daily = _daily(mine["sun"], [record]).json()
+    client.post(f"/api/documents/{daily['id']}/confirm", json={"checks": CHECKS})
+    from_routines = _weekly_from_routines(mine["sun"], [record]).json()
+    from_daily = _weekly_from_routines(mine["sun"], [daily], source_kind="dailyLog").json()
+
+    def kinds(doc):
+        detail = client.get(f"/api/documents/{doc['id']}").json()
+        return [s["source_kind"] for s in detail["sources"]]
+
+    assert kinds(daily) == ["routine"]
+    assert kinds(from_routines) == ["routine"]
+    assert kinds(from_daily) == ["document"]
+
+
 def test_주간이_아닌데_일과_근거를_고르면_거절한다(mine):
     """보낸 값이 반영되지 않는데 받으면 교사는 고른 대로 만들어진 줄 안다."""
     record = _routine(mine["sun"]).json()

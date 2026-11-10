@@ -1,0 +1,94 @@
+{
+ "a4m11": {
+  "all_weeks": {
+   "group_activity": {
+    "runs": 4,
+    "candidates": [
+     10,
+     10,
+     10,
+     10
+    ],
+    "evidence_jaccard_mean": 0.258,
+    "evidence_jaccard_min": 0.053,
+    "name_jaccard_mean": 0.349,
+    "distinct_evidence": 19,
+    "distinct_names": 18,
+    "same_age_share": 0.0,
+    "age_tiers": {
+     "혼합연령": 40
+    }
+   },
+   "indoor_play": {
+    "runs": 4,
+    "candidates": [
+     10,
+     10,
+     10,
+     10
+    ],
+    "evidence_jaccard_mean": 0.0,
+    "evidence_jaccard_min": 0.0,
+    "name_jaccard_mean": 0.0,
+    "distinct_evidence": 40,
+    "distinct_names": 40,
+    "same_age_share": 0.15,
+    "age_tiers": {
+     "혼합연령": 34,
+     "같은 연령": 6
+    }
+   }
+  },
+  "same_week": {
+   "group_activity": {
+    "runs": 10,
+    "candidates": [
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10
+    ],
+    "evidence_jaccard_mean": 0.548,
+    "evidence_jaccard_min": 0.333,
+    "name_jaccard_mean": 0.501,
+    "distinct_evidence": 18,
+    "distinct_names": 24,
+    "same_age_share": 0.0,
+    "age_tiers": {
+     "혼합연령": 100
+    }
+   },
+   "indoor_play": {
+    "runs": 10,
+    "candidates": [
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10,
+     10
+    ],
+    "evidence_jaccard_mean": 0.345,
+    "evidence_jaccard_min": 0.111,
+    "name_jaccard_mean": 0.259,
+    "distinct_evidence": 20,
+    "distinct_names": 30,
+    "same_age_share": 0.11,
+    "age_tiers": {
+     "혼합연령": 89,
+     "같은 연령": 11
+    }
+   }
+  }
+ }
+}

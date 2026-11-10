@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
+from test_child_code import BARE_MESSAGES
 
 from app.features.centers.models import Center, Child, Class
 from app.features.documents.models import Document, DocumentSection, DocumentSource
@@ -312,6 +313,7 @@ def test_put_updates_review_note_and_title_and_bumps_updated_at(db_session):
     sources = _make_sources(db_session, doc, klass, child)
     _make_sections(db_session, doc, sources)
     fact = "\n\n".join(s.text for s in sources)
+    ids = [s.source_id for s in sources]
     original_updated_at = doc.updated_at
 
     response = client.put(
@@ -321,8 +323,8 @@ def test_put_updates_review_note_and_title_and_bumps_updated_at(db_session):
             title="바뀐 제목",
             sections=[
                 {"heading": "사실", "body": fact, "source_ids": [s.source_id for s in sources]},
-                {"heading": "해석", "body": "새로 쓴 " + _LONG_ENOUGH, "source_ids": []},
-                {"heading": "지원", "body": "새로 쓴 " + _LONG_ENOUGH, "source_ids": []},
+                {"heading": "해석", "body": "새로 쓴 " + _LONG_ENOUGH, "source_ids": ids},
+                {"heading": "지원", "body": "새로 쓴 " + _LONG_ENOUGH, "source_ids": ids},
             ],
             review_note="확인 부탁드려요",
         ),
@@ -343,12 +345,13 @@ def test_put_saves_the_class_note_and_leaves_it_alone_when_omitted(db_session):
     sources = _make_sources(db_session, doc, klass, child)
     _make_sections(db_session, doc, sources)
     fact = "\n\n".join(s.text for s in sources)
+    ids = [s.source_id for s in sources]
     body = _put_body(
         doc,
         sections=[
             {"heading": "사실", "body": fact, "source_ids": [s.source_id for s in sources]},
-            {"heading": "해석", "body": _LONG_ENOUGH, "source_ids": []},
-            {"heading": "지원", "body": _LONG_ENOUGH, "source_ids": []},
+            {"heading": "해석", "body": _LONG_ENOUGH, "source_ids": ids},
+            {"heading": "지원", "body": _LONG_ENOUGH, "source_ids": ids},
         ],
     )
 
@@ -700,8 +703,9 @@ def test_create_document_masks_child_names_before_generation(db_session, monkeyp
     response = client.post("/api/documents", json=_create_body(klass, child, [record]))
 
     assert response.status_code == 201
-    assert "이가명" not in seen["facts"][0] and "가명" not in seen["facts"][0]
-    assert "도담" in seen["facts"][0]
+    fact = seen["facts"][0]["fact"]
+    assert "이가명" not in fact and "가명" not in fact
+    assert "도담" in fact
     # 돌아온 글은 교사에게 주기 전에 실명으로 되돌린다.
     by_heading = {s["heading"]: s["body"] for s in response.json()["sections"]}
     assert by_heading["해석"].startswith("이가명 해석")
@@ -726,7 +730,8 @@ def test_create_document_masks_other_class_child_names(db_session, monkeypatch):
     seen = {}
 
     def fake_generate(kind, masked_facts, curriculum=()):
-        seen["facts"] = masked_facts
+        # 사실마다 {fact, date, domain, context} 로 간다 (ADR-088).
+        seen["facts"] = [f["fact"] for f in masked_facts]
         return (
             "도담 해석입니다. 하람과 함께한 기록에 드러난 사실만 근거로 씁니다.",
             "도담 지원입니다. 다음 활동에서 교사가 할 방법을 적습니다.",
@@ -740,6 +745,42 @@ def test_create_document_masks_other_class_child_names(db_session, monkeypatch):
     assert "하람" in seen["facts"][0]
     by_heading = {s["heading"]: s["body"] for s in response.json()["sections"]}
     assert "최옆반과" in by_heading["해석"]
+
+
+def test_draft_does_not_put_other_class_full_name_where_a_word_was(db_session, monkeypatch):
+    # 다른 반 「김하늘」의 「하늘」이 사실의 낱말 「하늘을 보며」와 겹쳐 가려진다.
+    # 모델이 가린 글을 받아 쓰면, 등록 실명으로 되돌릴 때 초안에 「김하늘」이 생겼다.
+    _, klass, child = _make_center_class_child(db_session)
+    other_class = Class(
+        center_id=klass.center_id,
+        name="달빛반",
+        school_year=2026,
+        age_min=4,
+        age_max=4,
+        teacher_name="박선생",
+    )
+    db_session.add(other_class)
+    db_session.flush()
+    db_session.add(Child(class_id=other_class.id, name="김하늘", code="하람"))
+    db_session.flush()
+    fact = "이가명이 하늘을 보며 구름 모양을 이야기했다."
+    record = _observation(db_session, klass, child, 5, fact)
+
+    def fake_generate(kind, masked_facts, curriculum=()):
+        # 받은 글을 그대로 다시 싣는다 — 실제로 발급된 가명이 답에 들어가게.
+        # 사실은 {fact, date, domain, context} 로 간다 (ADR-088).
+        return (
+            f"{masked_facts[0]['fact']} 하늘의 모양을 말로 표현하는 경험을 한다.",
+            "다음 바깥놀이에서 구름 그림책을 함께 보며 이야기를 이어 가면 좋을 것 같다.",
+        )
+
+    monkeypatch.setattr("app.features.documents.draft._generate", fake_generate)
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201, response.text
+    by_heading = {s["heading"]: s["body"] for s in response.json()["sections"]}
+    assert "하늘을 보며" in by_heading["해석"]
+    assert "김하늘" not in by_heading["해석"]
 
 
 def test_create_document_name_mask_failure_never_calls_llm(db_session, monkeypatch):
@@ -762,6 +803,122 @@ def test_create_document_name_mask_failure_never_calls_llm(db_session, monkeypat
     assert response.json()["error"]["code"] == "GENERATION_FAILED"
     assert "가명으로 바꾸지 못해" in response.json()["error"]["message"]
     assert called == []
+
+
+DEFAULT_INTERPRETATION = "도담 해석입니다. 기록에 드러난 사실만 씁니다."
+
+
+def _capture_generation(monkeypatch, interpretation=DEFAULT_INTERPRETATION):
+    seen = {}
+
+    def fake_generate(kind, masked_facts, curriculum=()):
+        # 사실마다 {fact, date, domain, context} 로 간다 (ADR-088).
+        seen["facts"] = [f["fact"] for f in masked_facts]
+        return interpretation, "도담 지원입니다. 다음 활동에서 교사가 할 방법을 적습니다."
+
+    monkeypatch.setattr("app.features.documents.draft._generate", fake_generate)
+    return seen
+
+
+def test_create_document_redraws_pseudonym_that_equals_other_class_real_name(
+    db_session, monkeypatch
+):
+    # 가명은 반 안에서만 유일하다. 우리 반 가명이 옆 반 아이 실명과 같으면
+    # 그 호출에서만 새로 뽑는다(allocation.table_for_text).
+    # 그대로 두면 LLM 은 두 아이를 구분 못 하고, 되돌릴 때 옆 반 아이가 우리 아이 이름이 된다.
+    _, klass, child = _make_center_class_child(db_session)
+    moon = Class(
+        center_id=klass.center_id,
+        name="달님반",
+        school_year=2026,
+        age_min=4,
+        age_max=4,
+        teacher_name="박선생",
+    )
+    db_session.add(moon)
+    db_session.flush()
+    db_session.add(Child(class_id=moon.id, name="김도담", code="하람"))
+    db_session.flush()
+    record = _observation(db_session, klass, child, 5, "가명이가 도담이와 블록을 쌓았다.")
+    seen = _capture_generation(monkeypatch, "가명이 해석입니다. 도담이와 함께 놀았습니다.")
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201
+    masked = seen["facts"][0]
+    assert "가명" not in masked and "도담" not in masked
+    pseudonyms = [w[:-2] for w in masked.split() if w.endswith(("이가", "이와"))]
+    assert len(set(pseudonyms)) == 2  # 두 아이가 서로 다른 가명으로 갔다
+
+
+def _one_syllable_child(session, klass, call_name):
+    """외자 아이 김민. 교사는 「민이」라고 쓴다 — 등록 이름(김민)으로는 안 걸린다."""
+    session.add(Child(class_id=klass.id, name="김민", code="가람", call_name=call_name))
+    session.flush()
+
+
+def test_create_document_masks_one_syllable_call_name(db_session, monkeypatch):
+    _, klass, child = _make_center_class_child(db_session)
+    _one_syllable_child(db_session, klass, "민이")
+    record = _observation(db_session, klass, child, 5, "가명이가 민이가 쌓은 블록을 옮겼다.")
+    seen = _capture_generation(
+        monkeypatch, "도담이는 가람이가 쌓은 블록을 옮겼습니다. 사실만 씁니다."
+    )
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201, response.json()
+    assert "민이가" not in seen["facts"][0] and "가람이가" in seen["facts"][0]
+    by_heading = {s["heading"]: s["body"] for s in response.json()["sections"]}
+    assert "민이가 쌓은" in by_heading["해석"]  # 가명 꼴(가람이) -> 부르는 이름 꼴(민이)
+
+
+@pytest.mark.parametrize("call_name", [None, "민이"])
+def test_create_document_masks_other_one_syllable_forms(db_session, monkeypatch, call_name):
+    # 부르는 이름(민이)을 등록해도 「민한테」 · 「민은」이 원문으로 나가면 안 된다(3차 점검 2번).
+    _, klass, child = _make_center_class_child(db_session)
+    _one_syllable_child(db_session, klass, call_name)
+    record = _observation(
+        db_session, klass, child, 5, "가명이가 민한테 블록을 건넸다. 민은 웃었다."
+    )
+    seen = _capture_generation(monkeypatch)
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201, response.json()
+    assert "민한테" not in seen["facts"][0] and "민은" not in seen["facts"][0]
+    assert "가람한테" in seen["facts"][0] and "가람은" in seen["facts"][0]
+
+
+@pytest.mark.parametrize("call_name", [None, "민이"])
+def test_create_document_refuses_bare_one_syllable(db_session, monkeypatch, call_name):
+    # 「민」 한 글자는 가리면 「고민」까지 바뀐다. LLM 을 부르지 않고 고치는 방법을 알린다.
+    _, klass, child = _make_center_class_child(db_session)
+    _one_syllable_child(db_session, klass, call_name)
+    record = _observation(db_session, klass, child, 5, "가명이가 민 옆에서 블록을 옮겼다.")
+    monkeypatch.setattr(
+        "app.features.documents.draft._generate", lambda *_: pytest.fail("LLM 을 부르면 안 된다")
+    )
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] == "VALUE_INVALID"
+    assert error["message"] == BARE_MESSAGES[call_name]
+
+
+@pytest.mark.parametrize("fact", ["가명이가 민속놀이를 했다.", "가명이가 고민 끝에 골랐다."])
+def test_one_syllable_inside_a_word_is_not_refused(db_session, monkeypatch, fact):
+    _, klass, child = _make_center_class_child(db_session)
+    _one_syllable_child(db_session, klass, None)
+    record = _observation(db_session, klass, child, 5, fact)
+    seen = _capture_generation(monkeypatch)
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201, response.json()
+    assert fact.removeprefix("가명이가 ") in seen["facts"][0]
 
 
 @pytest.mark.parametrize(
@@ -1199,3 +1356,129 @@ def test_observation_draft_hands_the_chosen_domain_curriculum_to_the_model(db_se
     domains = {row["영역"] for row in seen["curriculum"]}
     assert domains == {record.domain}
     assert all(row["내용범주"] and row["내용"] for row in seen["curriculum"])
+
+
+def test_put_rejects_a_section_whose_source_ids_are_empty(db_session):
+    # 부분집합 검사만으로는 [] 가 통과해 근거 연결이 끊긴 채 확정됐다.
+    _, klass, child = _make_center_class_child(db_session)
+    doc = _make_document(db_session, klass, child=child)
+    sources = _make_sources(db_session, doc, klass, child)
+    _make_sections(db_session, doc, sources)
+    ids = [s.source_id for s in sources]
+    fact = "\n\n".join(s.text for s in sources)
+
+    response = client.put(
+        f"/api/documents/{doc.id}",
+        json=_put_body(
+            doc,
+            sections=[
+                {"heading": "사실", "body": fact, "source_ids": ids},
+                {"heading": "해석", "body": _LONG_ENOUGH, "source_ids": []},
+                {"heading": "지원", "body": _LONG_ENOUGH, "source_ids": ids},
+            ],
+        ),
+    )
+
+    assert response.status_code == 422
+    assert "sections.해석.source_ids" in response.json()["error"]["fields"]
+
+
+def test_deleting_a_child_with_records_says_why_instead_of_500(db_session):
+    _, klass, child = _make_center_class_child(db_session)
+    _observation(db_session, klass, child, 5, "개미를 바라보았다.")
+
+    response = client.delete(f"/api/children/{child.id}")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["fields"] == ["child_id"]
+    assert db_session.get(Child, child.id) is not None
+
+
+def test_refresh_refuses_an_observation_moved_outside_the_document_period(db_session):
+    # 만들 때는 기간 밖 기록을 거절한다. refresh 가 받아 주면 그 규칙을 우회해 stale 이 풀렸다.
+    _, klass, child = _make_center_class_child(db_session)
+    record = _observation(db_session, klass, child, 5, "개미를 3분 동안 바라보았다.")
+    created = client.post("/api/documents", json=_create_body(klass, child, [record])).json()
+    moved = {"date": "2026-12-24", "domain": "자연탐구", "context": "", "fact": record.fact}
+    assert client.put(f"/api/observations/{record.id}", json=moved).status_code == 200
+
+    response = client.post(f"/api/documents/{created['id']}/refresh")
+
+    assert response.status_code == 409
+    detail = client.get(f"/api/documents/{created['id']}").json()
+    assert detail["sources"][0]["date"] == "2026-09-05"  # 사본은 그대로다
+
+
+def test_create_weekly_log_refuses_a_stale_daily_log(db_session):
+    # 근거가 바뀐 일일 보육일지로 주간을 만들면 낡은 사실의 주간이 stale=False 로 확정된다.
+    _, klass, _ = _make_center_class_child(db_session)
+    daily = _make_document(
+        db_session,
+        klass,
+        child=None,
+        kind="dailyLog",
+        start_date=date(2026, 9, 22),
+        end_date=date(2026, 9, 22),
+    )
+    _make_sections(db_session, daily, _make_sources(db_session, daily, klass, None, count=1))
+    daily.status = "CONFIRMED"
+    daily.stale = True
+    db_session.flush()
+    body = _create_body(
+        klass, None, [daily], kind="weeklyLog", start="2026-09-21", end="2026-09-27"
+    )
+
+    response = client.post("/api/documents", json=body)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["fields"] == [f"sources.{daily.id}"]
+
+
+def test_create_weekly_log_refuses_a_child(db_session):
+    # 주간 보육일지는 반 단위다(ADR-044). 아이를 붙여 만들 수 있으면 아이 문서처럼 보인다.
+    _, klass, child = _make_center_class_child(db_session)
+    daily = _make_document(
+        db_session,
+        klass,
+        child=None,
+        kind="dailyLog",
+        start_date=date(2026, 9, 22),
+        end_date=date(2026, 9, 22),
+    )
+    body = _create_body(
+        klass, child, [daily], kind="weeklyLog", start="2026-09-21", end="2026-09-27"
+    )
+
+    response = client.post("/api/documents", json=body)
+
+    assert response.status_code == 422
+    assert "child_id" in response.json()["error"]["fields"]
+
+
+def test_create_document_redrafts_from_the_latest_record_when_it_changes_meanwhile(
+    db_session, monkeypatch
+):
+    # 모델을 기다리는 동안 교사가 기록을 고치면, 옛 사실로 만든 초안이 stale=False 로 남았다.
+    # 이제 최신 기록으로 한 번 더 만든다.
+    _, klass, child = _make_center_class_child(db_session)
+    record = _observation(db_session, klass, child, 5, "개미를 3분 동안 바라보았다.")
+    seen = []
+
+    def generate_while_teacher_edits(kind, masked_facts, curriculum=()):
+        seen.append([f["fact"] for f in masked_facts])
+        if len(seen) == 1:
+            record.fact = "개미를 5분 동안 바라보았다."
+            db_session.flush()
+        return (
+            "도담 해석입니다. 기록에 드러난 사실만 씁니다.",
+            "도담 지원입니다. 다음 활동에서 교사가 할 방법을 적습니다.",
+        )
+
+    monkeypatch.setattr("app.features.documents.draft._generate", generate_while_teacher_edits)
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201
+    assert seen == [["개미를 3분 동안 바라보았다."], ["개미를 5분 동안 바라보았다."]]
+    by_heading = {sec["heading"]: sec["body"] for sec in response.json()["sections"]}
+    assert by_heading["사실"] == "개미를 5분 동안 바라보았다."
+    assert response.json()["stale"] is False

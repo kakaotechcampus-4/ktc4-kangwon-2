@@ -164,6 +164,9 @@ class Child(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), index=True)
     name: Mapped[str] = mapped_column(String(50), comment="평문 실명. ADR-004")
+    call_name: Mapped[str | None] = mapped_column(
+        String(50), comment="외자 아이를 부르는 이름(김민 -> 민이). 가명표에 넣는다. ADR-004 보완"
+    )
     code: Mapped[str] = mapped_column(
         String(20),
         comment="LLM 에 나가는 가명. 받침 있는 더미 한글 이름 (ADR-004). 반 안에서 유일하다",

@@ -17,7 +17,7 @@ import {
   useTypewriter,
 } from "./FlowParts";
 import { useOnboardingData } from "./useOnboardingData";
-import { addServerChild, removeServerChild } from "@/lib/api/onboarding";
+import { addServerChild, removeServerChild, saveServerCallName } from "@/lib/api/onboarding";
 import { REVIEW_PATH } from "@/lib/onboarding/flow";
 import type { ChildEntry, ClassroomEntry } from "@/lib/onboarding/types";
 
@@ -78,7 +78,19 @@ export default function ChildrenFlow() {
   async function add(name: string) {
     const child = await addServerChild(classroom, name);
     updateChildren(classroom.id, [...classroom.children, child]);
-    setBubble(`${name} 추가했어요. 다음 친구 이름은요?`);
+    setBubble(
+      child.needsCallName
+        ? `${name} 추가했어요. 부르는 이름도 적어 주세요.`
+        : `${name} 추가했어요. 다음 친구 이름은요?`,
+    );
+  }
+  async function saveCallName(child: ChildEntry, callName: string) {
+    const saved = await saveServerCallName(child, callName);
+    updateChildren(
+      classroom.id,
+      classroom.children.map((c) => (c.id === child.id ? saved : c)),
+    );
+    setBubble(`${child.name} 부르는 이름을 적었어요.`);
   }
   async function remove(child: ChildEntry) {
     await removeServerChild(child.id);
@@ -131,6 +143,11 @@ export default function ChildrenFlow() {
             key={classroom.id}
             classroom={classroom}
             onAdd={add}
+          />
+          <CallNames
+            key={`call-${classroom.id}`}
+            items={classroom.children.filter((c) => c.needsCallName && !c.callName)}
+            onSave={saveCallName}
           />
           <p className="mt-6 text-[17px] font-bold leading-tight text-ink">
             {classroom.className} · {count}명
@@ -279,6 +296,86 @@ function KidInput({
   );
 }
 
+/**
+ * 외자 아이(김민)의 부르는 이름(민이). 서버가 외자라고 한 아이 중 아직 안 적은 아이만 보인다.
+ * 교사는 「민이가」라고 쓰는데, 등록 이름만으로는 그 꼴을 가리지 못한다(ADR-004 보완).
+ */
+function CallNames({
+  items,
+  onSave,
+}: {
+  items: ChildEntry[];
+  onSave: (child: ChildEntry, callName: string) => Promise<void>;
+}) {
+  if (!items.length) return null;
+  return (
+    <div className="mt-4 flex flex-col gap-3">
+      {items.map((child) => (
+        <CallNameInput key={child.id} child={child} onSave={onSave} />
+      ))}
+    </div>
+  );
+}
+
+function CallNameInput({
+  child,
+  onSave,
+}: {
+  child: ChildEntry;
+  onSave: (child: ChildEntry, callName: string) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const id = `call-${child.id}`;
+
+  async function submit() {
+    if (busy || !draft.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      await onSave(child, draft);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "적지 못했어요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-[13px] font-bold tracking-[0.12em] text-ink-soft">
+        {child.name} 부르는 이름
+      </label>
+      <div className="flex items-center gap-2">
+        <input
+          id={id}
+          type="text"
+          autoComplete="off"
+          value={draft}
+          placeholder={`예: ${child.name.slice(-1)}이`}
+          aria-invalid={error ? true : undefined}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setError("");
+          }}
+          onKeyDown={(e) => onEnter(e, () => void submit())}
+          className="min-w-0 flex-1 border-b border-ink-hint bg-transparent pb-1.5 pt-1 text-[15px] leading-[1.7] text-ink outline-none placeholder:text-ink-hint focus-visible:border-primary"
+        />
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={!draft.trim() || busy}
+          className="h-10 flex-none squircle [--r:12px] bg-primary px-4 text-[15px] font-bold text-[color:var(--cta-ink,#fff)] transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-primary-tint disabled:text-ink-hint focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          적기
+        </button>
+      </div>
+      <ErrorLine>{error}</ErrorLine>
+    </div>
+  );
+}
+
 /** 이름표가 떨어지는 시간. globals.css 의 tagFall 길이와 같아야 한다. */
 const FALL_MS = 700;
 const TILTS = ["-1.6deg", "1.3deg", "-0.8deg", "1.8deg"];
@@ -362,6 +459,9 @@ function KidChips({
               >
                 {/* 쪽지 위 글자는 칠판 분필이 아니라 원래 먹색(.paper). */}
                 <span className="paper text-[19px] font-bold leading-tight">{child.name}</span>
+                {child.callName && (
+                  <span className="paper ml-1.5 text-[14px] leading-tight">{child.callName}</span>
+                )}
               </button>
             </li>
           );

@@ -6,6 +6,7 @@
 import pytest
 
 from app.shared.childCode import (
+    CallNameNeeded,
     NameTable,
     PseudonymPool,
     SubstitutionError,
@@ -13,7 +14,11 @@ from app.shared.childCode import (
     load_pool,
     mask,
     name_variants,
+    one_syllable,
+    table_for_text,
     unmask,
+    unmask_as_written,
+    unmask_from,
 )
 
 # ── 받침 ──────────────────────────────────────────────
@@ -39,8 +44,19 @@ def test_두_글자_성을_끊지_않는다():
     assert name_variants("남궁민수") == ["남궁민수", "민수"]
 
 
-def test_두_글자_이름은_성이_없다고_본다():
-    assert name_variants("서준") == ["서준"]
+def test_두_글자_이름은_첫_글자가_목록의_성일_때만_외자로_본다():
+    """전제가 바뀌었다 — 전에는 두 글자면 늘 성이 없다고 봤다. 그래서 「김민」 아이의
+    「민이가」가 그대로 나갔다. 이제 첫 글자가 흔한 성이면 외자다(names._ONE_SYLLABLE_SURNAMES).
+    서 · 하 · 지 · 도 처럼 이름 첫 글자로 흔한 성은 목록에 없어, 성 없이 적은 이름은 그대로다.
+    가리는 표기(name_variants)는 어느 쪽이든 같다 — 한 글자는 표기에 넣지 않는다.
+    """
+    for name in ("서준", "하윤", "지호", "도윤", "민준"):
+        assert name_variants(name) == [name]
+        assert one_syllable(name) is None
+    assert name_variants("김민") == ["김민"]
+    assert one_syllable("김민") == "민"
+    assert one_syllable("박서준") is None
+    assert one_syllable("민") is None  # 한 글자 등록은 그 글자 자체를 가린다
 
 
 def test_성을_떼면_한_글자만_남으면_떼지_않는다():
@@ -48,16 +64,112 @@ def test_성을_떼면_한_글자만_남으면_떼지_않는다():
 
     "남궁민" 을 한 글자 성으로 끊으면 "궁민" 이 나와 엉뚱한 곳이 치환된다.
     바르게 떼면 "민" 인데, 한 글자를 치환 대상에 넣으면 본문의 아무 "민" 이나 바뀐다.
-    둘 다 안 되므로 등록 이름만 찾는다.
+    그래서 등록 이름만 찾고, 「민이」 같은 꼴은 부르는 이름으로 받는다(아래 외자 묶음).
     """
     assert name_variants("남궁민") == ["남궁민"]
     assert name_variants("선우진") == ["선우진"]
+    assert one_syllable("남궁민") == "민"
+    assert one_syllable("선우진") == "진"
 
 
 def test_목록에_없는_성은_한_글자로_본다():
     """대부분의 한국 성이 한 글자다. 목록을 늘리는 것으로는 다 못 막는다 --
     근본 해결은 등록할 때 성과 이름을 따로 받는 것이다(별도 PR)."""
     assert name_variants("응우옌티한") == ["응우옌티한", "우옌티한"]
+
+
+# ── 외자 · 부르는 이름 ─────────────────────────────────
+
+
+def test_부르는_이름은_가명에_같은_꼴을_붙여_가리고_그_꼴로_되돌린다():
+    table = NameTable({"김민": "가람"}, [("김민", "민이")])
+    masked = mask("민이가 블록을 쌓았다. 김민은 웃었다.", table)
+    assert masked == "가람이가 블록을 쌓았다. 가람은 웃었다."
+    assert (
+        unmask("가람이는 탑을 올렸다. 가람은 웃었다.", table)
+        == "민이는 탑을 올렸다. 김민은 웃었다."
+    )
+    original = "민이가 블록을 쌓았다."
+    assert unmask_from("가람이가 블록을 쌓았다.", table, original) == original
+    # 모델이 새로 쓴 글도 원문에 적힌 부르는 이름 그대로 돌아온다.
+    assert unmask_as_written("가람이가 탑을 올린다.", table, original) == "민이가 탑을 올린다."
+    # 모델이 조사를 바꿔 맨 가명을 쓰면 외자 글자로 — 가명이 그대로 남지 않는다.
+    assert unmask_as_written("가람과 블록", table, original) == "민과 블록"
+
+
+def test_부르는_이름_없이_외자_낱말로만_적어도_맨_가명을_외자_글자로_되돌린다():
+    original = "민은 블록을 쌓았다."
+    table = table_for_text(load_pool(), [("김민", "가람", None)], [], original)
+    code = next(c for c, real in table.restoring.items() if real == "김민")
+    assert unmask_as_written(f"{code}이가 탑을 올린다.", table, original) == "민이가 탑을 올린다."
+
+
+def test_부르는_이름은_외자_글자나_등록_이름으로_시작해야_한다():
+    with pytest.raises(SubstitutionError):
+        NameTable({"김민": "가람"}, [("김민", "콩이")])
+    with pytest.raises(SubstitutionError):
+        NameTable({"김민": "가람"}, [("김민", "민")])  # 한 글자면 아무 「민」 이나 바뀐다
+    NameTable({"이안": "가람"}, [("이안", "이안이")])  # 성 없이 적은 이름이 외자로 잡힌 경우
+
+
+@pytest.mark.parametrize("call_name", [None, "민이"])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "민이가 블록을 쌓았다",
+        "민아, 정리하자",
+        "민은 웃었다",
+        "민을 불렀다",
+        "민도 왔다",
+        "민이 블록",
+        "민이랑 놀았다",
+        "민한테 블록을 줬다",
+    ],
+)
+def test_외자에_조사나_부르는_꼴이_붙으면_부르는_이름과_상관없이_가린다(text, call_name):
+    # 부르는 이름(민이)을 등록해도 「민은」 · 「민아」가 원문으로 나가면 안 된다(3차 점검 2번).
+    table = table_for_text(load_pool(), [("김민", "가람", call_name)], [], text)
+    masked = mask(text, table)
+    assert "민" not in masked and "가람" in masked
+    assert unmask(masked, table) == text  # 교사가 쓴 꼴 그대로 돌아온다
+
+
+# 부르는 이름이 없으면 그것을 적게 하고, 있으면 그 꼴로 붙여 적게 한다.
+BARE_MESSAGES = {
+    None: "『민』이 아이 이름이면 아이 명단에서 부르는 이름을 적어 주세요. "
+    "이름이 아니면 그 말을 바꿔 적어 주세요.",
+    "민이": "『민』이 아이 이름이면 「민이가」처럼 붙여 적어 주세요. "
+    "이름이 아니면 그 말을 바꿔 적어 주세요.",
+}
+
+
+@pytest.mark.parametrize("call_name", [None, "민이"])
+@pytest.mark.parametrize("text", ["(민) 블록", "민 옆에서 쌓았다", "민, 이리 와"])
+def test_외자_글자가_홀로_서면_가릴_수_없어_LLM_전에_막는다(text, call_name):
+    with pytest.raises(CallNameNeeded) as error:
+        table_for_text(load_pool(), [("김민", "가람", call_name)], [], text)
+    assert str(error.value) == BARE_MESSAGES[call_name]
+
+
+@pytest.mark.parametrize("text", ["민속놀이를 했다", "고민 끝에 골랐다", "김민이가 블록을 쌓았다"])
+def test_낱말_안의_외자_글자는_막지_않는다(text):
+    table = table_for_text(load_pool(), [("김민", "가람", None)], [], text)
+    assert "김민" not in (text if table is None else mask(text, table))
+
+
+def test_다른_반_외자_아이도_본다():
+    table = table_for_text(load_pool(), [], [("박진", "가람", None)], "진이랑 놀았다")
+    assert "진" not in mask("진이랑 놀았다", table)
+    with pytest.raises(CallNameNeeded):
+        table_for_text(load_pool(), [], [("박진", "가람", None)], "진, 이리 와")
+
+
+def test_부르는_이름과_다른_꼴이_같이_나와도_모두_가린다():
+    text = "민이가 블록을 쌓았다. 민은 웃었고 민아 하고 불렀다."
+    table = table_for_text(load_pool(), [("김민", "가람", "민이")], [], text)
+    masked = mask(text, table)
+    assert masked == "가람이가 블록을 쌓았다. 가람은 웃었고 가람아 하고 불렀다."
+    assert unmask(masked, table) == text
 
 
 # ── 가명 발급 ─────────────────────────────────────────
@@ -108,6 +220,42 @@ def test_되돌리면_등록된_전체_이름이_나온다():
     # 성을 뗀 표기로 들어갔어도 복원은 등록 이름으로 한다.
     table = NameTable({"박서준": "민준"})
     assert unmask(mask("서준이가 놀았다", table), table) == "박서준이가 놀았다"
+
+
+def test_모델이_쓴_글은_원문에_적힌_표기로_되돌린다():
+    # 다른 반 「김하늘」의 「하늘」이 원문 낱말과 겹쳐 가려졌다. 등록 실명으로 돌리면
+    # 사실에 없던 「김하늘」이 생긴다 — 원문에 적힌 「하늘」로 돌린다.
+    table = NameTable({"이가명": "도담", "김하늘": "하람"})
+    original = "이가명이 하늘을 보며 구름 모양을 이야기했다."
+    written = "도담이 하람을 보며 구름을 이야기한다."
+    assert unmask_as_written(written, table, original) == "이가명이 하늘을 보며 구름을 이야기한다."
+    # 교사가 성을 빼고 적었으면 그 표기로.
+    assert unmask_as_written("도담이가 웃었다", table, "가명이가 웃었다") == "가명이가 웃었다"
+
+
+def test_원문에_그_아이_표기가_없으면_가명을_그대로_둔다():
+    # 등록 실명을 새로 만들어 넣는 것이 바로 막으려는 일이다.
+    table = NameTable({"김하늘": "하람"})
+    assert unmask_as_written("하람과 놀았다", table, "모래를 팠다") == "하람과 놀았다"
+
+
+def test_원문에서_못_찾은_옮긴_글도_등록_실명을_만들지_않는다():
+    # 함수 동작 확인: 옮긴 글을 원문에서 못 찾으면 등록 실명(「김여름」) 대신 원문 표기로 돌린다.
+    # (연간 가져오기는 원문에 그대로 있는 글만 남겨서 지금은 이 갈래에 닿지 않는다.)
+    table = NameTable({"김여름": "가을"})
+    assert unmask_from("7월 가을과 물놀이", table, "7월 여름 물놀이") == "7월 여름과 물놀이"
+
+
+def test_옮긴_글이_원문_여러_곳에_맞으면_다른_자리_안에_들지_않은_가장_짧은_것이다():
+    # 원문에 「김여름이 …」와 7월 주제 「여름」이 함께 있다.
+    # 처음 맞은 곳을 주면 주제가 「김여름」이 된다.
+    table = NameTable({"김여름": "가을"})
+    original = "김여름이 수영을 했다.\n7월 여름 물놀이"
+    assert unmask_from("가을", table, original) == "여름"
+    # 전체 이름을 적은 문장은 그 안의 「여름이 웃었다」가 아니라 문장 그대로 돌아온다.
+    assert unmask_from("가을이 웃었다", table, "김여름이 웃었다") == "김여름이 웃었다"
+    # 원문에 전체 이름뿐이면 그것이다.
+    assert unmask_from("가을", table, "김여름이 수영을 했다.") == "김여름"
 
 
 def test_긴_이름을_먼저_바꾼다():

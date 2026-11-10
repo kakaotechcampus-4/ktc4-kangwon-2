@@ -3,7 +3,9 @@
 from datetime import date, datetime
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints, computed_field
+
+from app.shared.childCode import one_syllable
 
 # 빈 문자열과 공백만 있는 입력을 막는다. 길이는 children.name 컬럼(String(50))에 맞춘다.
 ChildName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
@@ -20,6 +22,19 @@ class ChildCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: ChildName
+    # 외자 아이(김민)만 받는다. 교사가 글에 쓰는 꼴(민이)이다 — 가명표에 넣는다(ADR-004 보완).
+    call_name: ChildName | None = None
+
+
+class ChildUpdate(BaseModel):
+    """`PATCH /api/children/{id}` 요청. 부르는 이름만 고친다 — 이름 수정은 P1 이다(§2-1).
+
+    null 이면 지운다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    call_name: ChildName | None
 
 
 class ChildResponse(BaseModel):
@@ -34,7 +49,14 @@ class ChildResponse(BaseModel):
     class_id: int
     name: str
     code: str
+    call_name: str | None
     created_at: datetime
+
+    @computed_field
+    @property
+    def needs_call_name(self) -> bool:
+        """외자 아이인가. 화면이 이 값으로 「부르는 이름」 칸을 띄운다 — 판별은 서버 한 곳."""
+        return one_syllable(self.name) is not None
 
 
 class ChildListResponse(BaseModel):

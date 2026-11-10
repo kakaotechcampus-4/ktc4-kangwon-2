@@ -21,7 +21,15 @@ export type Observation = {
   fact: string;
   createdAt: string;
 };
-export type Source = { id: string; date: string; text: string; childId: string; classId: string };
+export type Source = {
+  id: string;
+  date: string;
+  text: string;
+  childId: string;
+  classId: string;
+  /** 관찰 기록의 영역. 서버가 관찰일지 근거에만 준다 (api-spec §11). */
+  domain?: string;
+};
 export type Section = { heading: string; body: string; sourceIds: string[] };
 export type SavedDocument = {
   annualPlanId?: number;
