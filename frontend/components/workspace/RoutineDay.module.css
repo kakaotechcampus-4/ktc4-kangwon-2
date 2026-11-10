@@ -180,8 +180,7 @@
 .extras {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
+  gap: 8px;
 }
 .chips {
   display: flex;
@@ -297,42 +296,107 @@
 }
 
 /* ── 기본 일과표 ──────────────────────────────────────────── */
+/* 칠판에 테이프로 붙인 흰 종이. 손글씨 제목 → 한 문장 → 줄 목록 → 주 버튼 · 닫기. */
 .template {
-  margin: 8px 4px 0;
-  padding: 14px 16px;
+  position: relative;
+  display: grid;
+  gap: 10px;
+  margin: 14px 4px 0;
+  padding: 24px 22px 20px;
   border: 1px solid var(--pg-line);
   background: var(--pg-paper);
   color: var(--pg-ink);
+  box-shadow: var(--pg-shadow-hard);
+  rotate: -0.4deg;
 }
-.template p {
-  margin: 0 0 8px;
+.template h3 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.templateLead {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+}
+.templateSub {
+  margin: 0;
   font-size: 13px;
+  line-height: 1.6;
   color: var(--pg-ink-soft);
 }
 .template ul {
-  margin: 0 0 10px;
+  margin: 4px 0 0;
   padding: 0;
   list-style: none;
+  border-top: 1px dashed var(--pg-line);
 }
 .template li {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 44px;
+  gap: 12px;
+  min-height: 52px;
+  padding: 4px 0;
   border-bottom: 1px dashed var(--pg-line);
-  font-size: 14px;
 }
-.template label {
+/* 시간 · 이름. 넓으면 한 줄, 좁으면 시간 밑에 이름. 「요일만」은 늘 오른쪽 끝이다. */
+.templateRow {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 14px;
+  min-width: 0;
+}
+.templateTime {
+  flex: 0 0 170px;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.templateRow b {
+  flex: 1 1 140px;
+  font-size: 15px;
+  font-weight: 600;
+}
+@media (max-width: 600px) {
+  .templateTime {
+    flex-basis: 100%;
+  }
+}
+/* 「화요일만」 — 누르면 보라 이름표가 된다. 칸 전체가 누르는 자리다(44px). */
+.dayOnly {
+  flex: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-height: 44px;
+  padding: 0 12px;
+  border: 1px dashed var(--pg-line-strong);
+  border-radius: 6px;
   font-size: 13px;
+  color: var(--pg-ink-soft);
+  cursor: pointer;
 }
-.template input {
+.dayOnly:has(input:checked) {
+  border-style: solid;
+  border-color: var(--pg-primary-tint-line);
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+  font-weight: 700;
+}
+.dayOnly input {
   width: 18px;
   height: 18px;
+  accent-color: var(--pg-primary);
+}
+.templateActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 6px;
 }
 
 /* 날짜 머리글과 날씨를 한 줄에. */

@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { teacherTitle } from "@/lib/greeting";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { EMPTY_CLASS_SETTINGS, type ClassroomEntry } from "@/lib/onboarding/types";
 import { hydrateClassChildren } from "@/lib/api/onboarding";
@@ -306,7 +307,7 @@ export default function SettingsPage() {
             aria-selected={tab === t.key}
             aria-controls={`settings-panel-${t.key}`}
             tabIndex={tab === t.key ? 0 : -1}
-            className={`${styles.tab} ${styles[t.key]}`}
+            className={`${styles.tab} ${styles[t.key]} tap44`}
             onClick={() => setTab(t.key)}
           >
             <span>{t.label}</span>
@@ -447,7 +448,7 @@ function AccountCard({ name, email }: { name: string; email: string }) {
       <span className={styles.meMark} aria-hidden="true">
         {name.slice(0, 1) || "쌤"}
       </span>
-      <span className={styles.meName}>{name ? `${name} 선생님` : "선생님"}</span>
+      <span className={styles.meName}>{teacherTitle(name)}</span>
       <span className={styles.meEmail}>{email}</span>
     </div>
   );
@@ -635,7 +636,7 @@ function TrendsCard({ centerId }: { centerId: number }) {
         최근 유행하는 놀이 소재를 모아 계획안에 참고 자료로 제공합니다. 이미 작성된 계획안에는
         영향을 주지 않습니다.
       </p>
-      <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <label className="tap44" style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <input
           type="checkbox"
           checked={enabled ?? false}

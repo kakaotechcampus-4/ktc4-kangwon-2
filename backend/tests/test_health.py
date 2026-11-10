@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -11,6 +12,7 @@ def test_health_does_not_touch_db():
     assert r.json() == {"status": "ok"}
 
 
+@pytest.mark.real_db
 def test_ready_reports_ok_when_db_reachable():
     # 모의 없이 job 의 postgres 에 실제로 붙는다.
     # deploy.yml 의 HEALTHCHECK_URL 이 판정에 쓰는 응답이 이것이다.

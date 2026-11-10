@@ -23,8 +23,11 @@ registerHooks({
 });
 
 const documents = await import("../lib/api/documents.ts");
+const journalDay = await import("../lib/workspace/journal-day.ts");
 const axis = await import("../lib/workspace/observation-axis.ts");
 const recordContext = await import("../lib/workspace/record-context.ts");
+const childMark = await import("../lib/workspace/child-mark.ts");
+const recordStack = await import("../lib/workspace/record-stack.ts");
 const { ApiError, invalidFields } = await import("../lib/api/client.ts");
 
 const require = createRequire(import.meta.url);
@@ -194,8 +197,11 @@ const common = (react) => ({
   "@/components/app/Posty": { Posty: "posty" },
   "@/components/app/ChildPicker": { ChildNote: "child-note" },
   "@/components/app/icons": { Icon: "icon" },
+  "@/lib/workspace/journal-day": journalDay,
+  "@/components/app/DomainTag": { DomainTag: "domain-tag" },
   "@/lib/workspace/domain-look": { DOMAIN_LOOK: {} },
   "./ObservationJournal.module.css": { __esModule: true, default: {} },
+  "./CircleMark": { CircleMark: "circle-mark" },
 });
 function browser(t, search = "") {
   globalThis.window = {
@@ -236,7 +242,8 @@ function recordsPage(t, api = {}, { now = "08:00", search = "" } = {}) {
     },
     "@/lib/workspace/record-context": { ...recordContext, nowTime: () => now },
     "@/lib/api/documents": { documentLocalId: (id) => `document:${id}` },
-    "@/lib/workspace/child-mark": { markFor: () => 0 },
+    "@/lib/workspace/child-mark": { ...childMark, markFor: () => 0 },
+    "@/lib/workspace/record-stack": recordStack,
     "./WorkspaceUI": {
       WorkspacePage: "page",
       Empty: "empty",
@@ -274,7 +281,7 @@ test("F1 「그만두기」는 고치기 전 날짜 · 영역 · 아이로 되�
   await view.press("의사소통");
   await view.press("김하늘");
   view.open();
-  await view.press("고치기");
+  await view.press("수정");
   assert.equal(view.date().props.value, RECORD.date);
   assert.equal(textOf(view.pickedDomain()), RECORD.domain);
 
@@ -291,16 +298,16 @@ test("F2 적던 글이 있으면 고치기 전에 화면 안에서 묻고, 버�
   view.type(view.fact(), "적던 새 글");
   view.open();
   // window.confirm 은 없다 — 부르면 여기서 터진다.
-  await view.press("고치기");
+  await view.press("수정");
   assert.equal(view.fact().props.value, "적던 새 글");
-  assert.ok(view.button("버리고 고치기"));
+  assert.ok(view.button("버리고 수정"));
 
   await view.press("계속 쓰기");
-  assert.equal(view.button("버리고 고치기"), undefined);
+  assert.equal(view.button("버리고 수정"), undefined);
   assert.equal(view.fact().props.value, "적던 새 글");
 
-  await view.press("고치기");
-  await view.press("버리고 고치기");
+  await view.press("수정");
+  await view.press("버리고 수정");
   assert.equal(view.fact().props.value, RECORD.fact);
 });
 
@@ -478,7 +485,7 @@ test("A5 고친 기록을 쓴 확정 일지가 있으면 「N건 다시 검토�
   const view = recordsPage(t, { editRecord: async () => ({ record: {}, impact }) });
   await view.flush();
   view.open();
-  await view.press("고치기");
+  await view.press("수정");
   view.type(view.fact(), "개미를 5분 동안 보았다.");
   await view
     .nodes()
@@ -497,7 +504,7 @@ test("A5 지워서 여러 일지가 다시 검토 대상이 되면 보관함으�
   globalThis.window.confirm = () => true;
   await view.flush();
   view.open();
-  await view.press("지우기");
+  await view.press("삭제");
   await view.flush();
 
   assert.match(view.text(), /이 기록을 쓴 일지 1건이 다시 검토 대상이 되었어요/);
@@ -625,6 +632,22 @@ test("A4 저장한 뒤 빠진 것이 있으면 쪽지 한 줄만 띄우고 막�
   assert.doesNotMatch(view.text(), /어디서/);
 });
 
+test("저장 안내는 닫을 수 있다 — 「안내 닫기」를 누르면 글이 사라진다", async (t) => {
+  const view = recordsPage(t, { addRecord: async () => ({ ...RECORD, id: "observation:6" }) });
+  await view.flush();
+  await view.press("김하늘");
+  await view.press("사회관계");
+  view.type(view.fact(), "블록 세 개를 쌓았다.");
+  await submitForm(view);
+  const banner = () =>
+    view.nodes().find((n) => n.type === "message" && /저장했어요/.test(textOf(n)));
+  assert.equal(typeof banner().props.onClose, "function");
+
+  banner().props.onClose();
+  view.render();
+  assert.equal(banner(), undefined);
+});
+
 const DAY = [
   { name: "등원", start: "09:00", end: "" },
   { name: "실내놀이", start: "10:00", end: "11:30" },
@@ -680,6 +703,153 @@ test("A3 그날 일과가 없으면 시간표 없이 지금처럼 적는다", as
   assert.equal(context(view).props.value, "");
 });
 
+// ── 쌓인 기록 한 벌 (같은 날 같은 아이) ─────────────────────────────────────
+
+const at = (id, childId, fact, time, date = TODAY) => ({
+  ...RECORD,
+  id,
+  childId,
+  childName: childId === "kid-1" ? "김하늘" : "박서아",
+  date,
+  fact,
+  createdAt: `${date}T${time}:00+09:00`,
+});
+const DAY_RECORDS = [
+  at("o5", "kid-2", "블록 탑을 다시 쌓았다.", "10:40"),
+  at("o4", "kid-1", "모래에 물길을 팠다.", "10:30"),
+  at("o3", "kid-2", "블록 옆 그림책 강아지를 가리켰다.", "10:20"),
+  at("o2", "kid-1", "블록을 친구에게 건넸다.", "10:10"),
+  at("o1", "kid-2", "미끄럼틀 차례를 셌다.", "09:00"),
+  at("o0", "kid-2", "어제 블록 놀이를 했다.", "09:00", "2026-11-08"),
+];
+const decks = (view) =>
+  view.nodes().filter((n) => n.props.role === "group" && /묶음$/.test(n.props["aria-label"] ?? ""));
+/** 카드 줄 — 이름이 든 단추. 한 벌의 맨 위 장도 누르면 펴진다. */
+const cardRows = (node) =>
+  all(node).filter((n) => n?.type === "button" && /(박서아|김하늘)자연탐구/.test(textOf(n)));
+const cardFacts = (node) =>
+  cardRows(node).map((n) => textOf(n).replace(/^.*?(박서아|김하늘)자연탐구/, ""));
+const liveText = (deck) => textOf(all(deck).find((n) => n?.props?.["aria-live"] === "polite"));
+
+test("쌓인 기록 — 같은 날 같은 아이는 한 벌, 가장 최근 장이 위이고 그 자리(맨 앞)에 선다", async (t) => {
+  const view = recordsPage(t, { listRecords: async () => DAY_RECORDS });
+  await view.flush();
+  const [seoa, haneul] = decks(view);
+  assert.equal(seoa.props["aria-label"], "박서아 기록 3건 묶음");
+  assert.equal(haneul.props["aria-label"], "김하늘 기록 2건 묶음");
+  // 날짜 묶음 안에서만 묶는다 — 어제(11/8) 박서아 기록은 따로 선다.
+  assert.equal(decks(view).length, 2);
+  assert.ok(view.text().includes("어제 블록 놀이를 했다."));
+  // 맨 위 장만 보인다.
+  assert.deepEqual(cardFacts(seoa), ["블록 탑을 다시 쌓았다."]);
+  assert.ok(!view.text().includes("미끄럼틀 차례를 셌다."));
+  assert.equal(textOf(view.button("+2")), "+2");
+  assert.equal(liveText(seoa), "박서아 기록 3건 중 1번째");
+});
+
+const nextButton = (deck) =>
+  all(deck).find((n) => n?.type === "button" && /다음 기록 보기/.test(n.props["aria-label"] ?? ""));
+
+test("쌓인 기록 — 「+n」 단추와 ← → 키로 장을 넘기고, 몇 번째인지 알린다", async (t) => {
+  const view = recordsPage(t, { listRecords: async () => DAY_RECORDS });
+  await view.flush();
+  const seoa = () => decks(view)[0];
+  const next = nextButton(seoa());
+  assert.equal(next.props["aria-label"], "박서아 다음 기록 보기, 3건 중 2번째");
+  next.props.onClick();
+  view.render();
+  assert.deepEqual(cardFacts(seoa()), ["블록 옆 그림책 강아지를 가리켰다."]);
+  assert.equal(liveText(seoa()), "박서아 기록 3건 중 2번째");
+  const key = (k) => {
+    seoa().props.onKeyDown({ key: k, preventDefault() {} });
+    view.render();
+  };
+  key("ArrowRight");
+  assert.equal(liveText(seoa()), "박서아 기록 3건 중 3번째");
+  key("ArrowRight");
+  assert.equal(liveText(seoa()), "박서아 기록 3건 중 1번째", "끝에서 처음으로 돈다");
+  key("ArrowLeft");
+  assert.deepEqual(cardFacts(seoa()), ["미끄럼틀 차례를 셌다."]);
+});
+
+test("쌓인 기록 — 맨 위 장을 누르면 그 장이 펴지고, 「+n」 으로 넘기면 접힌다", async (t) => {
+  const view = recordsPage(t, { listRecords: async () => DAY_RECORDS });
+  await view.flush();
+  const seoa = () => decks(view)[0];
+  const row = () => cardRows(seoa())[0];
+  // 따로 펴는 단추는 없다 — 카드 어디를 눌러도 펴진다.
+  assert.equal(
+    all(seoa()).some((n) => n?.type === "button" && /펼치기/.test(n.props["aria-label"] ?? "")),
+    false,
+  );
+  assert.equal(row().props["aria-expanded"], false);
+  assert.equal(row().props["aria-describedby"], "deck-o5", "몇 번째 장인지 읽어 준다");
+  row().props.onClick();
+  view.render();
+  assert.equal(row().props["aria-expanded"], true);
+  assert.deepEqual(cardFacts(seoa()), ["블록 탑을 다시 쌓았다."], "누르기는 넘기기가 아니다");
+  assert.ok(all(seoa()).some((n) => n?.type === "button" && textOf(n) === "수정"));
+  assert.ok(all(seoa()).some((n) => n?.type === "button" && textOf(n) === "삭제"));
+
+  // 넘기면 펴 둔 할 일은 접힌다 — 다른 장의 단추로 읽히지 않게.
+  nextButton(seoa()).props.onClick();
+  view.render();
+  assert.deepEqual(cardFacts(seoa()), ["블록 옆 그림책 강아지를 가리켰다."]);
+  assert.equal(row().props["aria-expanded"], false);
+  assert.equal(
+    all(seoa()).some((n) => n?.type === "button" && textOf(n) === "수정"),
+    false,
+  );
+  row().props.onClick();
+  view.render();
+  const link = all(seoa()).find(
+    (n) => n?.type === "link" && textOf(n) === "이 기록으로 일지 만들기",
+  );
+  assert.match(link.props.href, /record=o3/, "펴진 할 일은 지금 보이는 장(o3)의 것");
+});
+
+test("저장하면 「저장됨」 도장과 함께 「관찰일지 만들기」를 한 번 가리키고, 닫거나 다시 적으면 내린다", async (t) => {
+  const view = recordsPage(t, { addRecord: async () => ({ ...RECORD, id: "observation:6" }) });
+  await view.flush();
+  const journal = () => view.links().find((n) => textOf(n) === "관찰일지 만들기 →");
+  const hint = () => view.nodes().find((n) => n.props["aria-label"] === "일지 안내 닫기");
+  assert.equal(journal().props["data-nudge"], undefined);
+  await view.press("김하늘");
+  await view.press("사회관계");
+  view.type(view.fact(), "블록 세 개를 쌓았다.");
+  await submitForm(view);
+  assert.match(view.text(), /저장됨/);
+  assert.equal(journal().props["data-nudge"], true);
+  assert.ok(hint());
+  hint().props.onClick();
+  view.render();
+  assert.equal(hint(), undefined);
+  assert.equal(journal().props["data-nudge"], undefined);
+
+  // 다음 저장에 다시 한 번. 적기 시작하면 내린다.
+  await view.press("사회관계");
+  view.type(view.fact(), "모래를 팠다.");
+  await submitForm(view);
+  assert.ok(hint());
+  view.type(view.fact(), "또");
+  assert.equal(hint(), undefined);
+});
+
+test("쌓인 기록 — 찾기를 켜면 맞은 기록만 묶고 「+n」 은 맞은 수다", async (t) => {
+  const view = recordsPage(t, { listRecords: async () => DAY_RECORDS });
+  await view.flush();
+  const find = view.nodes().find((n) => n.props["aria-label"] === "기록 찾기");
+  view.type(find, "블록");
+  // 박서아 오늘 「블록」 2건만 한 벌(+1), 김하늘은 1건이라 벌이 아니다.
+  assert.deepEqual(
+    decks(view).map((d) => d.props["aria-label"]),
+    ["박서아 기록 2건 묶음"],
+  );
+  assert.ok(view.button("+1"));
+  assert.ok(!view.button("+2"));
+  assert.ok(view.text().includes("블록을 친구에게 건넸다."));
+});
+
 // ── 관찰일지 만들기 (ObservationJournalPage) ──────────────────────────────
 
 const SUMMARY = {
@@ -693,7 +863,7 @@ const SUMMARY = {
   stale: false,
 };
 
-function journalPage(t, { search = "", docs = [], records = [], opened } = {}) {
+function journalPage(t, { search = "", docs = [], records = [], opened, domains } = {}) {
   browser(t, search);
   const app = host();
   const asked = [];
@@ -701,6 +871,9 @@ function journalPage(t, { search = "", docs = [], records = [], opened } = {}) {
   const editors = [];
   const Page = compile("../components/workspace/ObservationJournalPage.tsx", {
     ...common(app.react),
+    ...(domains && {
+      "@/lib/hooks/use-observation-domains": { useObservationDomains: () => domains },
+    }),
     "@/lib/api/records": {
       listRecords: async (classId) => {
         asked.push(classId);
@@ -713,7 +886,11 @@ function journalPage(t, { search = "", docs = [], records = [], opened } = {}) {
       listDocuments: async () => docs,
     },
     "@/lib/api/onboarding": { classServerId: () => 3 },
-    "@/lib/workspace/child-mark": { markFor: () => 0, weekStart: () => "2026-11-09" },
+    "@/lib/workspace/child-mark": {
+      ...childMark,
+      markFor: () => 0,
+      weekStart: () => "2026-11-09",
+    },
     "./WorkspaceUI": {
       WorkspacePage: "page",
       Empty: "empty",
@@ -929,7 +1106,8 @@ test("F16 근거 쪽지마다 그 관찰 기록을 여는 「고치기」가 있
 
 test("F12 근거 쪽지와 출력 미리보기가 서버가 준 영역을 쓴다", async (t) => {
   const draft = editor(t);
-  assert.match(draft.text(), /11\/2\(월\) · 자연탐구/);
+  // 날짜와 영역 사이 「·」 를 뺐다 — 영역은 그림 붙은 칩으로 따로 선다(PM 11-10).
+  assert.match(draft.text(), /11\/2\(월\)자연탐구/);
   const done = editor(t, { initial: { ...DOC, status: "confirmed" } });
   const row = done.nodes().find((n) => n.type === "tr" && textOf(n).startsWith("자연탐구"));
   assert.match(textOf(row), /\(11\/2\) 개미를 오래 보았다\./);
@@ -1377,4 +1555,54 @@ test("F4 반 전체 초안이 도는 동안 아이 일지 열기를 잠그고 �
   assert.deepEqual(busy, [true]);
   assert.equal(view.button("나래").props.disabled, true);
   assert.equal(view.button("다온").props.disabled, true);
+});
+
+test("초안 전 칠판 — 「하늘이의 이번 주」, 고른 수 · 기간, 영역 다섯 칸을 늘 세운다", async (t) => {
+  const view = journalPage(t, {
+    search: "?child=kid-1",
+    records: [
+      { ...RECORD, id: "r1", childId: "kid-1", date: "2026-11-09", domain: "의사소통" },
+      { ...RECORD, id: "r2", childId: "kid-1", date: TODAY, domain: "의사소통" },
+      { ...RECORD, id: "r3", childId: "kid-1", date: TODAY, domain: "자연탐구" },
+    ],
+  });
+  await view.flush();
+  const board = view
+    .nodes()
+    .find((n) => n.type === "section" && n.props["aria-labelledby"] === "jb-title");
+  assert.ok(board, "초안 전에는 칠판이 선다");
+  assert.equal(textOf(all(board).find((n) => n?.type === "h2")), "하늘이의 이번 주");
+  assert.ok(textOf(board).includes("3건 골랐어요"));
+  const slots = all(board)
+    .filter((n) => n?.type === "li")
+    .map((n) => textOf(n));
+  assert.deepEqual(slots, [
+    "신체운동·건강아직 없어요",
+    "의사소통2건",
+    "사회관계아직 없어요",
+    "예술경험아직 없어요",
+    "자연탐구1건",
+  ]);
+  assert.ok(textOf(board).includes("「이 영역 관찰이 없어요」"));
+});
+
+test("초안 전 칠판 — 두 축 원은 두 칸, 고른 기록이 없으면 칸은 비어도 선다", async (t) => {
+  const view = journalPage(t, {
+    search: "?child=kid-1",
+    domains: ["일상생활", "놀이활동"],
+    records: [{ ...RECORD, id: "r1", childId: "kid-1", date: TODAY, domain: "놀이활동" }],
+  });
+  await view.flush();
+  const board = () => view.nodes().find((n) => n.props["aria-labelledby"] === "jb-title");
+  const slots = () =>
+    all(board())
+      .filter((n) => n?.type === "li")
+      .map((n) => textOf(n));
+  assert.deepEqual(slots(), ["일상생활아직 없어요", "놀이활동1건"]);
+  // 근거에서 빼면 0건 — 칠판은 그대로, 칸은 다 빈 쪽지.
+  const box = view.nodes().find((n) => n.type === "input" && n.props.type === "checkbox");
+  box.props.onChange({ target: { checked: false } });
+  view.render();
+  assert.ok(textOf(board()).includes("아직 고른 기록이 없어요"));
+  assert.deepEqual(slots(), ["일상생활아직 없어요", "놀이활동아직 없어요"]);
 });

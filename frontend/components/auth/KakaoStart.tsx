@@ -39,7 +39,7 @@ export default function KakaoStart() {
         type="button"
         onClick={start}
         disabled={busy}
-        className="flex h-[50px] w-full items-center justify-center gap-2.5 rounded-full border border-[#e5cf00] bg-[#FEE500] px-5 text-[15px] font-bold text-black/85 shadow-pg-card transition-transform hover:-translate-x-px hover:-translate-y-px active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:cursor-progress disabled:opacity-80"
+        className="flex h-[50px] w-full items-center justify-center gap-2.5 rounded-full border border-[#e5cf00] bg-[#FEE500] px-5 text-[15px] font-bold text-black/85 transition-transform hover:-translate-x-px hover:-translate-y-px active:translate-x-0.5 active:translate-y-0.5 disabled:cursor-progress disabled:opacity-80"
       >
         {busy ? <Spinner /> : <KakaoSymbol />}
         {busy ? "카카오로 이동 중…" : "카카오로 시작하기"}

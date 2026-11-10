@@ -11,6 +11,7 @@ import {
 import { routineLocalId, type ApiRoutine } from "@/lib/api/routines";
 import { classServerId } from "@/lib/api/onboarding";
 import { routinesPath } from "@/lib/workspace/routines-route";
+import { dayLabel } from "@/lib/workspace/journal-day";
 import { Posty } from "@/components/app/Posty";
 import { Message, ws } from "./WorkspaceUI";
 import { journalMood } from "./DailyJournalCard";
@@ -217,16 +218,6 @@ function useDailyEvaluations(dailies: DocumentSummary[]) {
   return loaded?.ids === ids && ids ? loaded.items : [];
 }
 
-const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
-/** `2026-11-03` → `11/3 화` */
-function dayLabel(iso: string) {
-  const day = new Date(iso + "T00:00:00");
-  return `${day.getMonth() + 1}/${day.getDate()} ${WEEK[day.getDay()]}`;
-}
-
-/** `2026-11-02` → `11/02` */
-const short = (iso: string) => iso.slice(5).replace("-", "/");
-
 /**
  * 이번 주 일지가 어디까지 됐나 — 주 고르기 바로 밑에 선다.
  *
@@ -263,9 +254,15 @@ export default function WeeklyJournalCard({
   return (
     <section className={`${ws.card} ${ws.journalCard}`} data-tour="weekly-journal">
       <div>
-        <h2 className={ws.journalTitle}>이번 주 보육일지</h2>
+        {/* 제목 밑 빨간 손 물결(PM 11-10, 종이와-판 「색」 빨강 예외 ⑤) */}
+        <h2 className={`${ws.journalTitle} ${ws.journalTitleWave}`}>
+          이번 주 보육일지
+          <svg aria-hidden="true" viewBox="0 0 120 10" preserveAspectRatio="none">
+            <path d="M2 6Q7 1.5 12 6 T22 6 T32 6 T42 6 T52 6 T62 6 T72 6 T82 6 T92 6 T102 6 T112 6" />
+          </svg>
+        </h2>
         <p className={ws.journalLead}>
-          {className} · {short(weekStart)} – {short(weekEnd)}
+          {className}, {dayLabel(weekStart)} ~ {dayLabel(weekEnd)}
         </p>
       </div>
       <hr className={ws.journalRule} />
@@ -345,7 +342,7 @@ export default function WeeklyJournalCard({
       {journal && (
         <button
           type="button"
-          className={ws.journalOpen}
+          className={`${ws.journalOpen} tap44`}
           onClick={() => (open ? state.close() : state.open(journal.id))}
         >
           {open ? "접기" : journal.status === "confirmed" ? "일지 보기" : "이어서 쓰기"}

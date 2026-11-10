@@ -23,6 +23,7 @@ import { Posty } from "@/components/app/Posty";
 import { DOMAIN_LOOK } from "@/lib/workspace/domain-look";
 import { AXES, type ObservationAxis } from "@/lib/workspace/observation-axis";
 import { Message, ws } from "./WorkspaceUI";
+import { CircleMark } from "./CircleMark";
 import { serverIssues } from "./document-selection";
 import { FieldError, fieldErrorProps } from "./WorkspaceViewState";
 import type { ServerDocumentActions } from "./DocumentEditor";
@@ -258,7 +259,7 @@ export default function ObservationJournalEditor({
         <JournalSheet doc={doc} domains={domains}>
           {server.stale && (
             <Message error>
-              근거 기록이 바뀌어 내려받을 수 없어요. 다시 고치기를 눌러 반영해 주세요.
+              근거 기록이 바뀌어 내려받을 수 없어요. 다시 수정을 눌러 반영해 주세요.
             </Message>
           )}
           {/* 계획안 확정 화면(PlanDone)과 같은 파일 그림 단추 — 이름은 aria-label · title. */}
@@ -295,19 +296,23 @@ export default function ObservationJournalEditor({
             disabled={working}
             onClick={() => run(() => server.unconfirm(), "확정을 풀었어요. 다시 고칠 수 있어요.")}
           >
-            <Icon name="edit" width={17} height={17} />
-            <span>
-              <b>다시 고치기</b>
-              <small>확정을 풀고 칠판으로 돌아가요</small>
+            <span className={ws.ojRedoIcon}>
+              <Icon name="edit" width={17} height={17} />
             </span>
+            다시 수정
           </button>
         </JournalSheet>
       ) : (
         <div className={`chalkboard ${ws.ojBoard}`}>
           <header className={ws.ojHead}>
             <h2>{doc.title}</h2>
+            {/* 기간에 빨간 손 동그라미 — 보육일지 요일과 같은 표시(PM 11-10). 몇 월 며칠 것인지가 먼저 보인다. */}
             <span>
-              {doc.className} · {periodLabel(doc.start, doc.end)}
+              {doc.className}
+              <span className={ws.ojPeriod}>
+                {periodLabel(doc.start, doc.end)}
+                <CircleMark className={ws.ojPeriodRing} />
+              </span>
             </span>
             {doc.origin === "ai" && <em>AI 초안</em>}
             {server.stale && <em data-alert>근거가 바뀜</em>}
@@ -345,16 +350,26 @@ export default function ObservationJournalEditor({
               const domain = s.domain ?? "";
               return (
                 <li key={s.id} data-tone={DOMAIN_LOOK[domain]?.tone}>
+                  {/* 영역은 관찰 기록 영역 단추와 같은 그림을 붙인다 — 글자만으로는 날짜에 묻혔다. */}
                   <small>
                     {shortDate(s.date)}
-                    {domain && ` · ${domain}`}
+                    {domain && (
+                      <span className={ws.ojNoteDomain}>
+                        {DOMAIN_LOOK[domain] && (
+                          <Icon name={DOMAIN_LOOK[domain].icon} width={13} height={13} />
+                        )}
+                        {domain}
+                      </span>
+                    )}
                   </small>
                   {s.text}
                   <Link
+                    className={`${ws.ojNoteEdit} tap44`}
                     href={`/records?class=${encodeURIComponent(doc.classId)}&record=${encodeURIComponent(s.id)}`}
-                    aria-label={`${shortDate(s.date)} 기록 고치기`}
+                    aria-label={`${shortDate(s.date)} 기록 수정`}
                   >
-                    고치기 →
+                    <Icon name="edit" width={14} height={14} />
+                    수정
                   </Link>
                 </li>
               );
@@ -362,12 +377,12 @@ export default function ObservationJournalEditor({
           </ul>
           <EmptyDomains doc={doc} domains={domains} />
           <p className={ws.ojChalk}>
-            쪽지는 교사가 적은 원문이라 여기서 못 고쳐요. 쪽지의 「고치기」를 누르면 관찰 기록에서
-            그 기록을 열어요.
+            쪽지는 교사가 적은 원문이라 여기서 못 고쳐요. 쪽지의 「수정」을 누르면 관찰 기록에서 그
+            기록을 열어요.
           </p>
           {server.stale && (
             <div className={ws.ojStale}>
-              <p>근거 기록이 바뀌었어요. 바뀐 쪽지를 받아 온 뒤 해석 · 지원을 다시 봐 주세요.</p>
+              <p>근거 기록이 바뀌었어요. 바뀐 쪽지를 받아 온 뒤 해석과 지원을 다시 봐 주세요.</p>
               <button
                 type="button"
                 className={ws.secondary}
@@ -419,7 +434,7 @@ export default function ObservationJournalEditor({
                 disabled={working}
                 onChange={(e) => setChecked(e.target.checked)}
               />
-              쪽지와 대조했어요 — 사실과 맞고, 해석 · 지원이 알맞아요
+              쪽지와 대조했어요. 사실과 맞고 해석과 지원도 알맞아요
             </label>
             <button
               type="button"
@@ -456,18 +471,20 @@ export default function ObservationJournalEditor({
           </footer>
           <button
             type="button"
-            className={ws.ojRemove}
+            className={`${ws.ojRemove} tap44`}
+            aria-label="이 초안 삭제"
             disabled={working}
             onClick={async () => {
-              if (!window.confirm("이 초안을 지울까요? 되돌릴 수 없어요.")) return;
+              if (!window.confirm("이 초안을 삭제할까요? 되돌릴 수 없어요.")) return;
               try {
                 await server.remove();
               } catch (e) {
-                setMessage(e instanceof Error ? e.message : "지우지 못했어요.");
+                setMessage(e instanceof Error ? e.message : "삭제하지 못했어요.");
               }
             }}
           >
-            이 초안 지우기
+            <Icon name="trash" width={16} height={16} />
+            삭제
           </button>
         </div>
       )}
@@ -502,7 +519,7 @@ export default function ObservationJournalEditor({
       <dialog ref={refreshAsk} className={ws.ojLeave} aria-labelledby="oj-refresh-title">
         <Posty pose="hand" face="oh" tone="note" size={78} label={null} />
         <h3 id="oj-refresh-title">잠깐만요!</h3>
-        <p>바뀐 근거를 받으면 저장 안 한 해석 · 지원이 사라져요.</p>
+        <p>바뀐 근거를 받으면 저장 안 한 해석과 지원이 사라져요.</p>
         <div>
           <button
             type="button"
@@ -828,7 +845,8 @@ function JournalSheet({
         </table>
       </article>
       <aside className={ws.ojRail}>
-        <span className={ws.ojDone}>확정</span>
+        {/* 확정 도장 — 빨간 인주(되돌리려면 「다시 수정」을 눌러야 하는 상태). */}
+        <span className={`${ws.ojDone} inkStamp`}>확정</span>
         <h3>이렇게 출력돼요</h3>
         <p className={ws.ojWho}>
           <b>{doc.childName}</b>

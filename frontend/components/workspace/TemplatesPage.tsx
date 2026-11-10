@@ -205,7 +205,7 @@ export default function TemplatesPage() {
                 ) : (
                   <div className={ws.actions} style={{ marginTop: 18 }}>
                     <button
-                      className={ws.secondary}
+                      className={`${ws.secondary} ${ws.danger}`}
                       disabled={busy !== null}
                       onClick={() => remove(form)}
                     >

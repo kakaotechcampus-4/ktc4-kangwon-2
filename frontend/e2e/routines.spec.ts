@@ -3,6 +3,10 @@ import { completeOnboarding } from "./onboarding";
 import { verifyHwpx } from "./hwpx";
 import { execFileSync } from "node:child_process";
 
+/** 문서 편집기의 「확정」 단추. 보관함 거르개에도 같은 이름의 칩(aria-pressed)이 있어 가른다. */
+const confirmButton = (page: Page) =>
+  page.getByRole("button", { name: "확정", exact: true }).and(page.locator(":not([aria-pressed])"));
+
 /** TASK 2: 실제 Next → FastAPI → PostgreSQL. 응답을 fulfill하거나 MSW로 대체하지 않는다. */
 type Routine = {
   id: number;
@@ -19,6 +23,32 @@ type Evidence = {
 };
 const diagnostics = new WeakMap<Page, Evidence>();
 const rows = (page: Page) => page.locator('[aria-label="일과 목록"] article');
+
+/**
+ * 이름 있는 일과 쪽지는 이름 · 시간 한 줄로 접혀 있다(누르면 그 쪽지만 편다). 칸을 고치거나
+ * 시계를 열기 전에 다 편다. 화면을 다시 열면(새로고침 · 다른 날 · 다른 반) 다시 접혀 있다.
+ */
+async function unfold(page: Page) {
+  await expect(rows(page).first()).toBeVisible();
+  const folded = page.locator(
+    '[aria-label="일과 목록"] article[data-folded] [data-fold-toggle="open"]',
+  );
+  for (let n = await folded.count(); n > 0; n--) {
+    await folded.first().click();
+    await expect(folded).toHaveCount(n - 1);
+  }
+}
+/**
+ * 주간 보육일지 편집기 제목. 서버 제목 끝의 기간 「(9/28~10/2)」 · 「(10월)」은 떼고, 그 옆에 주를
+ * 손글씨로 따로 쓴다(DocumentArchivePreview `WeekTitle`). 제목 앞부분으로 찾는다.
+ */
+const weekHeading = (page: Page, title: string) =>
+  page.getByRole("heading", {
+    level: 2,
+    name: new RegExp(
+      `^${title.replace(/\s*\([^)]*\)$/, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} `,
+    ),
+  });
 const token = (page: Page) => page.evaluate(() => sessionStorage.getItem("saessak.authToken"));
 
 /**
@@ -245,6 +275,7 @@ test("A B C G H J — 홈 진입, 7줄을 떠날 때 올림, S-J2 생성·확정
     release();
     await expect(rows(page)).toHaveCount(PRESET_ROWS);
     await page.unroute("**/api/routines?**");
+    await unfold(page);
     note(page, "A", { presetRows: PRESET_ROWS, classId });
   });
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
@@ -260,6 +291,7 @@ test("A B C G H J — 홈 진입, 7줄을 떠날 때 올림, S-J2 생성·확정
     }
     await uploaded(page);
     await expect(rows(page)).toHaveCount(7);
+    await unfold(page);
     for (let i = 0; i < 7; i++) {
       await expect(rows(page).nth(i).getByLabel("일과 이름")).toHaveValue(`일과${i + 1}`);
       await expectTime(rows(page).nth(i), "시작", `${String(8 + i).padStart(2, "0")}:00`);
@@ -276,6 +308,7 @@ test("A B C G H J — 홈 진입, 7줄을 떠날 때 올림, S-J2 생성·확정
     const expected = ["일과1", "일과2", "일과3", "일과4", "일과5", "일과6", "일과7"];
     await page.reload();
     await expectNames(page, expected);
+    await unfold(page);
     expect((await dayRows(page, classId, date)).map((r) => r.name)).toEqual(expected);
     note(page, "C", expected);
   });
@@ -305,23 +338,26 @@ test("A B C G H J — 홈 진입, 7줄을 떠날 때 올림, S-J2 생성·확정
     note(page, "G", { documentId, selectedIds: doc.sources.map((s: { id: number }) => s.id) });
   });
   await test.step("H: 브라우저에서 문서를 확정하고 두 근거 수정은 1건으로 집계", async () => {
-    await page.getByRole("button", { name: /기본 항목 검사|AI 검증하기/ }).click();
-    await expect(page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ })).toHaveCount(
-      1,
-    );
-    await page.getByRole("button", { name: "검사 결과 접기", exact: true }).click();
-    await expect(page.getByText(/기본 항목은 통과했어요/)).toHaveCount(0);
-    await page.getByRole("button", { name: /기본 항목 검사|AI 검증하기/ }).click();
+    // 일과 칠판 밑 일지는 칠판 · 쪽지 모양이다. 근거 날짜를 줄마다 되풀이하지 않고 한 번 센다.
+    await expect(page.getByText(/^근거 \d+건$/)).toHaveCount(1);
+    // 지우기는 휴지통 단추 하나뿐이다.
+    await expect(page.getByRole("button", { name: "일지 삭제", exact: true })).toHaveCount(1);
+    await expect(page.getByRole("checkbox", { name: /원본 기록과 사실이/ })).toHaveCount(1);
+    // 검증을 누르면 끝났다는 표시가 남는다. 테스트 서버는 AI 판정을 끄고 돈다.
+    await page.getByRole("button", { name: "AI 검증하기", exact: true }).click();
     await expect(page.getByText(/기본 항목은 통과했어요/)).toBeVisible();
-    await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
-    await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
-    await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "다시 검증하기", exact: true })).toBeVisible();
+    await page.getByRole("checkbox", { name: /원본 기록과 사실이/ }).check();
+    await page.getByRole("button", { name: "확정", exact: true }).click();
+    await expect(page.getByRole("article", { name: "확정한 일지" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "다시 수정", exact: true })).toBeVisible();
     expect(dbDocument(documentId!)).toEqual({ id: documentId!, status: "CONFIRMED", stale: false });
     await page.getByRole("link", { name: "홈", exact: true }).click();
     // 이미 적힌 일과가 있으면 홈의 일과 줄 자체가 고치러 가는 길이다.
     // 줄 이름은 「09:00 일과 — …」 처럼 시각이 앞에 온다.
     await page.getByRole("link", { name: /일과 —/ }).click();
     await expect(rows(page)).toHaveCount(7);
+    await unfold(page);
     await rows(page).nth(0).getByLabel("실제로 한 것").fill("블록 길을 더 길게 이어 붙였다.");
     await rows(page).nth(2).getByLabel("실제로 한 것").fill("길 위에 자동차를 올려 굴렸다.");
     // 떠날 때 올린다. 두 줄을 고쳐도 그 일과를 쓴 보육일지는 1건으로 센다.
@@ -330,6 +366,7 @@ test("A B C G H J — 홈 진입, 7줄을 떠날 때 올림, S-J2 생성·확정
     const db = dbDocument(documentId!);
     expect(db.stale).toBe(true);
     note(page, "H", db);
+    await unfold(page);
     await fillPlan(rows(page).nth(0), "계획만 고친다.");
     const planOnly = await uploaded(page);
     // 활동계획은 확정본 종이에 나간다 — 확정 뒤 계획만 고쳐도 그 확정본을 다시 봐야 한다(ADR-086 결정 7).
@@ -345,6 +382,7 @@ test("S-J2 빈 상태 — 실제로 한 것이 없는 저장 줄에서 입력 �
   await page.getByRole("link", { name: "일과 작성하기" }).click();
   await expect(rows(page)).toHaveCount(PRESET_ROWS);
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
+  await unfold(page);
   await rows(page).nth(0).getByLabel("일과 이름").fill("시간과 이름만 있는 일과");
   await uploaded(page);
   await expect(page.getByRole("button", { name: /^(오늘|이날) 일지 만들기 →$/ })).toBeDisabled();
@@ -385,6 +423,7 @@ test("D E F J — 어제 복사·검증 오류·실제 401 임시본 실패와 �
   await page.reload();
   await expect(rows(page)).toHaveCount(1);
   await expect(rows(page).nth(0).getByLabel("일과 이름")).toHaveValue("어제 일과");
+  await unfold(page);
   await expectTime(rows(page).nth(0), "시작", "09:00");
   await expect(rows(page).nth(0).getByLabel("실제로 한 것")).toHaveValue("");
   expect(await dayRows(page, classId, date)).toEqual([]);
@@ -416,7 +455,8 @@ test("D E F J — 어제 복사·검증 오류·실제 401 임시본 실패와 �
   await uploaded(page);
   await expect(rows(page)).toHaveCount(1); // 완전히 빈 두 번째 줄만 제외했다.
   note(page, "F", { realServerStatus: 401, noNavigation: true, retrySaved: true });
-  await rows(page).nth(0).getByRole("button", { name: "1번째 일과 지우기" }).click();
+  await unfold(page);
+  await rows(page).nth(0).getByRole("button", { name: "1번째 일과 삭제" }).click();
   expect(await dayRows(page, classId, date)).toHaveLength(1);
   await uploaded(page);
   expect(await dayRows(page, classId, date)).toEqual([]);
@@ -436,6 +476,7 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   await page.getByRole("link", { name: "일과 작성하기" }).click();
   await expect(rows(page)).toHaveCount(PRESET_ROWS);
   const date = await page.getByLabel("날짜", { exact: true }).inputValue();
+  await unfold(page);
   await rows(page).nth(0).getByLabel("일과 이름").fill("햇살반 일과");
   await rows(page).nth(0).getByLabel("실제로 한 것").fill("햇살반에서 블록을 쌓았다.");
   await uploaded(page);
@@ -444,6 +485,7 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   await expect(rows(page)).toHaveCount(PRESET_ROWS);
   // 다른 반은 그날이 비어 있다 — 깔아 둔 하루가 보이고 햇살반 줄은 섞이지 않는다.
   await expect(rows(page).nth(0).getByLabel("일과 이름")).toHaveValue("등원 및 통합보육");
+  await unfold(page);
   await rows(page).nth(0).getByLabel("일과 이름").fill("달님반 일과");
   await rows(page).nth(0).getByLabel("실제로 한 것").fill("달님반에서 공을 굴렸다.");
   // 「오늘 일지 만들기」가 먼저 근거로 올린다 — 따로 올리지 않는다(ADR-084).
@@ -484,6 +526,7 @@ test("I J — 두 반의 일과·관찰 격리, 기록 화면 클릭 진입과 �
   await expect(rows(page).nth(0).getByLabel("실제로 한 것")).toHaveValue("달님반에서 공을 굴렸다.");
   await page.getByLabel("날짜", { exact: true }).fill("2026-10-16");
   await expect(rows(page)).toHaveCount(PRESET_ROWS);
+  await unfold(page);
   await rows(page).nth(0).getByLabel("일과 이름").fill("지난 날짜 일과");
   await rows(page).nth(0).getByLabel("실제로 한 것").fill("지난 날짜에 길을 만들었다.");
   // 지난 날짜도 그 날짜 · 그 반 그대로 이 화면에서 일지를 만든다.
@@ -550,6 +593,7 @@ test("후속 #1~5 — 한 칸 시간 입력 · 기존 초 보존 · 이름 없�
   await page.goto(`/routines?date=${date}&class_id=${classId}`);
   // 화면은 시간순으로 줄을 세운다. 같은 시각은 원래 순서, 시간 없는 줄은 맨 끝이다.
   await expectNames(page, ["기존 분초", "동률 놀이", "오후 놀이", "시간 미입력"]);
+  await unfold(page);
   // 초가 있는 시간도 분까지만 보여 준다. 교사가 건드리지 않으면 초는 서버에 그대로 남는다.
   await expectTime(rows(page).nth(0), "시작", "09:16");
   await fillPlan(rows(page).nth(0), "계획만 수정함");
@@ -917,10 +961,11 @@ test("후속 #14 — 일과 줄: 이름 · 시간 · 지우기가 한 줄에 서
   await page.goto(`/routines?date=${date}&class_id=${classId}`);
   const card = rows(page).first();
   await expect(card.getByLabel("일과 이름")).toHaveValue("오전 실내놀이");
+  await unfold(page);
   const nameBox = (await card.getByLabel("일과 이름").boundingBox())!;
   // 시간은 「오전 09:16 ~ 10:40」 한 칸이다. 시작 · 종료 칸은 시계판과 함께 접혀 있다.
   const timeBox = (await card.getByRole("button", { name: /^일과 시간 / }).boundingBox())!;
-  const removeBox = (await card.getByLabel("1번째 일과 지우기").boundingBox())!;
+  const removeBox = (await card.getByLabel("1번째 일과 삭제").boundingBox())!;
   // 이름 · 시간 · 지우기는 같은 줄에 왼쪽부터 차례로 선다.
   for (const box of [timeBox, removeBox])
     expect(Math.abs(box.y + box.height / 2 - (nameBox.y + nameBox.height / 2))).toBeLessThan(
@@ -1006,8 +1051,8 @@ test("후속 #15 — 확정 취소된 초안에서 삭제된 근거를 처리하
   expect(applied.sections[0].body).not.toContain("없어질 일과 시간에 있었던 일");
 
   // 7) 교사가 읽고 확정한다.
-  await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
-  await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
+  await page.getByRole("checkbox", { name: /원본 기록과 사실이/ }).check();
+  await confirmButton(page).click();
   await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
   // 8) 새로고침해도 9) 문서 id · 근거 · 확정 상태가 그대로다.
   await page.reload();
@@ -1123,13 +1168,11 @@ for (const sourceKind of ["dailyLog", "routine"] as const) {
     });
     expect(generated.request().postDataJSON().source_ids).toHaveLength(sourceIds.length);
     const doc = await generated.json();
-    await expect(
-      page.getByRole("heading", { name: doc.title, exact: true, level: 2 }),
-    ).toBeVisible();
+    await expect(weekHeading(page, doc.title)).toBeVisible();
     const support = "다음 놀이에는 블록을 준비해 함께 길을 만들도록 지원한다.";
     await page.getByRole("textbox", { name: "지원 내용", exact: true }).fill(support);
-    await page.getByRole("checkbox", { name: /원본 기록과 사실이 일치하고/ }).check();
-    await page.getByRole("button", { name: "검토 완료 · 문서 확정", exact: true }).click();
+    await page.getByRole("checkbox", { name: /원본 기록과 사실이/ }).check();
+    await confirmButton(page).click();
     await expect(page.getByText("검토한 문서를 확정했어요.")).toBeVisible();
     const saved = await api(page, `/api/documents/${doc.id}`);
     expect(saved).toMatchObject({ id: doc.id, status: "CONFIRMED", child_id: null });
@@ -1153,10 +1196,8 @@ for (const sourceKind of ["dailyLog", "routine"] as const) {
       .getByRole("complementary", { name: "문서 미리보기" })
       .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
       .click();
-    await expect(
-      page.getByRole("heading", { name: doc.title, exact: true, level: 2 }),
-    ).toBeVisible();
-    await expect(page.getByRole("button", { name: "확정 취소", exact: true })).toBeVisible();
+    await expect(weekHeading(page, doc.title)).toBeVisible();
+    await expect(page.getByRole("button", { name: "다시 수정", exact: true })).toBeVisible();
   });
 }
 
@@ -1248,9 +1289,7 @@ test("보육일지 탐색 — 아동 없는 반에서도 일일·주간 조회, 
     .getByRole("complementary", { name: "문서 미리보기" })
     .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
     .click();
-  await expect(
-    page.getByRole("heading", { name: weekly.title, exact: true, level: 2 }),
-  ).toBeVisible();
+  await expect(weekHeading(page, weekly.title)).toBeVisible();
   await page.getByRole("button", { name: "← 문서 목록으로 돌아가기", exact: true }).click();
   await page.getByRole("button", { name: "일일", exact: true }).click();
   await page.getByRole("complementary", { name: "반 선택" }).getByText("달님반").click();
@@ -1466,8 +1505,11 @@ for (const width of [1440, 390]) {
     await expect(
       preview.getByRole("heading", { name: a.title, exact: true, level: 2 }),
     ).toBeVisible();
+    // 사실은 일과마다 시각 칸 · 이름 딱지 · 본문으로 나눠 그린다. 이름표(`[블록놀이 09:00~10:00]`)를 뗀 본문을 본다.
     await expect(preview).toContainText(
-      a.sections.find((s: { heading: string }) => s.heading === "사실").body,
+      a.sections
+        .find((s: { heading: string }) => s.heading === "사실")
+        .body.replace(/^\[[^\]]*\]\s*/, ""),
     );
     await expect(preview.locator("input,textarea,select")).toHaveCount(0);
     await expect(page.getByRole("textbox", { name: "지원 내용", exact: true })).toHaveCount(0);
@@ -1533,14 +1575,17 @@ for (const width of [1440, 390]) {
       preview.getByRole("heading", { name: b.title, exact: true, level: 2 }),
     ).toBeVisible();
     await expect(preview).not.toContainText(support);
+    // 휴대폰은 문서를 펴면 목록(반 선택 포함)이 가려진다 — 목록으로 돌아가 반을 바꾼다.
+    if (width <= 760) await preview.getByRole("button", { name: "목록으로", exact: true }).click();
     await page.getByRole("complementary", { name: "반 선택" }).getByText("달님반").click();
     await expect(page.getByRole("heading", { name: b.title, exact: true, level: 2 })).toHaveCount(
       0,
     );
     await expect(preview).toHaveCount(0);
-    await expect(
-      page.getByRole("heading", { name: "문서를 선택해 주세요", exact: true }),
-    ).toBeVisible();
+    // 휴대폰은 빈 「문서를 선택해 주세요」 칸을 두지 않는다(PM 11-10).
+    const overview = page.getByRole("heading", { name: "문서를 선택해 주세요", exact: true });
+    if (width > 760) await expect(overview).toBeVisible();
+    else await expect(overview).toBeHidden();
     expect(
       (await api(page, `/api/documents/${a.id}`)).sections.find(
         (s: { heading: string }) => s.heading === "지원",
