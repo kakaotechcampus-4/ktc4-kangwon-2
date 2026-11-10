@@ -20,7 +20,12 @@
 일일 양식의 「반 운영 특이사항」은 공식 양식 5종 전부에 있는 칸이고, 사례 ④는 표 맨 아래
 한 줄로 둔다 (`docs/references/보육일지-공식양식.md`).
 
-두 번 돌려도 같은 결과다 — 이미 붙어 있는 특이사항 줄은 지우고 다시 만든다.
+일일 양식은 제목 아래에 「날짜 · 날씨」 머리 줄을 둔다(ADR-089). 실물 일일 양식의 머리가
+날짜 · 요일 · 날씨다(`docs/journal-form-survey.md`). 표 안이 아니라 표 밖 문단이다 — 표에 줄을
+더하면 일과 줄 주소가 밀려 이미 있는 내보내기 계약(머리행 1 · 원형 · 꼬리 2)이 바뀐다.
+주간 양식에는 넣지 않는다.
+
+두 번 돌려도 같은 결과다 — 이미 붙어 있는 특이사항 줄 · 머리 줄은 지우고 다시 만든다.
 """
 
 import copy
@@ -36,6 +41,8 @@ DAILY = TEMPLATES / "daily_log.hwpx"
 WEEKLY = TEMPLATES / "weekly_log.hwpx"
 
 DAILY_NOTE_LABEL = "반 운영 특이사항"
+# 내보낼 때 `documents/export.py` 가 이 글자를 찾아 날짜 · 날씨로 바꾼다.
+DAILY_HEAD_PLACEHOLDER = "날짜 · 날씨"
 WEEKLY_HEAD = ("날짜", "우리반 놀이", "놀이 이해 및 분석", "앞으로의 지원방향", DAILY_NOTE_LABEL)
 WEEKLY_FOOTER_LABEL = "주간 총평"
 
@@ -92,8 +99,11 @@ def row_height(row: etree._Element) -> int:
 
 
 def base_table() -> tuple[etree._Element, etree._Element]:
-    """특이사항 줄을 아직 안 붙인 일일 양식 — 머리행 1 · 본문 원형 1 · 꼬리 1."""
+    """특이사항 줄 · 머리 줄을 아직 안 붙인 일일 양식 — 머리행 1 · 본문 원형 1 · 꼬리 1."""
     root, table = load(DAILY)
+    for p in root.findall("hp:p", NS):
+        if "".join(t.text or "" for t in p.iter(f"{{{HP}}}t")) == DAILY_HEAD_PLACEHOLDER:
+            root.remove(p)
     rows = table.findall("hp:tr", NS)
     if len(rows) == 4 and text_of(rows[3].find("hp:tc", NS)).strip() == DAILY_NOTE_LABEL:
         table.remove(rows[3])
@@ -116,8 +126,25 @@ def build_daily() -> None:
     size = table.find("hp:sz", NS)
     size.set("height", str(int(size.get("height")) + row_height(note)))
     renumber(table)
+    add_head_line(root)
     save(root, DAILY, DAILY)
-    print(f"{DAILY.name} — 꼬리 2줄 (놀이 평가 및 다음날 지원계획 · {DAILY_NOTE_LABEL})")
+    print(f"{DAILY.name} — 머리 줄 · 꼬리 2줄 (놀이 평가 및 다음날 지원계획 · {DAILY_NOTE_LABEL})")
+
+
+def add_head_line(root: etree._Element) -> None:
+    """제목 바로 아래에 「날짜 · 날씨」 자리 문단을 넣는다. 본문 글자 모양(10pt) 빈 문단을 복제한다.
+
+    줄 배치 캐시(`linesegarray`)는 맨 위 문단 전부에서 지운다 — 문단이 하나 끼면 아래 문단의
+    세로 위치 값이 틀린다. 없으면 한글이 다시 계산한다 (`app/shared/hwpx.py` `_drop_layout`).
+    """
+    paragraphs = root.findall("hp:p", NS)
+    head = copy.deepcopy(paragraphs[-1])
+    assert not text_of(head), "양식 맨 끝 문단이 빈 문단이 아니다."
+    etree.SubElement(head.find("hp:run", NS), f"{{{HP}}}t").text = DAILY_HEAD_PLACEHOLDER
+    paragraphs[0].addnext(head)
+    for p in root.findall("hp:p", NS):
+        for layout in p.findall("hp:linesegarray", NS):
+            p.remove(layout)
 
 
 def build_weekly() -> None:
