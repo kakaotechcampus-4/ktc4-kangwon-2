@@ -14,6 +14,12 @@ export async function completeOnboarding(
   input: {
     center: string;
     director: string;
+    /**
+     * 정부 목록에서 고를 어린이집 이름. 주면 「직접 적기」 대신 목록에서 골라, 다른 계정이 같은 원으로
+     * 들어올 수 있다(ADR-068). 이미 쌤플을 쓰는 원이면 원장 이름을 묻지 않고 그 원으로 들어간다.
+     * 같은 DB 를 다시 돌리면 원이 남아 있으므로 두 경우를 다 받는다. 이때 `center` 는 쓰지 않는다.
+     */
+    daycare?: string;
     className?: string;
     /** 비우면 가입 때 쓴 이름이 미리 채워진 그대로 둔다. */
     teacher?: string;
@@ -34,11 +40,27 @@ export async function completeOnboarding(
   await sheet.getByRole("button", { name: "춘천시", exact: true }).click();
   await expect(sheet).toBeHidden();
   await next.click();
-  await page.getByRole("button", { name: "목록에 없어요 · 직접 적기", exact: true }).click();
-  await page.getByLabel("어린이집 이름").fill(input.center);
-  await next.click();
-  await page.getByLabel("원장 이름").fill(input.director);
-  await next.click();
+  if (input.daycare) {
+    await page.getByLabel("어린이집 이름").fill(input.daycare);
+    await page
+      .getByRole("list", { name: "찾은 어린이집" })
+      .getByRole("button", { name: input.daycare })
+      .click();
+    const join = page.getByRole("button", { name: "이 원으로 시작하기", exact: true });
+    const director = page.getByLabel("원장 이름");
+    await expect(join.or(director)).toBeVisible();
+    if (await join.isVisible()) await join.click();
+    else {
+      await director.fill(input.director);
+      await next.click();
+    }
+  } else {
+    await page.getByRole("button", { name: "목록에 없어요 · 직접 적기", exact: true }).click();
+    await page.getByLabel("어린이집 이름").fill(input.center);
+    await next.click();
+    await page.getByLabel("원장 이름").fill(input.director);
+    await next.click();
+  }
 
   // S2 반 정보 — 마지막 「다음」이 반을 등록한다. 확인 시트는 없다(마지막 확인에서 고친다).
   await expect(page).toHaveURL(/\/onboarding\/classes$/);

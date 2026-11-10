@@ -648,6 +648,8 @@ P0 에서는 아동 기록이 없는 온보딩 단계에서만 일어난다. 이
 
 **PENDING 먼저, 그 안에서 `updated_at` 내림차순이다.** `requester_name` 은 요청한 계정의 이름(`users.name`)이다.
 상태는 PENDING · APPROVED · REJECTED · REVOKED 다. **화면 안 목록으로만 알린다. 메일은 보내지 않는다**(ADR-029).
+**상단바 알림함이 이것을 보충한다**(아래 「알림함」, ADR-097). 요청이 왔다는 것과 내 요청이 승인 · 거절 · 취소됐다는 것을
+어느 화면에서나 종으로 본다. 「내 요청 목록」 API 는 여전히 없고, 알림도 메일 · 푸시로 나가지 않는다.
 
 ### 승인 · 거절 · 취소 — `PATCH /api/access-requests/{id}`
 
@@ -670,6 +672,49 @@ P0 에서는 아동 기록이 없는 온보딩 단계에서만 일어난다. 이
 **승인은 서로다 (ADR-068).** `APPROVED` 로 바꾸면 요청한 교사가 이 원에 가진 반 전부에 대해, 승인한 교사의
 `APPROVED` 줄도 함께 생긴다(이미 줄이 있으면 `APPROVED` 로 바뀐다). `REVOKED` 로 바꾸면 그 반대 줄도 `REVOKED` 다.
 `REJECTED` 는 반대 줄을 건드리지 않는다. 승인할 때 있던 반만 열린다 — 그 뒤 새로 만든 반은 따로 청한다.
+
+### 알림함 — 목록 `GET /api/me/notifications`
+
+**내 알림 최근 30개를 `id` 내림차순(새 것이 위)으로 준다. Response** `200`
+
+```json
+{ "items": [
+    { "id": 12, "kind": "ACCESS_REQUESTED", "request_id": 5, "class_id": 3, "class_name": "해님반",
+      "requester_name": "김하늘", "created_at": "2026-11-11T01:02:03Z", "read_at": null }
+] }
+```
+
+| `kind` | 받는 사람 | 언제 |
+|---|---|---|
+| `ACCESS_REQUESTED` | 반 주인 | 열람 요청 줄이 새로 생기거나, 거절 · 취소된 줄이 다시 `PENDING` 이 될 때 |
+| `ACCESS_APPROVED` | 요청자 | 주인이 승인했다 |
+| `ACCESS_REJECTED` | 요청자 | 주인이 거절했다 |
+| `ACCESS_REVOKED` | 요청자 | 주인이 승인을 취소했다 |
+
+- **내 알림만 온다.** 원 · 반이 없는 계정도 `200 { "items": [] }` 다.
+- `class_name` 은 `classes.name`, `requester_name` 은 요청한 교사의 `users.name` 이다(받은 요청의 두 칸과 같은 값).
+  알림 줄에는 이름 사본을 두지 않고 읽을 때 요청 줄에서 가져온다. 아이 이름은 어디에도 없다.
+- **안 읽은 수는 주지 않는다.** 화면이 `items` 에서 `read_at` 이 `null` 인 것을 센다. 30개를 넘는 오래된 알림은 세지 않는다.
+- `created_at` · `read_at` 은 UTC(`Z`)다.
+- **승인으로 맞승인이 열릴 때(ADR-068) 자동으로 생기는 반대 줄에는 알림을 만들지 않는다.**
+  승인한 교사의 반을 요청자가 보게 되는 것은 요청자가 이미 보낸 요청에 대한 답이기 때문이다.
+- 주인이 승인 · 거절하면 그 요청의 `ACCESS_REQUESTED` 알림은 같이 읽음이 된다(보관함에서 처리해도 종이 남지 않는다).
+  맞승인으로 상대의 `PENDING` 요청이 `APPROVED` 가 될 때도 그 요청의 `ACCESS_REQUESTED` 가 읽음이 된다.
+
+### 알림함 — 읽음 `POST /api/me/notifications/read`
+
+**Request** — body 는 필수다.
+
+```json
+{ "ids": [12, 13] }
+```
+
+**Response** `204`, body 없음.
+
+- `ids` 는 1개 이상 30개 이하의 양의 정수(`INTEGER` 범위)다. **body 가 없거나 빈 배열이거나 31개 이상이거나 모르는 칸이 있으면
+  `422 VALIDATION_FAILED`** 다. 「body 없음 = 전부 읽음」은 없다. 30은 위 목록이 주는 최대 개수다.
+- **남의 id · 없는 id 는 조용히 건너뛴다.** 에러도 내지 않는다.
+- **이미 읽은 알림의 `read_at` 은 덮지 않는다.**
 
 ### 시간순 예시
 

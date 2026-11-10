@@ -49,28 +49,31 @@ const accessOf = (room: ApiClass): ForeignAccess => (room.my_access ?? "NONE") a
  * 같은 원의 남의 반과 내가 받은 요청.
  *
  * 둘 다 보관함에 덤으로 붙는 것이다 — 못 불러와도 내 반 보관함은 그대로 써야 해서
- * 실패는 빈 목록으로 둔다.
+ * 실패는 빈 목록으로 둔다. `loaded` 는 둘이 처음 끝났을 때(실패해도) 켜진다 — 그 전의 빈 목록은
+ * 「없다」가 아니라 「아직」이라서, 알림으로 바로 들어온 화면이 반대 말을 하지 않게 한다.
  */
 export function useClassAccess() {
   const [others, setOthers] = useState<ApiClass[]>([]);
   const [received, setReceived] = useState<ReceivedRequest[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let live = true;
-    getMe()
+    const classes = getMe()
       .then((me) => (me.center_id ? getClasses(me.center_id) : { items: [] }))
       .then(({ items }) => live && setOthers(items.filter((room) => !isMyClass(room))))
       .catch(() => live && setOthers([]));
-    listReceivedRequests()
+    const requests = listReceivedRequests()
       .then(({ items }) => live && setReceived(items))
       .catch(() => live && setReceived([]));
+    void Promise.all([classes, requests]).then(() => live && setLoaded(true));
     return () => {
       live = false;
     };
   }, [reload]);
 
-  return { others, received, reload: () => setReload((n) => n + 1) };
+  return { others, received, loaded, reload: () => setReload((n) => n + 1) };
 }
 
 /** 상태마다 포스티가 짓는 모습과 하는 말. */
