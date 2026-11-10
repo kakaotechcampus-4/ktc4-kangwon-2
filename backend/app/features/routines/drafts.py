@@ -211,7 +211,7 @@ def _promote(
         record.reflected, record.activities = row.reflected, row.activities
         session.flush()
         if before is not None:
-            impact = _merge(impact, mark_if_changed(session, record, before, center, before_marks))
+            impact = _merge(impact, mark_if_changed(session, record, before, center, before_marks))  # type: ignore[arg-type]
         rows[index] = row.model_copy(update={"id": record.id})
         position += 1
     return impact
@@ -225,4 +225,5 @@ def prune_drafts(session: Session, now: datetime.datetime) -> int:
             RoutineDraft.promoted_at < now - KEEP_AFTER_PROMOTE,
         )
     )
-    return result.rowcount
+    # DML 문의 결과는 CursorResult(rowcount 있음)인데 session.execute 는 Result 로 적혀 있다.
+    return result.rowcount  # type: ignore[attr-defined]

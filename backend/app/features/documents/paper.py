@@ -24,8 +24,8 @@ def stamp_confirmed(session: Session, doc: Document) -> None:
     if doc.kind == "dailyLog":
         # 「반영」 표기도 종이 글자다. 원 설정을 나중에 바꿔도 확정본 종이는 그대로다(결정 7).
         doc.reflect_mark = current_reflect_mark(session, doc.class_id)
-    copies = session.scalars(select(DocumentSource).where(DocumentSource.document_id == doc.id))
-    copies = list(copies)
+    rows = session.scalars(select(DocumentSource).where(DocumentSource.document_id == doc.id))
+    copies = list(rows)
     routines = {
         r.id: r
         for r in session.scalars(

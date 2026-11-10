@@ -138,9 +138,9 @@ def _parse(content: str, asked: Mapping[str, ThemeTextRequest]) -> list[ThemeTex
             raise LlmFailed(f"같은 주제가 두 번 왔다: {theme_id!r}")
         if not isinstance(value, str) or not value.strip():
             raise LlmFailed(f"주제 문장이 비었다: {theme_id!r}")
-        seen.add(theme_id)
+        seen.add(theme_id)  # type: ignore[arg-type]
         results.append(
-            ThemeTextResult(period=asked[theme_id].period, theme_id=theme_id, value=value.strip())
+            ThemeTextResult(period=asked[theme_id].period, theme_id=theme_id, value=value.strip())  # type: ignore[arg-type, index]
         )
     missing = sorted(set(asked) - seen)
     if missing:

@@ -221,6 +221,7 @@ curl -f http://localhost/health                  # {"status":"ok"}
 |---|---|---|
 | 백엔드 | `cd backend && DATABASE_URL=<테스트 DB> pytest` | 로컬, CI `backend (pytest)` |
 | 계획안 엔진 | `cd p0-planning && pytest` | 로컬, CI `backend (pytest)` 안 |
+| 백엔드 타입 | `cd backend && mypy` | 로컬, CI `backend (ruff)` 안 |
 | 화면 | `cd frontend && npm run lint && npm test` | 로컬, CI `frontend (eslint · prettier · build)` |
 | 화면 끝까지(E2E) | `cd frontend && npm run e2e` | CI `e2e (playwright)` |
 | 마이그레이션 | `alembic check`, 직전 코드가 새 DB 에서 도는지 | CI `backend (alembic check)`, `backend (rollback compat)` |
