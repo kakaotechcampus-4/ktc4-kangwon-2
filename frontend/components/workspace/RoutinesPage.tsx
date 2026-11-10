@@ -1308,6 +1308,7 @@ function RowCard({
    */
   const [unfolded, setUnfolded] = useState(false);
   const canFold = !!row.name.trim() && !error;
+  const folded = canFold && !unfolded;
   const foldOpen = useRef<HTMLButtonElement>(null);
   const foldClose = useRef<HTMLButtonElement>(null);
   // 누른 단추가 사라지므로 커서를 맞은편 단추로 옮긴다.
@@ -1322,7 +1323,10 @@ function RowCard({
       className={ws.routineRow}
       data-tone={row.tone}
       data-lean={row.tone % 2}
-      data-folded={(canFold && !unfolded) || undefined}
+      data-folded={folded || undefined}
+      // 펴 있는 쪽지 안을 누르면 그대로 펴 둔다 — 새 줄에 이름을 적기 시작하면 바로 접혀
+      // 글칸이 사라졌다. 접기는 교사가 ▴ 를 눌렀을 때만.
+      onFocus={() => !folded && setUnfolded(true)}
     >
       <button
         ref={foldOpen}
