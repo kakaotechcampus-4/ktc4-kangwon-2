@@ -332,8 +332,10 @@ test("A B C G H J — 홈 진입, 7줄을 떠날 때 올림, S-J2 생성·확정
     note(page, "H", db);
     await fillPlan(rows(page).nth(0), "계획만 고친다.");
     const planOnly = await uploaded(page);
-    // 계획만 고친 것은 근거(실제로 한 것)가 아니다 — 다시 검토로 세지 않는다.
-    expect(planOnly.review_impact?.affected_document_ids ?? []).toEqual([]);
+    // 활동계획은 확정본 종이에 나간다 — 확정 뒤 계획만 고쳐도 그 확정본을 다시 봐야 한다(ADR-086 결정 7).
+    // 이미 원본 바뀜이라 새로 바뀐 건수에는 들지 않는다.
+    expect(planOnly.review_impact?.affected_document_ids).toEqual([documentId!]);
+    expect(planOnly.review_impact?.newly_stale_document_ids ?? []).toEqual([]);
     await page.screenshot({ path: info.outputPath("A-G-H-routines.png"), fullPage: true });
   });
 });
