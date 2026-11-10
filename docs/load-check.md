@@ -23,7 +23,7 @@
 | LLM 한 번 제한 시간 | 30초. 502 · 503 · 504 · 연결 실패만 호출마다 1회 더(1.5초 뒤) | `backend/app/shared/llm/client.py:46` · `:53` |
 | S1 일지 초안 | 인증 의존성의 **첫 질의**(`shared/auth/dependency.py:42`)부터 commit(`documents/router.py:792`)까지 **한 연결을 쥔 채** LLM **1호출**(`:693`). commit 뒤 응답을 만들며 연결을 다시 빌린다. 요청당 전송 시도 최대 **2** | |
 | S2 주제형 연간 | 한 트랜잭션 안에서 LLM 호출: 주제 1(`plans/router.py:509` → `plans/llm.py`) + 소주제 1(`:550` → `plans/annual_content.py:155`), **소주제 개수가 틀리면 수리 1 더**(`annual_content.py:191`). 보통 2호출, 최대 **3호출 × 전송 재시도 = 시도 6**. commit 은 `:575` | |
-| 놀이형 연간 | 생성 전에 commit 해서 연결을 놓는다 — **이번 측정에서 뺀다** | |
+| 놀이형 연간 | 생성 전에 commit 해서 연결을 놓는다 — **이번 측정에 넣지 않는다** (`PLAN` · `MAX_ATTEMPTS` 에 칸이 없다) | |
 | 참조 자료 | 이미지 안 파일(`p0-planning/data`) — 마이그레이션만 한 빈 DB 에서 S1 · S2 가 돈다 | |
 | 풀 대기 초과 | 500 `INTERNAL_ERROR` + 로그 `unexpected_error … error=sqlalchemy.exc.TimeoutError`. **「QueuePool」 문장은 로그에 안 찍힌다** | `backend/app/main.py` (예외 클래스 이름만 남긴다) |
 
@@ -56,7 +56,8 @@ S1 의 H 는 LLM 1호출, S2 의 H 는 보통 LLM 2호출의 합이다(수리가
 - **게이트가 보는 것**(`docker compose config --format json` — 비밀번호가 들어 있어 화면에 안 찍는다): 프로젝트 이름 `loadtest` · 서비스 `db backend loadgen` 만 ·
   세 서비스의 `mem_limit` · `memswap_limit`(512m · 1g · 256m) · 호스트 포트 없음 · `restart: "no"` · build 없음 · journald 아님 ·
   **모든 서비스의 연결 네트워크는 `default` 하나뿐 · `network_mode` 없음** · db 이미지 `postgres:15` · backend/loadgen 이미지 ·
-  backend `LOADTEST=1` · `LLM_MODE` · `IS_SERVER` · `ALLOW_TEST_RESET=0` · DB 호스트 `db` · loadgen 환경변수는 `DATABASE_URL` · `LOADTEST` 뿐 ·
+  backend `LOADTEST=1` · `LLM_MODE` · `IS_SERVER` · `ALLOW_TEST_RESET=0` · DB 호스트 `db` · **backend · loadgen 의 `DATABASE_URL` 에 쿼리(`?host=…`) 없음 · `PG*` 환경변수 없음** ·
+  loadgen 환경변수는 `DATABASE_URL` · `LOADTEST` 뿐 ·
   **bind mount 는 loadgen 의 `load_check.py` · `out/` 둘뿐, 이름 있는 볼륨은 `loadtest_pgdata` 하나뿐 · 볼륨 `driver_opts` 없음** ·
   망 `loadtest_default` 172.29.0.0/16 하나 · 설정 어디에도 `ktc4-kangwon-2` · `172.28.` · `journald` 가 없다.
 - 운영 폴더 안에서는 아무것도 하지 않는다. 컨테이너 · 볼륨(`loadtest_pgdata`) · 망(`loadtest_default`) 이름이 전부 `loadtest` 로 시작한다.
@@ -76,16 +77,32 @@ S1 의 H 는 LLM 1호출, S2 의 H 는 보통 LLM 2호출의 합이다(수리가
 
 ### 배포 잠금 — 단계마다 감싼다
 
-서버 DB 를 바꾸거나 LLM 을 부르는 단계(**`up` · `loadgen setup` · `loadgen burst` · `down`**)는 `loadtest.sh` 가
+서버 DB 를 바꾸거나 LLM 을 부르는 단계(**`up` · `down` · 그리고 읽기뿐인 `analyze` · `budget` 을 뺀 `loadgen` 전부 — `setup` · `burst` 와 `--` 를 앞세운 것 포함**)는 `loadtest.sh` 가
 `scripts/deploy.sh` 와 **같은 파일 `/tmp/ssuksak-deploy.lock` 에 `flock -w 60`** 을 건 채로 돈다(`deploy.sh` 는 ubuntu 로 같은 파일을 `flock -w 300` 한다).
 
 - **못 잡으면 그 단계를 돌리지 않고 `exit 1`** 이다. (`flock` 이 없어도 마찬가지.)
 - 단계가 끝나거나 죽으면 fd 가 닫혀 **잠금이 저절로 풀린다**(그 단계가 띄운 자식 프로세스까지 끝나면 — `flock` 의 보통 규칙이다). 뒤에 남는 프로세스 · pid 파일이 없다.
-- 읽기 단계(`preflight` · `gate` · `stage` · `budget` · `final`)와 `loadgen analyze`/`budget` 은 잠그지 않는다.
+- 읽기 단계(`preflight` · `src` · `gate` · `stage` · `budget` · `final`)와 `loadgen analyze`/`budget` 만 잠그지 않는다.
 - **단계 사이는 잠금이 막지 못한다.** 그 사이는 Deploy 워크플로 비활성화가 막는다(아래 「시작 전」). 비활성화 전에 이미 서버로 간 배포는 `preflight` 가 본다.
 - 단계 도중 배포가 오면: `deploy.sh` 가 300초 기다린 뒤 `die "잠금을 못 잡았다 … 서버는 바꾸지 않았다"` 로 **종료 코드 1**(교체 전 실패 — 서버는 그대로)로 끝난다.
   Actions 에는 실패로 남고 알림이 간다. 끝난 뒤 `gh workflow enable` → 필요하면 다시 올린다.
 - 한계: 옛 `deploy.sh`(잠금이 없는 것)를 손으로 돌리면 이 잠금을 안 본다(`deploy.sh` 의 ADR-078 주석).
+
+---
+
+## 실행 조건 — 하나라도 어기면 실행하지 않는다
+
+한 곳에 모았다. 아래 항목은 코드가 다 막지 못한다(사람이 지킨다).
+
+1. **검토한 SHA 를 push 했고, 서버의 `src` 가 그 SHA 다.** `LT_EXPECT_SHA` 에 전체 SHA 를 주고 `bash $LT src` 가 통과해야 한다(비면 멈춘다).
+   실행하는 파일 넷(`compose.loadtest.yml` · `load_check.py` · `loadtest.sh` · `loadtest_gate.py`)이 `src` 와 byte 단위로 같아야 한다.
+2. **`L`(= `loadtest.sh loadgen`) 에 `--` 를 넣지 않는다.** 읽기 전용 `analyze` · `budget` 만 잠금 없이 돌고 나머지는 전부 잠금 안에서 돈다(`--` 를 앞세워도 마찬가지로 막힌다).
+3. **Deploy 워크플로를 비활성화했고, 팀에 공지했고, 도는 run 이 없다**(아래 「시작 전」의 `gh` 확인).
+4. **승인된 계획 표(「측정 계획」)의 단계만 한 번씩 돌린다.** `burst` 가 예산 판정을 강제하지 않는다 — `budget` 이 「진행 가능」일 때만, 표 순서대로, 표의 동시 · 반복으로만 보낸다. 같은 단계를 다시 보내거나 표 밖 단계를 넣지 않는다(판정이 무효가 된다).
+5. **`tmux`(또는 끊겨도 살아남는 같은 효과의 세션) 안에서 돌린다.** 세션이 끊기면 셸이 죽어 잠금이 풀리고 컨테이너는 남는다.
+6. **`172.29.` 경로가 호스트에 없다.** `preflight` 가 `ip -4 route` 로 본다(조회 실패도 FAIL).
+7. **Session Manager 로 들어가 `ubuntu` 로 돌린다 — 배포와 같은 호스트 `/tmp`.** `deploy.sh` 의 잠금 파일(`/tmp/ssuksak-deploy.lock`)과 같은 파일을 잠가야 의미가 있다. 다른 `/tmp` 를 쓰는 컨테이너 · 서비스 안에서 돌리지 않는다.
+8. **`.env` 는 `bash $LT env` 가 만든 것만 쓰고 손으로 고치지 않는다.** 게이트가 값을 몇 가지만 확인하므로(허용 목록이 전부를 막지는 않는다) 손으로 바꾼 `.env` 는 검증 밖이다.
 
 ---
 
@@ -150,7 +167,7 @@ S1 의 H 는 LLM 1호출, S2 의 H 는 보통 LLM 2호출의 합이다(수리가
 ```
 요청당 원화(기준선)     = 그 요청의 llm_usage 줄들(입력 × ₩2.835/1K + 출력 × ₩14.175/1K)의 합
 요청당 최악(시나리오)   = 기준선 요청당 최대 원화 × (요청당 최대 시도 ÷ 기준선 요청당 최소 시도)
-                          요청당 최대 시도: S1 2 · S2 6    기준선 시도 = 그 요청의 llm_call 줄 수(성공 + not_delivered)
+                          요청당 최대 시도: S1 2 · S2 6    기준선 시도 = 그 요청의 성공(ok) 호출 수 (재시도 not_delivered 는 안 센다)
 남은 계획 최악          = S1 140건 × 요청당 최악(S1) + S2 70건 × 요청당 최악(S2)
 기준선 지출             = 기준선 요청 8건의 원화 합 (예열 회차 포함)
 진행 가능               ⇔ 남은 계획 최악 ≤ ₩30,000 − 기준선 지출
@@ -161,8 +178,14 @@ S1 의 H 는 LLM 1호출, S2 의 H 는 보통 LLM 2호출의 합이다(수리가
   성공 호출이 모자란다(S1 1 · S2 2) · `llm_usage` 가 없거나 숫자가 아니거나 성공 호출 수와 안 맞는다 · 기준선 요청이 4건이 아니다.
   기준선을 다시 돌렸다면 시나리오마다 **가장 최근 기준선 파일만** 본다.
 - 결과: `진행 가능`(종료 코드 0) / `멈춤(단가 모름)` / `멈춤(상한 초과 가능)`(종료 코드 1). **이 한 번의 판정이 표의 남은 burst 전부를 허용한다 — 단계마다 다시 판정하지 않는다.**
-- 이 추정은 관측에 기댄 것이지 보장된 상한이 아니다(캐시 할인을 안 세서 조금 높고, 단가가 기준선보다 커지는 요청은 못 본다).
-  사후 지출 집계(`stage`/`final` 끝)는 보고용이고 판정에 쓰지 않는다. 사람이 누적 지출이 ₩30,000 의 80% 를 넘는지 본다(중단 규칙 I-2).
+- **이 추정은 관측에 기댄 것이지 보장된 상한이 아니다.** 구체적으로:
+  - **출력 토큰 편차**: 모델은 온도 1 고정이고(`client.py`: sol 이 0 을 거부한다) 출력 상한(`max_completion_tokens`)도 안 건다. 같은 입력에서도 출력 길이가 달라
+    기준선 8건의 최대가 이후 요청의 최대가 아닐 수 있다. 출력 단가가 입력의 5배(₩14.175 / ₩2.835)라 편차가 곧 원화 편차다.
+  - **시간 초과 호출은 과금됐을 수 있는데 `llm_usage` 가 안 남는다.** 특히 n=40 에서 30초를 넘기는 호출이 나오면 그 비용은 로그에서 못 읽고,
+    사후 집계가 「호출 최대 단가 × 건수」로 어림한다(H-2 의 80% 확인용일 뿐 정확하지 않다).
+  - **판정은 `setup` 본문(일과 기록 한 줄)과 측정 계획이 고정일 때만 유효하다.** 본문을 늘리거나 계획 표 밖의 단계를 넣으면 기준선 단가가 달라 판정이 무효다 — `budget` 을 기준선부터 다시 한다.
+  - 캐시 할인을 안 세서 조금 높다.
+  사후 지출 집계(`stage`/`final` 끝)는 보고용이고 판정에 쓰지 않는다. 사람이 누적 지출이 ₩30,000 의 80% 를 넘는지 본다(중단 규칙 H-2).
 - **mock 에서는 `llm_call` 줄이 없어 「멈춤(단가 모름)」이 정상이다.** 서버 real 에서만 의미가 있다.
 
 ---
@@ -177,6 +200,7 @@ Session Manager 로 들어가 사람이 친다. 터미널을 3개 쓴다: ① �
 sudo -iu ubuntu
 export LT_SUDO=1                           # docker 가 sudo 를 요구하는 환경일 때만 (docs/deploy.md 는 sudo docker compose)
 export LT_SSM_INSTANCE=i-041ebb00937bd371f # preflight 가 SSM 에서 도는 배포 명령을 볼 인스턴스
+export LT_EXPECT_SHA=<push 한 검토 SHA 전체 40자>   # 비면 모든 단계가 멈춘다. 서버에서 받은 src 의 HEAD 와 같아야 한다
 LT=/home/ubuntu/loadtest-457/loadtest.sh
 ```
 
@@ -194,6 +218,7 @@ cp src/backend/scripts/compose.loadtest.yml src/backend/scripts/load_check.py \
 cp /home/ubuntu/ktc4-kangwon-2/docker-compose.yml .
 git -C src log --oneline -1                    # 부하 스크립트 커밋 → 결과표에 적는다
 SH
+bash $LT src            # src 의 HEAD 가 LT_EXPECT_SHA 와 같고, 복사한 실행 파일 넷이 src 와 같아야 한다. 다르면 exit 1
 ```
 
 ### C. 점검 · .env · 이미지 태그 · 게이트
@@ -210,6 +235,8 @@ bash $LT gate -v        # 어긋나는 것이 하나라도 있으면 exit 1
 - 운영 backend 컨테이너 조회 성공 + **`State.Running` = true**, 이미지 · 로그 드라이버
 - `free -m` available ≥ 2292MB
 - 172.29 대역을 쓰는 망 · loadtest 볼륨 · 컨테이너가 없다 (docker 조회 실패는 FAIL)
+- **호스트 라우팅(`ip -4 route`)에 `172.29.` 경로가 없다**(조회 실패도 FAIL)
+- 서버의 `src` HEAD 가 `LT_EXPECT_SHA` 와 같고 실행 파일 넷이 `src` 와 같다(`LT_EXPECT_SHA` 가 비면 FAIL)
 - 도는 `deploy.sh` 없음(`pgrep` 종료 코드 0 = 있음 · 1 = 없음 · 그 밖 = 실패) · 배포 잠금을 아무도 안 쥐고 있음
 - SSM 에서 `InProgress`/`Pending`/`Cancelling` 인 명령 없음(`LT_SSM_INSTANCE` 필수, 조회 실패 = FAIL)
 
@@ -276,7 +303,7 @@ L burst --base $B --scenario s2 --n 40 --repeat 1 --out /lt/out;  S
 `L burst` 가 **0 이 아닌 코드**로 끝났으면 다음 줄을 보내지 않는다: 종료 코드 **3** 은 한도 오류(`LLM_BUDGET_EXCEEDED`)가 나와 남은 회차를 안 보냈다는 뜻이다(결과는 저장됐다).
 `S` 는 읽기라 그래도 돌려 된다.
 
-놀이형 연간은 기본 제외다(연결을 놓는 대조군). 기준선 비용을 보고 동시 1 · 10 만 넣을지 정한다(이 표 밖이면 `budget` 을 다시 계산해야 한다).
+놀이형 연간은 **이번 측정에 넣지 않는다**(`PLAN` · `MAX_ATTEMPTS` 에 칸이 없어 `budget` 이 계산하지 못한다). 넣으려면 코드와 표를 먼저 고치고 다시 검토받는다.
 
 전부 끝나면 **전체 표**를 한 번 뽑아 결과에 옮긴다 (마지막 단계 하나가 아니라 전부):
 
@@ -285,7 +312,7 @@ bash $LT final          # 새로 로그를 덤프하고 analyze 를 --last-only 
 ```
 
 `--repeat` 는 회차 사이에 `--pause`(기본 5초) 쉰다. 클라이언트 시간 초과가 생기면 서버가 끝나길 `--settle`(기본 60초) 기다린 뒤 행 수를 센다.
-회차가 길어 터미널이 끊길 수 있으면 `tmux` 안에서 돌린다.
+**`tmux` 안에서 돌리는 것은 필수 조건이다**(실행 조건 5). 세션이 끊기면 셸이 죽어 단계의 잠금이 풀리는데 이미 시작한 컨테이너 · 요청은 남는다.
 
 ### G. 읽는 법
 

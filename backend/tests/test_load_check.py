@@ -71,10 +71,12 @@ def test_원화_계산과_사후_집계의_시간초과는_호출_최대_단가�
             event("llm_usage", prompt="2000", completion="1000"),
             event("llm_usage", prompt="-", completion="-"),  # 숫자가 아니면 세지 않는다
             event("llm_call", outcome="timeout"),
+            event("llm_call", outcome="failed"),  # failed 도 과금됐을 수 있어 같이 센다
+            event("llm_call", outcome="ok"),
         ]
     )
-    assert sp["calls"] == 2
-    assert sp["timeout_won"] == pytest.approx(lc.cost_won(2000, 1000))
+    assert sp["calls"] == 2 and sp["timeouts"] == 2
+    assert sp["timeout_won"] == pytest.approx(2 * lc.cost_won(2000, 1000))
 
 
 def _resolver(*ips):
@@ -103,6 +105,7 @@ def test_부하_대상은_loadtest_망_안의_backend_뿐이다():
     _refused(_resolver("172.28.0.3"))
     _refused(_resolver("172.29.0.3", "172.28.0.9"))
     _refused(_resolver("::1"))
+    _refused(_resolver("172.29.0.1"))  # 게이트웨이(호스트로 나가는 문)는 backend 가 아니다
     _refused(_resolver())
 
     def broken(host, port):
@@ -146,7 +149,20 @@ def test_기준선_요청은_성공_호출마다_usage_가_있어야_비용을_�
     retried = lc.baseline_request(
         "s1", {"status": 201}, [_ok_call("not_delivered"), _ok_call(), _usage()]
     )
-    assert retried["attempts"] == 2 and retried["won"] == pytest.approx(one)
+    # 시도 수는 성공 호출만 센다 — 재시도 1 + 성공 1 도 1 이라 배율(최대 시도 ÷ 시도)이 안 준다
+    assert retried["attempts"] == 1 and retried["won"] == pytest.approx(one)
+    judged = lc.judge_budget(
+        {
+            "s1": [retried] * 4,
+            "s2": [
+                lc.baseline_request(
+                    "s2", {"status": 201}, [_ok_call(), _ok_call(), _usage(), _usage()]
+                )
+            ]
+            * 4,
+        }
+    )
+    assert judged["detail"]["s1"]["factor"] == 2.0
     s2 = lc.baseline_request("s2", {"status": 201}, [_ok_call(), _ok_call(), _usage(), _usage()])
     assert s2 == {"won": pytest.approx(2 * one), "attempts": 2}
     # 모르는 경우: usage 없음 · 불완전 · llm_call 없음 · failed · timeout · 201 아님 · S2 호출 부족
@@ -302,6 +318,23 @@ def test_gate_는_정상_설정을_통과시키고_위험한_변형_하나하나
     assert any("driver_opts" in f for f in opts)
     named = mutated(lambda c: c["volumes"].update({"other": {"name": "x"}}))
     assert any("pgdata 하나뿐" in f for f in named)
+
+    def set_url(service, url):
+        def change(c):
+            c["services"][service]["environment"]["DATABASE_URL"] = url
+
+        return change
+
+    host = mutated(set_url("backend", "postgresql+psycopg://u:p@db:5432/x?host=172.29.0.1"))
+    assert any("backend DATABASE_URL 에 쿼리" in f for f in host)
+    assert any(
+        "loadgen DATABASE_URL 에 쿼리" in f
+        for f in mutated(set_url("loadgen", "postgresql://u@db/x?host=h"))
+    )
+    pghost = mutated(
+        lambda c: c["services"]["backend"]["environment"].update({"PGHOST": "203.0.113.9"})
+    )
+    assert any("PG* 변수" in f for f in pghost)
 
 
 def test_한도_오류가_있는_회차는_남은_회차를_멈춘다():

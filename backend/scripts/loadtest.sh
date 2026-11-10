@@ -4,11 +4,12 @@
 #   bash loadtest.sh <명령> [인자]
 #
 #   preflight        읽기만 한다. 도구 · 운영 backend · 메모리 · 망 대역 · 볼륨 · 도는 배포를 본다
+#   src              서버에서 받은 src 가 검토한 SHA(LT_EXPECT_SHA)이고 실행 파일이 src 와 같은지(real)
 #   env              .env 를 만든다(이미 있으면 거절)
 #   tag              운영 backend 이미지에 loadtest 태그를 붙인다
 #   gate [-v]        docker compose config 를 JSON 으로 받아 loadtest_gate.py 로 검사. 어긋나면 exit 1
 #   up               [잠금] gate → db → gate → alembic → gate → backend → 준비될 때까지
-#   loadgen ARGS…    부하기(load_check.py)를 일회용 컨테이너로. setup · burst 는 [잠금]
+#   loadgen ARGS…    부하기(load_check.py)를 일회용 컨테이너로. analyze · budget 만 잠금 없이, 나머지는 전부 [잠금]
 #   stage            로그를 덤프하고 마지막 단계를 분석한다(읽기)
 #   budget           기준선 로그로 남은 계획 전체의 예산을 한 번 판정한다. 진행 가능이 아니면 exit 1
 #   final            전체 표(읽기)
@@ -31,6 +32,7 @@
 #   LT_SUDO=1        docker 앞에 sudo
 #   LT_PROD_ENV · LT_PROD_BACKEND   운영 .env 경로 · 운영 backend 컨테이너 이름
 #   LT_SSM_INSTANCE  SSM 에서 도는 배포 명령을 볼 인스턴스(real 에서는 필수)
+#   LT_EXPECT_SHA    검토한 커밋 SHA 전체(real 에서는 필수 — 비면 멈춘다)
 #   --- 아래는 mock 일 때만 읽는다(real 에서는 무시 — 서버에서 우회로가 되지 않게) ---
 #   LT_LOCK          잠금 파일 경로. none 이면 잠금을 건너뛴다(flock 이 없는 macOS 리허설)
 #   LT_LOCK_WAIT     잠금을 기다리는 초(기본 60)
@@ -79,7 +81,26 @@ lt() {
 
 # ── gate ─────────────────────────────────────────────────────────────────────
 
+# 서버에서 받은 src 가 검토한 SHA 인지, 실행하는 파일이 그 src 와 같은지 본다(real 만). 문제가 있으면 한 줄을 출력한다.
+src_problem() {
+  [ "$LT_MODE" = real ] || return 0
+  [ -n "${LT_EXPECT_SHA:-}" ] || { echo "LT_EXPECT_SHA 가 비어 있다 — push 한 검토 SHA 전체를 준다"; return 0; }
+  local head f
+  head=$(git -C "$LT_DIR/src" rev-parse HEAD 2>/dev/null) || { echo "$LT_DIR/src 의 HEAD 를 못 읽었다"; return 0; }
+  [ "$head" = "$LT_EXPECT_SHA" ] || { echo "src HEAD ${head:0:12} 가 검토한 SHA ${LT_EXPECT_SHA:0:12} 와 다르다"; return 0; }
+  for f in compose.loadtest.yml load_check.py loadtest.sh loadtest_gate.py; do
+    cmp -s "$LT_DIR/src/backend/scripts/$f" "$LT_DIR/$f" || { echo "$f 가 src 와 다르다"; return 0; }
+  done
+}
+
+check_src() {
+  local p
+  p=$(src_problem)
+  [ -z "$p" ] || { echo "FAIL $p"; exit 1; }
+}
+
 gate() {
+  check_src
   command -v python3 >/dev/null || { echo "FAIL python3 가 없다"; exit 1; }
   local f cfg
   for f in .env docker-compose.yml compose.loadtest.yml load_check.py loadtest_gate.py; do
@@ -117,6 +138,9 @@ cmd_preflight() {
   for t in python3 openssl pgrep; do
     command -v "$t" >/dev/null && ok "$t 있다" || fail "$t 가 없다"
   done
+  [ "$LT_MODE" = mock ] || { command -v ip >/dev/null && ok "ip 있다" || fail "ip 가 없다"; }
+  n=$(src_problem)
+  [ -z "$n" ] && ok "src 가 검토한 SHA 이고 실행 파일과 같다 (mock 이면 건너뜀)" || fail "$n"
   [ "$LOCK_FILE" = none ] || { command -v flock >/dev/null && ok "flock 있다" || fail "flock 이 없다"; }
   [ "$LT_MODE" = mock ] && [ "${LT_SKIP_SSM:-0}" = 1 ] || {
     command -v aws >/dev/null && ok "aws 있다" || fail "aws 가 없다"
@@ -153,6 +177,17 @@ cmd_preflight() {
     [ "$n" = 0 ] && ok "172.29 대역 비어 있다" || fail "172.29 대역을 쓰는 망이 있다"
   else
     fail "docker 망 조회가 실패했다"
+  fi
+  # 호스트 라우팅 표에 172.29 가 있으면(VPN · 다른 망) loadtest 망과 경로가 겹친다. 조회 실패도 FAIL.
+  if command -v ip >/dev/null; then
+    if names=$(ip -4 route); then
+      n=$(grep -c '172\.29\.' <<<"$names" || true)
+      [ "$n" = 0 ] && ok "호스트 라우팅에 172.29. 없다" || fail "호스트 라우팅에 172.29. 경로가 있다"
+    else
+      fail "ip -4 route 조회가 실패했다"
+    fi
+  elif [ "$LT_MODE" = mock ]; then
+    echo "--   ip 가 없어 라우팅 확인을 건너뛴다(mock)"
   fi
   if names=$(docker volume ls --format '{{.Name}}'); then
     n=$(grep -c '^loadtest' <<<"$names" || true)
@@ -323,13 +358,15 @@ cmd=${1:-}
 case "$cmd" in
   preflight) cmd_preflight ;;
   env) cmd_env ;;
+  src) check_src; echo "src 확인 통과 (mock 이면 건너뜀)" ;;
   tag) cmd_tag ;;
   gate) gate "${1:--q}" ;;
   up) with_lock cmd_up ;;
   loadgen)
+    # 읽기뿐인 analyze · budget 만 잠금 없이. 나머지(`--` 를 앞세운 것 포함)는 전부 잠금 안에서 돈다.
     case "${1:-}" in
-      setup | burst) with_lock cmd_loadgen "$@" ;;
-      *) cmd_loadgen "$@" ;;
+      analyze | budget) cmd_loadgen "$@" ;;
+      *) with_lock cmd_loadgen "$@" ;;
     esac
     ;;
   stage) cmd_stage ;;

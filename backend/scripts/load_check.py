@@ -45,6 +45,9 @@ import psycopg
 
 PROD_HOST = "ssample.duckdns.org"
 LOADTEST_NET = ipaddress.ip_network("172.29.0.0/16")  # compose.loadtest.yml 의 망 대역
+LOADTEST_GATEWAY = ipaddress.ip_address(
+    "172.29.0.1"
+)  # 호스트로 나가는 문 — backend 가 이 주소면 안 된다
 
 EMAIL = "lt01@example.com"  # EmailStr 가 .test · .local 을 거절한다
 CLIENT_TIMEOUT = 180.0  # 서버 최악 ≈ 풀 대기 30 + LLM 30 + 저장 뒤 재대여 30 = 90초 안팎
@@ -56,7 +59,8 @@ LEAD_SECONDS = 2.0  # burst 전후로 표본만 도는 시간 — 평소 값을 
 PROMPT_WON_PER_1K = 2.835
 COMPLETION_WON_PER_1K = 14.175
 # 요청 하나가 보낼 LLM 전송 시도의 최대치. 502 · 503 · 504 · 연결 실패는 호출마다 1회 더 보낸다.
-#   S1  초안 1호출 × 2 = 2           (documents/router.py. 근거가 바뀌어 다시 만드는 일은 없다)
+#   S1  초안 1호출 × 2 = 2. 코드상 최대는 4(원본이 바뀌면 `_create_document` 가 한 번 더 부른다,
+#       documents/router.py). 측정 중 일과 기록을 안 고쳐 2 로 잡는다
 #   S2  주제 1 + 소주제 1 + 소주제 개수 수리 1 = 3호출 × 2 = 6
 #       (plans/llm.py 한 번 · plans/annual_content.py 의 generate 한 번 + 개수가 틀리면 수리 한 번)
 # 정상일 때 S2 는 2호출이다. 여기는 **상한 계산용 최대치**다.
@@ -91,7 +95,8 @@ def check_inside(host: str, resolver=socket.getaddrinfo) -> None:
     outside = []
     for ip in sorted(ips):
         try:
-            inside = ipaddress.ip_address(ip) in LOADTEST_NET
+            addr = ipaddress.ip_address(ip)
+            inside = addr in LOADTEST_NET and addr != LOADTEST_GATEWAY
         except ValueError:  # 영역 ID 가 붙은 IPv6 등
             inside = False
         if not inside:
@@ -679,7 +684,10 @@ def spend(events: list[dict]) -> dict:
         if p.isdigit() and c.isdigit():
             costs.append((int(p), int(c), cost_won(int(p), int(c))))
     biggest = max((x[2] for x in costs), default=0.0)
-    timeouts = sum(e["kind"] == "llm_call" and e["kv"].get("outcome") == "timeout" for e in events)
+    # 시간 초과 · failed 는 모델이 돌았을 수 있어 과금됐을 수 있다(llm_usage 는 성공에만 남는다).
+    timeouts = sum(
+        e["kind"] == "llm_call" and e["kv"].get("outcome") in ("timeout", "failed") for e in events
+    )
     return {
         "calls": len(costs),
         "prompt": sum(x[0] for x in costs),
@@ -699,7 +707,7 @@ def print_spend(sp: dict) -> None:
     tokens = f"입력 {sp['prompt']:,} · 출력 {sp['completion']:,} 토큰"
     print(f"  성공 호출 {sp['calls']}건 · {tokens} → ₩{sp['ok_won']:,.0f}")
     print(
-        f"  시간 초과 {sp['timeouts']}건 × 호출 최대 ₩{sp['biggest_call']:,.1f}"
+        f"  시간 초과·실패 {sp['timeouts']}건 × 호출 최대 ₩{sp['biggest_call']:,.1f}"
         f" → ₩{sp['timeout_won']:,.0f} (추정)"
     )
     print(f"  합계 ₩{total:,.0f} / 상한 ₩{BUDGET_CAP_WON:,}   (캐시 할인을 안 세서 조금 높다)")
@@ -737,7 +745,8 @@ def baseline_request(scenario: str, request: dict, events: list[dict]) -> dict:
             f"(성공 {len(ok)} · llm_usage {len(usage)} · 숫자 {len(numeric)})"
         }
     won = sum(cost_won(int(e["kv"]["prompt"]), int(e["kv"]["completion"])) for e in numeric)
-    return {"won": won, "attempts": len(calls)}
+    # 시도 수는 성공 호출만 센다. 재시도(not_delivered)를 세면 최대 시도 ÷ 시도 배율이 줄어든다.
+    return {"won": won, "attempts": len(ok)}
 
 
 def judge_budget(baseline: dict) -> dict:

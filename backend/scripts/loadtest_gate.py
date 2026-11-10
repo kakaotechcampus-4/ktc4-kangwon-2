@@ -63,7 +63,14 @@ def results(cfg: dict, text: str, mode: str, server: str, lt_dir: str) -> list[t
     )
     check(env.get("ALLOW_TEST_RESET") == "0", "backend ALLOW_TEST_RESET=0")
     check(urlparse(env.get("DATABASE_URL", "")).hostname == "db", "backend DATABASE_URL 호스트 db")
-    loadgen_env = set((svc.get("loadgen") or {}).get("environment") or {})
+    # `?host=…` 는 URL 의 호스트를 덮어쓰고, PG* 환경변수(PGHOST 등)도 접속 대상을 바꾼다.
+    loadgen_env = (svc.get("loadgen") or {}).get("environment") or {}
+    for name, e in (("backend", env), ("loadgen", loadgen_env)):
+        check(
+            not urlparse(e.get("DATABASE_URL", "")).query, f"{name} DATABASE_URL 에 쿼리(?…) 없음"
+        )
+        check(not [k for k in e if k.upper().startswith("PG")], f"{name} 환경에 PG* 변수 없음")
+    loadgen_env = set(loadgen_env)
     check(
         loadgen_env == {"DATABASE_URL", "LOADTEST"},
         "loadgen 환경변수는 DATABASE_URL · LOADTEST 뿐 (LLM 설정 없음)",
