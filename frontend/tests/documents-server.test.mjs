@@ -296,6 +296,17 @@ test("단건은 sections 와 sources 까지 화면 model 로 옮긴다", async (
   assert.equal(doc.sources[0].classId, "class-abc");
 });
 
+test("관찰일지 근거의 영역(domain)을 버리지 않는다 — 양식 영역 행이 이것으로 나뉜다", () => {
+  browser();
+  const doc = documents.toDocument({
+    ...DETAIL,
+    sources: [{ ...DETAIL.sources[0], domain: "자연탐구" }],
+  });
+  assert.equal(doc.sources[0].domain, "자연탐구");
+  // 영역이 없는 근거(보육일지)에는 칸을 지어내지 않는다.
+  assert.equal("domain" in documents.toDocument(WEEKLY_DETAIL).sources[0], false);
+});
+
 test("주간 보육일지의 근거 id 는 문서다", async () => {
   browser();
   const { restore } = serve(() => json(WEEKLY_DETAIL));
