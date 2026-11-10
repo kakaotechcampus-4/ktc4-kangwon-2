@@ -13,7 +13,7 @@
       "kind": "AUTO",
       "unit": "CLASS",
       "window": "PREVIOUS_MONTH_START",
-      "plan": { "plan_kind": "monthly", "min_per_class": 1 },
+      "plan": { "plan_kind": "monthly", "min_per_month": 1 },
       "daily_log": { "document_kind": "dailyLog", "every_weekday": true }
     },
     "4-2": {

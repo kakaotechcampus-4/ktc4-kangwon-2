@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
+from test_child_code import BARE_MESSAGES
 
 from app.features.centers.models import Center, Child, Class
 from app.features.documents.models import Document, DocumentSection, DocumentSource
@@ -797,6 +798,121 @@ def test_create_document_name_mask_failure_never_calls_llm(db_session, monkeypat
     assert response.json()["error"]["code"] == "GENERATION_FAILED"
     assert "가명으로 바꾸지 못해" in response.json()["error"]["message"]
     assert called == []
+
+
+DEFAULT_INTERPRETATION = "도담 해석입니다. 기록에 드러난 사실만 씁니다."
+
+
+def _capture_generation(monkeypatch, interpretation=DEFAULT_INTERPRETATION):
+    seen = {}
+
+    def fake_generate(kind, masked_facts, curriculum=()):
+        seen["facts"] = masked_facts
+        return interpretation, "도담 지원입니다. 다음 활동에서 교사가 할 방법을 적습니다."
+
+    monkeypatch.setattr("app.features.documents.draft._generate", fake_generate)
+    return seen
+
+
+def test_create_document_redraws_pseudonym_that_equals_other_class_real_name(
+    db_session, monkeypatch
+):
+    # 가명은 반 안에서만 유일하다. 우리 반 가명이 옆 반 아이 실명과 같으면
+    # 그 호출에서만 새로 뽑는다(allocation.table_for_text).
+    # 그대로 두면 LLM 은 두 아이를 구분 못 하고, 되돌릴 때 옆 반 아이가 우리 아이 이름이 된다.
+    _, klass, child = _make_center_class_child(db_session)
+    moon = Class(
+        center_id=klass.center_id,
+        name="달님반",
+        school_year=2026,
+        age_min=4,
+        age_max=4,
+        teacher_name="박선생",
+    )
+    db_session.add(moon)
+    db_session.flush()
+    db_session.add(Child(class_id=moon.id, name="김도담", code="하람"))
+    db_session.flush()
+    record = _observation(db_session, klass, child, 5, "가명이가 도담이와 블록을 쌓았다.")
+    seen = _capture_generation(monkeypatch, "가명이 해석입니다. 도담이와 함께 놀았습니다.")
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201
+    masked = seen["facts"][0]
+    assert "가명" not in masked and "도담" not in masked
+    pseudonyms = [w[:-2] for w in masked.split() if w.endswith(("이가", "이와"))]
+    assert len(set(pseudonyms)) == 2  # 두 아이가 서로 다른 가명으로 갔다
+
+
+def _one_syllable_child(session, klass, call_name):
+    """외자 아이 김민. 교사는 「민이」라고 쓴다 — 등록 이름(김민)으로는 안 걸린다."""
+    session.add(Child(class_id=klass.id, name="김민", code="가람", call_name=call_name))
+    session.flush()
+
+
+def test_create_document_masks_one_syllable_call_name(db_session, monkeypatch):
+    _, klass, child = _make_center_class_child(db_session)
+    _one_syllable_child(db_session, klass, "민이")
+    record = _observation(db_session, klass, child, 5, "가명이가 민이가 쌓은 블록을 옮겼다.")
+    seen = _capture_generation(
+        monkeypatch, "도담이는 가람이가 쌓은 블록을 옮겼습니다. 사실만 씁니다."
+    )
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201, response.json()
+    assert "민이가" not in seen["facts"][0] and "가람이가" in seen["facts"][0]
+    by_heading = {s["heading"]: s["body"] for s in response.json()["sections"]}
+    assert "민이가 쌓은" in by_heading["해석"]  # 가명 꼴(가람이) -> 부르는 이름 꼴(민이)
+
+
+@pytest.mark.parametrize("call_name", [None, "민이"])
+def test_create_document_masks_other_one_syllable_forms(db_session, monkeypatch, call_name):
+    # 부르는 이름(민이)을 등록해도 「민한테」 · 「민은」이 원문으로 나가면 안 된다(3차 점검 2번).
+    _, klass, child = _make_center_class_child(db_session)
+    _one_syllable_child(db_session, klass, call_name)
+    record = _observation(
+        db_session, klass, child, 5, "가명이가 민한테 블록을 건넸다. 민은 웃었다."
+    )
+    seen = _capture_generation(monkeypatch)
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201, response.json()
+    assert "민한테" not in seen["facts"][0] and "민은" not in seen["facts"][0]
+    assert "가람한테" in seen["facts"][0] and "가람은" in seen["facts"][0]
+
+
+@pytest.mark.parametrize("call_name", [None, "민이"])
+def test_create_document_refuses_bare_one_syllable(db_session, monkeypatch, call_name):
+    # 「민」 한 글자는 가리면 「고민」까지 바뀐다. LLM 을 부르지 않고 고치는 방법을 알린다.
+    _, klass, child = _make_center_class_child(db_session)
+    _one_syllable_child(db_session, klass, call_name)
+    record = _observation(db_session, klass, child, 5, "가명이가 민 옆에서 블록을 옮겼다.")
+    monkeypatch.setattr(
+        "app.features.documents.draft._generate", lambda *_: pytest.fail("LLM 을 부르면 안 된다")
+    )
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] == "VALUE_INVALID"
+    assert error["message"] == BARE_MESSAGES[call_name]
+
+
+@pytest.mark.parametrize("fact", ["가명이가 민속놀이를 했다.", "가명이가 고민 끝에 골랐다."])
+def test_one_syllable_inside_a_word_is_not_refused(db_session, monkeypatch, fact):
+    _, klass, child = _make_center_class_child(db_session)
+    _one_syllable_child(db_session, klass, None)
+    record = _observation(db_session, klass, child, 5, fact)
+    seen = _capture_generation(monkeypatch)
+
+    response = client.post("/api/documents", json=_create_body(klass, child, [record]))
+
+    assert response.status_code == 201, response.json()
+    assert fact.removeprefix("가명이가 ") in seen["facts"][0]
 
 
 @pytest.mark.parametrize(

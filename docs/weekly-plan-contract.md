@@ -51,7 +51,7 @@ AI 출력 검사를 ADR-037 의 세 단계(검사 전 차단 · 저장을 막는
 | 요일 | 기본 월~금 5일. 원 설정으로 토요일을 켠다. 2주 단위는 지원하지 않는다 | `[결정]` ADR-030 WQ-01 |
 | 요일별 값 | 주 단위 값이 기본. **대·소집단 활동 · 특별활동만 요일 칸**(`repeat_by = DAY`, Template v0.2.0). 나머지 요일별 내용은 칸 하나 안 목록 | `[결정]` ADR-030 WQ-02 · ADR-051 |
 | Template 승인 | 주간 Template 도 `PENDING_HUMAN_REVIEW` 로 발행 → 실제 담당자가 승인. 절차 승인이지 개별 Template 승인이 아니다 | `[결정]` ADR-030 WQ-03 · ADR-027 |
-| 확정 취소 | 계획안(연간 · 월간 · 주간)에는 없다 | `[결정]` ADR-030 PM-03 |
+| 확정 풀기 | 계획안 화면에는 버튼이 없다. 문서 보관함 「수정하기」(`unconfirm`)로 풀거나 지우고 다시 만든다 | `[결정]` ADR-055 · ADR-064 (ADR-030 PM-03 대체) |
 | Rule / LLM | Rule 이 후보 · 근거 · 제약 범위를 정함 → LLM 이 그 안에서 값의 의미를 정함 → Rule 이 결과를 검사. **생성은 문서 단위 배치로 부른다(주간 한 주)** | `[결정]` ADR-032 (ADR-014 보충) |
 | `generation.method` | `RULE_LLM` · `RULE_ONLY`(근거가 없어 비워 둔 칸 포함) · `IMPORTED` · `MANUAL`(사람이 처음부터 쓴 칸). 교사 수정은 바꾸지 않고 `TEACHER_EDITED` 이벤트 | `[결정]` ADR-032 §2 (PM-12) |
 | 혼합연령 | DB 는 범위(`age_min` · `age_max`), Core 는 연령 집합. 반 하나 = 계획 하나 | `[결정]` ADR-038 |
@@ -163,7 +163,7 @@ WeeklyPlan.operating_days   (MON, TUE, WED, THU, FRI) 또는 (… , SAT)
 
 - 부모 값을 그대로 넣는 Rule 을 하드코딩하지 않는다. 결과가 부모와 같아도 되고, 달라도 된다(교사가 고칠 수 있다).
 - **부모 월간 칸의 현재 값을 쓴다.** 교사가 월간을 고쳤으면 고친 값이 근거다(교사 확정값 우선 — 루트 `CLAUDE.md`).
-- 부모 월간은 `CONFIRMED` 라 바뀌지 않는다. 확정 취소도 없다(PM-03). **그래서 「부모가 바뀌어 stale」 상태는 P0 주간에 없다.**
+- 부모 월간은 확정을 풀 수 있다(ADR-055). 풀리거나 다시 확정되면 주간 상세 `parent_changed` 가 `true` 다(api-spec §7-2) — 화면은 한 줄만 띄우고 편집 · 확정을 막지 않는다.
 
 ## 5. WeeklyPlan 의미 구조
 
@@ -397,7 +397,7 @@ WeeklyPlan.operating_days   (MON, TUE, WED, THU, FRI) 또는 (… , SAT)
 
 ### 10-4. 확정 — `ConfirmWeeklyPlan` `[선례]`
 
-- opaque `actor_id` 필수. `DRAFT` → `CONFIRMED`. 제출 · 발송하지 않는다. 확정 취소 없음(PM-03).
+- opaque `actor_id` 필수. `DRAFT` → `CONFIRMED`. 제출 · 발송하지 않는다. 확정 풀기는 `unconfirm`(ADR-055).
 - **`theme` 이 비어 있으면 확정을 막는다**(연간 PM-08 · 월간과 같은 기준). 다른 빈 칸은 막지 않고 화면이 확정 전에 보여 준다.
   확정할 때 검사를 다시 돌리지만 **검사 결과가 확정을 막지 않는다** — 월간과 같다(`application/confirm_monthly_plan.py:41`).
   구조 · 소유 · Provenance 같은 불변식이 깨진 계획안은 애초에 만들어지지 않는다(§11-1).

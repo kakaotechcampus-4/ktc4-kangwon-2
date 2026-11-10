@@ -229,7 +229,7 @@ const TOURS: Record<string, Step[]> = {
     {
       at: "weekly-make",
       title: "주간 일지 만들기",
-      lines: ["아직 못 만들 때 누르면", "**무엇이 모자란지** 알려 드려요."],
+      lines: ["아직 못 만들 때 누르면", "**무엇이 부족한지** 알려 드려요."],
       pad: 6,
     },
   ],

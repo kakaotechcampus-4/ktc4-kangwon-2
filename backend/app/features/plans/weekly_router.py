@@ -13,6 +13,7 @@
 """
 
 import logging
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
@@ -189,6 +190,41 @@ def _existing(session: Session, center_id: int, class_id: int, week: WeekId):
     )
 
 
+_CANDIDATE_SECTIONS = frozenset({"group_activity", "indoor_play"})
+
+
+def _prior_week_evidence(
+    session: Session, center_id: int, class_id: int, week: WeekId
+) -> tuple[str, ...]:
+    """같은 반 · 같은 달 앞 주차 주간계획안이 후보 칸에 쓴 기관 근거.
+
+    여러 주가 쓴 만큼 센다(2026-11-09 하민)."""
+    rows = session.execute(
+        select(Plan.plan_ref, Plan.week_id).where(
+            Plan.center_id == center_id,
+            Plan.kind == "weekly",
+            Plan.classroom_ref == str(class_id),
+            Plan.week_id.startswith(f"{week.target_month.value}-W"),
+        )
+    ).all()
+    repo = _weekly_repo(session, center_id)
+    refs: list[str] = []
+    for plan_ref, week_value in rows:
+        if WeekId(week_value).ordinal >= week.ordinal:
+            continue
+        plan = repo.get(PlanId(plan_ref))
+        if plan is None:
+            continue
+        refs.extend(
+            source.source_id
+            for cell in plan.cells + tuple(c.cell for c in plan.activity_candidates)
+            if cell.section_key in _CANDIDATE_SECTIONS
+            for source in cell.evidence
+            if source.source_type is EvidenceSourceType.INSTITUTION_SAMPLE
+        )
+    return tuple(refs)
+
+
 def _generation_error(error: MonthlyApplicationError):
     """원인은 `__cause__` 에 있다 — Core 가 provider 오류를 자기 것으로 감싼다(월간과 같다)."""
     cause = error.__cause__
@@ -241,6 +277,12 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     ).get(PlanId(parent_row.plan_ref))
     if parent.status.value != "CONFIRMED":
         raise _gate("월간계획안을 먼저 확정해주세요.")
+    prior_week_evidence = _prior_week_evidence(session, center_id, class_id, week)
+    # 2026-11-10 하민: 후보 근거를 상위 20건에서 섞어 뽑는다. 다시 만들면 다른 근거가 나온다.
+    # 실제로 쓴 근거는 칸 Evidence 에 남는다. seed 는 로그에만 둔다(저장 여부는 결정 전).
+    candidate_seed = secrets.randbelow(2**31)
+    # PR #469 review: log class · week here and the plan id after save, so a seed ties to one plan.
+    _log.info("weekly candidate seed=%d class=%s week=%s", candidate_seed, class_id, body.week_id)
     # 만들 때의 원 설정을 계획안에 복사한다 — 뒤에 설정을 바꿔도 이 계획안은 그대로다(§3-5).
     center = session.get(Center, center_id)
     saturday = center.weekly_saturday_enabled
@@ -280,6 +322,8 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
                 indoor_play_candidates=body.indoor_play_candidates,
                 teacher_memo=body.memo,
                 optional_context_names=(TREND_CONTEXT,),
+                prior_week_evidence=prior_week_evidence,
+                candidate_sample_seed=candidate_seed,
             )
         )
     except MonthlyApplicationError as error:
@@ -310,6 +354,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
             raise _ALREADY_EXISTS from error
         raise
     row = session.scalar(select(Plan).where(Plan.plan_ref == plan.plan_id.value))
+    _log.info("weekly candidate seed=%d plan=%s", candidate_seed, plan.plan_id.value)
     # **응답을 다 만든 뒤에 확정한다**(월간과 같다). 저장소가 flush 해 두어 commit 전에도 읽힌다.
     detail = _detail(row, plan, parent_id)
     session.commit()

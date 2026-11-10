@@ -91,7 +91,7 @@ function ClassRequirements({ item }: { item: AutoIndicator }) {
       </p>
       <Requirement
         done={full(planClasses)}
-        need="반마다 확정한 월간계획안 1건 이상"
+        need="반마다 검토 기간의 달마다 확정한 월간계획안 1건씩"
         have={`확정 월간계획안 ${plans}건 · ${planClasses.met}/${planClasses.total}반`}
         href="/plans/monthly"
         action="월간계획안 만들기"

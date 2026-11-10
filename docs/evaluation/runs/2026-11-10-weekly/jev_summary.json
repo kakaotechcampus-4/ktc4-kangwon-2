@@ -1,0 +1,65 @@
+{
+ "model": "jev",
+ "unique_candidates": 651,
+ "evidence_judged": 651,
+ "evidence_verdict_total": {
+  "o": 311,
+  "triangle": 334,
+  "x": 6
+ },
+ "by_source_section": {
+  "develop_1108/group_activity": {
+   "o": 36,
+   "theme_judged": 80,
+   "theme_off": 8,
+   "triangle": 44
+  },
+  "develop_1108/indoor_play": {
+   "o": 23,
+   "theme_judged": 80,
+   "theme_off": 1,
+   "triangle": 57
+  },
+  "prior_1109/group_activity": {
+   "triangle": 15,
+   "theme_judged": 40,
+   "theme_off": 6,
+   "o": 25
+  },
+  "prior_1109/indoor_play": {
+   "o": 16,
+   "theme_judged": 40,
+   "theme_off": 4,
+   "triangle": 23,
+   "x": 1
+  },
+  "shuffle_만4_11월/group_activity": {
+   "triangle": 59,
+   "theme_judged": 118,
+   "theme_off": 22,
+   "o": 58,
+   "x": 1
+  },
+  "shuffle_만4_11월/indoor_play": {
+   "o": 50,
+   "theme_judged": 119,
+   "theme_off": 7,
+   "triangle": 67,
+   "x": 2
+  },
+  "shuffle_만5_12월/group_activity": {
+   "o": 51,
+   "theme_judged": 78,
+   "theme_off": 29,
+   "triangle": 27
+  },
+  "shuffle_만5_12월/indoor_play": {
+   "triangle": 70,
+   "theme_judged": 146,
+   "theme_off": 46,
+   "o": 74,
+   "x": 2
+  }
+ },
+ "rule": "E1<0.5 x; E2<0.5 o; E3>=0.5 triangle; else x. theme_off = T1<0.5"
+}
