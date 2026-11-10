@@ -19,10 +19,20 @@ export type PostyTone =
 
 /** 팔다리 각도. 상체는 그대로다. */
 export type PostyPose =
-  "stand" | "up" | "hand" | "point" | "wave" | "cheer" | "run" | "think" | "sit" | "sitWave";
+  | "stand"
+  | "up"
+  | "hand"
+  | "point"
+  | "wave"
+  | "cheer"
+  | "run"
+  | "think"
+  | "sit"
+  | "sitWave"
+  | "heave";
 
 /** 표정. */
-export type PostyFace = "base" | "done" | "empty" | "fix" | "oh" | "think";
+export type PostyFace = "base" | "done" | "empty" | "fix" | "oh" | "think" | "heave";
 
 const TONE: Record<PostyTone, { paper: string; line: string; fold: string }> = {
   note: { paper: "--pg-note", line: "--pg-note-line", fold: "--pg-note-fold" },
@@ -176,6 +186,21 @@ const POSE: Record<PostyPose, Pose> = {
     ],
     height: 56,
   },
+  /**
+   * 「영차」 — 두 손으로 오른쪽 물건을 쥔다. 왼팔은 쪽지 뒤로 지나가 손만 오른쪽에 나온다.
+   * 발은 앞뒤로 벌려 버틴다. 기울기는 감싸는 쪽이 준다(소개 화면 「오늘의 흐름」 화살표).
+   */
+  heave: {
+    arms: [
+      [46.4, 15, 0],
+      [47.6, 27, 0],
+    ],
+    feet: [
+      [12.6, 51.5],
+      [33.4, 53],
+    ],
+    height: 60,
+  },
 };
 
 /** 읽어 줄 이름. 장식으로 쓸 때는 `label={null}`. */
@@ -186,6 +211,7 @@ const SPOKEN: Record<PostyFace, string> = {
   fix: "확인이 필요해요",
   oh: "잠깐요",
   think: "생각 중이에요",
+  heave: "영차",
 };
 
 function arm(
@@ -257,6 +283,15 @@ function Face({ kind }: { kind: PostyFace }) {
         <path d="M16.6 19.6q2 -2.6 4 0" />
         <path d="M27.4 19.6q2 -2.6 4 0" />
         <path d="M18 24q6 4.6 12 0" />
+      </g>
+    );
+  // 「영차」 — 눈을 질끈 감고(> <) 입을 꾹 다문다
+  if (kind === "heave")
+    return (
+      <g {...line}>
+        <path d="M16.4 16.6 20.8 19 16.4 21.4" />
+        <path d="M31.6 16.6 27.2 19 31.6 21.4" />
+        <path d="M19.4 25.8h9.2" />
       </g>
     );
   if (kind === "think")
