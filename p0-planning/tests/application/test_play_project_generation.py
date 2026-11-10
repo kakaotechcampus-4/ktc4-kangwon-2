@@ -269,8 +269,8 @@ def test_exact_tool_names_are_stored_as_written_under_the_current_prompt_version
     materials = plan.periods[0].candidates[0].materials
     assert materials.value == "경사판, 홈통, 공, 자동차"
     assert materials.generation.rule_version == PLAY_PROJECT_PROMPT_VERSION
-    # ADR-077 contract change: play_seeds input + SEED_CONTENT_MISSING (not a changed output).
-    assert PLAY_PROJECT_PROMPT_VERSION == "play-project-planner-v7+teacher-venues-v2"
+    # ADR-090 contract change: plays not levelled by age; ages only screen unsafe materials.
+    assert PLAY_PROJECT_PROMPT_VERSION == "play-project-planner-v8+teacher-venues-v2"
     assert provider.requests[0].prompt_version == PLAY_PROJECT_PROMPT_VERSION
 
 

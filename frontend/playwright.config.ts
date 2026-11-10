@@ -5,6 +5,7 @@ export default defineConfig({
   testDir: "e2e",
   // CI 는 둘씩 돌린다 — e2e 가 CI 에서 가장 늦게 끝나는 잡이다. 테스트마다 새 계정과
   // 자기 원을 만들어서(e2e/onboarding.ts 「목록에 없어요」) 서로 같은 행을 안 본다.
+  // 2 가 가장 빠르다 — 3 · 4 는 더 빨라지지 않고 6 은 시간 초과로 깜빡인다(#449, 08-code-tests.md).
   workers: process.env.CI ? 2 : 1,
   // 파일 안의 테스트도 나눈다. 안 나누면 가장 긴 routines.spec.ts 가 한 워커에 통째로 몰린다.
   // 테스트끼리 순서나 상태를 공유하지 않는다 — 각자 계정을 만든다.

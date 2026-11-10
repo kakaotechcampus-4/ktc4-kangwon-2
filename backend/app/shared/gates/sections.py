@@ -31,6 +31,12 @@ _NUMBER = re.compile(r"\d+(?:\.\d+)?")
 # 날짜 표현 — 「2026년」 「11월」 「4일」 「11/4」. 이 안의 숫자만 근거 날짜로 받는다.
 # 한계 — 「4일 동안」처럼 기간을 뜻하는 「일」도 날짜로 본다. 오탐이 보이면 앞뒤 말로 가른다.
 _DATE_EXPR = re.compile(r"\d+\s*(?:년|월|일)|\d+\s*/\s*\d+")
+# 문서 바깥에서 오는 값(#85). 사실에 없어도 되지만 **이 표현 안의 이 값만** 받는다.
+# 「만 4세」의 4 는 반 연령, 「5개 영역」의 5 는 누리과정 영역 수다.
+# 개수 · 횟수는 여전히 사실과 견준다.
+_AGE_EXPR = re.compile(r"만\s*(\d+)\s*세")
+_DOMAIN_COUNT_EXPR = re.compile(r"(\d+)\s*개\s*(?:의\s*)?영역")
+NURI_DOMAIN_COUNT = 5
 
 
 class SectionLike(Protocol):
@@ -55,21 +61,26 @@ class InputExtras:
 
     texts  상황 글. 교사가 적은 글이라 숫자를 사실과 똑같이 친다
     dates  근거 날짜. **날짜 표현의 숫자만** 받는다 — 4일의 「4」가 「4개」를 통과시키면 안 된다
+    ages   반 연령(age_min ~ age_max). **「만 N세」 안의 숫자만** 받는다 (#85)
     """
 
     texts: tuple[str, ...] = ()
     dates: tuple[datetime.date, ...] = ()
+    ages: tuple[int, ...] = ()
 
 
-def input_extras(sources: Iterable[SourceLike]) -> InputExtras:
-    """근거 사본에서 상황과 날짜를 모은다. 만들 때 · 고칠 때 · 확정할 때 같은 함수를 쓴다."""
+def input_extras(sources: Iterable[SourceLike], ages: Iterable[int] = ()) -> InputExtras:
+    """근거 사본에서 상황과 날짜를 모은다. 만들 때 · 고칠 때 · 확정할 때 같은 함수를 쓴다.
+
+    `ages` 는 그 반의 연령이다(`review.class_ages`). 사본에는 없어서 부르는 쪽이 넣는다.
+    """
     texts, dates = [], []
     for source in sources:
         if source.date is not None:
             dates.append(source.date)
         if source.context:
             texts.append(source.context)
-    return InputExtras(tuple(texts), tuple(dates))
+    return InputExtras(tuple(texts), tuple(dates), tuple(ages))
 
 
 NO_EXTRAS = InputExtras()
@@ -130,7 +141,7 @@ def _check(
     numbers: set[str] = set()
     if "sections.해석" not in fields:
         numbers = _unsupported_numbers(
-            by_heading["해석"].body, "\n".join([facts, *extras.texts]), extras.dates
+            by_heading["해석"].body, "\n".join([facts, *extras.texts]), extras.dates, extras.ages
         )
         if numbers:
             fields.append("sections.해석")
@@ -142,7 +153,10 @@ def _check(
 
 
 def _unsupported_numbers(
-    interpretation: str, facts: str, dates: Iterable[datetime.date] = ()
+    interpretation: str,
+    facts: str,
+    dates: Iterable[datetime.date] = (),
+    ages: Iterable[int] = (),
 ) -> set[str]:
     """해석에는 있는데 사실에는 없는 숫자. 비면 통과다.
 
@@ -150,7 +164,17 @@ def _unsupported_numbers(
     - 글자가 아니라 숫자 단위로 비교한다. 사실의 「10」 이 해석의 「1」 을 통과시키면 안 된다.
     - 근거 날짜의 연 · 월 · 일은 날짜 표현 안의 숫자에만 쓴다. 개수 · 횟수는 사실과만 견준다.
     - 고유명사는 보지 않는다. 형태소 분석 없이 고르면 오탐이 많아 3단 Judge 에 맡긴다.
+    - 반 연령(「만 4세」) · 누리과정 영역 수(「5개 영역」)는 그 표현 안의 그 값만 지운다(#85).
     """
+    allowed = {str(a) for a in ages}
+
+    def outside(m: re.Match[str], ok: set[str]) -> str:
+        return " " if m.group(1) in ok else m.group(0)
+
+    interpretation = _AGE_EXPR.sub(lambda m: outside(m, allowed), interpretation)
+    interpretation = _DOMAIN_COUNT_EXPR.sub(
+        lambda m: outside(m, {str(NURI_DOMAIN_COUNT)}), interpretation
+    )
     known = set(_NUMBER.findall(facts))
     day_parts = {str(n) for d in dates for n in (d.year, d.month, d.day)}
     in_dates = {n for m in _DATE_EXPR.findall(interpretation) for n in _NUMBER.findall(m)}

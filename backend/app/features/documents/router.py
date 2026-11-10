@@ -29,6 +29,7 @@ from app.features.documents.models import (
     DocumentSourceResolution,
 )
 from app.features.documents.review import (
+    class_ages,
     lock_sources,
     locked_review,
     plan_resolutions,
@@ -720,7 +721,11 @@ def _create_document(
         ),
     ]
     if check_sections(
-        sections, facts, set(body.source_ids), stage="generate", extras=input_extras(copies)
+        sections,
+        facts,
+        set(body.source_ids),
+        stage="generate",
+        extras=input_extras(copies, class_ages(session, body.class_id)),
     ):
         raise _error(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -840,7 +845,7 @@ def update_document(
             [s.text for s in sources],
             {s.source_id for s in sources},
             stage="edit",
-            extras=input_extras(sources),
+            extras=input_extras(sources, class_ages(session, doc.class_id)),
         )
         if fields:
             raise _invalid(fields)
@@ -989,7 +994,7 @@ def verify_document(
         [s.text for s in sources],
         {s.source_id for s in sources},
         stage="verify",
-        extras=input_extras(sources),
+        extras=input_extras(sources, class_ages(session, doc.class_id)),
     )
     if fields:
         # 1 · 2단에 걸린 글은 3단에 보내지 않는다 (CLAUDE.md 「3단 게이트」 — 순서를 바꾸지 않는다).
@@ -1093,7 +1098,7 @@ def confirm_document(
             [s.text for s in sources],
             {s.source_id for s in sources},
             stage="confirm",
-            extras=input_extras(sources),
+            extras=input_extras(sources, class_ages(session, doc.class_id)),
         )
         if fields:
             raise _invalid(fields)

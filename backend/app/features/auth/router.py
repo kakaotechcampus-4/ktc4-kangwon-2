@@ -80,13 +80,18 @@ def login(body: LoginRequest, session: DbSession) -> TokenResponse:
     return _token_for(user)
 
 
-@router.patch("/password", status_code=status.HTTP_204_NO_CONTENT)
-def change_password(body: PasswordChangeRequest, user: CurrentUser, session: DbSession) -> None:
-    """비밀번호를 바꾼다.
+@router.patch("/password", response_model=TokenResponse)
+def change_password(
+    body: PasswordChangeRequest, user: CurrentUser, session: DbSession
+) -> TokenResponse:
+    """비밀번호를 바꾸고, 이 브라우저에 쓸 새 토큰을 준다.
 
     **다른 곳에서 쓰던 비밀번호로 가입한 교사에게 바꿀 길이 있어야 한다.** 크롬은 자기가
     저장해 둔 비밀번호가 다른 주소의 입력 칸에 들어가면 그것을 피싱 신호로 보고 구글에
     알린다. 바꿀 자리가 없으면 그 교사는 계정을 새로 만드는 수밖에 없다.
+
+    **바꾸기 전에 나간 토큰은 모두 끊는다(ADR-092).** 비밀번호가 샌 것 같아 바꾸는데 그 비밀번호로
+    들어와 있던 사람이 12시간 더 머물면 바꾼 뜻이 없다. 바꾼 본인은 응답의 새 토큰으로 이어 간다.
     """
     if not verify_password(body.current_password, user.password_hash, user.password_salt):
         # 401 이 아니라 422 다. 401 은 「토큰을 못 믿겠다」는 뜻으로 이미 쓰고 있어서,
@@ -109,7 +114,10 @@ def change_password(body: PasswordChangeRequest, user: CurrentUser, session: DbS
             },
         )
     user.password_hash, user.password_salt = hash_password(body.new_password)
+    user.token_version += 1
     session.commit()
+    session.refresh(user)
+    return _token_for(user)
 
 
 @router.get("/me", response_model=MeResponse)
@@ -144,11 +152,16 @@ def kakao_login(body: KakaoLoginRequest, session: DbSession) -> TokenResponse:
 
     ```
     카카오 회원번호로 이어진 계정   → 그 계정
-    없고, 같은 이메일 계정이 있다   → 그 계정에 회원번호를 잇는다
+    없고, 같은 이메일 계정이 있다   → 그 계정에 회원번호를 잇고, 비밀번호 · 그 전 토큰을 끊는다
     둘 다 없다                    → 새 계정
     ```
 
     **이메일이 없으면 받지 않는다.** 화면의 계정 기록 · 반 설정이 모두 이메일을 열쇠로 쓴다.
+
+    **이을 때 기존 비밀번호를 버린다(ADR-092).** 이메일 가입은 메일 주인인지 확인하지 않는다.
+    남의 이메일로 먼저 가입해 둔 사람이 있으면, 카카오가 확인한 진짜 주인이 들어온 뒤에도 그
+    비밀번호와 이미 받은 토큰으로 계속 들어온다. 어느 쪽이 먼저 가입한 사람인지 서버는 모르므로
+    확인된 쪽(카카오)만 남긴다. 이은 뒤에는 카카오로만 들어온다.
     """
     try:
         profile = kakao.fetch_profile(body.code)
@@ -201,6 +214,10 @@ def kakao_login(body: KakaoLoginRequest, session: DbSession) -> TokenResponse:
                 password_salt=salt,
             )
             session.add(user)
+        else:
+            # 이메일로 먼저 가입한 계정이다. 그 비밀번호를 누가 만들었는지 모른다(ADR-092).
+            user.password_hash, user.password_salt = hash_password(secrets.token_urlsafe(32))
+            user.token_version += 1
         user.kakao_id = profile.kakao_id
         session.commit()
         session.refresh(user)
@@ -209,5 +226,6 @@ def kakao_login(body: KakaoLoginRequest, session: DbSession) -> TokenResponse:
 
 def _token_for(user: User) -> TokenResponse:
     return TokenResponse(
-        token=issue(user.id, settings.secret_key), user=MeResponse.model_validate(user)
+        token=issue(user.id, settings.secret_key, version=user.token_version),
+        user=MeResponse.model_validate(user),
     )
