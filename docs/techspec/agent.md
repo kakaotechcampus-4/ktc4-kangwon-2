@@ -45,7 +45,8 @@ Rule   검사         계약 · 근거 · 연령 · 법정 기준을 어겼는�
 | 칸 하나만 다시 | 그 칸만 다시 만든다. 다른 칸의 id · 값 · 근거는 그대로다. 이전 값과 방식은 `REGENERATED` 이력에 남는다 | `golden/cell_regeneration.json` · `golden/weekly_cell_regeneration.json` |
 | 확정을 풂 | 문서 보관함 「수정하기」 → 초안(`UNCONFIRMED`). 하위 계획안에 `parent_changed`가 표시된다 | ADR-055 · 064 |
 | 하위가 있는 상위를 지움 | 409로 막는다 | ADR-064 |
-| 동시 수정 | 월간은 revision, 연간은 서버 행 잠금. 확정 재호출은 200(멱등) | ADR-035 |
+| 동시 수정 | 월간 · 주간 · 놀이 월간 · 놀이 프로젝트는 revision이 같을 때만 쓴다(다르면 409). 월별 주제형 연간은 서버 행 잠금. 확정 재호출은 200(멱등) | ADR-035 · `plans/repository.py` `update_if_revision` |
+| 같은 계획안이 두 번 생김 | 반 하나에 연간 하나 · 반 · 달마다 월간 하나 · 반 · 주마다 주간 하나를 DB 부분 유니크 인덱스가 마지막으로 막는다 | [architecture.md](architecture.md) §6 |
 | 상위 값이 하위에 들어가는 방식 | 칸에 그대로 복사하지 않고 맥락 · 제약으로 쓴다. 교사가 고쳐 확정한 값이 이전 AI 원본보다 우선한다 | CLAUDE.md §6 |
 | 같은 달 다음 주 주간 | 앞 주가 후보에 쓴 근거는 뒤로 미룬다. 여러 주가 쓴 만큼 센다 | #469 · [improvement.md](improvement.md) §2 |
 
@@ -59,6 +60,16 @@ Rule   검사         계약 · 근거 · 연령 · 법정 기준을 어겼는�
 | 교사가 「생성 멈추기」 | 동시 호출 전 · 다시 부르기 전 · 저장 전에 끊김을 보고, 끊겼으면 저장하지 않는다 | ADR-077 §5 |
 | 저장 전 어디서든 실패 | 모든 단계가 통과한 뒤에 한 번만 저장한다. 반쯤 된 계획안은 없다 | ADR-077 · `backend/tests/test_plans_error_mapping.py`(500 `GENERATION_FAILED` · 저장 안 됨) · `test_weekly_generation.py::test_verifier_failure_saves_nothing` |
 | 주간을 다시 만듦 | 매번 새 seed로 근거를 다시 뽑아 다른 후보가 나온다. seed는 서버 로그에만 남고 계획안 본문에는 저장하지 않는다(하민 11-10). 실제로 쓴 근거는 칸 근거에 남는다 | #469 · [improvement.md](improvement.md) §2 |
+
+**교사 편집의 중단과 재개.** 생성이 끝난 뒤의 편집은 초안으로 서버에 남아 있어서, 화면을 닫았다가 문서 보관함에서 다시 열면 이어서 고칠 수 있다.
+
+| 상황 | 동작 | 근거 |
+|---|---|---|
+| 칸을 고침 | 칸마다 줄을 세워 서버에 바로 저장한다. 보낼 때 마지막으로 받은 revision을 함께 보낸다 | `components/workspace/MonthlyPlanEditor.tsx` · `WeeklyEditor.tsx` · `lib/plan-generator/playSelectionQueue.ts` |
+| 저장 실패 | 쓴 글은 화면에 그대로 두고 「다시 저장」을 띄운다 | 같은 파일 |
+| 다른 곳에서 먼저 바뀜 (409) | 이 저장은 버리고 서버의 최신 계획안을 다시 불러온다 | 같은 파일 · `STALE_WRITE` |
+| 보내지 못한 저장이 남은 채 탭을 닫음 | 브라우저가 떠나기 전에 경고한다 | `lib/hooks/use-unsaved-warning.ts` |
+| 「임시저장」 | 줄이 빌 때까지 기다린 뒤 목록으로 간다. 못 저장한 칸이 남으면 가지 않는다 | `components/plan-ui/DraftSave.tsx` |
 
 **하지 않은 것:** 구간별 저장 · 작업 큐로 이어서 하기. 동시 생성으로 38초가 됐고, 반쯤 저장된 상태를 다루는 비용이 더 크다.
 
