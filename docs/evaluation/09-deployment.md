@@ -99,8 +99,27 @@ run 기록의 커밋과 서버 로그의 「배포 … <sha>」 줄을 맞춰 �
   L 의 「배포 9c0984ba… 9c0984ba」(checkout 뒤 HEAD) · 「서버 안 확인 통과 — health/ready 200 · 화면 200 (3회째)」 → 「되돌렸다 → 9c0984ba…」, 서버 종료 코드 3
 - 밖 Health check `health/ready 200 (1회째)` · 「배포 판정」 failure(되돌려도 이번 배포는 실패로 남긴다) ·
   「실패 알림」 단계 success(종료 코드 3 · 밖 확인 통과 갈래 = 🟠 「자동 롤백 성공」)
-- **끊긴 시간** — 밖에서 1초마다 물어 쟀다. 화면(`/`)은 내내 200. backend(`/health`) 502 는 F 로 바꿀 때 약 5초(08:44:36 ~ 08:44:40Z),
-  L 로 돌아올 때 약 4초(08:45:51 ~ 08:45:54Z). 그 사이 약 70초는 F 가 돌며 `/health` 200 · `/health/ready` 503 — 서버 안 확인 30번(약 60초) 몫이다
+- **끊긴 시간** — 밖에서 `/health` · 화면(`/`) · `/health/ready` 를 차례로 물었다(한 바퀴 1~3초라 경계가 1~2초 흐리다). 화면은 내내 200.
+  backend(`/health`) 502 는 F 로 바꿀 때 4~6초(마지막 200 08:44:35 → 첫 200 08:44:41Z, 502 를 본 것은 08:44:36 ~ 08:44:40Z),
+  L 로 돌아올 때 3~5초(08:45:50 → 08:45:55Z, 502 는 08:45:51 ~ 08:45:54Z). 그 사이 약 70초는 F 가 돌며 `/health` 200 · `/health/ready` 503 —
+  서버 안 확인 30번(약 60초) 몫이다. 감시 원본(08:43:04 ~ 08:46:29Z, 154줄)에서 두 구간 앞뒤만 옮긴다. 시각은 UTC 다
+
+```text
+08:44:33 health=200 front=200 ready=200
+08:44:35 health=200 front=200 ready=200
+08:44:36 health=502 front=200 ready=502
+08:44:37 health=502 front=200 ready=502
+08:44:40 health=502 front=200 ready=502
+08:44:41 health=200 front=200 ready=503   ← F 가 돈다 (ready 만 503)
+08:44:42 health=200 front=200 ready=503
+   … 08:45:48 까지 같음 …
+08:45:50 health=200 front=200 ready=503
+08:45:51 health=502 front=200 ready=502
+08:45:54 health=502 front=200 ready=502
+08:45:55 health=200 front=200 ready=200   ← L 로 돌아왔다
+08:45:57 health=200 front=200 ready=200
+08:45:58 health=200 front=200 ready=200
+```
 
 알게 된 것:
 
@@ -138,7 +157,7 @@ run 기록의 커밋과 서버 로그의 「배포 … <sha>」 줄을 맞춰 �
   그 스크립트가 0 이 아니게 끝나면 · 롤백이 꺼짐 · 기록 없음 · L = F · L 에 `deploy.sh` 가 없으면 4, 교체 전 실패는 1, `up -d` 실패와 reload · restart 실패도 되돌리고,
   root 로 시작해도 코드와 결과 줄이 그대로 나오고 잠금이 겹침을 막는 것을 pytest 가 가짜 서버로 본다(CI 에서 돈다) — `backend/tests/test_deploy_script.py` · `backend/tests/test_ssm_deploy_script.py` · ADR-078
 - [x] 운영에서 자동 롤백 연습 — 2026-11-10 17:43 KST L `9c0984ba` 위 F `5f67593c`(ready 만 503)를 `auto_rollback=true` 로 손 배포(run 42784851442):
-  서버 종료 코드 3 · L 의 「배포 9c0984ba… 9c0984ba」 · 서버 안 · 밖 `health/ready 200` · 「실패 알림」 단계 success, 끊김 약 5초 · 4초.
+  서버 종료 코드 3 · L 의 「배포 9c0984ba… 9c0984ba」 · 서버 안 · 밖 `health/ready 200` · 「실패 알림」 단계 success, backend 끊김 4~6초 · 3~5초(화면은 내내 200).
   위 「운영에서 자동 롤백을 한 번 돌려 봤다」 · ADR-078 채택
 - [x] SHA 고정 뒤 첫 배포 — 2026-11-07 00:07 KST `c8335b8` 자동 배포(run 42240152119): run 의 커밋 · 「올릴 커밋」 · 서버 로그 「배포 <SHA>」 가 모두 `c8335b8`, `health/ready 200 (1회째)`
 - [x] 연달아 머지돼도 run 마다 자기 커밋만 올린다 — 2026-11-07 09:48~09:50 KST 3분에 develop push 13번: 성공 3번(run 42320437206 · 42320569221 · 42320703112)이
