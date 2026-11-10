@@ -407,7 +407,7 @@ test("멘토: 관찰 기록에서 관찰일지를 만들고 수정·확정·한�
   // Read-only facts must lead back to a usable correction/review path.
   await page.getByRole("link", { name: "관찰 기록에서 고쳐 주세요 →", exact: true }).click();
   await page.locator("article button").first().click();
-  await page.getByRole("button", { name: "고치기", exact: true }).click();
+  await page.getByRole("button", { name: "수정", exact: true }).click();
   const updatedFact = fact + " 놀이를 마친 뒤 블록을 바구니에 담았다.";
   await page.getByLabel("본 대로 적기").fill(updatedFact);
   await page.getByRole("button", { name: "고친 대로 저장", exact: true }).click();

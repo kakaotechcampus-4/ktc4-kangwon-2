@@ -1757,7 +1757,7 @@ a.item {
    「언제 · 누구」가 글을 읽기 전에 먼저 눈에 들어오게 한다. */
 .recordDays {
   display: grid;
-  gap: 28px;
+  gap: 24px;
 }
 .recordDay {
   display: grid;
@@ -1767,7 +1767,7 @@ a.item {
 .recordDate {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin: 0;
   font-family: var(--font-display), sans-serif;
   font-size: 23px;
@@ -1813,13 +1813,49 @@ a.item {
   border-color: var(--pg-primary-tint-line);
   box-shadow: 0 12px 26px -18px rgba(43, 36, 28, 0.45);
 }
+/* 영역 색 카드(시안 「A 진하게 2」) — 면은 한 단계 진한 영역 색, 1.5px 테두리와 영역 동그라미는 진한 영역 색, 그림은 흰색.
+   hover · 열림 때도 테두리 색을 지킨다. 그림 없는 영역(2축 원)은 data-tone 이 없어 흰 카드다. */
+.recordCard[data-tone="body"] {
+  --card-mid: var(--pg-domain-body-mid);
+  --card-deep: var(--pg-domain-body-deep);
+}
+.recordCard[data-tone="talk"] {
+  --card-mid: var(--pg-domain-talk-mid);
+  --card-deep: var(--pg-domain-talk-deep);
+}
+.recordCard[data-tone="social"] {
+  --card-mid: var(--pg-domain-social-mid);
+  --card-deep: var(--pg-domain-social-deep);
+}
+.recordCard[data-tone="art"] {
+  --card-mid: var(--pg-domain-art-mid);
+  --card-deep: var(--pg-domain-art-deep);
+}
+.recordCard[data-tone="nature"] {
+  --card-mid: var(--pg-domain-nature-mid);
+  --card-deep: var(--pg-domain-nature-deep);
+}
+.recordCard[data-tone],
+.recordCard[data-tone]:hover,
+.recordCard[data-tone][data-open] {
+  border: 1.5px solid var(--card-deep);
+  background: var(--card-mid);
+}
+.recordCard[data-tone] .recordDomain[role="img"] {
+  border-color: var(--card-deep);
+  background: var(--card-deep);
+  color: var(--pg-paper);
+}
+.recordCard[data-tone] .recordActions {
+  border-top-color: var(--card-deep);
+}
 .recordRow {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 16px 18px;
+  padding: 16px;
   text-align: left;
   background: none;
   border: 0;
@@ -1893,6 +1929,13 @@ a.item {
   line-height: 1.7;
   color: var(--pg-ink);
 }
+/* 덕철 점검 — 긴 기록 한 건이 카드를 화면 하나만큼 늘렸다. 접힌 카드는 네 줄까지, 누르면 다 보인다. */
+.recordCard:not([data-open]) .recordFact {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
 /* 카드의 영역 표시는 그림 하나 — 이름은 위 거르기 칩이 알려 준다 */
 .recordDomain[role="img"] {
   justify-content: center;
@@ -1919,8 +1962,8 @@ a.item {
 .recordActions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 12px 18px 14px;
+  gap: 8px;
+  padding: 12px 16px 16px;
   border-top: 1px dashed var(--pg-line);
 }
 /* 카드 안의 단추는 작게 — 한 줄에 셋이 들어가야 카드가 길어지지 않는다 */
@@ -1938,7 +1981,7 @@ a.item {
 .recordFilters {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 .recordFilter {
   min-height: 34px;
@@ -1974,7 +2017,7 @@ a.item {
 }
 .recordWrite {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 /* 문장 속 빈칸 — 날짜 · 장소 · 아이. 회색 네모 대신 밑줄만 둔다. */
 .recordSentence {
@@ -2083,7 +2126,7 @@ button.recordBlank:disabled {
   display: block;
   width: 100%;
   min-height: 128px;
-  padding: 14px 16px;
+  padding: 12px 16px;
   border: 0;
   border-radius: 10px;
   background: var(--pg-ivory);
@@ -2123,12 +2166,12 @@ button.recordBlank:disabled {
   line-height: 1;
   color: var(--pg-primary-ink);
 }
-/* 영역 — 평소에는 그림만, 마우스를 올리거나 고르면 옆으로 펼쳐져 이름이 보인다 */
-/* 이름표는 위에 따로 둔다 — 옆에 두면 그림이 펼쳐질 때 이름표가 다음 줄로 밀려 흔들렸다 */
+/* 영역 — 그림과 이름을 늘 같이 둔다. 그림만 있을 때는 무슨 영역인지 몰랐다(수민 점검). */
+/* 이름표는 위에 따로 둔다. 다섯 칸이 한 줄에 안 들면 두 줄로 내려간다. */
 .recordAreaRow {
   display: grid;
-  gap: 6px;
-  margin-top: 6px;
+  gap: 8px;
+  margin-top: 4px; /* 위 TIP 과 16 (덩어리 사이 12 + 4) */
 }
 .recordAreaLabel {
   font-size: 13.5px;
@@ -2138,16 +2181,15 @@ button.recordBlank:disabled {
 .recordAreas {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 .recordArea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0;
-  min-width: 38px;
+  gap: 4px;
   height: 38px;
-  padding: 0 10px;
+  padding: 0 12px 0 10px;
   border: 1px solid var(--pg-line);
   border-radius: 999px;
   background: var(--pg-paper);
@@ -2155,34 +2197,12 @@ button.recordBlank:disabled {
   cursor: pointer;
   transition:
     background-color 0.15s,
-    border-color 0.15s,
-    gap 0.25s ease,
-    padding 0.25s ease;
+    border-color 0.15s;
 }
 .recordArea span {
-  max-width: 0;
-  overflow: hidden;
   white-space: nowrap;
   font-size: 13px;
   font-weight: 700;
-  opacity: 0;
-  transition:
-    max-width 0.3s ease,
-    opacity 0.2s ease;
-}
-.recordArea:hover,
-.recordArea:focus-visible,
-.recordArea[aria-pressed="true"],
-.recordArea[data-plain] {
-  gap: 5px;
-  padding: 0 13px 0 11px;
-}
-.recordArea:hover span,
-.recordArea:focus-visible span,
-.recordArea[aria-pressed="true"] span,
-.recordArea[data-plain] span {
-  max-width: 9em;
-  opacity: 1;
 }
 .recordArea:hover:not([aria-pressed="true"]) {
   border-color: currentColor;
@@ -2221,63 +2241,97 @@ button.recordBlank:disabled {
 .recordArea[aria-pressed="true"][data-tone="nature"] {
   background: var(--pg-sage-tint);
 }
-/* AI 가 놓아 둔 제안 — 보라 점선(「이 활동 했어요」와 같은 뜻). 이름을 펴 두고, 눌러야 고른 것이다. */
+/* AI 가 놓아 둔 제안 — 보라 점선(「이 활동 했어요」와 같은 뜻). 눌러야 고른 것이다. */
 .recordArea[data-suggested] {
-  gap: 5px;
-  padding: 0 13px 0 11px;
   border: 1.5px dashed var(--pg-primary);
   background: var(--pg-primary-tint);
-}
-.recordArea[data-suggested] span {
-  max-width: 9em;
-  opacity: 1;
 }
 .recordAreaHint {
   font-size: 12.5px;
   color: var(--pg-primary-ink);
 }
-/* 그날 일과 시간표 — 보육일지와 같은 모양(손글씨 시각 + 일과 이름). 고른 칸은 보라 밑줄. */
+/* 그날 일과 — 일과마다 누르는 두툼한 나무토막 한 개(PM 11-10). 누르면 쑥 들어가 보라로 칠해진다. */
 .recordSlots {
   display: grid;
   gap: 8px;
   min-width: 0;
 }
+/* 무엇을 하는 줄인지 먼저 말한다 */
+.recordSlotHint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.recordSlotHint b {
+  font-family: var(--font-display), sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--pg-ink);
+}
 .recordSlotRow {
   display: flex;
+  gap: 10px;
+  /* 휴대폰에서는 옆으로 밀어 본다. 그림자(아래 4px)가 잘리지 않게 아래 여백을 둔다. */
   overflow-x: auto;
-  border: 1.5px solid var(--pg-line);
-  background: var(--pg-paper);
+  padding: 2px 4px 8px 2px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
 }
 .recordSlot {
   display: grid;
-  flex: none;
-  align-content: center;
-  min-height: 44px;
-  padding: 4px 12px;
-  border: 0;
-  border-right: 1px solid var(--pg-line);
-  background: none;
-  color: var(--pg-ink-soft);
-  font-size: 12.5px;
+  flex: 1 0 auto;
+  gap: 6px;
+  justify-items: start;
+  min-width: 112px;
+  min-height: 64px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--pg-line-strong);
+  border-radius: 6px;
+  background: var(--pg-ivory);
+  box-shadow: 3px 4px 0 var(--pg-line-strong);
+  color: var(--pg-ink);
   text-align: left;
   cursor: pointer;
-}
-.recordSlot:last-child {
-  border-right: 0;
+  scroll-snap-align: start;
+  transition:
+    translate 0.12s,
+    box-shadow 0.12s,
+    background-color 0.12s;
 }
 .recordSlot:hover {
-  background: var(--pg-ivory);
+  background: var(--pg-paper);
+}
+.recordSlot:active,
+.recordSlot[aria-pressed="true"] {
+  translate: 3px 4px;
+  box-shadow: 0 0 0 var(--pg-line-strong);
 }
 .recordSlot[aria-pressed="true"] {
+  border-color: var(--pg-primary);
   background: var(--pg-primary-tint);
-  box-shadow: inset 0 -3px 0 var(--pg-primary);
   color: var(--pg-primary-ink);
-  font-weight: 700;
 }
 .recordSlotTime {
   font-family: var(--font-display), sans-serif;
-  font-size: 16px;
-  line-height: 1.05;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+/* 고른 토막 시각 옆에 작은 체크 — 색만으로 가르지 않는다 */
+.recordSlot[aria-pressed="true"] .recordSlotTime::after {
+  content: " ✓";
+  font-size: 17px;
+}
+.recordSlotName {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 .recordPlaces {
   display: flex;
@@ -2312,17 +2366,21 @@ button.recordBlank:disabled {
   background: var(--pg-primary-tint);
   color: var(--pg-primary-ink);
 }
-/* 머리줄 「저장됨」 — 도장. 손글씨는 제목 · 숫자 · 도장에만 쓴다. */
+/* 머리줄 「저장됨」 — 도장. 손글씨는 제목 · 숫자 · 도장에만 쓴다.
+   초록(끝난 것) 이중 테두리에 인주 결(`.inkStamp`)을 씌우고 비스듬히 꾹 찍는다. 빨강은 확정 도장 몫이다. */
 .recordListTitle .recordSaved {
-  padding: 1px 6px 0;
-  border: 2px solid currentColor;
-  border-radius: 6px;
+  align-self: center;
+  white-space: nowrap;
+  padding: 2px 6px 0;
+  border: 3.5px double currentColor;
+  border-radius: 7px;
   font-family: var(--font-display), sans-serif;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1;
+  letter-spacing: 0.02em;
   color: var(--pg-sage-ink);
-  rotate: -8deg;
+  rotate: -9deg;
 }
 /* 떠날 때 저장할 수 없으면 붙는 포스트잇. 테이프에 매달린 채 툭 붙으며 처음 한 번 흔들린다(0.7초). */
 .recordLeave {
@@ -2435,25 +2493,25 @@ button.recordBlank:disabled {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 12px; /* 위 영역과 24 (덩어리 사이 12 + 12) */
   padding-top: 16px;
   border-top: 1px solid var(--pg-line);
 }
 @media (prefers-reduced-motion: reduce) {
-  .recordArea,
-  .recordArea span {
+  .recordArea {
     transition: none;
   }
 }
 
 /* 목록 머리. 날짜 머리(손글씨 25px)보다 작아 위계가 거꾸로 서 있었다. */
 .recordListHead {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  /* 왼쪽(제목만) · 오른쪽(제목 + 단추) 머리가 같은 높이라야 아래 칸 윗선이 맞는다 */
+  gap: 12px;
+  /* 왼쪽 · 오른쪽 머리가 같은 높이(40)라야 아래 칸 윗선이 맞는다. 두 머리 단추도 같은 38 */
   min-height: 40px;
 }
 .recordListTitle {
@@ -2477,8 +2535,8 @@ button.recordBlank:disabled {
 .recordWay {
   display: inline-flex;
   align-items: center;
-  min-height: 34px;
-  padding: 0 13px;
+  min-height: 38px;
+  padding: 0 16px;
   border: 1px solid var(--pg-line);
   border-radius: 999px;
   background: var(--pg-paper);
@@ -2526,6 +2584,18 @@ button.recordBlank:disabled {
 .recordFind input:focus {
   outline: none;
   box-shadow: none;
+}
+/* 휴대폰 — 손가락으로 누르는 칸은 44px 이상(종이와-판 「접근성」). 단추 · 칩은 tap44 로 자리만 넓히고,
+   글칸은 ::after 를 못 달아서 높이를 직접 맞춘다. 날짜 빈칸은 투명한 달력 칸을 위아래로 늘린다. */
+@media (max-width: 1023px) {
+  .recordFind input,
+  .recordSentence input.recordBlank {
+    min-height: 44px;
+  }
+  .recordDateBlank input {
+    top: -8px;
+    height: calc(100% + 16px);
+  }
 }
 
 /* ── 주간 기록 — 왼쪽은 한 주 수첩과 주간 일지 칸, 오른쪽은 그날 쪽지를 붙인 칠판 ── */
@@ -2807,17 +2877,24 @@ button.recordBlank:disabled {
     grid-template-columns: 1fr;
   }
 }
-/* 목록을 내려도 적는 칸이 따라온다. 화면이 낮으면 칸이 잘리니 키가 큰 화면에서만. */
-@media (min-width: 1101px) and (min-height: 860px) {
+/* 데스크톱은 오른쪽 「쌓인 기록」을 내려도 왼쪽 「오늘 본 것 적기」가 상단 띠(60px) 밑에 붙어 있다(수민 점검).
+   화면 높이와 상관없이 — 칸이 화면보다 길면 `.side` 의 max-height 로 칸 안에서만 내려간다.
+   1100px 아래(휴대폰 · 태블릿)는 위아래로 쌓이므로 붙이지 않는다(`.side` 의 1100px 규칙). */
+@media (min-width: 1101px) {
   .recordGrid > .side {
     position: sticky;
     top: 84px;
     align-self: start;
   }
 }
-/* 왼쪽 칸은 화면 높이 안에 「기록하기」까지 들어와야 한다. 머리와 칸 사이를 줄인다. */
+/* 왼쪽 칸은 화면 높이 안에 「기록하기」까지 들어와야 한다. 카드 기본(28)보다 한 단계 줄인 24. */
 .recordGrid .recordForm {
-  padding: 22px 24px 24px;
+  padding: 24px;
+}
+/* 두 칸 모두 머리 → 내용 16, 오른쪽 찾기 · 거르기 · 목록 사이도 16 (수민 점검 「간격이 안 맞는 느낌」).
+   왼쪽 .side 는 이미 16, 오른쪽 .stack 기본이 22 였다. */
+.recordGrid > .stack {
+  gap: 16px;
 }
 /* 크림 배경 위에서 칸 · 칩 · 버튼의 경계가 묻혀, 이 화면에서만 선을 한 단계 진하게 하고
    옅은 그림자로 띄운다. 색은 그대로 둔다. 고른 칩(어두운 칠)은 제 선을 그대로 쓴다. */
@@ -3299,6 +3376,111 @@ button.recordBlank:disabled {
 .recordJournalLink:focus-visible {
   outline: 3px solid var(--pg-primary);
   outline-offset: 2px;
+}
+/* 저장한 뒤 한 번 — 단추 둘레로 보라 물결이 두 번 퍼진다. */
+.recordJournalLink[data-nudge] {
+  animation: journalPulse 1.1s ease-out 0.35s 2;
+}
+@keyframes journalPulse {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--pg-primary) 55%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 12px color-mix(in srgb, var(--pg-primary) 0%, transparent);
+  }
+}
+/* 줄이 바뀌어도 단추는 오른쪽 끝 — 말풍선이 단추 오른쪽 끝에 맞춰 늘 화면 안에 선다 */
+.recordJournalWrap {
+  position: relative;
+  display: inline-flex;
+  margin-left: auto;
+}
+/* 저장 뒤 포스티 말풍선 — 단추 바로 아래에 떠서 아래 칸을 밀지 않는다. 6초 뒤 흐려지며 사라진다. */
+.recordNudge {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 4px 6px 10px;
+  border: 1px solid var(--pg-note-line);
+  background: var(--pg-note);
+  box-shadow: var(--pg-shadow-card);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pg-ink);
+  white-space: nowrap;
+  rotate: -1deg;
+  animation: nudgeLife 6.5s ease-out both;
+}
+/* 말풍선 꼬리 — 위 단추 쪽으로 */
+.recordNudge::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  right: 34px;
+  width: 12px;
+  height: 12px;
+  border-top: 1px solid var(--pg-note-line);
+  border-left: 1px solid var(--pg-note-line);
+  background: var(--pg-note);
+  rotate: 45deg;
+}
+.recordNudge > svg {
+  flex: none;
+  margin-top: -6px;
+}
+.recordNudge button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--pg-ink-soft);
+  cursor: pointer;
+}
+.recordNudge button:hover {
+  background: color-mix(in srgb, var(--pg-ink) 8%, transparent);
+}
+@keyframes nudgeLife {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  6%,
+  85% {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .recordJournalLink[data-nudge] {
+    animation: none;
+    outline: 3px solid var(--pg-primary-tint-line);
+    outline-offset: 2px;
+  }
+  /* 움직이지 않고 흐려지기만 한다 */
+  .recordNudge {
+    animation-name: nudgeFade;
+  }
+  @keyframes nudgeFade {
+    85% {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
 }
 /* 찾기 칸 옆 날짜 거르기 */
 .recordFindRow {
@@ -3856,5 +4038,155 @@ button.recordBlank:disabled {
 @media (max-width: 600px) {
   .ojBoard {
     padding: 22px 16px 28px;
+  }
+}
+
+/* 쌓인 기록 — 같은 날 같은 아이 기록 한 벌. 뒤 장은 그 기록 영역 색 종이로 오른쪽 아래에 7px 씩 비켜 선다.
+   맨 위 카드만 누르고 읽는다(누르면 펴진다). 「+n」 은 뒤에 몇 장 더 있는지(거르기를 켜면 맞은 수만) · 누르면 다음 장. */
+.deck {
+  position: relative;
+  margin: 0 14px 14px 0;
+  isolation: isolate;
+  touch-action: pan-y;
+  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.deck > .recordCard {
+  position: relative;
+  z-index: 1;
+}
+/* 올려 두면 한 벌이 손에 들린 듯 살짝 커지고, 뒤 장이 조금 더 벌어진다(PM 11-10). */
+.deck:hover {
+  transform: translateY(-3px) scale(1.018);
+}
+.deck:hover > .recordCard {
+  box-shadow: 0 16px 28px -16px rgba(43, 36, 28, 0.5);
+}
+.deck:hover::before {
+  transform: translate(9px, 10px) rotate(1.5deg);
+}
+.deck:hover::after {
+  transform: translate(17px, 19px) rotate(2.8deg);
+}
+.deck::before,
+.deck::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--under-deep, var(--pg-line-strong));
+  border-radius: 14px;
+  background: var(--under-mid, var(--pg-paper));
+  box-shadow: 0 6px 14px -10px rgba(43, 36, 28, 0.45);
+}
+.deck::before {
+  transform: translate(7px, 7px) rotate(0.8deg);
+  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.deck::after {
+  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
+  z-index: -1;
+  border-color: var(--under2-deep, var(--pg-line-strong));
+  background: var(--under2-mid, var(--pg-paper));
+  transform: translate(14px, 14px) rotate(1.6deg);
+}
+.deck:not([data-depth="2"])::after {
+  display: none;
+}
+.deck[data-under="body"] {
+  --under-mid: var(--pg-domain-body-mid);
+  --under-deep: var(--pg-domain-body-deep);
+}
+.deck[data-under="talk"] {
+  --under-mid: var(--pg-domain-talk-mid);
+  --under-deep: var(--pg-domain-talk-deep);
+}
+.deck[data-under="social"] {
+  --under-mid: var(--pg-domain-social-mid);
+  --under-deep: var(--pg-domain-social-deep);
+}
+.deck[data-under="art"] {
+  --under-mid: var(--pg-domain-art-mid);
+  --under-deep: var(--pg-domain-art-deep);
+}
+.deck[data-under="nature"] {
+  --under-mid: var(--pg-domain-nature-mid);
+  --under-deep: var(--pg-domain-nature-deep);
+}
+.deck[data-under2="body"] {
+  --under2-mid: var(--pg-domain-body-mid);
+  --under2-deep: var(--pg-domain-body-deep);
+}
+.deck[data-under2="talk"] {
+  --under2-mid: var(--pg-domain-talk-mid);
+  --under2-deep: var(--pg-domain-talk-deep);
+}
+.deck[data-under2="social"] {
+  --under2-mid: var(--pg-domain-social-mid);
+  --under2-deep: var(--pg-domain-social-deep);
+}
+.deck[data-under2="art"] {
+  --under2-mid: var(--pg-domain-art-mid);
+  --under2-deep: var(--pg-domain-art-deep);
+}
+.deck[data-under2="nature"] {
+  --under2-mid: var(--pg-domain-nature-mid);
+  --under2-deep: var(--pg-domain-nature-deep);
+}
+/* 「+n」 — 노란 쪽지 조각에 손글씨 숫자, 그 둘레에 손으로 친 동그라미(보육일지 요일과 같은 획). */
+.deckCount {
+  position: absolute;
+  z-index: 2;
+  right: -14px;
+  bottom: -16px;
+  display: grid;
+  place-items: center;
+  min-width: 52px;
+  min-height: 40px;
+  padding: 3px 12px 0;
+  border: 0;
+  border-radius: 46% 54% 50% 50% / 55% 48% 52% 45%;
+  background: var(--pg-note);
+  box-shadow: 1px 2px 0 rgba(43, 36, 28, 0.18);
+  font-family: var(--font-display), sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--pg-ink);
+  rotate: -8deg;
+  cursor: pointer;
+  transition:
+    rotate 0.18s,
+    scale 0.18s;
+}
+.deckCountRing {
+  position: absolute;
+  inset: -5px -9px -4px -8px;
+  width: calc(100% + 17px);
+  height: calc(100% + 9px);
+  color: var(--pg-ink);
+  pointer-events: none;
+}
+.deckCountRing path {
+  stroke-width: 2px;
+}
+.deckCount:hover {
+  rotate: -2deg;
+  scale: 1.08;
+}
+.deckCount:active {
+  scale: 0.96;
+}
+.deckCount:focus-visible {
+  outline: 3px solid var(--pg-primary);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .deck,
+  .deck::before,
+  .deck::after,
+  .deckCount {
+    transition: none;
+  }
+  .deck:hover {
+    transform: none;
   }
 }
