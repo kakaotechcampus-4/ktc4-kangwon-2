@@ -50,7 +50,7 @@ from app.features.plans.schemas import (
     memo_notices_out,
 )
 from app.shared.childCode import NameTable
-from app.shared.llm import LlmBudgetExceeded, LlmUnavailable, is_mock
+from app.shared.llm import LlmBudgetExceeded, LlmCallCapExceeded, LlmUnavailable, is_mock
 
 _log = logging.getLogger(__name__)
 CURRICULUM_CATALOG_ID = "ssuksak.nuri-curriculum-content"
@@ -116,9 +116,11 @@ class GenerationStopped(Exception):
     """교사가 「생성 멈추기」로 요청을 끊었다 — 다음 단계를 부르지 않고 저장하지 않는다."""
 
 
-# 다시 불러도 풀리지 않는 실패 — 한도 · 키 · 설정 · 참조 미승인 · 메모 가명(ADR-077 · ADR-076).
+# 다시 불러도 풀리지 않는 실패 — 한도 · 키 · 호출 상한(ADR-081) · 설정 · 참조 미승인 · 메모 가명
+# (ADR-077 · ADR-076).
 _FINAL = (
     LlmBudgetExceeded,
+    LlmCallCapExceeded,
     LlmUnavailable,
     MonthlyLlmConfigurationError,
     MemoMaskFailed,
@@ -126,10 +128,10 @@ _FINAL = (
 )
 
 
-def _final(error: BaseException) -> bool:
+def _final(error: BaseException, kinds: tuple[type, ...] = _FINAL) -> bool:
     seen = set()
     while error is not None and id(error) not in seen:
-        if isinstance(error, _FINAL):
+        if isinstance(error, kinds):
             return True
         seen.add(id(error))
         error = error.__cause__ or error.__context__
@@ -236,6 +238,8 @@ def generate(
                 redo[key] = partial(period, key, tuple(seeds[key][i] for i in index), avoid, "")
             for key, result in _each(pool, redo).items():
                 if isinstance(result, Exception):
+                    if _final(result, (LlmCallCapExceeded,)):
+                        raise result  # 상한이 샌 반복문 신호다 — 원래 후보로 덮고 이어 가지 않는다
                     _log.warning(
                         "annual play-project replace failed period=%s type=%s",
                         key,
