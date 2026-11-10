@@ -22,14 +22,14 @@ def judge_auto(session: Session, center_id: int, now: datetime) -> dict[str, jud
     child_ids = session.scalars(select(Child.id).where(Child.class_id.in_(class_ids))).all()
     catalog = load_catalog()
     class_rule, child_rule = catalog.get("4-1").rule, catalog.get("4-2").rule
-    class_window = judge.window_for(class_rule["window"], today)
-    child_window = judge.window_for(child_rule["window"], today)
+    class_window = judge.window_for(class_rule["window"], today)  # type: ignore[index]
+    child_window = judge.window_for(child_rule["window"], today)  # type: ignore[index]
     daily_logs = [
         judge.DailyLogFact(doc.id, doc.class_id, doc.end_date)
         for doc in list_confirmed_by_class(
             session,
             center_id,
-            kind=class_rule["daily_log"]["document_kind"],
+            kind=class_rule["daily_log"]["document_kind"],  # type: ignore[index]
             class_ids=class_ids,
             start=class_window.start,
             end=class_window.end,
@@ -40,11 +40,11 @@ def judge_auto(session: Session, center_id: int, now: datetime) -> dict[str, jud
         for plan in confirmed_monthly_plans(session, center_id)
     ]
     assessments = [
-        judge.AssessmentFact(doc.id, doc.child_id, doc.end_date)
+        judge.AssessmentFact(doc.id, doc.child_id, doc.end_date)  # type: ignore[arg-type]
         for doc in list_confirmed_by_child(
             session,
             center_id,
-            kind=child_rule["document_kind"],
+            kind=child_rule["document_kind"],  # type: ignore[index]
             child_ids=child_ids,
             start=child_window.start,
             end=child_window.end,
@@ -56,9 +56,12 @@ def judge_auto(session: Session, center_id: int, now: datetime) -> dict[str, jud
             class_ids,
             plans,
             daily_logs,
-            min_plans_per_class=class_rule["plan"]["min_per_class"],
+            min_plans_per_month=class_rule["plan"]["min_per_month"],  # type: ignore[index]
         ),
         "4-2": judge.judge_4_2(
-            child_window, child_ids, assessments, min_per_child=child_rule["min_per_child"]
+            child_window,
+            child_ids,
+            assessments,
+            min_per_child=child_rule["min_per_child"],  # type: ignore[index]
         ),
     }

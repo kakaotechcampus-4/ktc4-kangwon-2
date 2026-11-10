@@ -1,6 +1,7 @@
 import { ApiError, apiRequest } from "./client";
 import { downloadHwpx, type ExportFormat } from "./export";
 import { isAlreadyConfirmed, isStaleWrite } from "./documents";
+import { runHeaders } from "./generationRuns";
 import type {
   AnnualInput,
   AnnualPlanResponse,
@@ -11,10 +12,10 @@ import type {
   ConfirmResult,
   PlayProjectAnnualPlan,
 } from "./types";
-export const createAnnualPlan = (data: AnnualInput, signal?: AbortSignal) =>
+export const createAnnualPlan = (data: AnnualInput, signal?: AbortSignal, runId?: string) =>
   apiRequest<AnnualPlanResponse>("/api/plans/annual", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...runHeaders(runId) },
     body: JSON.stringify(data),
     signal,
   });

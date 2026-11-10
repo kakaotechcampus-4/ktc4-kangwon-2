@@ -29,13 +29,12 @@ import { listPlayMonthly } from "@/lib/api/playMonthly";
 import { listWeeklyPlans } from "@/lib/api/weekly";
 import type { AnnualPlanSummary, PlayMonthlySummary, WeeklyPlanSummary } from "@/lib/api/types";
 import { ageSelectionLabel, selectedAgesFor, type ClassroomEntry } from "@/lib/onboarding/types";
-import type { RecordKind } from "@/lib/api/documents";
+import type { GeneratedKind } from "@/lib/api/documents";
 import { Message, ws } from "./WorkspaceUI";
 import {
   AnnualCover,
   CareArt,
   CareSunArt,
-  CareDayDecor,
   CareNotebookArt,
   MonthlyCover,
   ObservationArt,
@@ -64,6 +63,8 @@ export type ArchiveDoc = {
   childId: string;
   start: string;
   status: "draft" | "confirmed";
+  /** 확정한 뒤 근거가 바뀌었다 (§11). 목록에 「다시 확인 필요」를 붙인다. */
+  stale: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -135,11 +136,11 @@ function PeriodNav({
   return (
     <div className={styles.periodBar}>
       <div className={styles.periodNav}>
-        <button type="button" aria-label="이전 기간" onClick={onPrev}>
+        <button type="button" className="tap44" aria-label="이전 기간" onClick={onPrev}>
           <Icon name="chevronLeft" />
         </button>
         <strong>{label}</strong>
-        <button type="button" aria-label="다음 기간" onClick={onNext}>
+        <button type="button" className="tap44" aria-label="다음 기간" onClick={onNext}>
           <Icon name="chevron" />
         </button>
       </div>
@@ -174,6 +175,7 @@ export default function DocumentArchiveView({
   onCreate,
   detail,
   header,
+  initialForeign,
 }: {
   classes: ClassroomEntry[];
   classId: string;
@@ -188,10 +190,12 @@ export default function DocumentArchiveView({
   preview: ReactNode;
   onOpen: (id: string) => void;
   onCloseDetail: () => void;
-  onCreate: (kind: RecordKind, options: { date: string; childId?: string }) => void;
+  onCreate: (kind: GeneratedKind, options: { date: string; childId?: string }) => void;
   detail: ReactNode;
   /** 페이지 제목 · 설명 · 기존 생성 액션. **오른쪽 본문 안에만** 그린다. */
   header: ReactNode;
+  /** 상단바 알림이 연 칸(`?foreign=`). 받은 요청 칸이거나 남의 반 하나다. 없으면 내 반 보관함이다. */
+  initialForeign?: number | "received" | null;
 }) {
   // 생성 화면에서 돌아오면 선택된 문서에 맞춰 탐색도 시작한다.
   // 이후 목록 탐색은 이 상태를 그대로 쓰므로 다른 종류의 편집기가 끼어들지 않는다.
@@ -228,12 +232,23 @@ export default function DocumentArchiveView({
   }
   const [planPreview, setPlanPreview] = useState<PlanPreviewTarget | null>(null);
   const previewRef = useRef<HTMLElement>(null);
+  const typeRef = useRef<HTMLDivElement>(null);
+  // 휴대폰에서는 종류를 고르면 다섯 칸이 가로로 구르는 칩 줄이 된다 — 고른 칩이 화면 밖에 서지 않게 그 자리까지 민다.
+  useEffect(() => {
+    const grid = typeRef.current;
+    const picked = grid?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!grid || !picked || !globalThis.matchMedia?.("(max-width: 760px)").matches) return;
+    grid.scrollLeft += picked.getBoundingClientRect().left - grid.getBoundingClientRect().left - 8;
+  }, [type]);
   const [mobileList, setMobileList] = useState(false);
   // 같은 원 남의 반과 받은 열람 요청 (ADR-059). 고르면 오른쪽 본문 자리를 그 칸이 쓴다.
   const access = useClassAccess();
-  const [foreign, setForeign] = useState<number | "received" | null>(null);
+  const [foreign, setForeign] = useState<number | "received" | null>(initialForeign ?? null);
   const foreignRoom =
     typeof foreign === "number" ? access.others.find((c) => c.id === foreign) : undefined;
+  // 알림이 가리킨 반이 목록에 없으면(지워졌거나 못 불러왔으면) 빈 칸 대신 내 반 보관함으로 돌아간다.
+  // 목록을 받기 전에는 없는 것이 아니다 — 아래에서 「불러오는 중」을 보인다.
+  if (access.loaded && typeof foreign === "number" && !foreignRoom) setForeign(null);
 
   const classroom = classes.find((c) => c.id === classId);
   const serverClassId = classId ? classServerId(classId) : null;
@@ -391,12 +406,13 @@ export default function DocumentArchiveView({
     />
   );
   // 남의 반 · 받은 요청을 고르면 내 반 보관함 대신 그 칸이 선다.
-  const foreignBody =
-    foreign === "received" ? (
-      <ReceivedPanel items={access.received} onChanged={access.reload} />
-    ) : foreignRoom ? (
-      <ForeignClassPanel key={foreignRoom.id} room={foreignRoom} onChanged={access.reload} />
-    ) : null;
+  const foreignBody = !access.loaded ? (
+    <p className={ws.hint}>불러오는 중…</p>
+  ) : foreign === "received" ? (
+    <ReceivedPanel items={access.received} onChanged={access.reload} />
+  ) : foreignRoom ? (
+    <ForeignClassPanel key={foreignRoom.id} room={foreignRoom} onChanged={access.reload} />
+  ) : null;
 
   if (!classId || !classroom || foreign !== null) {
     return (
@@ -765,6 +781,7 @@ export default function DocumentArchiveView({
               <div className={styles.scopeTabs}>
                 <button
                   type="button"
+                  className="tap44"
                   aria-pressed={scope === "dailyLog"}
                   onClick={() => {
                     setScope("dailyLog");
@@ -775,6 +792,7 @@ export default function DocumentArchiveView({
                 </button>
                 <button
                   type="button"
+                  className="tap44"
                   aria-pressed={scope === "weeklyLog"}
                   onClick={() => {
                     setScope("weeklyLog");
@@ -881,7 +899,12 @@ export default function DocumentArchiveView({
   /** 문서 종류 다섯 칸. 상세 화면에서는 그리지 않는다. */
   function typeGrid() {
     return (
-      <div className={styles.typeGrid} data-tour="archive-types">
+      <div
+        ref={typeRef}
+        className={styles.typeGrid}
+        data-tour="archive-types"
+        data-overview={type === null || undefined}
+      >
         {TYPES.map((t) => (
           <button
             type="button"
@@ -906,12 +929,16 @@ export default function DocumentArchiveView({
     );
   }
 
+  // 휴대폰(760px 아래)에서는 문서를 고르면 목록 화면을 걷고 문서 한 장만 본다 — 「목록으로」로 돌아온다.
+  const docScreen =
+    openDoc && editingId === openDoc.id ? "edit" : previewKey && !mobileList ? "view" : undefined;
+
   return (
-    <div className={styles.archive}>
+    <div className={styles.archive} data-doc={docScreen}>
       <ArchiveHeader>{header}</ArchiveHeader>
       {rail}
       <div className={styles.content}>
-        {openDoc && editingId === openDoc.id ? (
+        {docScreen === "edit" ? (
           <>
             <button
               type="button"
@@ -1067,13 +1094,10 @@ function DayStrip({
       >
         {days.map((d, i) => {
           const found = docsFor(d);
-          // 한 날짜에 여러 장이면 가장 센 상태를 표시하고, 아래 카드에서 각각 확인한다.
-          // 한 날짜에 여러 장이면 아직 검토 중인 것이 있는지만 본다.
-          const state = !found.length
-            ? "none"
-            : found.some((x) => archiveStatus(x) === "draft")
-              ? "draft"
-              : "confirmed";
+          // 한 날짜에 여러 장이면 가장 손이 갈 상태를 표시하고, 아래 카드에서 각각 확인한다.
+          const states = found.map(archiveStatus);
+          const state =
+            (["draft", "stale", "confirmed"] as const).find((s) => states.includes(s)) ?? "none";
           return (
             <button
               type="button"
@@ -1082,18 +1106,23 @@ function DayStrip({
               aria-pressed={d === day}
               onClick={() => onPickDay(d)}
             >
-              <span className={styles.date}>{shortDate(d)}</span>
-              <span className={styles.dow}>{WEEKDAY[i]}</span>
-              <span className={styles.mark} data-state={state}>
-                {state === "none" ? null : <Icon name="check" />}
+              {/* 보이는 칸은 숫자 · 요일 · 아이콘뿐이다. 읽어 주는 이름은 숨긴 글 한 줄이 맡는다. */}
+              <span className={styles.date} aria-hidden="true">
+                <span className={styles.month}>{shortDate(d).split(".")[0]}.</span>
+                {shortDate(d).split(".")[1]}
               </span>
-              <span className={styles.state}>{ARCHIVE_STATUS_LABEL[state]}</span>
-              <CareDayDecor variant={i} className={styles.dayDecor} />
+              <span className={styles.dow} aria-hidden="true">
+                {WEEKDAY[i]}
+              </span>
+              <StatusMark state={state} className={styles.state} />
+              <span className="sr-only">
+                {`${longDate(d)} ${WEEKDAY[i]}요일 · ${ARCHIVE_STATUS_LABEL[state]}`}
+              </span>
             </button>
           );
         })}
       </div>
-      <div className={styles.docGrid} style={{ marginTop: 12 }}>
+      <div className={styles.docGrid}>
         {picked.map((d) => (
           <JournalCard key={d.id} doc={d} cover={cover} art={art} onOpen={onOpen} />
         ))}
@@ -1155,13 +1184,56 @@ function JournalCard({
 function Legend() {
   return (
     <div className={styles.legend}>
-      {(["confirmed", "draft", "none"] as ArchiveStatus[]).map((s) => (
+      {(["confirmed", "stale", "draft", "none"] as ArchiveStatus[]).map((s) => (
         <span key={s}>
-          <i data-state={s} />
+          <StatusMark state={s} />
           {ARCHIVE_STATUS_LABEL[s]}
         </span>
       ))}
     </div>
+  );
+}
+
+/** `2026-11-10` → `11월 10일`. 날짜 칸을 읽어 줄 때 쓴다. */
+const longDate = (date: string) => {
+  const [, m, d] = date.split("-").map(Number);
+  return `${m}월 ${d}일`;
+};
+
+/**
+ * 상태 아이콘 넷 — 색이 달라도 모양으로 갈린다(색을 못 가리는 교사도 읽게).
+ * 확정 = 체크 동그라미 · 검토 중 = 반쯤 찬 동그라미 · 다시 확인 = 느낌표 세모 · 미작성 = 점선 빈 동그라미.
+ * 말은 범례가 알려 준다. 그림은 읽지 않는다(aria-hidden).
+ */
+function StatusMark({ state, className }: { state: ArchiveStatus; className?: string }) {
+  return (
+    <svg
+      className={`${styles.statusMark} ${className ?? ""}`}
+      data-state={state}
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {state === "confirmed" && (
+        <>
+          <circle cx="10" cy="10" r="8.2" />
+          <path d="m6.4 10.2 2.5 2.5 4.8-5" />
+        </>
+      )}
+      {state === "draft" && (
+        <>
+          <circle cx="10" cy="10" r="8.2" />
+          <path d="M10 1.8a8.2 8.2 0 0 0 0 16.4z" data-fill />
+        </>
+      )}
+      {state === "stale" && (
+        <>
+          <path d="M10 2.2 18.2 17H1.8z" />
+          <path d="M10 7.6v4.2M10 14.2v.1" />
+        </>
+      )}
+      {state === "none" && <circle cx="10" cy="10" r="8" />}
+    </svg>
   );
 }
 

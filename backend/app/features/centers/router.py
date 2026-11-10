@@ -34,7 +34,11 @@ from app.features.centers.schemas import (
     GreetingsSettings,
 )
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_center, require_own_class
+from app.shared.auth.ownership import (
+    require_center_creator,
+    require_own_center,
+    require_own_class,
+)
 from app.shared.school_year import school_year_of
 
 router = APIRouter(prefix="/centers", tags=["centers"])
@@ -110,7 +114,7 @@ def _teachers(session: Session, center_ids: list[int]) -> dict[int, int]:
         .where(User.center_id.in_(center_ids))
         .group_by(User.center_id)
     )
-    return dict(rows.all())
+    return dict(rows.all())  # type: ignore[arg-type]
 
 
 def _center_out(session: Session, center: Center) -> dict:
@@ -211,6 +215,7 @@ def create_center(
         region_sido=picked.sido if picked else body.region_sido,
         region_sigungu=picked.sigungu if picked else body.region_sigungu,
         registry_key=picked.key if picked else None,
+        created_by=user.id,
     )
     session.add(center)
     try:
@@ -218,8 +223,8 @@ def create_center(
     except IntegrityError:
         # 두 교사가 같은 원을 동시에 처음 골랐다. UNIQUE 가 한 줄만 남겼다 — 늦은 쪽은 그리로.
         session.rollback()
-        existing = session.scalar(select(Center).where(Center.registry_key == picked.key))
-        return _join(session, session.merge(user), existing, response)
+        existing = session.scalar(select(Center).where(Center.registry_key == picked.key))  # type: ignore[arg-type, union-attr]
+        return _join(session, session.merge(user), existing, response)  # type: ignore[arg-type]
     # 같은 트랜잭션에서 주인을 붙인다. 나눠 커밋하면 원은 생겼는데 주인이 없는 행이 남는다.
     user.center_id = center.id
     session.commit()
@@ -234,7 +239,7 @@ def get_center(center_id: int, session: DbSession, user: CurrentUser) -> dict:
     남의 원과 없는 원은 같은 404 다 (shared/auth/ownership.py).
     """
     require_own_center(user, center_id)
-    return _center_out(session, session.get(Center, center_id))
+    return _center_out(session, session.get(Center, center_id))  # type: ignore[arg-type]
 
 
 @router.post(
@@ -299,20 +304,20 @@ def patch_class(
                 },
             )
     if body.name is not None:
-        classroom.name = body.name
+        classroom.name = body.name  # type: ignore[union-attr]
     if body.age_min is not None:  # 스키마가 두 칸을 함께 받는다
-        classroom.age_min = body.age_min
-        classroom.age_max = body.age_max
+        classroom.age_min = body.age_min  # type: ignore[union-attr]
+        classroom.age_max = body.age_max  # type: ignore[union-attr]
     if body.teacher_name is not None:
-        classroom.teacher_name = body.teacher_name
+        classroom.teacher_name = body.teacher_name  # type: ignore[union-attr]
     if body.consent_confirmed is False:
-        classroom.consent_confirmed_at = None
-    elif body.consent_confirmed and classroom.consent_confirmed_at is None:
+        classroom.consent_confirmed_at = None  # type: ignore[union-attr]
+    elif body.consent_confirmed and classroom.consent_confirmed_at is None:  # type: ignore[union-attr]
         # 이미 있으면 처음 시각을 둔다 — 이 칸은 체크박스 복원용이다.
-        classroom.consent_confirmed_at = datetime.now(UTC)
+        classroom.consent_confirmed_at = datetime.now(UTC)  # type: ignore[union-attr]
     _commit_class(session)
     session.refresh(classroom)
-    return _class_response(classroom, user)
+    return _class_response(classroom, user)  # type: ignore[arg-type]
 
 
 @router.get("/{center_id}/classes", response_model=ClassListResponse)
@@ -347,19 +352,35 @@ def list_classes(
     return ClassListResponse(items=[_class_response(c, user, requests) for c in classes])
 
 
+def _settings_out(center: Center, user: User) -> CenterSettings:
+    """`can_edit` 는 원을 만든 교사인지다 (ADR-087). 화면이 고르개를 잠글지 여기서 안다."""
+    return CenterSettings(
+        trends_enabled=center.trends_enabled,
+        weekly_saturday_enabled=center.weekly_saturday_enabled,
+        observation_axis=center.observation_axis,
+        reflect_mark=center.reflect_mark,
+        can_edit=center.created_by is not None and center.created_by == user.id,
+    )
+
+
 @router.get("/{center_id}/settings", response_model=CenterSettings)
-def get_center_settings(center_id: int, session: DbSession, user: CurrentUser) -> Center:
-    """설정한 적 없어도 기본값이 담긴 행을 준다 — 빈 객체를 주지 않는다 (§3-1)."""
+def get_center_settings(center_id: int, session: DbSession, user: CurrentUser) -> CenterSettings:
+    """설정한 적 없어도 기본값이 담긴 행을 준다 — 빈 객체를 주지 않는다 (§3-1).
+
+    같은 원 교사는 누구나 읽는다. 바꾸기는 원을 만든 교사만이다 (ADR-087).
+    """
     require_own_center(user, center_id)
-    return _center(session, center_id)
+    return _settings_out(_center(session, center_id), user)
 
 
 @router.put("/{center_id}/settings", response_model=CenterSettings)
 def put_center_settings(
     center_id: int, body: CenterSettingsUpdate, session: DbSession, user: CurrentUser
-) -> Center:
+) -> CenterSettings:
+    """원 모든 반의 계획안 · 관찰 기록에 걸린다 — 원을 만든 교사만 바꾼다 (ADR-087)."""
     require_own_center(user, center_id)
     center = _center(session, center_id, lock=True)
+    require_center_creator(session, user, center_id)
     # **보낸 칸만 바꾼다.** 안 보낸 칸은 건드리지 않는다 (§3-1).
     if body.trends_enabled is not None:
         center.trends_enabled = body.trends_enabled
@@ -367,9 +388,11 @@ def put_center_settings(
         center.weekly_saturday_enabled = body.weekly_saturday_enabled
     if body.observation_axis is not None:
         center.observation_axis = body.observation_axis
+    if body.reflect_mark is not None:
+        center.reflect_mark = body.reflect_mark
     session.commit()
     session.refresh(center)
-    return center
+    return _settings_out(center, user)
 
 
 def _center(session: Session, center_id: int, *, lock: bool = False) -> Center:
@@ -408,7 +431,9 @@ def put_greetings(
 ) -> GreetingsSettings:
     require_own_center(user, center_id)
     # 설정 행이 아직 없어도 같은 원의 동시 PUT을 직렬화한다.
+    # 원 모든 반 계획안에 찍히는 문구다 — 원을 만든 교사만 바꾼다 (ADR-087).
     _greetings_center(session, center_id, lock=True)
+    require_center_creator(session, user, center_id)
     row = session.get(Greetings, center_id)
     if row is None:
         row = Greetings(center_id=center_id, **default_greetings().model_dump())

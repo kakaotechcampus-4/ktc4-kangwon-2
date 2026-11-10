@@ -280,7 +280,7 @@ def test_common_words_are_not_taken_for_people():
      "소중한 선생님", "조용한 선생님", "정다운 선생님", "모든 선생님께 감사해요", "여러 선생님",
      # Codex re-review 2: longer words and honorific forms
      "새로 오신 선생님", "우리의 선생님", "고마우신 선생님", "다정하신 선생님", "유능한 선생님",
-     "공평한 선생님"],
+     "공평한 선생님", "도서관 선생님", "안전 선생님"],
 )
 def test_nim_ssi_and_slash_numbers_are_not_blocked(text):
     # Q2 scope narrowed 2026-10-21: only dates, weekdays, clock times and a name before 선생님

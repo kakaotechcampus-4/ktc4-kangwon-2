@@ -161,8 +161,18 @@ class GenerateWeeklyPlanCommand:
 
     # ADR-060: the teacher's request note, applied only inside the Rule range.
     teacher_memo: str = ""
+    # 2026-11-09 하민: candidate evidence ids earlier weeks of this month cited (repeats count).
+    prior_week_evidence: tuple[str, ...] = ()
+    # 2026-11-10 하민: seed for sampling candidate evidence from the top 20; None keeps the fixed top 10.
+    candidate_sample_seed: int | None = None
 
     def __post_init__(self) -> None:
+        if self.candidate_sample_seed is not None and (
+            type(self.candidate_sample_seed) is not int or self.candidate_sample_seed < 0
+        ):
+            raise InvalidDomainValueError("candidate_sample_seed must be a non-negative int")
+        if type(self.prior_week_evidence) is not tuple or not all(type(ref) is str for ref in self.prior_week_evidence):
+            raise InvalidDomainValueError("prior_week_evidence must be a tuple of evidence ids")
         if type(self.activity_candidates) is not bool or type(self.indoor_play_candidates) is not bool or (self.indoor_play_candidates and not self.activity_candidates):
             raise InvalidDomainValueError("Indoor candidates require the activity candidate layout")
         if normalize_teacher_memo(self.teacher_memo) != self.teacher_memo:
@@ -292,6 +302,8 @@ class GenerateWeeklyPlan:
                 indoor_play_candidates=command.indoor_play_candidates,
                 teacher_memo=command.teacher_memo,
                 trends=usable_trends(optional_context),
+                prior_week_evidence=command.prior_week_evidence,
+                candidate_sample_seed=command.candidate_sample_seed,
             )
             fingerprint = context.fingerprint
             try:
@@ -522,6 +534,8 @@ def llm_context(
     indoor_play_candidates: bool = False,
     teacher_memo: str = "",
     trends: tuple[TrendItem, ...] = (),  # ADR-072: generation only; regeneration passes none
+    prior_week_evidence: tuple[str, ...] = (),  # generation only; regeneration passes none
+    candidate_sample_seed: int | None = None,  # generation only; regeneration passes none
 ) -> WeeklyLlmContext:
     theme_cell = _only_cell(parent, THEME_KEY)
     linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)
@@ -547,6 +561,7 @@ def llm_context(
             store, classification_repository.get_classification(), parent, period.week_id, keys,
             focus_aware=linked, activity_candidates=activity_candidates, indoor_play_candidates=indoor_play_candidates,
             exclude_venue_bound=packet.curriculum is not None or linked,
+            prior_week_evidence=prior_week_evidence, candidate_sample_seed=candidate_sample_seed,
         )
     if linked and any(s.section_key == "indoor_alternative" for s in snapshot.sections) and not classified.get("indoor_alternative"):
         raise WeeklyApplicationError("weekly_reference_context_unavailable", "Eligible indoor method evidence is unavailable")
@@ -560,7 +575,7 @@ def llm_context(
     request = _weekly_request(
         parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
         daily_life=daily_life, activity_candidates=activity_candidates, indoor_play_candidates=indoor_play_candidates,
-        teacher_memo=teacher_memo, trends=trends,
+        teacher_memo=teacher_memo, trends=trends, book_seed=candidate_sample_seed,
     )
     return WeeklyLlmContext(packet, fingerprint, classified, store_version, request)
 
@@ -677,7 +692,7 @@ def _parent_cell(parent: MonthlyPlan, key: str, week_id: WeekId) -> MonthlyCell 
     return section.cell_for_week(week_id) or section.cell_for_week(None)
 
 
-def _classified_evidence(store, classification, parent, week_id, keys, *, focus_aware=False, activity_candidates=False, indoor_play_candidates=False, exclude_venue_bound=False) -> dict[str, tuple[RetrievedEvidence, ...]]:
+def _classified_evidence(store, classification, parent, week_id, keys, *, focus_aware=False, activity_candidates=False, indoor_play_candidates=False, exclude_venue_bound=False, prior_week_evidence=(), candidate_sample_seed=None) -> dict[str, tuple[RetrievedEvidence, ...]]:
     """W3c: evidence per classified Section; a Section with none is left out (not a target)."""
     focus = _parent_cell(parent, "focus", week_id)
     query = " ".join((_only_cell(parent, THEME_KEY).value, focus.value if focus is not None else ""))
@@ -690,6 +705,7 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
             ref.source_id for ref in parent_cell.evidence
             if ref.source_type is EvidenceSourceType.INSTITUTION_SAMPLE
         ) if parent_cell is not None and parent_cell.value.strip() else ()
+        candidates = activity_candidates and key == "group_activity" or indoor_play_candidates and key == "indoor_play"
         items = tuple(
             item for item in weekly_section_evidence(
                 store, classification, weekly_class=weekly_class,
@@ -697,7 +713,9 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
                 query_text=_only_cell(parent, THEME_KEY).value if activity_candidates and key == "group_activity" else query,
                 focus_text=focus.value if focus_aware and focus is not None and not (activity_candidates and key == "group_activity") else "",
                 sibling_focuses=tuple(c.value for c in _section_cells(parent, "focus") if c.value.strip()) if focus_aware else (),
-                by_activity_type=activity_candidates and key == "group_activity" or indoor_play_candidates and key == "indoor_play",
+                by_activity_type=candidates,
+                prior_week_refs=prior_week_evidence if candidates else (),
+                sample_seed=candidate_sample_seed if candidates else None,
                 preferred_refs=preferred,
                 explicit_indoor_methods=focus_aware and key == "indoor_alternative",
                 exclude_venue_bound=exclude_venue_bound,
@@ -711,6 +729,7 @@ def _classified_evidence(store, classification, parent, week_id, keys, *, focus_
 def _weekly_request(
     parent, period, operating_days, snapshot, packet, theme_cell, outdoor, fingerprint, classified,
     *, daily_life=None, activity_candidates=False, indoor_play_candidates=False, teacher_memo="", trends=(),
+    book_seed=None,
 ) -> WeeklyPlanningRequest:
     """The Rule decides what the LLM may write; anything without a basis is not a target."""
     linked = any(section.repeat_by is RepeatBy.DAY for section in snapshot.sections)
@@ -790,6 +809,7 @@ def _weekly_request(
             memo=parent.teacher_memo, inherited=parent.parent_teacher_venues,
         ),
         trends=trends,
+        book_seed=book_seed,
     )
 
 

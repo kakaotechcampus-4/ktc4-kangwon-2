@@ -32,6 +32,14 @@ class User(Base):
         unique=True,
         comment="카카오 회원번호. 카카오로 로그인한 적이 있을 때만 채워진다 (ADR-069)",
     )
+    token_version: Mapped[int] = mapped_column(
+        default=0,
+        server_default="0",
+        comment=(
+            "토큰의 ver 와 같아야 통과. 비밀번호 변경 · 카카오 잇기 때 올려 그 전 토큰을 끊는다"
+            " (ADR-092)"
+        ),
+    )
     center_id: Mapped[int | None] = mapped_column(
         ForeignKey("centers.id"),
         index=True,

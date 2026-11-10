@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import and_, or_, select
@@ -18,17 +19,19 @@ from app.features.documents.models import (
     DocumentSection,
     DocumentSource,
 )
+from app.features.documents.paper import stamp_confirmed
 from app.features.documents.schemas import (
     DocumentReconfirmRequest,
     DocumentSourceComparison,
     SourceComparisonItem,
     SourceReplacementCandidate,
+    SourceResolution,
 )
 from app.features.documents.stale import document_changed
 from app.features.observations.models import Observation
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.ownership import require_own_class
-from app.shared.gates.sections import check_sections, join_facts
+from app.shared.gates.sections import check_sections, input_extras, join_facts
 
 
 def fail(code: str, message: str, fields: list[str], status: int = 409):
@@ -115,7 +118,7 @@ def plan_resolutions(session, user, doc, copies, missing_ids, candidates, resolu
     고르지 않은 사라진 근거, 내줄 수 없는 대체 후보, 전부 빼는 선택은 모두 거절한다.
     대체본은 여기서 다시 읽고 잠근다 — 목록을 본 뒤 지워졌거나 비워졌으면 걸린다.
     """
-    chosen: dict[int, object] = {}
+    chosen: dict[int, SourceResolution] = {}
     for item in resolutions:
         if item.source_id in chosen or item.source_id not in missing_ids:
             fail("VALIDATION_FAILED", "처리할 수 없는 근거를 골랐습니다.", ["resolutions"], 422)
@@ -140,7 +143,7 @@ def plan_resolutions(session, user, doc, copies, missing_ids, candidates, resolu
                 "대체할 일과 기록을 다시 골라주세요.",
                 [f"sources.{item.source_id}"],
             )
-        picks.add(item.replacement_id)
+        picks.add(item.replacement_id)  # type: ignore[arg-type]
     fresh = {
         r.id: r
         for r in session.scalars(
@@ -188,6 +191,12 @@ def resolution_trail(copies, plan):
     ]
 
 
+def class_ages(session: Session, class_id: int) -> range:
+    """반 연령. 해석의 「만 N세」를 숫자 대조에서 빼는 데만 쓴다 (`input_extras`, #85)."""
+    klass = session.get(Class, class_id)
+    return range(klass.age_min, klass.age_max + 1) if klass else range(0)
+
+
 def locked_review(session: Session, user: User, document_id: int, *, read_only: bool = False):
     """모든 쓰기와 같은 잠금 순서다. 다른 센터·반의 원본은 반환하지 않는다.
 
@@ -202,13 +211,13 @@ def locked_review(session: Session, user: User, document_id: int, *, read_only: 
     )
     if doc is None:
         fail("NOT_FOUND", "문서를 찾을 수 없습니다.", ["document_id"], 404)
-    require_own_class(session, user, doc.class_id, read_only=read_only)
-    if doc.kind != "dailyLog":
+    require_own_class(session, user, doc.class_id, read_only=read_only)  # type: ignore[union-attr]
+    if doc.kind != "dailyLog":  # type: ignore[union-attr]
         fail("GATE_BLOCKED", "일과 근거의 일일 보육일지만 재확정할 수 있습니다.", ["kind"])
     before = list(
         session.scalars(
             select(DocumentSource)
-            .where(DocumentSource.document_id == doc.id)
+            .where(DocumentSource.document_id == doc.id)  # type: ignore[arg-type, union-attr]
             .order_by(DocumentSource.id)
         )
     )
@@ -223,7 +232,7 @@ def locked_review(session: Session, user: User, document_id: int, *, read_only: 
     if not read_only:
         lock_sources(session, user, doc, before)
     doc = session.scalar(
-        select(Document).where(Document.id == doc.id).execution_options(populate_existing=True)
+        select(Document).where(Document.id == doc.id).execution_options(populate_existing=True)  # type: ignore[arg-type, union-attr]
     )
     if doc is None:
         fail("NOT_FOUND", "문서를 찾을 수 없습니다.", ["document_id"], 404)
@@ -234,7 +243,7 @@ def locked_review(session: Session, user: User, document_id: int, *, read_only: 
             .join(Class)
             .where(
                 RoutineRecord.id.in_(ids),
-                RoutineRecord.class_id == doc.class_id,
+                RoutineRecord.class_id == doc.class_id,  # type: ignore[union-attr]
                 Class.center_id == user.center_id,
             )
             .order_by(RoutineRecord.id)
@@ -244,7 +253,7 @@ def locked_review(session: Session, user: User, document_id: int, *, read_only: 
     copies = list(
         session.scalars(
             select(DocumentSource)
-            .where(DocumentSource.document_id == doc.id)
+            .where(DocumentSource.document_id == doc.id)  # type: ignore[union-attr]
             .order_by(DocumentSource.id)
             .execution_options(populate_existing=True)
         )
@@ -252,7 +261,7 @@ def locked_review(session: Session, user: User, document_id: int, *, read_only: 
     sections = list(
         session.scalars(
             select(DocumentSection)
-            .where(DocumentSection.document_id == doc.id)
+            .where(DocumentSection.document_id == doc.id)  # type: ignore[union-attr]
             .order_by(DocumentSection.heading)
             .execution_options(populate_existing=True)
         )
@@ -263,9 +272,9 @@ def locked_review(session: Session, user: User, document_id: int, *, read_only: 
     for copy in copies:
         current = by_id.get(copy.source_id) if copy.source_kind == "routine" else None
         if current is not None and (
-            current.date != doc.start_date
+            current.date != doc.start_date  # type: ignore[union-attr]
             or not current.execution.strip()
-            or copy.class_id != doc.class_id
+            or copy.class_id != doc.class_id  # type: ignore[union-attr]
         ):
             current = None
         text = current.fact_text() if current else None
@@ -299,16 +308,16 @@ def locked_review(session: Session, user: User, document_id: int, *, read_only: 
     source_hash = digest(versions)
     state_hash = digest(
         [
-            doc.id,
-            doc.class_id,
-            doc.kind,
-            doc.status,
-            doc.stale,
-            doc.updated_at,
-            doc.title,
-            doc.review_note,
-            doc.start_date,
-            doc.end_date,
+            doc.id,  # type: ignore[union-attr]
+            doc.class_id,  # type: ignore[union-attr]
+            doc.kind,  # type: ignore[union-attr]
+            doc.status,  # type: ignore[union-attr]
+            doc.stale,  # type: ignore[union-attr]
+            doc.updated_at,  # type: ignore[union-attr]
+            doc.title,  # type: ignore[union-attr]
+            doc.review_note,  # type: ignore[union-attr]
+            doc.start_date,  # type: ignore[union-attr]
+            doc.end_date,  # type: ignore[union-attr]
             [[s.heading, s.body, s.source_ids] for s in sections],
             [[c.source_kind, c.source_id, c.text, c.date, c.class_id] for c in copies],
             source_hash,
@@ -316,12 +325,12 @@ def locked_review(session: Session, user: User, document_id: int, *, read_only: 
     )
     token = hmac.new(settings.secret_key.encode(), state_hash.encode(), hashlib.sha256).hexdigest()
     comparison = DocumentSourceComparison(
-        document_id=doc.id,
-        updated_at=doc.updated_at.astimezone(UTC),
+        document_id=doc.id,  # type: ignore[union-attr]
+        updated_at=doc.updated_at.astimezone(UTC),  # type: ignore[union-attr]
         review_token=token,
         sources=rows,
-        can_reconfirm=doc.status == "CONFIRMED"
-        and doc.stale
+        can_reconfirm=doc.status == "CONFIRMED"  # type: ignore[union-attr]
+        and doc.stale  # type: ignore[union-attr]
         and bool(rows)
         and all(r.state != "missing" for r in rows),
         candidates=candidates,
@@ -381,7 +390,8 @@ def reconfirm(session: Session, user: User, document_id: int, body: DocumentReco
     unchecked = [f"checks.{name}" for name, value in body.checks.model_dump().items() if not value]
     if unchecked:
         fail("VALIDATION_FAILED", "교사 검토를 완료해주세요.", unchecked, 422)
-    survivors, dropped = [], []
+    survivors: list[Any] = []
+    dropped: list[Any] = []
     for copy, row in zip(copies, comparison.sources, strict=True):
         pick = plan.get(copy.source_id) if plan else None
         if plan and copy.source_id in plan:
@@ -392,7 +402,13 @@ def reconfirm(session: Session, user: User, document_id: int, body: DocumentReco
             survivors.append((copy, copy.source_id, row.after))
     texts = [text for _, _, text in survivors]
     ids = [new_id for _, new_id, _ in survivors]
-    fields = check_sections(body.sections, texts, set(ids), stage="reconfirm")
+    fields = check_sections(
+        body.sections,
+        texts,
+        set(ids),
+        stage="reconfirm",
+        extras=input_extras((copy for copy, _, _ in survivors), class_ages(session, doc.class_id)),
+    )
     if fields:
         fail("VALIDATION_FAILED", "입력값을 확인해주세요.", fields, 422)
 
@@ -419,6 +435,7 @@ def reconfirm(session: Session, user: User, document_id: int, body: DocumentReco
     doc.stale = False
     doc.status = "CONFIRMED"
     doc.updated_at = datetime.now(UTC)
+    stamp_confirmed(session, doc)
     document_changed(session, doc.id)
     # **끝난 뒤** 근거 모습을 다시 잰다. 재시도는 그때의 값과 비교하므로, 근거를 빼거나
     # 바꾼 재확정이면 변경 전 해시로는 영영 어긋난다. 재시도가 재는 것과 같은 길로 잰다.

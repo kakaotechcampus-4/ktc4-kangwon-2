@@ -3,7 +3,8 @@
 **전파는 연쇄다.** 관찰 기록을 고치면 그걸 쓴 일일 보육일지가, 그 일지를 쓴 주간 보육일지가
 `stale` 이 된다. 멈출 때까지 따라간다. 문서를 지우지 않는다 — 교사가 보고 판단한다.
 
-**판정은 사본과 원본의 문자열 비교다.** 모델이 개입하지 않는다 (3단 게이트의 2단).
+**판정은 사본과 원본의 문자열 비교다.** 관찰 기록은 사실 · 날짜 · 영역 · 상황을 본다(ADR-088).
+모델이 개입하지 않는다 (3단 게이트의 2단).
 사본은 `document_sources` 에 생성 시점 그대로 남아 있다.
 
 `stale` 을 되돌려 `false` 로 만드는 일은 여기서 하지 않는다. 교사가 다시 보는 것이 목적이라
@@ -14,11 +15,13 @@
 import datetime
 from dataclasses import dataclass
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import and_, cast, or_, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from app.features.centers.models import Class
 from app.features.documents.models import Document, DocumentSource
+from app.features.observations.models import Observation
 
 
 @dataclass(frozen=True)
@@ -39,14 +42,61 @@ def _sources(center_id: int | None):
 
 
 def observation_changed(
-    session: Session, observation_id: int, fact: str | None, date: datetime.date | None
-) -> None:
-    """관찰 기록이 바뀌었거나(`fact`·`date`) 사라졌다(둘 다 None).
+    session: Session,
+    observation_id: int,
+    observation: Observation | None,
+    *,
+    domain_moved: bool = False,
+) -> SourceImpact:
+    """관찰 기록이 바뀌었거나(`observation` 은 고친 뒤 값) 사라졌다(None).
 
-    **사본과 같은 문서는 건드리지 않는다** — 영역·상황만 고쳤으면 사실은 그대로다.
-    `class_id` · `child_id` 는 §10 이 수정을 막으므로 비교하지 않는다.
+    사본과 사실 · 날짜 · 영역 · 상황 중 하나라도 다르면 `stale` 이다 (ADR-088). 영역은
+    종이의 행을, 상황은 관찰 칸 글과 AI 입력을 바꾼다 — 확정한 글과 다른 종이가 나간다.
+
+    **영역 · 상황 사본이 없는 옛 문서(NULL, 「다시 확인」)는** 종이가 지금 원본 영역을 따른다.
+    그래서 원본 영역이 실제로 바뀌었을 때(`domain_moved`)만 `stale` 이다. 상황은 옛 종이에
+    쓰이지 않아 보지 않는다. `class_id` · `child_id` 는 §10 이 수정을 막으므로 비교하지 않는다.
+
+    돌려주는 영향은 이 기록을 **직접** 인용한 확정 문서(관찰일지 · 영유아 평가)다. 일과 기록의
+    `source_changed` 와 같은 규칙이다 — 초안과 연쇄로 따라간 문서는 stale 로 바꾸되 세지 않는다.
     """
-    source_changed(session, "observation", observation_id, fact, date)
+    query = _sources(None).where(
+        DocumentSource.source_kind == "observation",
+        DocumentSource.source_id == observation_id,
+    )
+    if observation is not None:
+        differs = [
+            DocumentSource.text != observation.fact,
+            DocumentSource.date.is_distinct_from(observation.date),
+            and_(DocumentSource.domain.is_not(None), DocumentSource.domain != observation.domain),
+            and_(
+                DocumentSource.context.is_not(None), DocumentSource.context != observation.context
+            ),
+        ]
+        if domain_moved:
+            differs.append(DocumentSource.domain.is_(None))
+        query = query.where(or_(*differs))
+    document_ids = set(session.scalars(query))
+    impact = _confirmed_impact(session, document_ids)
+    _mark(session, document_ids)
+    return impact
+
+
+def _confirmed_impact(session: Session, document_ids: set[int], kinds=None) -> SourceImpact:
+    """직접 영향을 받은 확정 문서. 행 잠금 뒤 stale 을 읽는다 — 동시에 두 근거가 바뀌어도
+    새로 stale 이 된 문서를 둘 다 세지 않는다."""
+    query = select(Document).where(Document.id.in_(document_ids), Document.status == "CONFIRMED")
+    if kinds is not None:
+        query = query.where(Document.kind.in_(kinds))
+    confirmed = list(
+        session.scalars(
+            query.order_by(Document.id).with_for_update().execution_options(populate_existing=True)
+        ).all()
+    )
+    return SourceImpact(
+        affected_document_ids=tuple(doc.id for doc in confirmed),
+        newly_stale_document_ids=tuple(doc.id for doc in confirmed if not doc.stale),
+    )
 
 
 def source_changed(
@@ -58,41 +108,41 @@ def source_changed(
     *,
     center_id: int | None = None,
     force: bool = False,
+    marks: tuple[bool, list[str], str] | None = None,
 ) -> SourceImpact:
     """근거 원본(관찰 기록 · 일과 기록)이 바뀌었거나(`text`·`date`) 사라졌다(둘 다 None).
 
     `text` 는 문서가 사본으로 남긴 문자열과 같은 모양이어야 한다 — 일과 기록은
     `RoutineRecord.fact_text()` 다. 사본과 같으면 문서를 건드리지 않는다.
+
+    `marks` 는 일과 기록의 (반영, 맞다고 한 활동, 활동계획)이다. 확정 때 박은 사본과 다르면
+    그 확정본도 `stale` 이다 — 사실 칸은 아니지만 종이에 나간다(ADR-086).
     """
     query = _sources(center_id).where(
         DocumentSource.source_kind == kind,
         DocumentSource.source_id == source_id,
     )
     if text is not None and not force:
-        query = query.where(
-            or_(DocumentSource.text != text, DocumentSource.date.is_distinct_from(date))
-        )
-    document_ids = set(session.scalars(query))
-    # 행 잠금 뒤 상태를 읽는다. 동시에 두 근거가 바뀌어도 신규 stale을 둘 다 세지 않는다.
-    confirmed = list(
-        session.scalars(
-            select(Document)
-            .where(
-                Document.id.in_(document_ids),
-                # 일과 기록을 직접 인용하는 종류 둘이다 — 일일, 그리고 일일을 쓰지 않는
-                # 원의 주간. 연쇄로 stale 이 된 문서는 애초에 이 집합에 없다(§10-1).
-                Document.kind.in_(("dailyLog", "weeklyLog")),
-                Document.status == "CONFIRMED",
+        differs = [DocumentSource.text != text, DocumentSource.date.is_distinct_from(date)]
+        if marks is not None:
+            # 확정 때 박은 「반영」 · 활동 · 활동계획 사본과 다르면 종이가 바뀐다(ADR-086).
+            # 박지 않은 사본(초안 · 옛 확정본)은 원본을 읽으므로 보지 않는다.
+            reflected, activities, plan = marks
+            differs.append(
+                and_(
+                    DocumentSource.reflected.is_not(None),
+                    or_(
+                        DocumentSource.reflected != reflected,
+                        DocumentSource.activities != cast(activities, JSONB),
+                        DocumentSource.plan.is_distinct_from(plan),
+                    ),
+                )
             )
-            .order_by(Document.id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        ).all()
-    )
-    impact = SourceImpact(
-        affected_document_ids=tuple(sorted(doc.id for doc in confirmed)),
-        newly_stale_document_ids=tuple(sorted(doc.id for doc in confirmed if not doc.stale)),
-    )
+        query = query.where(or_(*differs))
+    document_ids = set(session.scalars(query))
+    # 일과 기록을 직접 인용하는 종류 둘이다 — 일일, 그리고 일일을 쓰지 않는
+    # 원의 주간. 연쇄로 stale 이 된 문서는 애초에 이 집합에 없다(§10-1).
+    impact = _confirmed_impact(session, document_ids, ("dailyLog", "weeklyLog"))
     _mark(session, document_ids, center_id=center_id)
     return impact
 

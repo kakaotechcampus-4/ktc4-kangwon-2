@@ -23,25 +23,14 @@ import {
   type ArchiveSummaryItem,
   type ReceivedRequest,
 } from "@/lib/api/class-access";
-import {
-  downloadDocumentHwpx,
-  getDocument,
-  isStaleWrite,
-  listDocuments,
-  type ServerDocument,
-} from "@/lib/api/documents";
-import { downloadAnnualHwpx, listAnnualPlans } from "@/lib/api/plans";
-import { downloadMonthlyHwpx, listMonthlyPlans } from "@/lib/api/monthly";
-import { downloadWeeklyHwpx, listWeeklyPlans } from "@/lib/api/weekly";
-import { monthLabel, weekIdLabel } from "@/lib/workspace/document-archive";
+import { getDocument, isStaleWrite, type ServerDocument } from "@/lib/api/documents";
+import { loadApprovedRows, PLAN_NAME, type ApprovedRow } from "@/lib/workspace/approved-rows";
+import { monthLabel } from "@/lib/workspace/document-archive";
 import { DOCUMENT_KINDS, localDate } from "@/lib/workspace/model";
 import { Icon } from "@/components/app/icons";
 import { Posty, type PostyFace, type PostyPose, type PostyTone } from "@/components/app/Posty";
 import { Message, ws } from "./WorkspaceUI";
-import DocumentArchivePreview, {
-  PlanArchivePreview,
-  type PlanPreviewTarget,
-} from "./DocumentArchivePreview";
+import DocumentArchivePreview, { PlanArchivePreview } from "./DocumentArchivePreview";
 
 /** 남의 반 하나의 열람 상태. 서버의 `my_access` 에서 OWNER · OPEN 을 뺀 것이다. */
 export type ForeignAccess = "NONE" | AccessStatus;
@@ -60,28 +49,31 @@ const accessOf = (room: ApiClass): ForeignAccess => (room.my_access ?? "NONE") a
  * 같은 원의 남의 반과 내가 받은 요청.
  *
  * 둘 다 보관함에 덤으로 붙는 것이다 — 못 불러와도 내 반 보관함은 그대로 써야 해서
- * 실패는 빈 목록으로 둔다.
+ * 실패는 빈 목록으로 둔다. `loaded` 는 둘이 처음 끝났을 때(실패해도) 켜진다 — 그 전의 빈 목록은
+ * 「없다」가 아니라 「아직」이라서, 알림으로 바로 들어온 화면이 반대 말을 하지 않게 한다.
  */
 export function useClassAccess() {
   const [others, setOthers] = useState<ApiClass[]>([]);
   const [received, setReceived] = useState<ReceivedRequest[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let live = true;
-    getMe()
+    const classes = getMe()
       .then((me) => (me.center_id ? getClasses(me.center_id) : { items: [] }))
       .then(({ items }) => live && setOthers(items.filter((room) => !isMyClass(room))))
       .catch(() => live && setOthers([]));
-    listReceivedRequests()
+    const requests = listReceivedRequests()
       .then(({ items }) => live && setReceived(items))
       .catch(() => live && setReceived([]));
+    void Promise.all([classes, requests]).then(() => live && setLoaded(true));
     return () => {
       live = false;
     };
   }, [reload]);
 
-  return { others, received, reload: () => setReload((n) => n + 1) };
+  return { others, received, loaded, reload: () => setReload((n) => n + 1) };
 }
 
 /** 상태마다 포스티가 짓는 모습과 하는 말. */
@@ -130,11 +122,9 @@ const MOOD: Record<
     tone: "sage",
     word: "승인받았어요 · 서로 함께 봐요",
     lead: () =>
-      "보기와 확정 문서 hwp 내려받기만 돼요. 고치기 · 확정 · 삭제는 담임 선생님만 할 수 있어요.",
+      "보기와 확정 문서 hwp 내려받기만 돼요. 수정 · 확정 · 삭제는 담임 선생님만 할 수 있어요.",
   },
 };
-
-const PLAN_NAME = { annual: "연간 계획안", monthly: "월간 계획안", weekly: "주간 계획안" } as const;
 
 const kindName = (kind: ArchiveSummaryItem["kind"]) =>
   kind in PLAN_NAME ? PLAN_NAME[kind as keyof typeof PLAN_NAME] : DOCUMENT_KINDS[kind];
@@ -262,19 +252,7 @@ function LockedSummary({ classId }: { classId: number }) {
   );
 }
 
-/** 승인받은 반의 한 줄. 보기는 미리보기 칸, 내려받기는 확정본만이다. */
-type Row = {
-  key: string;
-  /** 정렬 열쇠 — 최근 것이 위다. */
-  order: string;
-  name: string;
-  title: string;
-  period: string;
-  confirmed: boolean;
-  view: { doc: string } | { plan: PlanPreviewTarget };
-  /** 없으면 한글 파일로 못 만든다 — 증빙으로 올린 원문(IMPORT)은 서버가 409 로 막는다. */
-  hwp?: () => Promise<void>;
-};
+type Row = ApprovedRow;
 
 function ApprovedList({ room, onLost }: { room: ApiClass; onLost: () => void }) {
   const [state, setState] = useState<{ id: number; rows: Row[]; error: string }>();
@@ -283,90 +261,10 @@ function ApprovedList({ room, onLost }: { room: ApiClass; onLost: () => void }) 
 
   useEffect(() => {
     let live = true;
-    const plan = (
-      kind: PlanPreviewTarget["kind"],
-      id: number,
-      title: string,
-      period: string,
-      createdAt: string,
-    ): PlanPreviewTarget => ({
-      kind,
-      id,
-      classId: room.id,
-      className: room.name,
-      title,
-      period,
-      periodKey: period,
-      createdAt,
-      href: "",
-    });
-    // 승인된 반도 반을 짚어야 준다 — `class_id` 없는 목록은 내 반 것만이다 (§2-2).
-    Promise.allSettled([
-      listDocuments({ class_id: room.id }),
-      listAnnualPlans(room.id),
-      listMonthlyPlans(room.id),
-      listWeeklyPlans(room.id),
-    ]).then(([docs, annual, monthly, weekly]) => {
+    loadApprovedRows(room).then(({ rows, failed }) => {
       if (!live) return;
-      const failed = [docs, annual, monthly, weekly].filter((r) => r.status === "rejected");
       // 그 사이 승인이 거둬졌으면 목록이 아니라 상태를 다시 받아야 한다.
-      if (failed.some((r) => errorCode(r.reason) === "CLASS_ACCESS_REQUIRED")) return onLost();
-      const rows: Row[] = [];
-      if (docs.status === "fulfilled")
-        for (const d of docs.value)
-          rows.push({
-            key: d.id,
-            order: d.start,
-            name: DOCUMENT_KINDS[d.kind],
-            title: d.title,
-            period: d.start === d.end ? d.start : `${d.start} ~ ${d.end}`,
-            confirmed: d.status === "confirmed",
-            view: { doc: d.id },
-            hwp: d.origin === "import" ? undefined : () => downloadDocumentHwpx(d.id),
-          });
-      if (annual.status === "fulfilled")
-        for (const p of annual.value.items) {
-          const title = `${p.school_year}학년도 연간 계획안`;
-          rows.push({
-            key: `annual:${p.id}`,
-            order: `${p.school_year}-03`,
-            name: PLAN_NAME.annual,
-            title,
-            period: `${p.school_year}학년도`,
-            confirmed: p.status === "CONFIRMED",
-            view: { plan: plan("annual", p.id, title, `${p.school_year}학년도`, p.created_at) },
-            hwp: () => downloadAnnualHwpx(p.id),
-          });
-        }
-      if (monthly.status === "fulfilled")
-        for (const p of monthly.value.items) {
-          const period = monthLabel(p.target_month);
-          rows.push({
-            key: `monthly:${p.id}`,
-            order: p.target_month,
-            name: PLAN_NAME.monthly,
-            title: `${period} 월간 계획안`,
-            period,
-            confirmed: p.status === "CONFIRMED",
-            view: { plan: plan("monthly", p.id, `${period} 월간 계획안`, period, p.created_at) },
-            hwp: () => downloadMonthlyHwpx(p.id),
-          });
-        }
-      if (weekly.status === "fulfilled")
-        for (const p of weekly.value.items) {
-          const period = weekIdLabel(p.week_id);
-          rows.push({
-            key: `weekly:${p.id}`,
-            order: p.week_id,
-            name: PLAN_NAME.weekly,
-            title: `${period} 주간 계획안`,
-            period,
-            confirmed: p.status === "CONFIRMED",
-            view: { plan: plan("weekly", p.id, `${period} 주간 계획안`, period, p.created_at) },
-            hwp: () => downloadWeeklyHwpx(p.id),
-          });
-        }
-      rows.sort((a, b) => b.order.localeCompare(a.order));
+      if (failed.some((reason) => errorCode(reason) === "CLASS_ACCESS_REQUIRED")) return onLost();
       setState({
         id: room.id,
         rows,
@@ -376,7 +274,7 @@ function ApprovedList({ room, onLost }: { room: ApiClass; onLost: () => void }) 
     return () => {
       live = false;
     };
-    // `onLost` 는 부모가 매 렌더 새로 만든다. 넣으면 그릴 때마다 네 목록을 다시 부른다.
+    // `onLost` 는 부모가 매 렌더 새로 만든다. 넣으면 그릴 때마다 목록을 다시 부른다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.id, room.name]);
 

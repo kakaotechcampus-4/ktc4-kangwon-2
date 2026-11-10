@@ -10,6 +10,7 @@ import { Posty } from "./Posty";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { accountName } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { teacherTitle } from "@/lib/greeting";
 import {
   chosenClassFor,
   loadClassSettings,
@@ -57,7 +58,7 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
         // (13주차 멘토 리뷰 — 메뉴 이름은 선생님이 쓰는 말로 · 주간 기록 메뉴는 합친다).
         key: "routines",
         label: "보육일지",
-        short: "일지",
+        short: "보육",
         href: "/routines",
         icon: "edit",
         match: (p) => p.startsWith("/routines") || p.startsWith("/weekly-records"),
@@ -392,7 +393,7 @@ export default function AppSidebar() {
             </span>
             <div className="min-w-0">
               <p className="truncate text-[13px] font-medium text-rail-ink">
-                {teacher ? `${teacher} 선생님` : "선생님"}
+                {teacherTitle(teacher)}
               </p>
             </div>
           </div>
@@ -414,9 +415,11 @@ function switchClass(classId: string) {
   if (!saveClassSettings({ ...settings, primaryClassId: classId })) return;
   // 화면들은 주소에 적힌 반을 주 반보다 먼저 본다 (깊은 링크로 들어온 길이니까).
   // 그대로 다시 읽으면 옛 반이 이겨서 바꾼 것이 먹히지 않는다. 반만 떼고 날짜는 둔다.
+  // 보관함의 `foreign`(알림이 연 남의 반 · 받은 요청 칸)도 뗀다 — 남겨 두면 반을 바꿔도 그 칸이 다시 열린다.
   const params = new URLSearchParams(window.location.search);
   params.delete("class_id");
   params.delete("class");
+  params.delete("foreign");
   const query = params.toString();
   window.location.href = window.location.pathname + (query ? `?${query}` : "");
 }

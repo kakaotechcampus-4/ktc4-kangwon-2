@@ -141,7 +141,7 @@ def export_plan(
         return _export_play_project(session, user, row, format)
     if row.status != "CONFIRMED":
         raise _NOT_CONFIRMED
-    plan = _detail(row, _repo(session, user).get(PlanId(row.plan_ref)))
+    plan = _detail(row, _repo(session, user).get(PlanId(row.plan_ref)))  # type: ignore[arg-type]
     require_own_class(session, user, plan.class_id, True)
 
     title = f"{row.class_name} {plan.school_year}학년도 연간 보육계획안"
@@ -260,8 +260,8 @@ def export_monthly_plan(
             raise TemplateMismatch(f"월간 양식에 {section.section_key} 줄이 없다.")
 
     # 연령은 만들 때 계획안에 굳은 값이다 — 반 설정이 뒤에 바뀌어도 제출 문서는 그대로다.
-    core = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
-    ages = core.target_ages
+    core = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))  # type: ignore[arg-type]
+    ages = core.target_ages  # type: ignore[union-attr]
     title = f"{row.class_name} {plan.target_month} 놀이계획안"
     content = _fill_form(
         (TEMPLATE_DIR / MONTHLY_TEMPLATES[len(weeks)]).read_bytes(),
@@ -269,7 +269,7 @@ def export_monthly_plan(
         (f"{plan.month}월 놀이계획안", f"{_ages_label(ages)} {row.class_name}"),
         texts,
         rows,
-        tables=lambda table, styles: _fill_teacher_tables(table, core.tables, styles),
+        tables=lambda table, styles: _fill_teacher_tables(table, core.tables, styles),  # type: ignore[union-attr]
         bold_cells=(MONTHLY_MONTH_CELLS["drill"],),
     )
     return download(content, f"monthly-plan-{row.id}", title, format)
@@ -297,7 +297,7 @@ def _fill_form(
 
     section = etree.fromstring(parts[SECTION])
     styles = Styles(etree.fromstring(parts[HEADER]))
-    cells = _cells(section.find(".//hp:tbl", NS))
+    cells = _cells(section.find(".//hp:tbl", NS))  # type: ignore[arg-type]
     for address, label in labels.items():
         if address not in cells or _text(cells[address]) != label:
             raise TemplateMismatch(f"양식 {address} 칸이 「{label}」 이 아니다.")
@@ -393,12 +393,12 @@ def export_weekly_plan(
     plan = _weekly_detail(session, user, plan_id)
     require_own_class(session, user, plan.class_id, read_only=True)
     # 연령은 만들 때 계획안에 굳은 값이다 — 반 설정이 뒤에 바뀌어도 제출 문서는 그대로다.
-    core = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))
-    ages = core.target_ages
-    if any(s.repeat_by is RepeatBy.DAY for s in core.template_snapshot.sections):
+    core = _weekly_repo(session, user.center_id).get(PlanId(row.plan_ref))  # type: ignore[arg-type]
+    ages = core.target_ages  # type: ignore[union-attr]
+    if any(s.repeat_by is RepeatBy.DAY for s in core.template_snapshot.sections):  # type: ignore[union-attr]
         title = f"{row.class_name} {plan.week_period.label} 주간계획안"
-        content = _fill_weekly_days(core, plan.display_end_date, row.class_name, title)
-        if core.activity_grids:
+        content = _fill_weekly_days(core, plan.display_end_date, row.class_name, title)  # type: ignore[arg-type]
+        if core.activity_grids:  # type: ignore[union-attr]
             content = fill_weekly_activity_grid(content, core)
         return download(content, f"weekly-plan-{row.id}", title, format)
 

@@ -17,14 +17,17 @@ from app.features.centers.router import router as centers_router
 from app.features.children.router import router as children_router
 from app.features.class_access.router import router as class_access_router
 from app.features.documents.export import router as documents_export_router
+from app.features.documents.rewrite import router as documents_rewrite_router
 from app.features.documents.router import router as documents_router
 from app.features.evaluation.router import router as evaluation_router
 from app.features.forms.router import center_router as center_forms_router
 from app.features.forms.router import router as forms_router
+from app.features.notifications.router import router as notifications_router
 from app.features.observations.router import router as observations_router
 from app.features.plans.annual_extract import router as annual_extract_router
 from app.features.plans.annual_import import router as annual_import_router
 from app.features.plans.export import router as plans_export_router
+from app.features.plans.generation_runs import router as generation_runs_router
 from app.features.plans.monthly_router import router as monthly_plans_router
 from app.features.plans.play_monthly_router import router as play_monthly_plans_router
 from app.features.plans.router import router as plans_router
@@ -51,9 +54,16 @@ if not logger.handlers:
     logger.setLevel(logging.INFO)
 
 # LLM 실측이 읽는 INFO 줄 — 전송 성공 · schema · 걸린 시간(monthly_llm), 주간 성공 · 수리 · 지문
-# (planner). 이름별 logger 라 손대지 않으면 기본 WARNING 에 걸려 버려진다. 둘 다 내용 없는 줄만
-# 남긴다(프롬프트 · 생성 문장 · 키 없음). 전체 수준은 올리지 않고 이 둘만 같은 handler 로 보낸다.
-for _name in ("app.features.plans.monthly_llm", "ssuksak.planning.planner.weekly"):
+# (planner), 주간 후보 seed · 트렌드 상태(weekly_router), 일지 초안 폴백 까닭(documents.router,
+# ADR-093). 이름별 logger 라 손대지 않으면 기본
+# WARNING 에 걸려 버려진다. 모두 내용 없는 줄만 남긴다(프롬프트 · 생성 문장 · 키 없음).
+# 전체 수준은 올리지 않고 이것들만 같은 handler 로 보낸다.
+for _name in (
+    "app.features.plans.monthly_llm",
+    "ssuksak.planning.planner.weekly",
+    "app.features.plans.weekly_router",
+    "app.features.documents.router",
+):
     _llm_logger = logging.getLogger(_name)
     if not _llm_logger.handlers:
         _llm_logger.addHandler(logger.handlers[0])
@@ -63,7 +73,8 @@ for _name in ("app.features.plans.monthly_llm", "ssuksak.planning.planner.weekly
 
 def _one_line(value: str) -> str:
     return value.translate(
-        str.maketrans({"\n": r"\n", "\r": r"\r", "\u2028": r"\u2028", "\u2029": r"\u2029"})
+        # str.maketrans 의 인자 모양을 typeshed 가 dict[str, str] 로 받지 않는다.
+        str.maketrans({"\n": r"\n", "\r": r"\r", "\u2028": r"\u2028", "\u2029": r"\u2029"})  # type: ignore[arg-type]
     )
 
 
@@ -75,7 +86,7 @@ def _request_context(scope: Scope) -> str:
     )
 
 
-def _exception_class(exc: Exception) -> str:
+def _exception_class(exc: BaseException) -> str:
     return _one_line(f"{type(exc).__module__}.{type(exc).__name__}")
 
 
@@ -185,8 +196,10 @@ app.include_router(classes_router, prefix="/api", dependencies=_authenticated)
 app.include_router(daycares_router, prefix="/api", dependencies=_authenticated)
 app.include_router(children_router, prefix="/api", dependencies=_authenticated)
 app.include_router(class_access_router, prefix="/api", dependencies=_authenticated)
+app.include_router(notifications_router, prefix="/api", dependencies=_authenticated)
 app.include_router(documents_router, prefix="/api", dependencies=_authenticated)
 app.include_router(documents_export_router, prefix="/api", dependencies=_authenticated)
+app.include_router(documents_rewrite_router, prefix="/api", dependencies=_authenticated)
 app.include_router(evaluation_router, prefix="/api", dependencies=_authenticated)
 app.include_router(observations_router, prefix="/api", dependencies=_authenticated)
 app.include_router(routines_router, prefix="/api", dependencies=_authenticated)
@@ -201,6 +214,7 @@ app.include_router(template_profiles_router, prefix="/api", dependencies=_authen
 app.include_router(plans_export_router, prefix="/api", dependencies=_authenticated)
 app.include_router(center_forms_router, prefix="/api", dependencies=_authenticated)
 app.include_router(trends_router, prefix="/api", dependencies=_authenticated)
+app.include_router(generation_runs_router, prefix="/api", dependencies=_authenticated)
 
 
 def _error(status_code: int, code: str, message: str, fields: list[str]) -> JSONResponse:

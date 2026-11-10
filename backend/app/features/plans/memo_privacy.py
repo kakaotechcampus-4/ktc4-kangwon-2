@@ -4,13 +4,15 @@ api-spec §9 · ADR-060.
 
 메모 원문만 바꾼다. 요청 전체를 바꾸면 누리과정 문장 속 「하나씩」 같은 말까지 이름으로
 보고 바꾼다. 답은 통째로 되돌린다 — 반영 못한 요청 요약에도 가명이 섞일 수 있다.
-Core 는 원문 메모를 보고 검증하므로, Core 에 돌아가는 답도 실명이어야 맞는다.
+Core 는 원문 메모를 보고 검증하므로, Core 에 돌아가는 답도 메모에 적힌 표기(실명)여야 맞는다.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import replace
+from typing import Any, cast
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -18,12 +20,13 @@ from sqlalchemy.orm import Session
 
 from app.features.centers.models import Child, Class
 from app.shared.childCode import (
+    CallNameNeeded,
     NameTable,
     SubstitutionError,
     load_pool,
     mask,
     table_for_text,
-    unmask,
+    unmask_as_written,
 )
 
 MASK_FAILED = HTTPException(
@@ -43,7 +46,10 @@ REGEN_MASK_FAILED = HTTPException(
     status.HTTP_422_UNPROCESSABLE_ENTITY,
     detail={
         "code": "VALUE_INVALID",
-        "message": "요청 사항에 아이 이름이 있어 AI 를 부르지 않았어요. 이 칸은 직접 고쳐 주세요.",
+        "message": (
+            "요청 사항이나 계획안 칸에 아이 이름이 있어 AI 를 부르지 않았어요. "
+            "이 칸은 직접 고쳐 주세요."
+        ),
         "fields": ["memo"],
     },
 )
@@ -59,13 +65,13 @@ def center_name_table(session: Session, class_id: int, text: str) -> NameTable |
         return None
     center_id = select(Class.center_id).where(Class.id == class_id).scalar_subquery()
     rows = session.execute(
-        select(Child.class_id, Child.name, Child.code)
+        select(Child.class_id, Child.name, Child.code, Child.call_name)
         .join(Class, Class.id == Child.class_id)
         .where(Class.center_id == center_id)
         .order_by(Child.id)
     ).all()
-    own = [(name, code) for owner, name, code in rows if owner == class_id]
-    others = [(name, code) for owner, name, code in rows if owner != class_id]
+    own = [(name, code, call) for owner, name, code, call in rows if owner == class_id]
+    others = [(name, code, call) for owner, name, code, call in rows if owner != class_id]
     return table_for_text(load_pool(), own, others, text)
 
 
@@ -75,6 +81,10 @@ def memo_name_table(
     """메모에 원 아이 이름이 있을 때만 표를 만든다. 바꾸지 못하면 LLM 을 부르기 전에 422."""
     try:
         return center_name_table(session, class_id, memo)
+    except CallNameNeeded as error:
+        # 고치는 방법(부르는 이름 · 낱말 바꾸기)을 그대로 보여준다.
+        detail = {**cast(dict[str, Any], failure.detail), "message": str(error)}
+        raise HTTPException(failure.status_code, detail=detail) from error
     except SubstitutionError as error:
         raise failure from error
 
@@ -83,8 +93,9 @@ def mask_memo(memo: str, table: NameTable | None) -> str:
     return memo if table is None else mask(memo, table)
 
 
-def unmask_text(text: str, table: NameTable | None) -> str:
-    return text if table is None else unmask(text, table)
+def unmask_text(text: str, table: NameTable | None, memo: str) -> str:
+    """답의 가명을 메모에 적힌 표기로 되돌린다 — 등록 실명으로 돌리면 메모에 없던 이름이 생긴다."""
+    return text if table is None else unmask_as_written(text, table, memo)
 
 
 class MemoMaskFailed(Exception):
@@ -101,19 +112,32 @@ def raise_if_mask_failed(error: BaseException, failure: HTTPException = MASK_FAI
 
 
 class MaskedMemoProvider:
-    """어떤 생성 공급자든 감싼다: 요청의 user_content 속 메모만 가명으로, 답은 실명으로.
+    """어떤 생성 공급자든 감싼다: 요청 user_content 속 교사 글만 가명으로, 답은 그 글의 표기로.
 
-    수리 요청은 앞 답(실명으로 되돌린 것)을 다시 싣는다. 메모에 나온 아이 이름이 요청 어디에든
-    남아 있으면 부르지 않는다 — 「하나씩」처럼 낱말과 겹쳐도 내보내지 않는 쪽을 고른다.
+    교사 글은 메모와, 칸 재생성이 맥락으로 싣는 이 계획안의 다른 칸 값(`texts` — 월간
+    month_snapshot · 주간 current_plan, 교사가 고친 값 포함)이다.
+    수리 요청은 앞 답(그 글에 적힌 표기로 되돌린 것)을 다시 싣는다.
+    그 글에 나온 아이 이름이 요청 본문(user_content) 어디에든 남아 있으면 부르지 않는다
+    — 「하나씩」처럼 낱말과 겹쳐도 내보내지 않는 쪽을 고른다. 지시문(system_prompt)은 코드에
+    박힌 상수라 교사 글이 없어 보지 않는다(본다면 지시문 속 「하나」 「우리」 때문에 늘 막힌다).
     """
 
-    def __init__(self, inner, memo: str, table: NameTable) -> None:
+    def __init__(
+        self, inner, memo: str | None, table: NameTable, texts: Sequence[str] = ()
+    ) -> None:
         self._inner = inner
         self._table = table
-        # 요청 본문은 JSON 이다. 메모가 들어간 모양(따옴표 안)을 그대로 찾아 바꾼다.
-        self._real = json.dumps(memo, ensure_ascii=False)[1:-1]
-        self._fake = json.dumps(mask(memo, table), ensure_ascii=False)[1:-1]
-        self._names = tuple(variant for variant in table.masking if variant in memo)
+        sources = [text for text in dict.fromkeys((memo, *texts)) if text]
+        self._original = "\n".join(sources)
+        # 요청 본문은 JSON 이다. 글을 JSON 문자열 안의 모양(이스케이프 포함)으로 만들어 본문에서
+        # 그 부분 문자열을 바꾼다 — 따옴표 경계는 보지 않아 다른 칸에 들어간 같은 글도 가려진다.
+        # 긴 글부터 — 짧은 칸 값이 긴 글 안에 들어 있을 수 있다.
+        quoted = lambda text: json.dumps(text, ensure_ascii=False)[1:-1]  # noqa: E731
+        self._swaps = [
+            (quoted(text), quoted(mask(text, table)))
+            for text in sorted(sources, key=len, reverse=True)
+        ]
+        self._names = tuple(variant for variant in table.masking if variant in self._original)
 
     def __getattr__(self, name):
         method = getattr(self._inner, name)
@@ -121,17 +145,20 @@ class MaskedMemoProvider:
             return method
 
         def call(request, *args, **kwargs):
-            masked = replace(
-                request, user_content=request.user_content.replace(self._real, self._fake)
-            )
-            text = masked.user_content + masked.system_prompt
-            if any(variant in text for variant in self._names):
+            content = request.user_content
+            for real, fake in self._swaps:
+                content = content.replace(real, fake)
+            masked = replace(request, user_content=content)
+            if any(variant in masked.user_content for variant in self._names):
                 raise MemoMaskFailed
             response = method(masked, *args, **kwargs)
-            return replace(response, content=unmask(response.content, self._table))
+            content = unmask_as_written(response.content, self._table, self._original)
+            return replace(response, content=content)
 
         return call
 
 
-def with_masked_memo(provider, memo: str, table: NameTable | None):
-    return provider if table is None else MaskedMemoProvider(provider, memo, table)
+def with_masked_memo(
+    provider, memo: str | None, table: NameTable | None, texts: Sequence[str] = ()
+):
+    return provider if table is None else MaskedMemoProvider(provider, memo, table, texts)

@@ -3,22 +3,60 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { SavedDocument } from "@/lib/workspace/model";
-import { downloadDocumentHwpx, isStaleWrite, verifyLines } from "@/lib/api/documents";
+import {
+  FALLBACK_DRAFT,
+  downloadDocumentHwpx,
+  isStaleWrite,
+  rewriteSentence,
+  type AiReview,
+  type RewriteResult,
+  type RewriteStyle,
+  type VerifyIssue,
+} from "@/lib/api/documents";
 import type { ExportFormat } from "@/lib/api/export";
 import { EXPORTS, FileLogo } from "@/components/plan-generator/AnnualFrame";
 import { Icon } from "@/components/app/icons";
+import { invalidFields } from "@/lib/api/client";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import { useUnsavedWarning } from "@/lib/hooks/use-unsaved-warning";
 import { Posty } from "@/components/app/Posty";
 import { DOMAIN_LOOK } from "@/lib/workspace/domain-look";
+import { AXES, type ObservationAxis } from "@/lib/workspace/observation-axis";
 import { Message, ws } from "./WorkspaceUI";
+import { CircleMark } from "./CircleMark";
 import { serverIssues } from "./document-selection";
+import { FieldError, fieldErrorProps } from "./WorkspaceViewState";
 import type { ServerDocumentActions } from "./DocumentEditor";
+import oj from "./ObservationJournal.module.css";
 
 const LAYERS = [
   { heading: "해석", hint: "위 쪽지에서 읽을 수 있는 의미만 적어요." },
   { heading: "지원", hint: "다음 놀이에서 교사가 할 일을 구체적으로 적어요." },
 ] as const;
+
+/** 서버가 짚는 칸 → 고칠 수 있는 공책 이름. 사실은 여기서 못 고친다. */
+const SECTION_FIELDS: Record<string, string> = { "sections.해석": "해석", "sections.지원": "지원" };
+
+/** 지금 글에 붙은 AI 검토. `judged` 가 false 면 판정하지 않았다 — 빈 목록을 통과로 읽지 않는다. */
+interface Review {
+  issues: VerifyIssue[];
+  judged: boolean;
+  note: string;
+}
+const MOCK_NOTE = "AI 검토가 꺼져 있어 판정하지 않았어요. 쪽지와 직접 대조해 주세요.";
+/** 만들 때 붙여 온 검토 (ADR-083). 글이 바뀌었으면 서버가 null 로 준다. */
+function storedReview(review?: AiReview | null): Review | null {
+  if (!review) return null;
+  const note =
+    review.state === "mock"
+      ? MOCK_NOTE
+      : review.state === "failed"
+        ? `AI 검토를 못 했어요. ${review.message}`
+        : "";
+  return { issues: review.issues, judged: review.state === "done", note };
+}
+/** 고친 문장 하나의 자리. 열쇠는 `칸|문장`. */
+type Rewrite = { busy: true } | { result: RewriteResult } | { error: string };
 
 /** 양식 맨 아래 칸 이름 (backend documents/export.py AXIS_TAIL). 2축 원은 「총평」이다. */
 const tailName = (domains: readonly string[]) => (domains.length === 2 ? "총평" : "종합해석");
@@ -36,14 +74,17 @@ const tailName = (domains: readonly string[]) => (domains.length === 2 ? "총평
 export default function ObservationJournalEditor({
   initial,
   server,
-  domainOf,
   domains,
+  onNext,
+  onRemake,
 }: {
-  initial: SavedDocument;
+  initial: SavedDocument & { aiReview?: AiReview | null };
   server: ServerDocumentActions;
-  /** 근거 기록 id → 영역. 관찰 기록 id 와 근거 id 가 같다. */
-  domainOf: (sourceId: string) => string;
   domains: readonly string[];
+  /** 반 전체 초안의 다음 아이 초안을 연다. 없으면 「확정하고 다음 아이」를 두지 않는다. */
+  onNext?: () => void;
+  /** 사실만 채운 초안을 같은 근거로 다시 만든다(「넣어서 다시」). 없으면 단추를 두지 않는다. */
+  onRemake?: () => Promise<void>;
 }) {
   const [baseline, setBaseline] = useState(initial);
   const [doc, setDoc] = useState(initial);
@@ -51,12 +92,18 @@ export default function ObservationJournalEditor({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [issues, setIssues] = useState<string[]>([]);
+  /** 서버가 짚은 공책 (`해석` · `지원`). */
+  const [invalid, setInvalid] = useState<string[]>([]);
   const [staleWrite, setStaleWrite] = useState(false);
+  const [review, setReview] = useState(() => storedReview(initial.aiReview));
+  const [rewrites, setRewrites] = useState<Record<string, Rewrite>>({});
   const hwpx = useHwpxDownload(setMessage);
   const [exporting, setExporting] = useState<ExportFormat | null>(null);
   const working = busy || hwpx.exporting || server.pending;
 
   const body = (heading: string) => doc.sections.find((s) => s.heading === heading)?.body ?? "";
+  const savedBody = (heading: string) =>
+    baseline.sections.find((s) => s.heading === heading)?.body.trim() ?? "";
   const dirty =
     doc.status !== "confirmed" &&
     JSON.stringify(doc.sections) !== JSON.stringify(baseline.sections);
@@ -69,13 +116,17 @@ export default function ObservationJournalEditor({
     }));
     setChecked(false);
     setIssues([]);
+    setInvalid((prev) => prev.filter((name) => name !== heading));
   }
 
-  function adopt(next: SavedDocument, note: string) {
+  function adopt(next: SavedDocument & { aiReview?: AiReview | null }, note: string) {
     setBaseline(next);
     setDoc(next);
+    // 저장한 글을 검토했으면 서버가 그 결과를 다시 준다. 안 준 것은 그 글을 검토한 적이 없다는 뜻이다.
+    if (next.aiReview !== undefined) setReview(storedReview(next.aiReview));
     setChecked(false);
     setIssues([]);
+    setInvalid([]);
     setStaleWrite(false);
     setMessage(note);
   }
@@ -90,8 +141,13 @@ export default function ObservationJournalEditor({
       if (next) adopt(next, note);
       return true;
     } catch (e) {
-      if (isStaleWrite(e)) setStaleWrite(true);
-      else setMessage(e instanceof Error ? e.message : "요청을 처리하지 못했어요.");
+      if (isStaleWrite(e)) {
+        setStaleWrite(true);
+        return false;
+      }
+      // 서버가 짚은 칸을 버리지 않는다 — 어느 공책을 고칠지 알아야 한다.
+      setInvalid(invalidFields(e, SECTION_FIELDS));
+      setMessage(e instanceof Error ? e.message : "요청을 처리하지 못했어요.");
       return false;
     } finally {
       setBusy(false);
@@ -99,9 +155,23 @@ export default function ObservationJournalEditor({
   }
 
   const save = () => run(() => server.save(doc.sections, "교사 검토 전"), "초안을 저장했어요.");
+  const refresh = () =>
+    run(() => server.refresh(), "바뀐 근거를 받아 왔어요. 해석과 지원을 다시 봐 주세요.");
+
+  /** 반영하면 서버 글로 바뀐다 — 저장 안 한 해석 · 지원이 있으면 먼저 묻는다. */
+  const refreshAsk = useRef<HTMLDialogElement>(null);
+  function askRefresh() {
+    if (!dirty) return void refresh();
+    refreshAsk.current?.showModal();
+  }
+  async function refreshAfter(keep: boolean) {
+    refreshAsk.current?.close();
+    if (keep && !(await save())) return;
+    await refresh();
+  }
 
   /** 3단 AI 검토 — 쪽지(기록)와 어긋나거나 써선 안 되는 표현을 문장마다 짚는다. 저장하지 않는다. */
-  async function review() {
+  async function reviewAgain() {
     if (working) return;
     const blocking = serverIssues(doc);
     if (blocking.length) {
@@ -113,9 +183,8 @@ export default function ObservationJournalEditor({
     setIssues([]);
     try {
       const result = await server.verify(doc.sections);
-      setIssues(verifyLines(result));
-      if (!result.judged)
-        setMessage("AI 검토가 꺼져 있어 판정하지 않았어요. 쪽지와 직접 대조해 주세요.");
+      setReview({ issues: result.issues, judged: result.judged, note: "" });
+      if (!result.judged) setMessage(MOCK_NOTE);
       else if (!result.issues.length)
         setMessage("AI 검토에서 고칠 곳을 찾지 못했어요. 확정 전에 쪽지와 한 번 더 대조해 주세요.");
     } catch (e) {
@@ -125,18 +194,45 @@ export default function ObservationJournalEditor({
     }
   }
 
-  function confirm() {
+  /** 확정. 됐으면 true — 「확정하고 다음 아이」가 그때만 다음으로 간다. */
+  async function confirm() {
     const blocking = serverIssues(doc);
     if (blocking.length || !checked) {
       setIssues(blocking);
       setMessage(blocking.length ? "" : "쪽지와 대조했는지 먼저 체크해 주세요.");
-      return;
+      return false;
     }
     if (server.stale) {
       setMessage("근거 기록이 바뀌었어요. 반영한 뒤 확정해 주세요.");
-      return;
+      return false;
     }
-    void run(() => server.saveAndConfirm(doc.sections, "교사 사실·해석·지원 검토 완료"), "");
+    return run(() => server.saveAndConfirm(doc.sections, "교사 사실·해석·지원 검토 완료"), "");
+  }
+  async function confirmAndNext() {
+    if (await confirm()) onNext?.();
+  }
+
+  /** 걸린 문장 하나를 고쳐 받는다 (AI ②). 1 · 2단을 지난 것만 오고, jev 판정은 「확인할 곳」이다. */
+  async function rewrite(issue: VerifyIssue, style: RewriteStyle) {
+    const key = `${issue.heading}|${issue.sentence}`;
+    setRewrites((prev) => ({ ...prev, [key]: { busy: true } }));
+    try {
+      const result = await rewriteSentence(doc.id, doc.kind, {
+        heading: issue.heading,
+        sentence: issue.sentence,
+        style,
+        reason: issue.reason,
+        sections: doc.sections,
+      });
+      setRewrites((prev) => ({ ...prev, [key]: { result } }));
+    } catch (e) {
+      const error = e instanceof Error ? e.message : "고친 문장을 받지 못했어요.";
+      setRewrites((prev) => ({ ...prev, [key]: { error } }));
+    }
+  }
+  /** 「이 문장으로 바꾸기」 — 공책 글만 바꾼다. 저장은 늘 하던 대로 교사가 누른다. */
+  function takeRewrite(heading: string, from: string, to: string) {
+    edit(heading, body(heading).replace(from, to));
   }
 
   const { dialog: leaveDialog, stay, go, saveThenGo } = useLeaveGuard(dirty);
@@ -160,10 +256,10 @@ export default function ObservationJournalEditor({
       )}
 
       {doc.status === "confirmed" ? (
-        <JournalSheet doc={doc} domainOf={domainOf} domains={domains}>
+        <JournalSheet doc={doc} domains={domains}>
           {server.stale && (
             <Message error>
-              근거 기록이 바뀌어 내려받을 수 없어요. 다시 고치기를 눌러 반영해 주세요.
+              근거 기록이 바뀌어 내려받을 수 없어요. 다시 수정을 눌러 반영해 주세요.
             </Message>
           )}
           {/* 계획안 확정 화면(PlanDone)과 같은 파일 그림 단추 — 이름은 aria-label · title. */}
@@ -200,23 +296,49 @@ export default function ObservationJournalEditor({
             disabled={working}
             onClick={() => run(() => server.unconfirm(), "확정을 풀었어요. 다시 고칠 수 있어요.")}
           >
-            <Icon name="edit" width={17} height={17} />
-            <span>
-              <b>다시 고치기</b>
-              <small>확정을 풀고 칠판으로 돌아가요</small>
+            <span className={ws.ojRedoIcon}>
+              <Icon name="edit" width={17} height={17} />
             </span>
+            다시 수정
           </button>
         </JournalSheet>
       ) : (
         <div className={`chalkboard ${ws.ojBoard}`}>
           <header className={ws.ojHead}>
             <h2>{doc.title}</h2>
+            {/* 기간에 빨간 손 동그라미 — 보육일지 요일과 같은 표시(PM 11-10). 몇 월 며칠 것인지가 먼저 보인다. */}
             <span>
-              {doc.className} · {periodLabel(doc.start, doc.end)}
+              {doc.className}
+              <span className={ws.ojPeriod}>
+                {periodLabel(doc.start, doc.end)}
+                <CircleMark className={ws.ojPeriodRing} />
+              </span>
             </span>
             {doc.origin === "ai" && <em>AI 초안</em>}
             {server.stale && <em data-alert>근거가 바뀜</em>}
           </header>
+          {/* 초안 칠판에만 뜬다. 교사가 해석 · 지원을 써서 저장하면 내린다. 「다시 만들어 보기」는 쓴 글이 없을 때만 —
+              「넣어서 다시」는 이 초안을 지운다. */}
+          {doc.fallbackDraft && !savedBody("해석") && !savedBody("지원") && (
+            <Message>
+              {FALLBACK_DRAFT}{" "}
+              {onRemake && (
+                <button
+                  type="button"
+                  className={ws.secondary}
+                  disabled={working || dirty}
+                  onClick={() =>
+                    run(async () => {
+                      await onRemake();
+                      return null;
+                    }, "")
+                  }
+                >
+                  다시 만들어 보기
+                </button>
+              )}
+            </Message>
+          )}
           {doc.mockDraft && (
             <p className={ws.ojChalk}>
               테스트 모드(mock)로 만든 초안이에요. 실제 AI 결과가 아니니 다시 써 주세요.
@@ -225,54 +347,80 @@ export default function ObservationJournalEditor({
 
           <ul className={ws.ojNotes} aria-label="근거 기록">
             {doc.sources.map((s) => {
-              const domain = domainOf(s.id);
+              const domain = s.domain ?? "";
               return (
                 <li key={s.id} data-tone={DOMAIN_LOOK[domain]?.tone}>
+                  {/* 영역은 관찰 기록 영역 단추와 같은 그림을 붙인다 — 글자만으로는 날짜에 묻혔다. */}
                   <small>
                     {shortDate(s.date)}
-                    {domain && ` · ${domain}`}
+                    {domain && (
+                      <span className={ws.ojNoteDomain}>
+                        {DOMAIN_LOOK[domain] && (
+                          <Icon name={DOMAIN_LOOK[domain].icon} width={13} height={13} />
+                        )}
+                        {domain}
+                      </span>
+                    )}
                   </small>
                   {s.text}
+                  <Link
+                    className={`${ws.ojNoteEdit} tap44`}
+                    href={`/records?class=${encodeURIComponent(doc.classId)}&record=${encodeURIComponent(s.id)}`}
+                    aria-label={`${shortDate(s.date)} 기록 수정`}
+                  >
+                    <Icon name="edit" width={14} height={14} />
+                    수정
+                  </Link>
                 </li>
               );
             })}
           </ul>
+          <EmptyDomains doc={doc} domains={domains} />
           <p className={ws.ojChalk}>
-            쪽지는 교사가 적은 원문이라 여기서 못 고쳐요.{" "}
-            <Link href="/records">관찰 기록에서 고치기 →</Link>
+            쪽지는 교사가 적은 원문이라 여기서 못 고쳐요. 쪽지의 「수정」을 누르면 관찰 기록에서 그
+            기록을 열어요.
           </p>
           {server.stale && (
             <div className={ws.ojStale}>
-              <p>근거 기록이 바뀌었어요. 바뀐 쪽지를 받아 온 뒤 해석 · 지원을 다시 봐 주세요.</p>
+              <p>근거 기록이 바뀌었어요. 바뀐 쪽지를 받아 온 뒤 해석과 지원을 다시 봐 주세요.</p>
               <button
                 type="button"
                 className={ws.secondary}
                 disabled={working}
-                onClick={() =>
-                  run(
-                    () => server.refresh(),
-                    "바뀐 근거를 받아 왔어요. 해석과 지원을 다시 봐 주세요.",
-                  )
-                }
+                onClick={askRefresh}
               >
                 바뀐 근거 반영하기
               </button>
             </div>
           )}
 
+          {review?.note && <p className={ws.ojChalk}>{review.note}</p>}
           <div className={ws.ojPads}>
             {LAYERS.map(({ heading, hint }) => (
-              <label key={heading} className={ws.ojPad}>
-                <span>{heading}</span>
-                <small>{hint}</small>
-                <textarea
-                  aria-label={`${heading} 내용`}
-                  maxLength={15000}
+              <div key={heading}>
+                <label className={ws.ojPad}>
+                  <span>{heading}</span>
+                  <small>{hint}</small>
+                  <textarea
+                    aria-label={`${heading} 내용`}
+                    maxLength={15000}
+                    disabled={working}
+                    value={body(heading)}
+                    {...fieldErrorProps(heading, invalid)}
+                    onChange={(e) => edit(heading, e.target.value)}
+                  />
+                  <FieldError name={heading} invalid={invalid} />
+                </label>
+                <SentenceNotes
+                  heading={heading}
+                  body={body(heading)}
+                  issues={review?.issues ?? []}
+                  rewrites={rewrites}
                   disabled={working}
-                  value={body(heading)}
-                  onChange={(e) => edit(heading, e.target.value)}
+                  onRewrite={rewrite}
+                  onUse={takeRewrite}
                 />
-              </label>
+              </div>
             ))}
           </div>
 
@@ -286,10 +434,17 @@ export default function ObservationJournalEditor({
                 disabled={working}
                 onChange={(e) => setChecked(e.target.checked)}
               />
-              쪽지와 대조했어요 — 사실과 맞고, 해석 · 지원이 알맞아요
+              쪽지와 대조했어요. 사실과 맞고 해석과 지원도 알맞아요
             </label>
-            <button type="button" className={ws.ojSave} disabled={working} onClick={review}>
-              AI 검토
+            <button
+              type="button"
+              className={oj.recheck}
+              aria-label="다시 검토"
+              title="다시 검토"
+              disabled={working}
+              onClick={reviewAgain}
+            >
+              <Icon name="refresh" width={18} height={18} />
             </button>
             <button type="button" className={ws.ojSave} disabled={working || !dirty} onClick={save}>
               {busy ? "저장하는 중…" : dirty ? "초안 저장" : "저장됨"}
@@ -303,21 +458,33 @@ export default function ObservationJournalEditor({
               <b>확정</b>
               <small>출력 보기</small>
             </button>
+            {onNext && (
+              <button
+                type="button"
+                className={ws.ojSave}
+                disabled={working || !checked}
+                onClick={confirmAndNext}
+              >
+                확정하고 다음 아이
+              </button>
+            )}
           </footer>
           <button
             type="button"
-            className={ws.ojRemove}
+            className={`${ws.ojRemove} tap44`}
+            aria-label="이 초안 삭제"
             disabled={working}
             onClick={async () => {
-              if (!window.confirm("이 초안을 지울까요? 되돌릴 수 없어요.")) return;
+              if (!window.confirm("이 초안을 삭제할까요? 되돌릴 수 없어요.")) return;
               try {
                 await server.remove();
               } catch (e) {
-                setMessage(e instanceof Error ? e.message : "지우지 못했어요.");
+                setMessage(e instanceof Error ? e.message : "삭제하지 못했어요.");
               }
             }}
           >
-            이 초안 지우기
+            <Icon name="trash" width={16} height={16} />
+            삭제
           </button>
         </div>
       )}
@@ -345,6 +512,38 @@ export default function ObservationJournalEditor({
           </button>
           <button type="button" className={ws.link} onClick={go}>
             저장 안 하고 나가기
+          </button>
+        </div>
+      </dialog>
+
+      <dialog ref={refreshAsk} className={ws.ojLeave} aria-labelledby="oj-refresh-title">
+        <Posty pose="hand" face="oh" tone="note" size={78} label={null} />
+        <h3 id="oj-refresh-title">잠깐만요!</h3>
+        <p>바뀐 근거를 받으면 저장 안 한 해석과 지원이 사라져요.</p>
+        <div>
+          <button
+            type="button"
+            className={ws.primary}
+            disabled={working}
+            onClick={() => refreshAfter(true)}
+          >
+            저장하고 반영
+          </button>
+          <button
+            type="button"
+            className={ws.secondary}
+            disabled={working}
+            onClick={() => refreshAfter(false)}
+          >
+            편집 버리고 반영
+          </button>
+          <button
+            type="button"
+            className={ws.link}
+            autoFocus
+            onClick={() => refreshAsk.current?.close()}
+          >
+            취소
           </button>
         </div>
       </dialog>
@@ -475,24 +674,140 @@ function useLeaveGuard(dirty: boolean) {
   };
 }
 
-/** 확정본 — 내려받는 한글 양식과 같은 칸으로 그린다 (backend documents/export.py `_observation`). */
+/** 칠판의 근거 쪽지 아래 — 종이에서 빈 줄이 될 영역을 미리 알린다. 막지 않는다. */
+function EmptyDomains({
+  doc,
+  domains: current,
+}: {
+  doc: SavedDocument;
+  domains: readonly string[];
+}) {
+  // 종이와 같은 축 — 문서를 만들 때 찍은 축, 없으면 지금 원 설정 (ADR-088).
+  const domains = AXES[doc.observationAxis as ObservationAxis] ?? current;
+  const empty = domains.filter((d) => !doc.sources.some((s) => s.domain === d));
+  if (!empty.length || empty.length === domains.length) return null;
+  return <p className={ws.ojChalk}>이 영역 관찰이 없어요: {empty.join(", ")}</p>;
+}
+
+/**
+ * 칸 아래 쪽지 — 검토가 짚은 문장을 노란 형광펜으로, 이유는 한 줄로 (ADR-083).
+ * 지금 칸에 그 문장이 그대로 있을 때만 보인다. 고친 문장은 보라 점선 — 아직 교사가 받지 않은 제안이다.
+ */
+function SentenceNotes({
+  heading,
+  body,
+  issues,
+  rewrites,
+  disabled,
+  onRewrite,
+  onUse,
+}: {
+  heading: string;
+  body: string;
+  issues: VerifyIssue[];
+  rewrites: Record<string, Rewrite>;
+  disabled: boolean;
+  onRewrite: (issue: VerifyIssue, style: RewriteStyle) => void;
+  onUse: (heading: string, from: string, to: string) => void;
+}) {
+  const bySentence = new Map<string, VerifyIssue[]>();
+  for (const i of issues)
+    if (i.heading === heading && body.includes(i.sentence))
+      bySentence.set(i.sentence, [...(bySentence.get(i.sentence) ?? []), i]);
+  if (!bySentence.size) return null;
+  return (
+    <div className={oj.notes}>
+      {[...bySentence].map(([sentence, found]) => (
+        <div key={sentence} className={oj.note}>
+          <p>
+            <mark>{sentence}</mark>
+          </p>
+          <p className={oj.reason}>{reasonLine(found)}</p>
+          <div className={oj.rewrites}>
+            <button type="button" disabled={disabled} onClick={() => onRewrite(found[0], "fix")}>
+              고친 문장
+            </button>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onRewrite(found[0], "shorter")}
+            >
+              더 짧게
+            </button>
+            {heading === "지원" && (
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => onRewrite(found[0], "concrete")}
+              >
+                지원을 구체적으로
+              </button>
+            )}
+          </div>
+          <Candidate
+            slot={rewrites[`${heading}|${sentence}`]}
+            onUse={(to) => onUse(heading, sentence, to)}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 한 문장에 걸린 이유는 한 줄로 묶는다. 기록과 어긋나면 그 기록 원문을 같이. */
+function reasonLine(found: VerifyIssue[]) {
+  return found
+    .map((i) => (i.sourceText ? `${i.reason} 기록에는 「${i.sourceText}」` : i.reason))
+    .join(" ");
+}
+
+function Candidate({ slot, onUse }: { slot?: Rewrite; onUse: (to: string) => void }) {
+  if (!slot) return null;
+  if ("busy" in slot) return <p className={oj.reason}>고쳐 쓰는 중…</p>;
+  if ("error" in slot) return <p className={oj.reason}>{slot.error}</p>;
+  const { sentence, issues, judged } = slot.result;
+  if (sentence === null)
+    return <p className={oj.reason}>규칙 검사를 지난 문장을 못 만들었어요. 직접 고쳐 주세요.</p>;
+  // jev 판정은 거르지 않는다 — 「확인할 곳」으로만 (CLAUDE.md 「3단 게이트」, ADR-071 결정 8).
+  const check = !judged
+    ? "AI 판정은 못 했어요. 쪽지와 직접 대조해 주세요."
+    : issues.length
+      ? `확인할 곳: ${reasonLine(issues)}`
+      : "AI 검토에서 걸린 곳이 없어요.";
+  return (
+    <div className={oj.candidate}>
+      <p>{sentence}</p>
+      <small>{check}</small>
+      <button type="button" className={ws.secondary} onClick={() => onUse(sentence)}>
+        이 문장으로 바꾸기
+      </button>
+    </div>
+  );
+}
+
+/**
+ * 확정본 — 내려받는 한글 양식과 같은 칸으로 그린다 (backend documents/export.py `_observation`).
+ *
+ * 행은 **문서를 만들 때 찍은 축**이다 (ADR-088). 원이 나중에 축을 바꿔도 종이와 같게 그린다.
+ * 사본이 없는 옛 문서만 지금 원 설정(`current`)을 쓴다.
+ */
 function JournalSheet({
   doc,
-  domainOf,
-  domains,
+  domains: current,
   children,
 }: {
   doc: SavedDocument;
-  domainOf: (sourceId: string) => string;
   domains: readonly string[];
   children: React.ReactNode;
 }) {
+  const domains = AXES[doc.observationAxis as ObservationAxis] ?? current;
   const sorted = [...doc.sources].sort((a, b) => a.date.localeCompare(b.date));
   const rows = domains.map((domain) => ({
     domain,
     lines: sorted
-      .filter((s) => domainOf(s.id) === domain)
-      .map((s) => `(${shortNumber(s.date)}) ${s.text}`),
+      .filter((s) => s.domain === domain)
+      // 종이와 같은 한 줄: `(9/5) (바깥놀이) 사실`. 상황이 없으면 괄호를 붙이지 않는다.
+      .map((s) => `(${shortNumber(s.date)}) ${s.context ? `(${s.context}) ` : ""}${s.text}`),
   }));
   const section = (heading: string) => doc.sections.find((s) => s.heading === heading)?.body ?? "";
   return (
@@ -511,6 +826,8 @@ function JournalSheet({
               <tr key={domain}>
                 <th scope="row">{domain}</th>
                 <td>
+                  {/* 화면에만 — 내려받는 종이는 빈칸이다(손으로 적을 자리). */}
+                  {!lines.length && <p className={oj.noObs}>이 영역 관찰이 없어요</p>}
                   {lines.map((line) => (
                     <p key={line}>{line}</p>
                   ))}
@@ -528,7 +845,8 @@ function JournalSheet({
         </table>
       </article>
       <aside className={ws.ojRail}>
-        <span className={ws.ojDone}>확정</span>
+        {/* 확정 도장 — 빨간 인주(되돌리려면 「다시 수정」을 눌러야 하는 상태). */}
+        <span className={`${ws.ojDone} inkStamp`}>확정</span>
         <h3>이렇게 출력돼요</h3>
         <p className={ws.ojWho}>
           <b>{doc.childName}</b>

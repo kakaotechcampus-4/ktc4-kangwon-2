@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { loadClassSettings, saveClassSettings } from "@/lib/onboarding/settings";
@@ -51,10 +51,10 @@ export function JournalTabs({
 }) {
   return (
     <nav aria-label="보육일지 종류" className={styles.journalTabs} data-tour="journal-tabs">
-      <Link href={daily} aria-current={at === "daily" ? "page" : undefined}>
+      <Link href={daily} className="tap44" aria-current={at === "daily" ? "page" : undefined}>
         일일 보육일지
       </Link>
-      <Link href={weekly} aria-current={at === "weekly" ? "page" : undefined}>
+      <Link href={weekly} className="tap44" aria-current={at === "weekly" ? "page" : undefined}>
         주간 보육일지
       </Link>
     </nav>
@@ -87,17 +87,35 @@ export function Message({
   children,
   error = false,
   id,
+  onClose,
 }: {
   children: ReactNode;
   error?: boolean;
   /** 입력 칸이 `aria-errormessage` 로 이 글을 가리킬 때 쓴다. */
   id?: string;
+  /** 있으면 오른쪽에 × 단추를 단다. 단추는 알림 글(role) 밖에 둔다 — 「안내 닫기」까지 읽히지 않게. */
+  onClose?: () => void;
 }) {
-  return children ? (
+  if (!children) return null;
+  const line = (
     <p id={id} className={error ? styles.error : styles.message} role={error ? "alert" : "status"}>
       {children}
     </p>
-  ) : null;
+  );
+  if (!onClose) return line;
+  return (
+    <div className={styles.messageBar}>
+      {line}
+      <button
+        type="button"
+        className={`${styles.messageClose} tap44`}
+        aria-label="안내 닫기"
+        onClick={onClose}
+      >
+        ×
+      </button>
+    </div>
+  );
 }
 const NO_CLASSES: ClassroomEntry[] = [];
 /**
@@ -177,31 +195,4 @@ export function useClasses(onError?: (message: string) => void) {
     // 주소를 안 보면 그사이 서버에 생긴 반이 새로고침 전까지 반 고르개에 안 뜬다.
   }, [setClasses, onError, pathname]);
   return classes;
-}
-export function useAIStatus() {
-  const [available, setAvailable] = useState<boolean | null>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/assistant", { signal: controller.signal })
-      .then(async (r) => {
-        if (!r.ok) throw new Error();
-        const data = await r.json();
-        if (typeof data.available !== "boolean") throw new Error();
-        setAvailable(data.available);
-      })
-      .catch(() => {});
-    return () => controller.abort();
-  }, []);
-  return available;
-}
-export function AIHint({ available }: { available: boolean | null }) {
-  return (
-    <p className={styles.hint}>
-      {available === null
-        ? "AI 연결 상태 확인 중이에요. 응답이 없으면 잠시 후 페이지를 새로고침해주세요."
-        : available
-          ? "AI 연결됨 · 선택한 자료를 바탕으로 초안을 작성해요."
-          : "직접 작성 모드 · AI 연결 전에도 기록 입력, 문서 작성과 기본 점검을 사용할 수 있어요."}
-    </p>
-  );
 }

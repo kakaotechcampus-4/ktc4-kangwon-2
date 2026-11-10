@@ -112,7 +112,7 @@ async function pickChild(page: Page) {
   await expect(first).toHaveAttribute("aria-pressed", "true");
 }
 
-/** 저장 단추. 글자가 고른 아이 이름을 담으므로(「박서준 기록으로 남기기」) 꼬리말로 찾는다. */
+/** 저장 단추 「남기기」. */
 function saveButton(page: Page) {
   return page.getByRole("button", { name: /남기기$/ });
 }
@@ -124,6 +124,12 @@ async function confirmHome(page: Page, expectedClassId: number) {
   // 아이 칸은 아무것도 눌리지 않은 채로 열린다 — 고르기 전에는 저장이 막힌다.
   await expect(saveButton(page)).toBeDisabled();
   await pickChild(page);
+  // 영역도 기본값이 없다 — 고르기 전에는 막힌다(ADR-082).
+  await expect(saveButton(page)).toBeDisabled();
+  await page
+    .getByRole("radiogroup", { name: "영역" })
+    .getByRole("radio", { name: "사회관계", exact: true })
+    .click();
   await saveButton(page).click();
   const response = await posted;
   expect(response.status()).toBe(201);

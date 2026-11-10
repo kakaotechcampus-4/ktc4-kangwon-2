@@ -12,7 +12,8 @@
   min-width: 0;
   /* 상단바가 60px 이다 (AppLayout 의 Suspense fallback 과 WorkspaceTopBar 가 같은 값). */
   min-height: calc(calc(100 * var(--app-dvh)) - 60px);
-  padding: 24px 32px 36px;
+  /* 세로 간격은 한 눈금을 쓴다 — 큰 덩어리 사이 24 · 덩어리 안 16 · 줄 사이 12 · 제목과 설명 8. 휴대폰은 한 칸씩 작다. */
+  padding: 24px 32px 32px;
   /* 바탕을 칠하지 않는다 — 다른 작업 화면처럼 크림 배경과 낙서가 보이게.
      선은 다른 작업 화면과 같은 값으로 한 단계 진하게. */
   --pg-line: var(--pg-line-strong);
@@ -44,10 +45,10 @@
   top: 80px;
   overflow: hidden;
   /* 상자 없이 크림 바탕에 쪽지를 바로 붙인다 — 홈 · 설정과 같은 「벽에 붙인 쪽지」(PM 11-07). */
-  padding: 4px 2px 0;
-  /* 상단바(60) · 위 여백(24) · 제목(122 + 간격 22) · 아래 여백(36)을 뺀 높이 —
+  padding: 0 2px;
+  /* 상단바(60) · 위 여백(24) · 제목 덩어리(142 + 간격 24) · 아래 여백(32)을 뺀 높이 —
      첫 화면에서 스크롤 없이 패널 끝(아래 그림)까지 보인다. 아주 낮은 화면에서는 360px 을 지킨다. */
-  height: calc(calc(100 * var(--app-dvh)) - 264px);
+  height: calc(calc(100 * var(--app-dvh)) - 282px);
   min-height: 360px;
   display: flex;
   flex-direction: column;
@@ -57,7 +58,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 6px 2px 12px;
+  /* 위 여백 없이 — 「우리 반」 글줄 위끝이 오른쪽 종류 칸 위끝과 맞는다. */
+  margin: 0 2px 12px;
+  line-height: 1.3;
   font-family: var(--font-display), sans-serif;
   font-size: 21px;
   font-weight: 700;
@@ -163,24 +166,94 @@
 .archiveHeading {
   display: flex;
   align-items: center;
-  margin-bottom: 22px;
-  min-height: 122px;
+  margin-bottom: 24px;
 }
+/* 제목 · 설명 · 알림 띠 · 거르개를 같은 간격(16)으로 쌓는다. 안쪽 글의 제 여백은 걷는다. */
 .headingText {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   flex: 1;
   min-width: 0;
 }
-.headingText > :first-child {
-  margin-bottom: 0;
+.archiveHeading .headingText > * {
+  margin: 0;
 }
-.headingText h1 {
-  font-size: clamp(32px, 3vw, 44px);
-  line-height: 1.2;
+.archiveHeading .headingText h1 + p {
+  margin-top: 8px;
 }
-.headingText p {
+/* 불러오기 실패 알림 띠 — 포스티 · 굵은 제목과 한 줄 설명 · 오른쪽 주 단추.
+   로그인이 끊김은 노란 쪽지(안내), 일반 실패는 회색 쪽지(조용한 자리). 휴대폰은 단추가 아래 한 줄 전체. */
+.notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 12px 12px 12px 16px;
+  border: 1px solid var(--pg-note-soft-line);
+  border-radius: 12px;
+  background: var(--pg-note-soft);
+}
+.notice[data-tone="fail"] {
+  border-color: var(--pg-shell-line);
+  background: var(--pg-ivory);
+}
+/* 띠 바탕과 쪽지 색이 비슷해 흰 동그라미 위에 세운다 — 종류 칸 아이콘과 같은 방식. */
+.noticeArt {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--pg-paper);
+}
+.archiveHeading .notice > p {
+  margin: 0;
+  padding: 0;
+  background: none;
+  color: var(--pg-ink);
+  line-height: 1.45;
+  white-space: normal;
+}
+.notice > p strong {
+  display: block;
   font-size: 15px;
-  line-height: 1.7;
-  color: #635c51;
+  font-weight: 800;
+}
+.notice > p span {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+.noticeAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 20px;
+  border: 1px solid var(--pg-primary);
+  border-radius: 8px;
+  background: var(--pg-primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.noticeAction:hover:not(:disabled) {
+  border-color: var(--pg-primary-hover);
+  background: var(--pg-primary-hover);
+}
+@media (max-width: 760px) {
+  .notice {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 12px;
+  }
+  .noticeAction {
+    grid-column: 1 / -1;
+    min-height: 44px;
+  }
 }
 
 /* ── 오른쪽 본문 ── */
@@ -190,7 +263,7 @@
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 .periodNav {
   display: flex;
@@ -244,7 +317,7 @@
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   min-width: 0;
-  margin-bottom: 22px;
+  margin-bottom: 24px;
 }
 .typeCard {
   /* 테이프와 찢긴 선(::before · ::after)이 이 칸을 기준으로 붙어야 한다.
@@ -475,7 +548,7 @@
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 .panelHead h3 {
   margin: 0;
@@ -527,6 +600,11 @@
 .docCard[data-state="confirmed"] {
   background: #f8fbf9;
   border-color: #b6d1c1;
+}
+/* 확정 · 다시 확인 필요 — 확정은 그대로, 다시 볼 것은 노랑(흙색 계열)으로. 빨강은 쓰지 않는다. */
+.docCard[data-state="stale"] {
+  background: var(--pg-sun-tint);
+  border-color: var(--pg-sun);
 }
 .docCard:hover {
   border-color: #9fcfb5;
@@ -764,6 +842,10 @@
   background: #fdeee8;
   color: #8f503f;
 }
+.status[data-state="stale"] {
+  background: var(--pg-sun-tint);
+  color: var(--pg-sun-ink);
+}
 .status[data-state="none"] {
   background: #f3f5f3;
   color: #7f8d85;
@@ -871,103 +953,112 @@
   color: #8b9b9a;
   flex: none;
 }
-/* 칸 경계가 안 보여서 한 단계 진하게 했다(#e5eae8 → #d9dfdc). 굵기는 1px 그대로다.
-   `--pg-line` 은 따뜻한 베이지라 달력의 세이지 계열에서 색이 튄다 — 여기서는 쓰지 않는다. */
+/* 한 주 날짜 칸 일곱 개 — 날짜 · 요일 · 상태 알약. 칸 폭은 줄 폭 ÷ 7, 모자라면 줄이 가로로 구른다.
+   안쪽 여백 4px 은 고른 칸 테두리 · 포커스 윤곽이 구르는 상자에 잘리지 않게 둔 자리다(바깥 여백으로 되돌린다). */
 .dayStrip {
   display: grid;
-  grid-template-columns: repeat(7, minmax(62px, 1fr));
-  border: 1px solid #d9dfdc;
-  border-radius: 12px;
+  grid-template-columns: repeat(7, minmax(64px, 1fr));
+  gap: 8px;
+  margin: 8px -4px 0;
+  padding: 4px;
   overflow-x: auto;
-  margin-top: 12px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
 }
 .day {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  /* 날짜는 위끝, 알약은 아래끝에 맞춘다 — 한 칸만 두 줄 알약이어도 날짜 줄이 어긋나지 않는다. */
+  justify-content: flex-start;
+  gap: 2px;
   min-width: 0;
-  padding: 12px 4px 10px;
-  border: 0;
-  border-right: 1px solid #d9dfdc;
-  background: #fff;
-  color: #2b3b53;
+  min-height: 80px;
+  padding: 8px 4px;
+  border: 1px solid var(--pg-shell-line);
+  border-radius: 10px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
   cursor: pointer;
+  scroll-snap-align: start;
 }
-.day:last-child {
-  border-right: 0;
+.archive .day:focus-visible {
+  outline-offset: 2px;
 }
 .day:hover {
-  background: #f6fbf8;
+  background: var(--pg-ivory);
 }
+/* 고른 날 — 쌤플 「고른 것」 색(보라) 2px. 반 쪽지 · 사이드바와 같은 신호다. */
 .day[aria-pressed="true"] {
-  background: #f2faf5;
-  box-shadow: inset 0 0 0 1px #b5ddc4;
+  border-color: var(--pg-primary);
+  box-shadow: inset 0 0 0 1px var(--pg-primary);
 }
 .day .date {
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 800;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 .day .dow {
-  font-size: 11px;
-  color: #718399;
-}
-.day .mark {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-}
-.day .mark svg {
-  width: 12px;
-  height: 12px;
-}
-.day .mark[data-state="confirmed"] {
-  border: 1.5px solid #95c6a8;
-  background: #f4fcf6;
-  color: #4f9f7d;
-}
-.day .mark[data-state="draft"] {
-  border: 1.5px solid #f2b8a8;
-  background: #fdf2ee;
-  color: #8f503f;
-}
-.day .mark[data-state="none"] {
-  border: 1.5px solid #cad6cf;
-  background: #fff;
+  margin-bottom: 4px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--pg-ink-soft);
 }
 .day .state {
-  font-size: 11px;
-  font-weight: 600;
-  color: #596b7d;
-  text-align: center;
+  width: 20px;
+  height: 20px;
+  margin-top: auto;
+}
+/* 상태 아이콘 넷 — 기존 색 이름만 쓴다. 모양이 달라 색 없이도 갈린다. */
+.statusMark {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.statusMark[data-state="confirmed"] {
+  fill: var(--pg-sage-tint);
+  stroke: var(--pg-sage-ink);
+}
+.statusMark[data-state="confirmed"] path {
+  fill: none;
+  stroke-width: 2;
+}
+.statusMark[data-state="draft"] {
+  fill: var(--pg-paper);
+  stroke: #965a46;
+}
+.statusMark[data-state="draft"] [data-fill] {
+  fill: var(--pg-clay);
+  stroke: none;
+}
+.statusMark[data-state="stale"] {
+  fill: var(--pg-sun-tint);
+  stroke: var(--pg-sun-ink);
+}
+.statusMark[data-state="stale"] path + path {
+  stroke-width: 2;
+}
+.statusMark[data-state="none"] {
+  stroke: var(--pg-field-line);
+  stroke-dasharray: 2.6 2.4;
 }
 .legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 4px 16px;
   align-items: center;
-  font-size: 12px;
-  color: #596b7d;
+  font-size: 13px;
+  color: var(--pg-ink-soft);
 }
-.legend i {
-  display: inline-block;
-  vertical-align: middle;
-  width: 10px;
-  height: 10px;
-  margin-right: 5px;
-  border-radius: 50%;
-}
-.legend i[data-state="confirmed"] {
-  background: #95c6a8;
-}
-.legend i[data-state="draft"] {
-  background: #f2b8a8;
-}
-.legend i[data-state="none"] {
-  background: #fff;
-  border: 1.5px solid #b2c0ba;
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .dayDocs {
   margin-top: 12px;
@@ -1061,8 +1152,8 @@
   .archive {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 14px 14px 32px;
+    gap: 16px;
+    padding: 16px 16px 32px;
   }
   .classRail {
     position: static;
@@ -1124,8 +1215,10 @@
     font-size: 12px;
   }
   .archiveHeading {
-    margin-bottom: 16px;
-    min-height: 100px;
+    margin-bottom: 0;
+  }
+  .headingText {
+    gap: 12px;
   }
   .headingText h1 {
     font-size: 32px;
@@ -1153,14 +1246,6 @@
   .panel {
     padding: 12px;
   }
-  .dayStrip {
-    /* 7칸이 화면 밖으로 잘리지 않게 가로로 구른다. */
-    grid-template-columns: repeat(7, minmax(62px, 1fr));
-    overflow-x: auto;
-  }
-  .day .state {
-    font-size: 10px;
-  }
   .periodNav {
     width: 100%;
   }
@@ -1175,10 +1260,10 @@
   flex: 1 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 20px;
+  gap: 24px;
   align-items: stretch;
   min-height: 0;
-  padding: 20px;
+  padding: 24px;
   background: var(--pg-paper);
 }
 .split[data-overview="true"] {
@@ -1241,7 +1326,7 @@
 }
 .previewPanel {
   min-width: 0;
-  padding-top: 20px;
+  padding-top: 24px;
   border-top: 1px solid var(--pg-line);
   overflow-wrap: anywhere;
 }
@@ -1365,6 +1450,121 @@
   white-space: pre-wrap;
   word-break: keep-all;
 }
+/* 한글은 어절 단위로만 끊고(keep-all), 긴 영문·주소만 넘칠 때 끊는다. 마지막 줄에 한 어절만 남지 않게 pretty. */
+.previewSection p {
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+/* ── 보육일지 사실 — 왼쪽 시각 칸 + 세로줄, 일과 이름은 베이지 딱지 ───────── */
+.factRows {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.factRows > li {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  column-gap: 14px;
+}
+.factClock {
+  padding-top: 1px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+.factClock b {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--pg-ink);
+}
+.factClock span {
+  display: block;
+  color: var(--pg-ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.factStep {
+  position: relative;
+  min-width: 0;
+  padding: 0 0 18px 18px;
+  border-left: 2px solid color-mix(in srgb, var(--tone) 55%, var(--pg-paper));
+}
+.factRows > li:last-child .factStep {
+  padding-bottom: 2px;
+  border-left-color: transparent;
+}
+.factStep::before {
+  position: absolute;
+  top: 6px;
+  left: -7px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--pg-paper);
+  border-radius: 50%;
+  background: var(--tone);
+  content: "";
+}
+.factName {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--tone) 22%, var(--pg-paper));
+  color: var(--pg-ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.previewSection .factText + .factText {
+  margin-top: 2px;
+}
+/* 주간 보육일지 사실의 날짜 머리글 — 손글씨 「11월 9일 (월)」 + 오른쪽으로 점선(PM 11-11). */
+.factDay + .factDay {
+  margin-top: 22px;
+}
+h4.factDayHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--pg-ink);
+  white-space: nowrap;
+}
+h4.factDayHead::after {
+  flex: 1;
+  border-top: 2px dashed var(--pg-line-strong);
+  content: "";
+}
+/* 주간 보육일지 제목 옆의 주 — 손글씨에 빨간 손 동그라미(종이와-판 빨강 예외 ④). 종이 위라 진한 alert-strong. */
+.weekPeriod {
+  position: relative;
+  display: inline-block;
+  margin: 4px 0 4px 14px;
+  padding: 0 6px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 1.1em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.weekRing {
+  position: absolute;
+  inset: -7px -12px -6px;
+  width: calc(100% + 24px);
+  height: calc(100% + 13px);
+  color: var(--pg-alert-strong);
+  pointer-events: none;
+}
+.phrase {
+  display: inline-block;
+  max-width: 100%;
+}
 .previewSection .previewEmpty {
   color: var(--pg-ink-soft);
   font-size: 13.5px;
@@ -1400,7 +1600,7 @@
     align-self: start;
     top: 80px;
     max-height: calc(calc(100 * var(--app-vh)) - 100px);
-    padding: 0 0 0 20px;
+    padding: 0 0 0 24px;
     border-top: 0;
     border-left: 1px solid var(--pg-line);
     overflow-y: auto;
@@ -1416,7 +1616,7 @@
 @media (max-width: 760px) {
   .split {
     min-height: 0;
-    padding: 12px;
+    padding: 16px;
   }
   .previewPanel {
     padding-top: 0;
@@ -1436,7 +1636,7 @@
     min-height: calc(calc(100 * var(--app-dvh)) - 60px - 84px);
   }
   .classRail {
-    height: calc(calc(100 * var(--app-dvh)) - 264px - 84px);
+    height: calc(calc(100 * var(--app-dvh)) - 282px - 84px);
   }
 }
 @media (max-width: 760px) {
@@ -1472,8 +1672,8 @@
 }
 .journalHeader {
   align-items: center;
-  gap: 18px;
-  margin-bottom: 20px;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 .journalHeader h3 {
   font-size: 28px;
@@ -1491,15 +1691,15 @@
   flex: none;
 }
 .journalPanel .scopeTabs {
-  padding: 4px;
+  padding: 2px;
   border-color: #dfe6df;
   border-radius: 24px;
   background: #f5f7f4;
 }
 .journalPanel .scopeTabs button {
   min-width: 62px;
-  min-height: 44px;
-  padding: 9px 16px;
+  min-height: 34px;
+  padding: 0 16px;
   border-radius: 20px;
   font-size: 14px;
   color: #566171;
@@ -1511,21 +1711,20 @@
 }
 .journalPanel .periodBar {
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 .journalPanel .periodNav {
-  min-height: 52px;
-  height: auto;
+  height: 40px;
   gap: 6px;
-  padding: 2px 6px;
+  padding: 0 4px;
   border-color: #e5e7db;
-  border-radius: 26px;
+  border-radius: 20px;
   background: #fff;
   box-shadow: 0 3px 14px rgba(111, 91, 54, 0.04);
 }
 .journalPanel .periodNav button {
-  width: 44px;
-  height: 44px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   color: #4d8586;
 }
@@ -1538,131 +1737,17 @@
   color: #343a3e;
 }
 .journalPanel .periodDate {
-  min-height: 48px;
+  height: 40px;
   border-color: #e0e5de;
   border-radius: 16px;
   background: #fff;
   color: #455367;
 }
-.journalPanel .legend {
-  gap: 18px;
-  padding: 0 8px;
-  font-size: 13px;
-  color: #526176;
-}
-.journalPanel .legend i {
-  width: 12px;
-  height: 12px;
-  margin-right: 6px;
-}
-.journalPanel .legend i[data-state="confirmed"] {
-  background: #91c6ac;
-}
-.journalPanel .legend i[data-state="draft"] {
-  background: #f5b8ac;
-}
-.journalPanel .legend i[data-state="none"] {
-  background: #edf0eb;
-  border-color: #dfe5de;
-}
-.journalPanel .dayStrip {
-  grid-template-columns: repeat(7, minmax(72px, 1fr));
-  gap: 10px;
-  margin-top: 18px;
-  margin-bottom: 14px;
-  padding: 10px;
-  border: 1px solid #f0e9dd;
-  border-radius: 28px;
-  background: #fffcf7;
-  box-shadow: 0 5px 20px rgba(116, 94, 59, 0.06);
-  overflow-x: auto;
-  scroll-snap-type: x proximity;
-  scrollbar-width: thin;
-  scrollbar-color: #c9d9cc #fffcf7;
-}
-.journalPanel .day {
-  position: relative;
-  box-sizing: border-box;
-  justify-content: flex-start;
-  gap: 8px;
-  min-height: 184px;
-  padding: 18px 10px 38px;
-  border: 1px solid #f0ebe2;
-  border-radius: 22px;
-  background: #fff;
-  box-shadow: var(--pg-shadow-card);
-  scroll-snap-align: start;
-}
-.journalPanel .day:hover {
-  border-color: #c9ddcd;
-  background: #fffefb;
-}
-.journalPanel .day[aria-pressed="true"] {
-  border-color: #a9d2bd;
-  background: #f1f8f2;
-  box-shadow:
-    inset 0 0 0 1px #badfcb,
-    0 3px 12px rgba(74, 120, 94, 0.05);
-}
-.journalPanel .day[aria-pressed="true"]::after {
-  content: "";
-  position: absolute;
-  top: 13px;
-  right: 15px;
-  width: 4px;
-  height: 11px;
-  border-radius: 3px;
-  background: #f5cc84;
-  transform: rotate(28deg);
-}
-.journalPanel .day .date {
-  font-size: 19px;
-  line-height: 1.4;
-  font-weight: 800;
-  color: #2e3c57;
-  white-space: nowrap;
-}
-.journalPanel .day[aria-pressed="true"] .date {
-  color: #24765b;
-}
-.journalPanel .day .dow {
-  color: #6b788b;
-  font-size: 13px;
-}
-.journalPanel .day .mark {
-  width: 24px;
-  height: 24px;
-}
-.journalPanel .day .mark[data-state="none"] {
-  border-color: #c8cfc8;
-  background: #fff;
-}
-.journalPanel .day .mark[data-state="confirmed"] {
-  border-color: #8fbfa5;
-  background: #e9f5ec;
-  color: #397957;
-}
-.journalPanel .day .mark[data-state="draft"] {
-  border-color: #edb4a7;
-  background: #fff0ea;
-  color: #965a46;
-}
-.journalPanel .day .state {
-  color: #4c5e72;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.dayDecor {
-  position: absolute;
-  left: 10px;
-  bottom: 6px;
-  width: 32px;
-  height: 32px;
-  pointer-events: none;
-  opacity: 0.8;
-}
 .journalPanel .docGrid {
-  margin-top: 20px;
+  margin-top: 16px;
+}
+.journalPanel .periodBar + .docGrid {
+  margin-top: 4px;
 }
 .journalPanel .docCard,
 .journalCreateCard {
@@ -1707,27 +1792,57 @@
     flex: 1;
     font-size: 13px;
   }
-  /* 미리보기를 열면 가운데 열이 460px 남짓이다. 한 주가 가로로 굴러가지 않게
-     칸을 좁히고 글자를 한 단계 줄인다 — 일곱 칸이 한눈에 보이는 게 먼저다. */
-  /* 최소 54px — 두 자리 날짜(「11.18」 17px ≈ 46px)가 칸 안에 7px 여유를 두고 들어간다.
-     460px 열에서도 7 × 54 + 간격 = 442px 라 일곱 칸이 한눈에 보인다. */
-  .journalPanel .dayStrip {
+  /* 미리보기를 열면 가운데 열이 460px 남짓이다. 일곱 칸이 한눈에 보이게 칸을 54px 까지 좁힌다
+     (7 × 54 + 간격 6 × 6 = 414px). 휴대폰(약 330px)은 그래도 모자라 줄이 가로로 구른다. */
+  .dayStrip {
     grid-template-columns: repeat(7, minmax(54px, 1fr));
-    padding: 8px;
-    gap: 8px;
+    gap: 6px;
   }
-  .journalPanel .day {
-    min-height: 176px;
-    padding: 14px 4px 30px;
+  .day {
+    min-height: 72px;
   }
-  .journalPanel .day .date {
-    font-size: 17px;
+  .day .date {
+    font-size: 15px;
   }
-  .journalPanel .day .state {
-    font-size: 12px;
+  .day .dow {
+    font-size: 11px;
+  }
+  .day .state {
+    width: 18px;
+    height: 18px;
+  }
+}
+/* 휴대폰 폭(목록 열 420px 아래) — 일곱 칸을 가로 넘김 없이 한 줄에. 칸 폭 약 44px.
+   「11.」 달은 숨기고 날짜 숫자만 둔다 — 달은 바로 위 주 넘김 줄에 있다. 간격을 2px 로 줄여 누르는 폭을 지킨다. */
+@container (max-width: 420px) {
+  .dayStrip {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 2px;
+    overflow-x: visible;
+  }
+  .day {
+    min-height: 68px;
+    padding: 8px 0;
+  }
+  .day .month {
+    display: none;
   }
   .journalPanel .periodDate {
     margin-left: auto;
+  }
+}
+
+/* 휴대폰은 누르는 칸 높이를 44 로 맞춘다(데스크톱 40). */
+@media (max-width: 760px) {
+  .journalPanel .periodNav,
+  .journalPanel .periodDate {
+    height: 44px;
+  }
+  .journalPanel .periodNav {
+    border-radius: 22px;
+  }
+  .journalPanel .scopeTabs button {
+    min-height: 38px;
   }
 }
 
@@ -1836,4 +1951,236 @@
 }
 .archive .typeCard svg {
   color: var(--type-ink);
+}
+
+/* 거르개 한 줄 — 상태 · 원본 바뀜 · 제목 찾기 (FR-701 · FR-406). 누르는 것 44px. */
+/* ── 거르개 줄: 상태 칩 · 「원본 바뀜」 토글 칩 · 오른쪽 끝 찾기 칸 ── */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.chipRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.chipGroup {
+  display: flex;
+  gap: 6px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.chip:hover {
+  background: var(--pg-ivory);
+}
+.chipGroup .chip[aria-pressed="true"] {
+  border-color: var(--pg-primary);
+  background: var(--pg-primary);
+  color: #fff;
+}
+.chip svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.chip[data-tone="stale"] svg {
+  color: var(--pg-sun);
+}
+.chip[data-tone="stale"][aria-pressed="true"] {
+  border-color: var(--pg-sun);
+  background: var(--pg-sun-tint);
+  color: var(--pg-sun-ink);
+}
+.chip[data-tone="stale"][aria-pressed="true"] svg {
+  color: var(--pg-sun-ink);
+}
+/* 찾기 칸 — 돋보기가 안에 든 둥근 칸. 지울 때만 ✕ 가 선다. */
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 1 280px;
+  margin-left: auto;
+  min-width: 0;
+}
+.search > svg {
+  position: absolute;
+  left: 14px;
+  width: 18px;
+  height: 18px;
+  color: var(--pg-ink-soft);
+  pointer-events: none;
+}
+.search input {
+  width: 100%;
+  height: 40px;
+  padding: 0 40px;
+  border: 1px solid var(--pg-line);
+  border-radius: 999px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  font: inherit;
+  font-size: 14px;
+}
+.search input::placeholder {
+  color: var(--pg-ink-hint);
+}
+.search input::-webkit-search-cancel-button {
+  display: none;
+}
+.archive .search input:focus-visible {
+  outline: 2px solid var(--pg-primary);
+  outline-offset: 1px;
+  border-color: var(--pg-primary);
+}
+.search button {
+  position: absolute;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--pg-ink-soft);
+  cursor: pointer;
+}
+.search button:hover {
+  background: var(--pg-shell);
+}
+.search button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+/* ── 휴대폰: 목록 화면 → 문서 화면 ──────────────────────────────────────────
+   데스크톱은 왼쪽 목록 · 오른쪽 미리보기를 나란히 둔다. 휴대폰에서 그대로 쌓으면 첫 화면 절반이
+   빈 「문서를 선택해 주세요」 칸이었다. 휴대폰에서는
+   - 종류를 고르기 전: 빈 칸 없이 종류 다섯 개를 세로 목록으로 둔다.
+   - 종류를 고른 뒤: 종류는 한 줄 칩으로 줄이고 그 아래가 목록이다.
+   - 문서를 고르면: 제목 · 거르개 · 반 · 종류를 걷고 문서 한 장만 본다. 「목록으로」로 돌아온다. */
+@media (max-width: 760px) {
+  /* 제목 칸이 글 길이만큼만 넓어 「제목 찾기」가 화면 폭을 못 썼다. */
+  .archiveHeading {
+    align-self: stretch;
+  }
+  /* 휴대폰: 찾기 칸이 한 줄 전체, 그 아래 칩 줄(넘치면 가로로 구른다). */
+  .filters {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .search {
+    order: -1;
+    flex: none;
+    margin-left: 0;
+  }
+  .search input,
+  .chip {
+    min-height: 44px;
+  }
+  .search input {
+    height: 44px;
+  }
+  .chipRow {
+    overflow-x: auto;
+    gap: 8px;
+    /* 칩 테두리 · 포커스 윤곽이 구르는 상자에 잘리지 않게 */
+    margin: -4px;
+    padding: 4px;
+    scrollbar-width: none;
+  }
+  .chip {
+    padding: 0 14px;
+  }
+
+  .archive[data-doc] > :not(.content),
+  .archive[data-doc] .typeGrid {
+    display: none;
+  }
+  .archive[data-doc] .previewPanel > .backLink::before {
+    content: "‹" / "";
+    font-size: 18px;
+    line-height: 1;
+  }
+  .archive[data-doc] .backLink {
+    min-height: 44px;
+  }
+
+  .split[data-overview="true"] {
+    display: none;
+  }
+  .typeGrid[data-overview] {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    overflow: visible;
+    padding: 6px 0 0;
+  }
+  .typeGrid[data-overview] .typeCard {
+    flex-direction: row;
+    justify-content: flex-start;
+    min-height: 64px;
+    padding: 8px 16px;
+  }
+  .typeGrid[data-overview] .typeLabel,
+  .typeGrid:not([data-overview]) .typeLabel {
+    flex-direction: row;
+    gap: 12px;
+  }
+  .typeGrid[data-overview] .typeCard strong {
+    font-size: 16px;
+  }
+  .typeGrid[data-overview] .typeCard svg {
+    width: 40px;
+    height: 40px;
+    padding: 9px;
+  }
+
+  .typeGrid:not([data-overview]) {
+    grid-template-columns: repeat(5, max-content);
+    gap: 8px;
+    /* 아래 여백 4 + 바깥 12 = 칩 줄과 본문 사이 16. */
+    margin-bottom: 12px;
+    padding: 8px 3px 4px;
+  }
+  .typeGrid:not([data-overview]) .typeCard {
+    min-height: 48px;
+    padding: 4px 14px 4px 8px;
+  }
+  .typeGrid:not([data-overview]) .typeLabel {
+    gap: 6px;
+  }
+  .typeGrid:not([data-overview]) .typeCard::before {
+    display: none;
+  }
+  .typeGrid:not([data-overview]) .typeCard svg {
+    width: 32px;
+    height: 32px;
+    padding: 7px;
+  }
 }

@@ -1,17 +1,19 @@
 """교사가 보는 트렌드 (ADR-016 · docs/api-spec.md §3-2).
 
-**여기서는 거르지 않는다.** 저장소에 들어 있는 것이 이미 사람이 본 것이다 —
+**위험은 여기서 다시 거르지 않는다.** 저장소에 들어 있는 것이 이미 사람이 본 것이다 —
 주간 수집 PR 을 사람이 읽고 이상한 줄을 지운 뒤 머지한 것만 파일에 남는다.
+다만 **지금 승인 목록에 없는 출처는 뺀다**(ADR-016 4단) — 머지 뒤에 목록에서 뺀 채널 · 언론사의
+지난 주 자료가 남지 않게. 생성 쪽(`planning.py`)과 같은 대조다.
 
 **원이 껐으면 주지 않는다** (FR-808). 403 이다 — 빈 목록이 아니다. 「아직 모인 게
 없다」와 「원이 껐다」는 화면이 다르게 그려야 한다.
 
-계획안 생성은 아직 트렌드를 스스로 읽지 않는다. 교사가 트렌드 화면에서 옮겨 적는
-길뿐이고, 그 화면이 이 응답으로 막힌다.
+계획안 생성(주간 · 놀이 중심 월간)은 같은 원 설정을 보고 트렌드를 스스로 읽는다(ADR-072).
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -19,7 +21,8 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.features.centers.models import Center
-from app.features.trends.item import COLLECTED_DIR, RawItem, load
+from app.features.trends.approved import is_approved
+from app.features.trends.item import COLLECTED_DIR, load
 from app.features.trends.schemas import TrendItem, TrendsResponse
 from app.shared.auth.dependency import CurrentUser
 
@@ -31,7 +34,7 @@ router = APIRouter(prefix="/trends", tags=["trends"])
 LIMIT = 20
 
 
-def latest_week() -> RawItem | None:
+def latest_week() -> Path | None:
     """가장 최근 주 파일. 없으면 None."""
     files = sorted(COLLECTED_DIR.glob("*.json"))
     return files[-1] if files else None
@@ -70,7 +73,7 @@ def get_trends(session: DbSession, user: CurrentUser) -> TrendsResponse:
     if path is None:
         # 수집이 아직 안 돈 것이다. 오류가 아니라 **빈 목록**이다.
         return TrendsResponse(week="", items=[])
-    items = load(path)
+    items = [item for item in load(path) if is_approved(item.source, item.origin)]
     # 새것부터. 같은 날이면 들어온 순서를 지킨다.
     items.sort(key=lambda item: item.published_at, reverse=True)
     return TrendsResponse(

@@ -69,7 +69,7 @@ def fill_table(
 
     def fill(table: etree._Element) -> None:
         cells = _cells(table)
-        height, width = int(table.get("rowCnt")), int(table.get("colCnt"))
+        height, width = int(table.get("rowCnt")), int(table.get("colCnt"))  # type: ignore[arg-type]
         if height != header_rows + len(rows):
             raise TemplateMismatch(
                 f"양식 표는 {height}줄인데 머리행 뒤로 {len(rows)}줄을 채우려 한다."
@@ -90,6 +90,7 @@ def fill_grid(
     rows: Sequence[Sequence[str]],
     footer: Sequence[Sequence[str]],
     header: Mapping[tuple[int, int], str] | None = None,
+    lines: Mapping[str, str] | None = None,
 ) -> bytes:
     """양식 표의 본문 한 줄을 `rows` 만큼 복제해 채운다. 줄 수가 날마다 다른 일지용이다.
 
@@ -99,6 +100,9 @@ def fill_grid(
     `header` 는 머리행 안에서 채울 칸만 「(행, 열) → 글자」로 받는다. 월간 놀이계획안처럼
     머리행에 놀이 주제 · 예상 기간 같은 빈 칸이 있는 양식용이다. 주소는 한글이 칸마다 적어둔
     `hp:cellAddr` 기준이라 병합된 칸은 왼쪽 위 주소 하나로 센다.
+
+    `lines` 는 표 밖 문단의 자리 글자 → 채울 글자다. 「제목」과 같은 방식으로 바꾼다 —
+    일일 보육일지 머리의 날짜 · 날씨 줄이 이것이다.
 
     한글은 칸마다 적힌 (행, 열) 주소와 표의 `rowCnt` 로 표를 그린다. 줄을 끼워 넣으면 그 아래
     칸의 주소와 `rowCnt` 를 같이 밀어야 한다 — 하나라도 어긋나면 한글이 파일을 안 연다.
@@ -123,7 +127,7 @@ def fill_grid(
                 _set_text(cells[address], text)
 
         prototype, tail = trs[header_rows], trs[header_rows + 1 :]
-        width = int(table.get("colCnt"))
+        width = int(table.get("colCnt"))  # type: ignore[arg-type]
         if len(prototype.findall("hp:tc", NS)) != width:
             raise TemplateMismatch("본문 원형 줄에 병합된 칸이 있다.")
 
@@ -131,7 +135,7 @@ def fill_grid(
         for tr in tail:
             for tc in tr.findall("hp:tc", NS):
                 addr = tc.find("hp:cellAddr", NS)
-                addr.set("rowAddr", str(int(addr.get("rowAddr")) + extra))
+                addr.set("rowAddr", str(int(addr.get("rowAddr")) + extra))  # type: ignore[arg-type, union-attr]
 
         # 복제는 채우기 전의 빈 원형에서 뜬다 — 채운 줄을 복제하면 앞 줄 서식이 번진다.
         blank = copy.deepcopy(prototype)
@@ -146,13 +150,13 @@ def fill_grid(
                 anchor.addnext(tr)
                 anchor = tr
             for tc, text in zip(tr.findall("hp:tc", NS), row, strict=True):
-                tc.find("hp:cellAddr", NS).set("rowAddr", str(header_rows + i))
+                tc.find("hp:cellAddr", NS).set("rowAddr", str(header_rows + i))  # type: ignore[union-attr]
                 _set_text(tc, text)
 
-        table.set("rowCnt", str(int(table.get("rowCnt")) + extra))
+        table.set("rowCnt", str(int(table.get("rowCnt")) + extra))  # type: ignore[arg-type]
         size = table.find("hp:sz", NS)
-        row_height = max(int(sz.get("height")) for sz in blank.iterfind("hp:tc/hp:cellSz", NS))
-        size.set("height", str(int(size.get("height")) + extra * row_height))
+        row_height = max(int(sz.get("height")) for sz in blank.iterfind("hp:tc/hp:cellSz", NS))  # type: ignore[arg-type]
+        size.set("height", str(int(size.get("height")) + extra * row_height))  # type: ignore[arg-type, union-attr]
 
         for tr, texts in zip(tail, footer, strict=True):
             tcs = tr.findall("hp:tc", NS)
@@ -161,10 +165,15 @@ def fill_grid(
             for tc, text in zip(tcs, texts, strict=True):
                 _set_text(tc, text)
 
-    return _rewrite(template, title, fill)
+    return _rewrite(template, title, fill, lines)
 
 
-def _rewrite(template: bytes, title: str, fill: Callable[[etree._Element], None]) -> bytes:
+def _rewrite(
+    template: bytes,
+    title: str,
+    fill: Callable[[etree._Element], None],
+    lines: Mapping[str, str] | None = None,
+) -> bytes:
     """양식을 풀어 첫 번째 표를 `fill` 로 채우고, 제목 · 문서 정보 · 미리보기를 맞춰 다시 묶는다."""
     with zipfile.ZipFile(io.BytesIO(template)) as src:
         infos = src.infolist()
@@ -176,6 +185,8 @@ def _rewrite(template: bytes, title: str, fill: Callable[[etree._Element], None]
         raise TemplateMismatch("양식에 표가 없습니다.")
     fill(table)
     _set_title(section, title)
+    for placeholder, text in (lines or {}).items():
+        _set_outside(section, placeholder, text)
 
     parts[SECTION] = _dump(section)
     parts[PACKAGE] = _package(parts[PACKAGE], title)
@@ -256,27 +267,32 @@ def _cells(table: etree._Element) -> dict[tuple[int, int], etree._Element]:
     for tr in table.findall("hp:tr", NS):
         for tc in tr.findall("hp:tc", NS):
             addr = tc.find("hp:cellAddr", NS)
-            cells[(int(addr.get("rowAddr")), int(addr.get("colAddr")))] = tc
+            cells[(int(addr.get("rowAddr")), int(addr.get("colAddr")))] = tc  # type: ignore[arg-type, union-attr]
     return cells
 
 
 def _set_title(section: etree._Element, title: str) -> None:
+    _set_outside(section, TITLE_PLACEHOLDER, title)
+
+
+def _set_outside(section: etree._Element, placeholder: str, text: str) -> None:
+    """표 밖에서 글자가 `placeholder` 인 첫 자리를 `text` 로 바꾼다."""
     for t in section.iter(f"{{{HP}}}t"):
         in_table = any(True for _ in t.iterancestors(f"{{{HP}}}tbl"))
-        if t.text == TITLE_PLACEHOLDER and not in_table:
-            t.text = _clean(title)
+        if t.text == placeholder and not in_table:
+            t.text = _clean(text)
             _drop_layout(next(t.iterancestors(f"{{{HP}}}p")))
             return
-    raise TemplateMismatch(f"양식에 「{TITLE_PLACEHOLDER}」 자리가 없습니다.")
+    raise TemplateMismatch(f"양식에 「{placeholder}」 자리가 없습니다.")
 
 
 def _set_text(tc: etree._Element, text: str) -> None:
     """칸의 글자를 통째로 바꾼다. 서식은 칸의 첫 문단 · 첫 글자 모양을 그대로 물려받는다."""
     sub_list = tc.find("hp:subList", NS)
-    paragraphs = sub_list.findall("hp:p", NS)
+    paragraphs = sub_list.findall("hp:p", NS)  # type: ignore[union-attr]
     prototype = paragraphs[0]
     for p in paragraphs:
-        sub_list.remove(p)
+        sub_list.remove(p)  # type: ignore[union-attr]
 
     for line in _clean(text).split("\n"):
         p = copy.deepcopy(prototype)
@@ -288,7 +304,7 @@ def _set_text(tc: etree._Element, text: str) -> None:
         if line:
             etree.SubElement(run, f"{{{HP}}}t").text = line
         _drop_layout(p)
-        sub_list.append(p)
+        sub_list.append(p)  # type: ignore[union-attr]
 
 
 def _drop_layout(p: etree._Element) -> None:
@@ -321,7 +337,7 @@ def _preview(section: etree._Element, title: str) -> bytes:
     """
     lines = [_clean(title)]
     table = section.find(".//hp:tbl", NS)
-    for tr in table.findall("hp:tr", NS):
+    for tr in table.findall("hp:tr", NS):  # type: ignore[union-attr]
         texts = [
             " ".join("".join(t.itertext()) for t in tc.iterfind(".//hp:t", NS))
             for tc in tr.findall("hp:tc", NS)

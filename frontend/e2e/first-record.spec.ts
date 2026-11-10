@@ -69,6 +69,11 @@ test("가입부터 관찰 기록까지", async ({ page }) => {
     .getByRole("button", { name: child, exact: true })
     .click();
   await page.getByLabel("본 대로 적기").fill(fact);
+  // 영역은 기본값이 없다 — 교사가 골라야 저장된다(ADR-082).
+  await page
+    .getByRole("group", { name: "영역", exact: true })
+    .getByRole("button", { name: "사회관계", exact: true })
+    .click();
   await page.getByRole("button", { name: "기록하기", exact: true }).click();
   await expect(page.getByText("관찰 기록을 저장했어요.")).toBeVisible();
 

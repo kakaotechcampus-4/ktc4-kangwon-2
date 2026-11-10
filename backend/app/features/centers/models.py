@@ -54,6 +54,16 @@ class Center(Base):
             "**기본은 NURI_5** — 교사 문서 3건 중 2건이 2축이라 둘 다 받는다"
         ),
     )
+    reflect_mark: Mapped[str] = mapped_column(
+        String(10),
+        default="(반영)",
+        server_default="(반영)",
+        nullable=False,
+        comment=(
+            "어제 지원을 반영한 일과 줄에 종이가 붙이는 글자 (ADR-086). "
+            "「(반영)」 · 「(놀이반영)」 · 빈 문자열(붙이지 않음)"
+        ),
+    )
     region_sigungu: Mapped[str] = mapped_column(
         String(30), comment="시·군·구. 지역사회 연계 활동 선별에 쓴다"
     )
@@ -63,6 +73,13 @@ class Center(Base):
         comment=(
             "정부 어린이집 목록의 열쇠(시도|시군구|이름|주소, ADR-068). "
             "같은 열쇠를 고른 교사는 이 원으로 든다. 직접 적은 원은 NULL"
+        ),
+    )
+    created_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        comment=(
+            "원을 만든 계정(ADR-087). 원 설정 · 성품인사를 바꾸고 남의 양식을 지울 수 있는 "
+            "유일한 교사다. NULL 은 교사가 없는 원"
         ),
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -112,7 +129,10 @@ class Class(Base):
     teacher_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"),
         index=True,
-        comment="반 주인 — 반을 만든 계정(ADR-059). NULL 은 이 결정 전에 만든 옛 반이다",
+        comment=(
+            "반 주인 — 반을 만든 계정(ADR-059). 옛 반은 그 원 첫 교사로 채웠다(ADR-068 §6). "
+            "NULL 은 교사가 없는 원의 반이다"
+        ),
     )
     consent_confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -164,6 +184,9 @@ class Child(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), index=True)
     name: Mapped[str] = mapped_column(String(50), comment="평문 실명. ADR-004")
+    call_name: Mapped[str | None] = mapped_column(
+        String(50), comment="외자 아이를 부르는 이름(김민 -> 민이). 가명표에 넣는다. ADR-004 보완"
+    )
     code: Mapped[str] = mapped_column(
         String(20),
         comment="LLM 에 나가는 가명. 받침 있는 더미 한글 이름 (ADR-004). 반 안에서 유일하다",

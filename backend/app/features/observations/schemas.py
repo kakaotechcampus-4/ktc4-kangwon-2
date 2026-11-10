@@ -13,8 +13,10 @@ from app.features.observations.models import DOMAINS
 # 목록을 다시 적지 않는다. models.py 의 CHECK 와 같은 튜플을 본다.
 Domain = Literal[DOMAINS]  # type: ignore[valid-type]
 
-# 공백만 있으면 422 (§10 「fact 는 필수다」). 길이는 계약이 정하지 않아 상한이 없다.
-Fact = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+# 공백만 있으면 422 (§10 「fact 는 필수다」). 컬럼이 Text 라 맞출 길이가 없어 상한 5,000자는
+# 화면 입력칸(RecordsPage 「본 대로 적기」 maxLength 5000) · 일과 기록 Body 와 같게 둔다.
+# 이 글이 그대로 일지 초안 LLM 으로 간다 — 화면을 거치지 않은 긴 글이 들어오지 않게 여기서 막는다.
+Fact = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)]
 # 선택이라 빈 문자열을 허용한다. 길이는 observations.context 컬럼(String(50))에 맞춘다.
 Context = Annotated[str, StringConstraints(strip_whitespace=True, max_length=50)]
 
@@ -59,3 +61,55 @@ class ObservationResponse(BaseModel):
 
 class ObservationListResponse(BaseModel):
     items: list[ObservationResponse]
+
+
+class ReviewImpact(BaseModel):
+    """이 기록을 직접 인용한 확정 문서 ID. 이미 stale 이던 것과 이번에 stale 이 된 것을 나눈다.
+
+    일과 기록의 `RoutineReviewImpact` 와 같은 모양이다 — 화면이 같은 문구로 센다(§10).
+    """
+
+    affected_document_ids: list[int]
+    newly_stale_document_ids: list[int]
+
+
+class ObservationMutationResponse(ObservationResponse):
+    review_impact: ReviewImpact
+
+
+class ObservationDeleteResponse(BaseModel):
+    review_impact: ReviewImpact
+
+
+# jev 에 보내는 사실 한 칸의 상한. 화면 입력칸(maxLength 5000)과 같은 선이다 — 저장 칸(Text)은
+# 상한이 없지만 모델에 보내는 글은 길수록 값이 들고 느려진다(ADR-082).
+SuggestFact = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)
+]
+
+
+class DomainSuggestRequest(BaseModel):
+    """`POST /api/observations/domain-suggest`. 아직 저장하지 않은 글을 받는다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    class_id: int
+    fact: SuggestFact
+    context: Context = ""
+
+
+class DomainSuggestResponse(BaseModel):
+    """`domain` 이 있으면 화면이 그 칩에 보라 점선을 친다 — 고르는 것은 교사다.
+
+    확신이 모자라면 `domain` 만 비고 `confidence` 는 온다.
+    묻지 않았으면(mock · 2축 · 실패) 둘 다 null 이다.
+    """
+
+    domain: str | None
+    confidence: float | None
+
+
+class MissingResponse(BaseModel):
+    """빠진 것 이름 — 「상황」 「행동」 「반응」 중에서 그 순서로. 없거나 묻지 않았으면 빈 목록."""
+
+    missing: list[Literal["상황", "행동", "반응"]]

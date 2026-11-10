@@ -208,7 +208,6 @@ test("legacy privacy: all account keys are sanitized without touching unrelated 
   const unrelated = new Map([
     [BASE + "Backup", "untouched"],
     ["saessak.apiLinks.v1:other", links],
-    ["saessak.workspace.v1:other", '{"version":1}'],
     ["saessak.demoAccount:other", '{"email":"other@example.com"}'],
   ]);
   for (const entry of unrelated) values.set(...entry);
@@ -230,6 +229,52 @@ test("legacy privacy: all account keys are sanitized without touching unrelated 
   });
   for (const [key, value] of unrelated) assert.equal(values.get(key), value);
   assertPrivate(values, tab);
+});
+
+test("legacy privacy: workspace bodies are dropped; account imports wait for their own login", async (t) => {
+  const { values, tab } = setup(t);
+  const name = children[0].name;
+  const doc = (id, origin, kind = "observation") => ({
+    id,
+    title: name + " 관찰",
+    kind,
+    classId: "class-local-1",
+    className: "햇살반",
+    childId: "child-local-1",
+    childName: name,
+    start: "2026-09-01",
+    end: "2026-09-01",
+    sections: [{ heading: "첨부 원문", body: name + "이 웃었다.", sourceIds: [] }],
+    sources: [],
+    status: "confirmed",
+    origin,
+    createdAt: "2026-09-01T00:00:00Z",
+    updatedAt: "2026-09-01T00:00:00Z",
+    reviewNote: "",
+  });
+  const workspace = (...documents) =>
+    JSON.stringify({ version: 1, observations: [], templates: [], criteria: [], documents });
+  const other = "saessak.workspace.v1:other%40example.com";
+  values.set(other, workspace(doc("i1", "import"), doc("t1", "teacher")));
+  values.set("saessak.workspace.v1", workspace(doc("i0", "import")));
+  values.set("saessak.workspace.v1:broken", '{"documents":[{"title":"' + name);
+  tab.set("saessak.workspace.v1:tab", workspace(doc("i2", "import")));
+  await login();
+  // 계정을 아는 IMPORT 만 남는다 — 그 계정이 로그인할 때 서버로 옮긴다(moveLegacyImports).
+  const kept = JSON.parse(values.get(other)).documents;
+  assert.deepEqual(
+    kept.map((d) => [d.id, d.childName, d.sections[0].body]),
+    [["i1", "", name + "이 웃었다."]],
+  );
+  assert.deepEqual(JSON.parse(values.get("saessak.workspace.v1")).documents, []);
+  // 옛 단일 계정의 증빙은 그 계정으로 먼저 옮겨 두고 공통 키만 비운다 — 로그인 직후 서버로 올린다.
+  const mine = JSON.parse(values.get("saessak.workspace.v1:" + encodeURIComponent(EMAIL)));
+  assert.deepEqual(
+    mine.documents.map((d) => [d.id, d.childName, d.sections[0].body]),
+    [["i0", "", name + "이 웃었다."]],
+  );
+  assert.equal(values.has("saessak.workspace.v1:broken"), false);
+  assert.deepEqual(JSON.parse(tab.get("saessak.workspace.v1:tab")).documents, []);
 });
 
 for (const operation of ["setItem", "removeItem"]) {
@@ -295,6 +340,8 @@ test("legacy privacy: hydrate once, preserve links, and repeated save/load never
         class_id: 8,
         name: child.name,
         code: child.code,
+        call_name: null,
+        needs_call_name: false,
         created_at: "2026-10-01T00:00:00Z",
       })),
     });
@@ -305,7 +352,11 @@ test("legacy privacy: hydrate once, preserve links, and repeated save/load never
   const loaded = settings.loadClassSettings();
   assert.deepEqual(loaded.classes[0].children, []);
   const hydrated = await onboarding.hydrateClassChildren(loaded);
-  assert.deepEqual(hydrated[0].children, children);
+  // 서버가 주는 부르는 이름 · 외자 여부도 화면 상태로만 받는다(ADR-013).
+  assert.deepEqual(
+    hydrated[0].children,
+    children.map((c) => ({ ...c, callName: null, needsCallName: false })),
+  );
   assert.equal(requests.length, 1);
   assert.equal(values.get(LINKS), links);
   assert.equal(onboarding.classServerId("class-local-1"), 8);

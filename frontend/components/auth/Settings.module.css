@@ -444,10 +444,11 @@
 }
 .del {
   padding: 8px 12px;
-  border: 1.5px solid #fecaca;
+  /* 삭제 — 앱 경고 토큰(글자와 바탕 5.8:1). 따로 쓰던 빨강 셋을 걷었다(PM). */
+  border: 1.5px solid var(--pg-alert-line);
   border-radius: 12px;
-  background: #fef2f2;
-  color: #b91c1c;
+  background: var(--pg-alert-soft);
+  color: var(--pg-alert-ink);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -552,7 +553,8 @@
   padding: 0 8px;
   border: 0;
   background: none;
-  color: var(--pg-ink);
+  /* 아이 삭제 — 경고 글자(노랑 쪽지 위 6.5:1) */
+  color: var(--pg-alert-ink);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;

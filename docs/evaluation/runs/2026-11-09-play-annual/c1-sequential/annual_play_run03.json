@@ -1,0 +1,2421 @@
+{
+ "id": 192,
+ "revision": 1,
+ "class_id": 114,
+ "school_year": 2026,
+ "status": "DRAFT",
+ "format": "PLAY_PROJECT",
+ "format_version": "play-project-layout-v0.2.0",
+ "periods": [
+  {
+   "period_key": "m03_m05",
+   "label": "3월~5월",
+   "months": [
+    3,
+    4,
+    5
+   ],
+   "candidates": [
+    {
+     "row_key": "cand1",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_f439285433534c59a4bfbafee7cf5375",
+      "value": "친구에게 어떤 말을 전할까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_ceef41a3cce4495ca53c260d9f9280e9",
+      "value": "편지지, 봉투, 색연필, 사인펜, 종이 상자",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_a0f83849e155418693639c4b31b5b173",
+      "value": "새로 만난 친구에게 전하고 싶은 말을 그림이나 글자 비슷한 모양으로 남길 수 있도록 편지 공간을 마련합니다. 유아가 말로 전하는 내용은 요청할 때 받아 적고, 편지를 주고받는 방법과 답장을 기다리는 시간은 유아들의 의견에 따라 조정합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_9e9490a69db14eb69d1be55d3790d7b3",
+      "value": "의사소통 - 읽기와 쓰기에 관심 가지기 - 자신의 생각을 글자와 비슷한 형태로 표현한다.\n의사소통 - 듣기와 말하기 - 자신의 경험, 느낌, 생각을 말한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.2.2.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.2.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand2",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_e74adc3d6d204fe69320f6679a4be5de",
+      "value": "살랑살랑 봄바람처럼 춤춰요",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_26e13fa24ea44312b42f175d63e54947",
+      "value": "스카프, 리본 막대, 음원 재생기, 봄 노래 음원",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_c94c3dc2d4e14b6ca5080b5b861c2451",
+      "value": "봄바람을 떠올리며 몸을 움직일 수 있도록 가구와 거리를 둔 넓은 자리를 마련합니다. 유아가 고른 음악과 도구에 맞춰 움직임의 크기와 빠르기를 자유롭게 바꾸도록 시간을 주고, 서로 부딪히지 않을 간격을 함께 살피며 춤을 지원합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_561aefff7c8e4c289b215676f5ca8ab6",
+      "value": "예술경험 - 창의적으로 표현하기 - 신체나 도구를 활용하여 움직임과 춤으로 자유롭게 표현한다.\n신체운동·건강 - 신체활동 즐기기 - 신체 움직임을 조절한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.2.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.1.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand3",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_3e83a2bceb704d42bb9238ac764b355c",
+      "value": "작은 씨앗아, 봄에는 뭐 하니?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_bd62be273bbb42afa25c7f707b450a6e",
+      "value": "강낭콩, 화분, 배양토, 모종삽, 물뿌리개, 돋보기",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_2c194268e8dd43b29434fce8784084c2",
+      "value": "씨앗의 모습과 자라는 조건을 궁금해할 수 있도록 강낭콩과 흙을 살펴볼 자리를 마련합니다. 심어 보고 싶다는 제안이 나오면 필요한 도구를 더하고, 돌보는 방법에 관한 유아의 질문을 함께 알아보며 변화를 서둘러 결론짓지 않고 살펴볼 시간을 둡니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_7a7603f5a49c48ea9a83c1dc595f31c1",
+      "value": "자연탐구 - 자연과 더불어 살기 - 주변의 동식물에 관심을 가진다.\n자연탐구 - 탐구과정 즐기기 - 궁금한 것을 탐구하는 과정에 즐겁게 참여한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.3.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand4",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_f8e8f9574464437b865f18571a97c35b",
+      "value": "봄꽃 색깔을 톡톡 찍어 볼까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_de8ae35d7f3a4760ad6e760368eef9b7",
+      "value": "봄꽃 사진, 수채 물감, 팔레트, 스펀지, 붓, 도화지",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_e3bab5b083ff4cffad68896b94d1c281",
+      "value": "봄꽃 사진을 가까이 볼 수 있게 두고, 눈에 들어오는 색과 모양을 편안하게 이야기 나눕니다. 꽃을 똑같이 그리는 본보기는 제시하지 않으며, 유아가 색을 섞거나 흔적을 겹쳐 보고 싶어 하면 종이와 도구를 더해 각자의 표현을 이어 가도록 돕습니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_8c8ae5297e0343958c0492c80b000019",
+      "value": "예술경험 - 아름다움 찾아보기 - 자연과 생활에서 아름다움을 느끼고 즐긴다.\n예술경험 - 창의적으로 표현하기 - 다양한 미술 재료와 도구로 자신의 생각과 느낌을 표현한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.1.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.2.4",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand5",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_4a2876c35d5d48e0b4a5197ad5613258",
+      "value": "토독토독 봄비는 무슨 소리일까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_e263557417124a3d943836f49f34d5e5",
+      "value": "빗소리 음원, 음원 재생기, 탬버린, 마라카스, 나무 리듬 막대",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_4f67892a806f4b439feb48e8fddf6073",
+      "value": "빗소리를 듣고 떠오르는 느낌을 나눌 수 있도록 조용히 듣는 시간을 마련합니다. 유아가 몸이나 악기로 표현하는 소리에 귀 기울이고, 소리의 빠르기와 세기를 달리해 볼 여유를 주며 친구의 소리와 함께 어울려 보고 싶다는 제안을 지원합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_8ce82bdd49464a2b8a3e6b0e6717252b",
+      "value": "예술경험 - 창의적으로 표현하기 - 신체, 사물, 악기로 간단한 소리와 리듬을 만들어 본다.\n예술경험 - 아름다움 찾아보기 - 예술적 요소에 관심을 갖고 찾아본다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.2.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand6",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_cf3edcef01794f1a981a50c2013880be",
+      "value": "친구와 머물 집을 지어 볼까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_9f878e7c8dbe4b2f93d61a9459e5bb94",
+      "value": "벽돌 블록, 종이 벽돌 블록, 천, 방석, 집 사진",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_e3cb72c59e7d495196e4b90ef9148b09",
+      "value": "친구와 함께 들어가거나 나란히 머물 공간을 구상할 수 있도록 충분한 구성 자리를 확보합니다. 집의 모양이나 출입구를 두고 의견이 다를 때 서로의 생각을 들을 수 있게 돕고, 유아들이 바꾸고 싶은 구조에 맞춰 블록과 천을 추가로 제공합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_d564ff2fddfd4bf49702ab4b5a86d7bb",
+      "value": "자연탐구 - 생활 속에서 탐구하기 - 물체의 위치와 방향, 모양을 알고 구별한다.\n사회관계 - 더불어 생활하기 - 친구와의 갈등을 긍정적인 방법으로 해결한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.3.2.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand7",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_3beb5966647d47ce9f1dbebec61444a6",
+      "value": "거울 속 내 마음은 어떤 얼굴일까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_8171526c51f94db595e9cfe1d8df6bc1",
+      "value": "안전 거울, 표정 사진 카드, 손인형",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_1ccfb6f0a5fe4c51a934f8e60e7ccdb7",
+      "value": "새로운 일상에서 느낄 수 있는 여러 마음을 편안하게 꺼내도록 거울과 표정 사진을 둡니다. 표정만으로 감정을 정답처럼 판단하지 않고 유아의 설명을 기다리며, 말하기를 망설이면 손인형으로 마음을 전하거나 친구의 이야기를 듣는 방식도 존중합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_3c4f633c39e146fcb2cc74f867615124",
+      "value": "사회관계 - 나를 알고 존중하기 - 나의 감정을 알고 상황에 맞게 표현한다.\n사회관계 - 더불어 생활하기 - 서로 다른 감정, 생각, 행동을 존중한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.3.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.3.2.4",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand8",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_005baba9c4da47e0b237ce169c2e3535",
+      "value": "꼬물꼬물 봄 곤충이 궁금해요",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_82ceac5e9e2a44ab9133d7a3fbf9498c",
+      "value": "곤충 사진, 곤충 도감, 곤충 모형, 돋보기",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_d84ee4286df04789aea0a1b775e8a21f",
+      "value": "봄에 볼 수 있는 곤충의 사진과 도감을 펼쳐 두고 유아가 궁금해하는 생김새를 함께 찾아봅니다. 모형과 사진을 비교하거나 닮은 점에 따라 모아 보고 싶어 하면 펼쳐 놓을 공간을 넓히고, 분류 기준이 다를 때에는 각자의 까닭을 들어 봅니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_9884f02acea040abbe47e50e7c4368d1",
+      "value": "자연탐구 - 자연과 더불어 살기 - 주변의 동식물에 관심을 가진다.\n자연탐구 - 생활 속에서 탐구하기 - 일상에서 모은 자료를 기준에 따라 분류한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.3.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.6",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand9",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_74cf40e8fab14b98bb8ba985911fb8cc",
+      "value": "햇살 속 그림자는 왜 달라질까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_3bd07bb1f6814606bd4ea0d7e58a9f9e",
+      "value": "손전등, 흰 천, 동물 모형, 나무 블록",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_489bc85fc437451cbfe876717e92b1d6",
+      "value": "봄 햇살과 그림자에 관한 궁금증을 놀이로 살펴볼 수 있도록 빛을 비출 흰 천과 물체를 마련합니다. 빛과 물체의 위치를 바꾸려는 시도를 충분히 기다리고, 그림자의 크기와 모양이 어떻게 달라 보이는지 유아의 말에 따라 함께 비교합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_8055c77a0a8c4d8c8014493d9b14d412",
+      "value": "자연탐구 - 생활 속에서 탐구하기 - 물체의 특성과 변화를 여러 가지 방법으로 탐색한다.\n자연탐구 - 생활 속에서 탐구하기 - 일상에서 길이, 무게 등의 속성을 비교한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.4",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand10",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_3c2be861ca424e35bf0ac747bc187bd4",
+      "value": "우리 가족 봄 소풍을 떠나 볼까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_0635875de4cd460194725b3d046031e9",
+      "value": "돗자리, 소풍 가방, 도시락통, 음식 모형, 인형",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_91cbc620f0ec4fb5add42e0623b05551",
+      "value": "가족과 함께하고 싶은 봄 소풍을 상상할 수 있도록 역할놀이 자리에 돗자리와 소품을 둡니다. 가족의 모습과 경험이 서로 다를 수 있음을 존중하며 이야기를 듣고, 유아가 원하는 역할과 소풍 장면에 따라 필요한 소품이나 공간을 조정합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_32db85b665324ed2b1da9dc9447ab3e8",
+      "value": "사회관계 - 더불어 생활하기 - 가족의 의미를 알고 화목하게 지낸다.\n예술경험 - 창의적으로 표현하기 - 극놀이로 경험이나 이야기를 표현한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.3.2.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.2.5",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    }
+   ],
+   "selected": []
+  },
+  {
+   "period_key": "m06_m08",
+   "label": "6월~8월",
+   "months": [
+    6,
+    7,
+    8
+   ],
+   "candidates": [
+    {
+     "row_key": "cand1",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_f3edcfdf2c884dafbf3f8eab06f74154",
+      "value": "졸졸졸 물길은 어디로 갈까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_c0780b9807a1407783dcdad51378bc56",
+      "value": "물놀이 통, 물뿌리개, 깔때기, 투명 호스, 플라스틱 컵, 수건",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_c4448773af4742428599dd8e3274f90e",
+      "value": "물을 흘려보내며 탐색할 수 있도록 넓은 통과 깔때기, 호스를 마련하고 바닥의 물기를 수시로 닦습니다. 유아가 물길의 높이나 방향을 바꾸어 보고 싶어 하면 고정할 자리를 함께 찾아주고, 물의 흐름에 관한 예상과 질문을 충분히 나눕니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_8b7d1d29094842949df0060f9dc79e36",
+      "value": "자연탐구 - 생활 속에서 탐구하기 - 물체의 특성과 변화를 여러 가지 방법으로 탐색한다.\n자연탐구 - 생활 속에서 탐구하기 - 물체의 위치와 방향, 모양을 알고 구별한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand2",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_afa944b14ca14631b50ef2f29e504b15",
+      "value": "꽁꽁 얼음이 어디로 사라질까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_d4e2166f574049d6bea990aae9527fa3",
+      "value": "얼음, 쟁반, 투명 컵, 미지근한 물, 스포이트, 돋보기, 수건",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_dd81e33d791f4124a569de0929009525",
+      "value": "얼음을 손으로 오래 쥐지 않고도 살펴볼 수 있도록 쟁반과 스포이트를 곁에 둡니다. 유아가 제안하는 얼음의 변화를 알아볼 방법을 함께 검토하고, 물의 양이나 놓아두는 자리를 달리하며 충분히 기다려 볼 시간을 확보합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_930c5ee85a88425384e08dd7c5d72071",
+      "value": "자연탐구 - 탐구과정 즐기기 - 궁금한 것을 탐구하는 과정에 즐겁게 참여한다.\n자연탐구 - 생활 속에서 탐구하기 - 물체의 특성과 변화를 여러 가지 방법으로 탐색한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand3",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_77344b46062c4339b95947348d9185fa",
+      "value": "포슬포슬 모래는 얼마나 담길까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_4d6ebf19be084e0792480177fc00ed9c",
+      "value": "놀이용 모래, 모래놀이 통, 모래삽, 체, 투명 용기, 물뿌리개",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_5a957318cb6b449994f373b7e406e344",
+      "value": "모래를 담거나 거를 수 있는 도구와 크기가 다른 용기를 마련하고, 모래가 눈이나 입에 들어가지 않도록 살핍니다. 유아가 마른 모래와 젖은 모래의 차이나 용기에 담기는 양을 궁금해하면 직접 비교할 수 있도록 재료와 탐색 시간을 보탭니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_97c89f6e61b24a60a69bd28844079421",
+      "value": "자연탐구 - 생활 속에서 탐구하기 - 물체의 특성과 변화를 여러 가지 방법으로 탐색한다.\n자연탐구 - 생활 속에서 탐구하기 - 일상에서 길이, 무게 등의 속성을 비교한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.4",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand4",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_cc4188f5c71d45bba1d7492039e9f508",
+      "value": "둥실둥실 비눗방울은 얼마나 클까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_7da4f96af57c4dc2a494989574454676",
+      "value": "비눗방울액, 비눗방울 막대, 넓은 쟁반, 수건",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_20a6a9ada1934e7eb3823c51e94110b3",
+      "value": "비눗방울액이 입에 닿지 않도록 사용 약속을 나누고, 서로 부딪히지 않을 만큼 놀이 공간을 넓힙니다. 고리 크기가 다른 막대를 제공하여 유아가 방울의 크기와 모양을 비교하도록 돕고, 불기와 흔들기의 세기를 자유롭게 바꾸어 볼 여유를 둡니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_f36b5c7202304ec794702a6765feb6a6",
+      "value": "자연탐구 - 생활 속에서 탐구하기 - 물체의 특성과 변화를 여러 가지 방법으로 탐색한다.\n자연탐구 - 생활 속에서 탐구하기 - 일상에서 길이, 무게 등의 속성을 비교한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.4",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand5",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_a13f0d6d14f04628bcadf670afda3fb7",
+      "value": "달콤한 여름 과일 가게 열까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_153864f8902440e7a7989fbe6f0020c1",
+      "value": "과일 모형, 바구니, 장난감 계산대, 모형 돈, 메모지, 색연필",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_8443a06f8ad249028ea84c570a8155e6",
+      "value": "수박과 참외 등 여름 과일 모형을 준비하고, 가게에 필요한 물건과 맡고 싶은 역할을 유아와 의논합니다. 사고파는 이야기가 이어질 수 있도록 손님이나 가게 주인으로 참여하며, 과일을 세거나 주문한 수량을 확인할 상황을 자연스럽게 지원합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_74b57d4e597b40ba921689abb7012108",
+      "value": "예술경험 - 창의적으로 표현하기 - 극놀이로 경험이나 이야기를 표현한다.\n자연탐구 - 생활 속에서 탐구하기 - 물체를 세어 수량을 알아본다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.2.5",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand6",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_deb50560a03942cda6f86bb44980dd26",
+      "value": "찰칵 집게로 바다를 지켜 볼까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_f4cb420b3352411b9dd045f07f843cde",
+      "value": "파란 천, 바다 동물 모형, 깨끗한 폐품(페트병, 비닐봉지 등), 집게, 바구니",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_83f25c9ebd2c4f6aa24c895ab65836aa",
+      "value": "파란 천과 바다 동물 모형으로 바다를 상상할 자리를 마련하고, 깨끗이 씻은 폐품과 집게를 제공합니다. 바다에 쓰레기가 있다면 어떨지 유아의 생각을 듣고, 집게로 물건을 옮기는 시도를 도우며 바다 생물을 위해 할 수 있는 일을 함께 이야기합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_0662adca859a45ebbbaea0e45420fa28",
+      "value": "신체운동·건강 - 신체활동 즐기기 - 신체 움직임을 조절한다.\n자연탐구 - 자연과 더불어 살기 - 생명과 자연환경을 소중히 여긴다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.1.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.3.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand7",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_de061a24f93244928132e3379b14ba95",
+      "value": "조물조물 여름옷을 빨아 볼까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_39575eb0b01846589f0ddffe19654e7b",
+      "value": "유아용 반소매 옷, 대야, 물, 빨래건조대, 빨래집게, 수건",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_0104cfe9208544d599813a06028ce155",
+      "value": "물로 옷을 헹구거나 짜 볼 수 있는 자리를 마련하고, 젖은 바닥과 빨래집게 사용을 곁에서 살핍니다. 여름에 옷이 젖거나 더러워지는 상황과 깨끗하게 입는 방법을 이야기하며, 유아가 스스로 해 보고 싶은 일을 고를 수 있도록 필요한 도움을 조절합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_5bb09d36402e48f48c17c8fb8dde3f7d",
+      "value": "신체운동·건강 - 건강하게 생활하기 - 자신의 몸과 주변을 깨끗이 한다.\n사회관계 - 나를 알고 존중하기 - 내가 할 수 있는 것을 스스로 한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.1.2.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.3.1.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand8",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_6533435cc5ec4002987823cd6ab4b4c5",
+      "value": "여름밤에는 어떤 이야기가 숨어요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_3c6493ce072b430a97b488f498bf367d",
+      "value": "여름밤 그림책, 별 사진, 검은 도화지, 흰색 색연필, 손인형",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_1fa3311dd71a4da18a89f5567e48948f",
+      "value": "여름밤 풍경이 담긴 그림책과 별 사진을 펼쳐 두고, 책을 보며 떠오르는 상상을 편안하게 말할 수 있도록 기다립니다. 유아가 새로운 이야기를 만들고 싶어 하면 손인형이나 그림 그릴 종이를 더하고, 서로의 이야기를 듣고 이어 말할 시간을 마련합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_5a2196ede42345cd849d5eff5c6854a6",
+      "value": "의사소통 - 책과 이야기 즐기기 - 책에 관심을 가지고 상상하기를 즐긴다.\n의사소통 - 책과 이야기 즐기기 - 말놀이와 이야기 짓기를 즐긴다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.2.3.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.2.3.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand9",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_880103465d844fae942a89c13e35f8dc",
+      "value": "출렁출렁 파도를 넘어가 볼까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_5887bc47f314436fb4d41f2c3c135d03",
+      "value": "긴 줄, 파란 천, 미끄럼 방지 매트, 바닥 표시 테이프",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_e601bbce4e7841f6af166375487a48be",
+      "value": "바닥에 긴 줄과 파란 천을 낮게 펼쳐 파도를 상상할 공간을 만들고, 이동할 길 사이의 간격을 넉넉히 둡니다. 유아가 걷기나 뛰기 등 원하는 움직임을 시도하도록 지켜보며, 어려움을 느끼면 줄 사이의 거리와 이동 범위를 함께 조정합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_e3b1384b559245fe828be6c3081f9526",
+      "value": "신체운동·건강 - 신체활동 즐기기 - 신체 움직임을 조절한다.\n신체운동·건강 - 신체활동 즐기기 - 기초적인 이동운동, 제자리 운동, 도구를 이용한 운동을 한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.1.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.1.1.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand10",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_2c698fe96f914cf98eab020fab1ddedf",
+      "value": "내가 꾸민 여름 부채 어때요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_b26cb77f5ce74e5c9144637ad19c912d",
+      "value": "종이 부채, 색종이, 풀, 색연필, 마스킹 테이프",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_119f4365051f4aa0b619f12c77f8dddc",
+      "value": "종이 부채와 꾸미기 재료를 제공하고, 어떤 색과 무늬를 담고 싶은지 유아의 생각을 듣습니다. 완성 모양을 제시하기보다 재료를 자유롭게 고르도록 지원하며, 부채를 사용해 보는 동안 더운 날 몸을 시원하게 하는 방법도 함께 이야기합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_511121a7aad247c2ab71c75b61aaacdd",
+      "value": "예술경험 - 창의적으로 표현하기 - 다양한 미술 재료와 도구로 자신의 생각과 느낌을 표현한다.\n자연탐구 - 자연과 더불어 살기 - 날씨와 계절의 변화를 생활과 관련짓는다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.2.4",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.3.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    }
+   ],
+   "selected": []
+  },
+  {
+   "period_key": "m09_m11",
+   "label": "9월~11월",
+   "months": [
+    9,
+    10,
+    11
+   ],
+   "candidates": [
+    {
+     "row_key": "cand1",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_fef2fe3da4094c32a3fe0fe2f446f1de",
+      "value": "바스락 낙엽에는 어떤 무늬가 있나요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_00141dc25f2a48c1a93e8e778d9d11e1",
+      "value": "낙엽, 돋보기, 흰 종이, 색연필, 쟁반",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_6700f0692f784819a73f450eed88388c",
+      "value": "색과 모양이 다른 낙엽을 살펴볼 수 있도록 돋보기와 쟁반을 마련하고, 부서진 잎도 함께 제공합니다. 유아가 궁금해하는 잎맥과 가장자리 모양을 함께 들여다보며, 나누어 놓는 기준을 바꾸거나 발견한 특징을 그림으로 남길 시간을 충분히 둡니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_650de9060c0641789cbeb50cbcfbb421",
+      "value": "자연탐구 - 생활 속에서 탐구하기 - 물체의 특성과 변화를 여러 가지 방법으로 탐색한다.\n자연탐구 - 생활 속에서 탐구하기 - 일상에서 모은 자료를 기준에 따라 분류한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.6",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand2",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_4cc9c7fcd5f64d369c280a0564c85197",
+      "value": "데굴데굴 밤은 어디까지 굴러갈까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_c00801fbe82247f4b5c91bc3439f71d7",
+      "value": "밤, 나무판, 쌓기 블록, 종이테이프, 매트",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_bea38bb538a3430982835fa2ace16e93",
+      "value": "나무판의 기울기를 바꾸어 볼 수 있도록 블록과 넓은 바닥 공간을 마련합니다. 밤을 입에 넣지 않는 약속을 나누고, 유아가 굴러가는 모습에 대해 예상하는 말을 듣습니다. 같은 조건으로 다시 해 보거나 출발 위치를 바꾸는 시도를 서두르지 않고 지원합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_405a208b73f4426e96768c9a7f32762d",
+      "value": "자연탐구 - 탐구과정 즐기기 - 궁금한 것을 탐구하는 과정에 즐겁게 참여한다.\n자연탐구 - 생활 속에서 탐구하기 - 물체의 특성과 변화를 여러 가지 방법으로 탐색한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand3",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_cc84ef132cd241f5aa15a17d9e368d19",
+      "value": "가을 수확물 중 누가 더 무거울까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_00febfc3bba34d6397a7f0eca1331359",
+      "value": "양팔저울, 단호박, 감자, 당근, 바구니, 그림 카드",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_a99b206580454425a16da6016c3da322",
+      "value": "양팔저울을 안정된 낮은 탁자에 놓고 크기와 무게가 다른 가을 수확물을 제공합니다. 유아가 손으로 들어 본 느낌과 저울의 움직임을 비교할 수 있도록 기다리며, 무엇을 함께 올려 보고 싶은지 묻고 비교 대상을 스스로 바꾸어 볼 여지를 둡니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_fd2f863711b84e6e941a5b917bb2dc1f",
+      "value": "자연탐구 - 생활 속에서 탐구하기 - 일상에서 길이, 무게 등의 속성을 비교한다.\n자연탐구 - 생활 속에서 탐구하기 - 도구와 기계에 대해 관심을 가진다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.4",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.7",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand4",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_805c8b61ee754593b04069d53bbb8657",
+      "value": "덩덕쿵 우리 장단을 들려줄까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_eb68c349b7564db0b59de9ce30489c47",
+      "value": "장구, 소고, 꽹과리, 채, 전통 연희 영상",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_f719677cc1f743bea1312ff5631b3b82",
+      "value": "짧은 전통 연희 영상을 함께 감상하며 악기 소리와 연주 모습에 관한 유아의 말을 듣습니다. 악기를 두드려 볼 자리를 넉넉히 나누고 소리 크기를 조절하도록 도우며, 유아가 만든 장단을 되풀이하거나 서로 주고받을 수 있도록 놀이 시간을 이어 갑니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_fc5fb36771a54773b1154646733dfafa",
+      "value": "예술경험 - 창의적으로 표현하기 - 신체, 사물, 악기로 간단한 소리와 리듬을 만들어 본다.\n예술경험 - 예술 감상하기 - 우리나라 전통 예술에 관심을 갖고 친숙해진다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.2.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.3.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand5",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_49146a66e4234841acd5e739b7dedc5b",
+      "value": "추석 보자기에는 무엇을 담을까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_449d8434a3ba4c7e94d33487de29563e",
+      "value": "보자기, 빈 상자, 나무 그릇, 송편 모형, 인형",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_8f9d9e66786b4b5e8e7038d9411a4b2d",
+      "value": "추석에 음식을 나누는 모습을 이야기하며 유아가 알고 있는 경험과 상상을 편안하게 말하도록 돕습니다. 보자기에 담고 싶은 물건과 초대하고 싶은 대상을 스스로 정하게 하고, 매듭이 어려울 때만 손을 보태며 나누는 상황의 역할놀이가 이어지도록 지원합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_e8043f1abdd64a5986ad682c4f23338e",
+      "value": "의사소통 - 듣기와 말하기 - 자신의 경험, 느낌, 생각을 말한다.\n예술경험 - 창의적으로 표현하기 - 극놀이로 경험이나 이야기를 표현한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.2.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.2.5",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand6",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_9eb8feda694b4de090dd5bd22df3a2f1",
+      "value": "쏙쏙 종이 띠로 가을빛을 엮어요",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_328a923f6a184b10822afc57152966e1",
+      "value": "색종이, 도화지, 안전가위, 풀, 가을 풍경 사진",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_c96f13d7c3224361ba5bf522d2391c7b",
+      "value": "가을 풍경 사진에서 눈길이 가는 색을 함께 찾아보고, 넓게 틈을 낸 도화지와 종이 띠를 제공합니다. 엮는 방법을 궁금해하면 일부만 천천히 보여 주며, 색의 순서와 띠의 방향을 자유롭게 바꾸거나 유아가 떠올린 다른 표현으로 이어 가도록 돕습니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_42456f18c038407b88f43a78a3fd9446",
+      "value": "예술경험 - 창의적으로 표현하기 - 다양한 미술 재료와 도구로 자신의 생각과 느낌을 표현한다.\n자연탐구 - 생활 속에서 탐구하기 - 물체의 위치와 방향, 모양을 알고 구별한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.2.4",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand7",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_2558f51d86764f0b8a4eabfd627807ad",
+      "value": "기러기들은 왜 함께 날아갈까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_d48be7e6c64447a5bc72765873af1837",
+      "value": "철새 사진, 철새 그림책, 철새 비행 영상, 지구본",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_f255bf670e7e4b47830bd0c84950e37f",
+      "value": "기러기가 무리 지어 나는 사진과 짧은 영상을 준비하고, 유아가 궁금해하는 모습에서 이야기를 시작합니다. 계절에 따라 새가 머무는 곳이 달라지는 까닭을 그림책에서 함께 찾아보며, 답을 바로 알려 주기보다 유아의 여러 추측을 듣고 다시 살펴보도록 돕습니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_173890bc7a184fb6a0e4fb0e6b4d6867",
+      "value": "자연탐구 - 자연과 더불어 살기 - 주변의 동식물에 관심을 가진다.\n자연탐구 - 자연과 더불어 살기 - 날씨와 계절의 변화를 생활과 관련짓는다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.3.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.3.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand8",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_73ae3a0dc822492c9c4759bc4a7c67c7",
+      "value": "폴짝폴짝 사방치기 길을 바꿔요",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_dd1552775c96476cb102bbff756ec559",
+      "value": "바닥용 테이프, 숫자 카드, 콩주머니, 미끄럼 방지 매트",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_3c31a95defa040f98a12cf90d3ff1109",
+      "value": "발이 걸리지 않도록 테이프를 붙이고 뛰는 자리와 기다리는 자리 사이에 여유를 둡니다. 유아가 편안하게 뛸 수 있는 칸의 크기를 함께 조정하며, 발을 딛는 방법이나 차례에 관한 의견이 다를 때 서로의 말을 듣고 놀이 약속을 정하도록 돕습니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_ae9ba0cbf62d4fe0b5851de438bfe065",
+      "value": "신체운동·건강 - 신체활동 즐기기 - 기초적인 이동운동, 제자리 운동, 도구를 이용한 운동을 한다.\n사회관계 - 더불어 생활하기 - 약속과 규칙의 필요성을 알고 지킨다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.1.1.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.3.2.6",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand9",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_ec50fe8390a74507a81cbbfbc5f3014d",
+      "value": "오늘 가을 하늘은 어떤 표정인가요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_11f10266634247418fbd34e9c88e0710",
+      "value": "달력, 날씨 그림 카드, 도화지, 사인펜, 풀",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_8d0b04c648374769aaf7aeea26ad3f35",
+      "value": "하늘과 바람의 변화를 살펴볼 시간을 두고, 유아가 느낀 날씨를 말이나 표시로 남길 수 있게 자료를 제공합니다. 그림 카드에 없는 날씨는 새 기호로 나타내도록 격려하며, 기록을 다시 볼 때 옷차림이나 바깥놀이와 연결되는 유아의 이야기를 듣습니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_65078d852132457085a75187a824a58f",
+      "value": "자연탐구 - 자연과 더불어 살기 - 날씨와 계절의 변화를 생활과 관련짓는다.\n의사소통 - 읽기와 쓰기에 관심 가지기 - 주변의 상징, 글자 등의 읽기에 관심을 가진다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.3.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.2.2.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand10",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_530be7f09e474aa9a8dfd1bb2e9d79aa",
+      "value": "포슬포슬 고구마 속이 궁금해요",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_1f56b8a56d5d48dfb09e428221f3262a",
+      "value": "생고구마, 찐 고구마, 접시, 포크, 집게, 돋보기",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_9eb85340a97b4f7c8781a81e3195c8f2",
+      "value": "식품 알레르기와 식이 제한을 확인하고, 손을 씻은 뒤 살펴볼 생고구마와 충분히 식힌 찐 고구마를 구분해 제공합니다. 껍질과 속의 색이나 단단함에 관한 유아의 표현을 듣고, 맛보기는 원하는 유아가 안전한 크기로 즐기며 음식에 대한 느낌을 나누도록 돕습니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_342eada5efe146e499e03ff208901b95",
+      "value": "자연탐구 - 생활 속에서 탐구하기 - 물체의 특성과 변화를 여러 가지 방법으로 탐색한다.\n신체운동·건강 - 건강하게 생활하기 - 몸에 좋은 음식에 관심을 가지고 바른 태도로 즐겁게 먹는다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.1.2.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    }
+   ],
+   "selected": []
+  },
+  {
+   "period_key": "m12_m02",
+   "label": "12월~2월",
+   "months": [
+    12,
+    1,
+    2
+   ],
+   "candidates": [
+    {
+     "row_key": "cand1",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_57b8f1a76d1b4f6a890eef4f7affa343",
+      "value": "짝짝, 내 장갑 친구는 어디 있나요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_86aa7517c4484bacb890b1c95d7714aa",
+      "value": "벙어리장갑, 손가락장갑, 바구니, 색연필, 종이",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_ffede77ad27148c992d80464dd997ecf",
+      "value": "색과 무늬, 크기가 다른 장갑을 마련하여 유아가 자유롭게 살펴보고 모아 볼 수 있도록 합니다. 어떤 장갑끼리 함께 두고 싶은지 이야기를 듣고, 유아가 제안한 기준을 그림으로 표시하거나 새로운 기준으로 다시 나누어 볼 시간을 충분히 제공합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_be558de25cba49dd98227209779eb771",
+      "value": "자연탐구 - 생활 속에서 탐구하기 - 일상에서 모은 자료를 기준에 따라 분류한다.\n의사소통 - 듣기와 말하기 - 자신의 경험, 느낌, 생각을 말한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.6",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.2.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand2",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_4648def4f2aa49cfb6969fa57ce9d8a1",
+      "value": "퐁퐁 종이 눈덩이를 던져 볼까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_b386d7d7fc314aa2a53da4e87e9d5696",
+      "value": "신문지, 흰 종이, 종이 상자, 바구니, 마스킹 테이프",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_dc52dc02251f44ecbf82752f02801f69",
+      "value": "종이를 뭉쳐 던질 수 있는 넓은 공간을 확보하고, 유아와 사람이 없는 방향으로 던지는 약속을 정합니다. 유아가 원하는 위치에 바구니와 상자를 옮길 수 있게 하며, 던지는 거리와 목표물의 높이를 스스로 조절해 볼 여유를 줍니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_747fb627d7214c36b8bad37c66f550f0",
+      "value": "신체운동·건강 - 신체활동 즐기기 - 기초적인 이동운동, 제자리 운동, 도구를 이용한 운동을 한다.\n신체운동·건강 - 안전하게 생활하기 - 일상에서 안전하게 놀이하고 생활한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.1.1.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.1.3.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand3",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_edbe4c621a6946afb3d2e85cac5b3b36",
+      "value": "콜록콜록 인형을 어떻게 돌볼까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_1deae3dcbf8e475eb2a0d2a003e47274",
+      "value": "인형, 병원놀이 도구, 손수건, 빈 휴지 상자, 종이, 색연필",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_605f0ba4bd314d648dc90ba1ea467c53",
+      "value": "인형을 돌보는 데 필요한 병원놀이 도구와 쉴 자리를 마련하고, 유아가 정하는 역할과 상황에 따라 공간을 바꿀 수 있게 합니다. 놀이 중 감기나 기침에 관한 질문이 나오면 손 씻기와 기침 예절을 함께 이야기하며 필요한 정보를 제공합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_e18749e7788f416bb80ecf2fb0f33046",
+      "value": "예술경험 - 창의적으로 표현하기 - 극놀이로 경험이나 이야기를 표현한다.\n신체운동·건강 - 건강하게 생활하기 - 질병을 예방하는 방법을 알고 실천한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.2.5",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.1.2.4",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand4",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_3a7470078b704359ba3ced3046df1a25",
+      "value": "몽글몽글 털실로 겨울을 그려요",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_bc3a90df77b047aa847a446c59f9c9ff",
+      "value": "털실, 도화지, 목공용 풀, 유아용 가위, 크레파스",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_54a05801312a4d9d80ee47613de1e829",
+      "value": "굵기와 색이 다른 털실을 만져 보고 선처럼 펼칠 수 있도록 넓은 종이와 미술 도구를 제공합니다. 유아가 떠올리는 겨울의 느낌을 듣고, 털실을 놓거나 붙이는 방법을 정해 주지 않으며 재료의 질감과 선을 충분히 탐색하도록 기다립니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_021b046b502145ec91354e4f06f77d80",
+      "value": "예술경험 - 창의적으로 표현하기 - 다양한 미술 재료와 도구로 자신의 생각과 느낌을 표현한다.\n예술경험 - 아름다움 찾아보기 - 예술적 요소에 관심을 갖고 찾아본다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.2.4",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand5",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_ec55065909ca4a90a5b2936b79e88af4",
+      "value": "따뜻한 물을 포근하게 감싸 줄까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_f8d5c25cb36b4deda50eaf4539ab4b1a",
+      "value": "플라스틱 컵, 미지근한 물, 수건, 펠트, 알루미늄 포일, 디지털 온도계, 쟁반",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_4099c3ff0b0f4566a12172c67311a988",
+      "value": "교사가 물의 온도를 확인하여 뜨겁지 않은 물을 같은 양으로 담고, 컵을 감쌀 재료를 제공합니다. 어떤 재료가 따뜻함을 오래 지켜 줄지 유아의 생각을 듣고, 원하는 간격으로 온도계를 함께 확인하며 재료를 바꾸어 탐색할 시간을 둡니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_23f83513608f42bbb4e21ba0a9ad7ce4",
+      "value": "자연탐구 - 생활 속에서 탐구하기 - 물체의 특성과 변화를 여러 가지 방법으로 탐색한다.\n자연탐구 - 탐구과정 즐기기 - 궁금한 것을 탐구하는 과정에 즐겁게 참여한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand6",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_6d926b6901e44eb0bb0a9fc79b973fa6",
+      "value": "흥얼흥얼 겨울 노래를 바꿔 불러요",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_73e2ec1592234cd8ab2eed2e89f533b0",
+      "value": "겨울 동요 음원, 음원 재생기, 종이, 색연필",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_3fde91db99624b7099bf975fb66467cf",
+      "value": "유아가 편안하게 듣고 따라 부를 수 있는 겨울 동요를 들려주고, 다시 듣거나 혼자 흥얼거릴 시간도 마련합니다. 노랫말에서 바꾸고 싶은 낱말이 나오면 유아의 표현을 그대로 적어 주며, 서로 만든 재미있는 말을 노래에 넣어 즐기도록 돕습니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_c7bc46560f7c4965832a0419f08c9491",
+      "value": "예술경험 - 창의적으로 표현하기 - 노래를 즐겨 부른다.\n의사소통 - 책과 이야기 즐기기 - 말놀이와 이야기 짓기를 즐긴다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.4.2.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.2.3.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand7",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_a59d4654e49349cfb03fb2003893abca",
+      "value": "부릉부릉 눈 치우는 차가 궁금해요",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_59776c9578954e59ad95463a9462cdb3",
+      "value": "제설차 사진, 장난감 트럭, 조립 블록, 두꺼운 종이, 마스킹 테이프, 솜",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_7943f4147f2c40b19352eaa289f205f2",
+      "value": "제설차가 눈을 밀거나 모으는 모습을 살펴볼 수 있는 사진을 제공하고, 유아의 질문에 맞추어 차의 생김새를 함께 알아봅니다. 장난감 트럭과 조립 재료로 생각을 시험할 공간을 마련하며, 솜이 움직이는 방향에 따라 구조를 바꾸어 볼 수 있게 합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_83edfc117b874a94aeb78512b68b3154",
+      "value": "자연탐구 - 생활 속에서 탐구하기 - 도구와 기계에 대해 관심을 가진다.\n자연탐구 - 생활 속에서 탐구하기 - 물체의 위치와 방향, 모양을 알고 구별한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.7",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand8",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_266581547e4841dba6a6cd77b2ec3bc6",
+      "value": "찌릿찌릿 털모자에 종이가 붙어요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_91195ca072be4f9ab041b1cfc0820a43",
+      "value": "털모자, 플라스틱 빗, 종이 조각, 쟁반, 돋보기",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_44776e8a2095404fbd6dfffdcc13795f",
+      "value": "겨울철 정전기를 살펴볼 수 있도록 털모자와 플라스틱 빗, 작은 종이 조각을 준비합니다. 빗을 문지르는 정도나 종이와의 거리를 유아가 바꾸어 볼 수 있게 하고, 종이가 붙지 않는 경우에도 서둘러 답을 주지 않고 다른 시도를 함께 찾아봅니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_5b00ac68cefb421a99796fedfad9cd0e",
+      "value": "자연탐구 - 생활 속에서 탐구하기 - 물체의 특성과 변화를 여러 가지 방법으로 탐색한다.\n자연탐구 - 탐구과정 즐기기 - 궁금한 것을 탐구하는 과정에 즐겁게 참여한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.2.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand9",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_cf63ad4095ec4540a1debdce70ab51e2",
+      "value": "겨울잠 자는 동물은 뭐 하고 있나요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_d699656ea4a341c89286920e671470c9",
+      "value": "겨울잠 관련 그림책, 곰과 개구리 사진, 돋보기, 종이, 색연필",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_28eb0cc0164e479faba8397bb240ac64",
+      "value": "곰과 개구리의 겨울 생활을 살펴볼 수 있는 그림책과 사진을 마련하고, 유아가 궁금해하는 장면을 충분히 들여다보도록 합니다. 질문에 맞는 자료를 함께 찾아보며 동물마다 겨울을 보내는 모습이 다름을 이야기하고, 더 알고 싶은 내용을 남겨 둡니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_c2640a217c944921af319773be571253",
+      "value": "자연탐구 - 자연과 더불어 살기 - 주변의 동식물에 관심을 가진다.\n의사소통 - 책과 이야기 즐기기 - 책에 관심을 가지고 상상하기를 즐긴다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.5.3.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.2.3.1",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    },
+    {
+     "row_key": "cand10",
+     "memo_applied": false,
+     "play_name": {
+      "item_id": "item_41521f1bbbb3487191db7a17b9bbba77",
+      "value": "겨울의 내 이야기를 책에 담아 볼까요?",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "materials": {
+      "item_id": "item_02fae1ad4cee490daa42d362a43743f0",
+      "value": "도화지, 색연필, 사인펜, 스티커, 구멍 뚫는 도구, 책 고리",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "support_direction": {
+      "item_id": "item_ec437c54e2f14aaaa1a2fd43a05e5fe5",
+      "value": "겨울에 해 보았거나 해 보고 싶은 일을 편안하게 이야기할 자리를 마련하고, 유아가 고른 내용을 그림과 글자 모양으로 남길 수 있게 합니다. 글로 적어 달라는 요청에는 유아의 말을 그대로 받아 적고, 책을 묶는 방식과 소개 여부는 유아의 선택을 존중합니다.",
+      "evidence": [],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     },
+     "learning": {
+      "item_id": "item_7b124bc4e22d459897d22788c8adcd3c",
+      "value": "의사소통 - 듣기와 말하기 - 자신의 경험, 느낌, 생각을 말한다.\n의사소통 - 읽기와 쓰기에 관심 가지기 - 자신의 생각을 글자와 비슷한 형태로 표현한다.",
+      "evidence": [
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.2.1.2",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       },
+       {
+        "source_type": "CURRICULUM",
+        "source_id": "nuri2019.2.2.3",
+        "source_version": "nuri-curriculum-content-v0.1.0",
+        "effective_date": null,
+        "display_name": null
+       }
+      ],
+      "generation": {
+       "method": "RULE_LLM",
+       "rule_id": "play_project.generate",
+       "rule_version": "play-project-planner-v6+teacher-venues-v2"
+      }
+     }
+    }
+   ],
+   "selected": []
+  }
+ ],
+ "memo": "",
+ "memo_notices": []
+}

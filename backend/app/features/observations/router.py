@@ -10,20 +10,28 @@
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.features.auth.models import User
 from app.features.centers.models import Center, Child, Class
-from app.features.documents.stale import observation_changed
+from app.features.documents.stale import SourceImpact, observation_changed
+from app.features.observations import assist
 from app.features.observations.models import AXES, DEFAULT_AXIS, NURI_DOMAINS, Observation
 from app.features.observations.schemas import (
+    DomainSuggestRequest,
+    DomainSuggestResponse,
+    MissingResponse,
     ObservationCreate,
+    ObservationDeleteResponse,
     ObservationListResponse,
+    ObservationMutationResponse,
     ObservationResponse,
     ObservationUpdate,
+    ReviewImpact,
 )
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import (
@@ -73,9 +81,16 @@ def _response(row) -> ObservationResponse:
     )
 
 
-def _own(session: Session, user: User, observation_id: int):
-    """남의 원 기록도 없는 기록과 같은 404 다 (shared/auth/ownership.py 와 같은 이유)."""
-    row = session.execute(_visible(user).where(Observation.id == observation_id)).first()
+def _own(session: Session, user: User, observation_id: int, *, lock: bool = False):
+    """남의 원 기록도 없는 기록과 같은 404 다 (shared/auth/ownership.py 와 같은 이유).
+
+    `lock` 은 고치거나 지울 때다. 원본 → 문서 순으로 잠가야 refresh · reconfirm
+    (review.lock_sources)과 순서가 같아 교착이 없다. 일과 PUT · DELETE 와 같은 규칙이다.
+    """
+    query = _visible(user).where(Observation.id == observation_id)
+    if lock:
+        query = query.with_for_update(of=Observation).execution_options(populate_existing=True)
+    row = session.execute(query).first()
     if row is None:
         raise _NOT_FOUND
     return row
@@ -125,6 +140,31 @@ def create_observation(
     return _response(_own(session, user, observation.id))
 
 
+@router.post("/domain-suggest", response_model=DomainSuggestResponse)
+def suggest_domain(
+    body: DomainSuggestRequest, session: DbSession, user: CurrentUser
+) -> DomainSuggestResponse:
+    """적던 사실로 영역 하나를 제안한다(ADR-082). **저장하지 않고, 고르지도 않는다.**"""
+    classroom = require_own_class(session, user, body.class_id)
+    center = session.get(Center, classroom.center_id)
+    axis = center.observation_axis if center else DEFAULT_AXIS
+    domain, confidence = assist.suggest_domain(session, classroom.id, axis, body.fact, body.context)
+    return DomainSuggestResponse(domain=domain, confidence=confidence)
+
+
+@router.post("/{observation_id}/missing", response_model=MissingResponse)
+def check_missing(observation_id: int, session: DbSession, user: CurrentUser) -> MissingResponse:
+    """저장한 기록에 상황 · 행동 · 아이 반응이 있는지 본다(ADR-082). 기록은 건드리지 않는다."""
+    observation = _own(session, user, observation_id)[0]
+    # 같은 원이라도 남의 반 기록으로 AI 를 부르지 못하게 반 권한을 본다. 읽기라 승인받은 반은 된다.
+    require_own_class(session, user, observation.class_id, read_only=True)
+    return MissingResponse(
+        missing=assist.missing_parts(
+            session, observation.class_id, observation.fact, observation.context
+        )
+    )
+
+
 @router.get("", response_model=ObservationListResponse)
 def list_observations(
     session: DbSession,
@@ -156,23 +196,50 @@ def list_observations(
     return ObservationListResponse(items=[_response(row) for row in session.execute(query)])
 
 
-@router.put("/{observation_id}", response_model=ObservationResponse)
+def _impact(impact: SourceImpact) -> ReviewImpact:
+    return ReviewImpact(
+        affected_document_ids=list(impact.affected_document_ids),
+        newly_stale_document_ids=list(impact.newly_stale_document_ids),
+    )
+
+
+@router.put("/{observation_id}", response_model=ObservationMutationResponse | ObservationResponse)
 def update_observation(
-    observation_id: int, body: ObservationUpdate, session: DbSession, user: CurrentUser
-) -> ObservationResponse:
-    observation = _own(session, user, observation_id)[0]
+    observation_id: int,
+    body: ObservationUpdate,
+    session: DbSession,
+    user: CurrentUser,
+    include_impact: bool = False,
+) -> ObservationResponse | ObservationMutationResponse:
+    """`include_impact=true` 면 `review_impact` 를 더한다 — 화면이 「N건 다시 검토」를 띄운다."""
+    observation = _own(session, user, observation_id, lock=True)[0]
     _check_axis(session, user, observation.class_id, body.domain)
+    domain_moved = observation.domain != body.domain
     for field, value in body.model_dump().items():
         setattr(observation, field, value)
-    observation_changed(session, observation_id, observation.fact, observation.date)
+    impact = observation_changed(session, observation_id, observation, domain_moved=domain_moved)
     session.commit()
-    return _response(_own(session, user, observation_id))
+    result = _response(_own(session, user, observation_id))
+    if include_impact:
+        return ObservationMutationResponse(**result.model_dump(), review_impact=_impact(impact))
+    return result
 
 
-@router.delete("/{observation_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_observation(observation_id: int, session: DbSession, user: CurrentUser) -> None:
-    observation = _own(session, user, observation_id)[0]
+@router.delete(
+    "/{observation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+    responses={200: {"model": ObservationDeleteResponse}},
+)
+def delete_observation(
+    observation_id: int, session: DbSession, user: CurrentUser, include_impact: bool = False
+) -> Response:
+    observation = _own(session, user, observation_id, lock=True)[0]
     require_own_class(session, user, observation.class_id)
-    observation_changed(session, observation_id, None, None)
+    impact = observation_changed(session, observation_id, None)
     session.delete(observation)
     session.commit()
+    if include_impact:
+        result = ObservationDeleteResponse(review_impact=_impact(impact))
+        return JSONResponse(result.model_dump(), status_code=status.HTTP_200_OK)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

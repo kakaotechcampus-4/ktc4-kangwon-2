@@ -25,6 +25,7 @@
 ```
 
 `weeklyLog` 가 아닌 `kind` 에 `source_kind` 를 보내면 `VALIDATION_FAILED` 422 다.
+(2026-11-10 덧붙임) 기본값이 `dailyLog` 라, 다른 `kind` 에 `"dailyLog"` 를 보내는 것은 보내지 않은 것과 같아 통과한다. 422 는 `"routine"` 을 보낼 때다(`documents/router.py`, `schemas.py`).
 
 ## 근거
 

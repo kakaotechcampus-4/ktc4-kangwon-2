@@ -10,11 +10,13 @@
 
 ## 아동 개인정보
 
+- 근거 기록 추가 삭제는 원래 74건 심사 결과와 구분하고, 제외 ID 전체에 사유를 연결한다 — `build.privacy_review_addenda` · `p0-planning/tests/evidence/test_evidence_store.py` · ADR-079 10번
+
 | 막는 것 | 어떻게 | 근거 |
 |---|---|---|
 | 실명이 LLM 프롬프트·응답·로그에 남는 것 | 호출 직전 아동 코드로 치환. `backend/app/shared/childCode/` 한 곳에서만 | ADR-004 · `test_child_code.py` |
 | 치환 실패한 채 호출 | **호출하지 않고 에러를 낸다** | [CLAUDE.md](../../CLAUDE.md) §개인정보 |
-| 복원 후 조사가 틀어지는 것 | 치환 토큰을 **받침 있는 더미 한글 이름**으로 | 같은 곳 |
+| 복원 후 조사가 틀어지는 것 | 치환 토큰을 **원래 이름과 받침 유무가 같은 더미 한글 이름**으로 | 같은 곳 |
 | 브라우저에 실명이 쌓이는 것 | `localStorage` · `sessionStorage` · IndexedDB 금지 — 거기 쌓이면 삭제 요청이 와도 못 지운다 | ADR-013 |
 | 필요 없는 정보 수집 | **아동에게서 이름만 받는다.** 생년월일·성별·건강정보 안 받음 | [CLAUDE.md](../../CLAUDE.md) |
 | 동의 없는 입력 | 아동 명단 입력칸은 확인 문구 체크박스 뒤에서만 열린다 | 같은 곳 |
@@ -26,6 +28,7 @@
 
 - **사실기록형(알림장 · 사고보고서 · 투약의뢰서)에 생성 기능을 안 붙였다.** 없는 사실을 쓰면 문서 조작이다 — [CLAUDE.md](../../CLAUDE.md) §문서 5분류
 - 해석형은 3층 규격을 못 넘으면 반려 → [06](06-ai-quality.md)
+- 일지 초안을 못 만들면(모델 실패 · 한도 · 1·2단에 걸림) 사실만 채운 초안을 201 로 주고 해석 · 지원은 빈 칸으로 둔다 — **걸린 글은 저장하지 않는다(fail-closed).** 편집 화면이 「AI 가 이번에는 초안을 쓰지 못했어요」로 알리고, 서버 로그에 까닭만 남긴다 — ADR-093 · `backend/tests/test_documents_fallback.py` · `frontend/tests/observation-screens.test.mjs`
 - 자동 제출·자동 발송 없음 — §생성
 - v1 월간은 안전 품질표의 자료 SHA·안전 분류 판이 맞지 않거나 분류가 없으면 LLM 호출·저장 전에 중단한다 — `p0-planning/src/ssuksak/planning/retrieval/retriever.py` · `p0-planning/tests/finalization/test_safety_placement_e2e.py`
 - v1 월간 실내 대체활동은 주간 분류가 실내대체로 정한 기관 기록만 근거로 쓰고, 근거가 없으면 생성하지 않고 빈칸을 남긴다. 주간 분류가 자료 묶음과 맞지 않으면 LLM 호출 · 저장 전에 중단한다 — `p0-planning/src/ssuksak/planning/retrieval/retriever.py` · `p0-planning/tests/application/test_monthly_application.py` · `backend/tests/test_monthly_lifecycle_api.py`
@@ -40,7 +43,7 @@
 
 | 누가 정하나 | 무엇 | 코드 |
 |---|---|---|
-| Rule | 그 달 후보 주제 5개 — 승인된 훈련 주제 Reference(`emergency-drill-topics-v0.1.0`, 2026-10-29 `HUMAN_APPROVED` · `runtime_active: true`)에서만, 월 한정 주제 먼저 · 나머지는 목록 순서. Reference 가 없거나 승인 전 · 누리과정 판이 다르거나 · 내용 ID 가 없으면 LLM 호출 전에 중단 | `p0-planning/src/ssuksak/planning/application/drill_topics.py` |
+| Rule | 그 달 후보 주제 5개 — 승인된 훈련 주제 Reference(`emergency-drill-topics-v0.1.0`, 2026-10-29 `HUMAN_APPROVED` · `runtime_active: true`)에서만, 월 한정 주제 먼저 · 나머지 연중 주제는 목록 순서에서 학년도 달마다(3월 = 0) 시작점을 한 칸씩 옮김(2026-11-11 하민 결정). Reference 가 없거나 승인 전 · 누리과정 판이 다르거나 · 내용 ID 가 없으면 LLM 호출 전에 중단 | `p0-planning/src/ssuksak/planning/application/drill_topics.py` |
 | Rule | 후보의 누리과정 근거(`CURRICULUM` 하나, `nuri2019.1.3.4`) — LLM 이 근거를 달면 거절 | `planner/validation.py` `_drill_candidate_issues` · `domain/monthly_plan.py` `MonthlyDrillCandidate` · `domain/play_monthly_plan.py` `DrillCandidate` |
 | LLM | 주제마다 유아가 알아듣는 말로 한 문장(문장화만). 응답의 `topic_id` 가 Rule 이 준 목록과 다르거나 · 겹치거나 · 빠지면 거절 | `planner/play_monthly.py` `UNKNOWN_DRILL_TOPIC` · `DUPLICATE_DRILL_TOPIC` · `MISSING_DRILL_TOPIC` |
 | 검사 | 입력에 없는 날짜 · 시각 · 사람 이름(`UNSUPPORTED_FACT`), 내부 ID 노출, 두 문장 이상 · 주제끼리 같은 문장(v1) — 거절 | 같은 곳 · `planner/weekly.py` `unsupported_facts` |
@@ -63,6 +66,10 @@
 - `LLM_MODE=mock` 이 기본값
 - 예산 ₩120,000/월, **초과 시 키 자동 삭제.** 자동 차단은 일부러 안 만들었다 —
   90%에서 끊으면 파일럿 중 교사 앞에서 서비스가 멈춘다. 사람이 판단할 기회를 남겼다 (2026-09-21 결정)
+- **요청 하나의 호출 수는 막는다** — 생성 요청 하나가 LLM 을 48번(재시도 포함, 스레드를 합쳐서) 넘게 부르면 더 부르지 않는다
+  (ADR-081 · `test_llm_call_cap.py` · `test_play_project_llm_cap.py`). 48 은 설계상 최대(놀이형 연간 24)의 2배다.
+  월 합계가 아니라 반복문이 새는 버그를 막는 장치라 정상 요청은 멈추지 않는다
+- **생성 요청 수는 IP 마다 막는다** — 생성 POST(연간 · 월간 · 주간 · 칸 재생성 · 일지 초안 · 검증)를 합쳐 분당 6번 + 한꺼번에 10번, 넘으면 429 `RATE_LIMITED`. 목록 GET 은 세지 않는다 — `nginx/nginx.conf` · `nginx/app-routes.conf`
 - `.env` 는 커밋 안 함. `NEXT_PUBLIC_` 접두사를 키에 안 씀(번들에 박힌다)
 
 ## 입력과 권한
@@ -73,17 +80,20 @@
   # ✓  text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
   ```
 - 서버 인증과 센터 범위 — ADR-017 · `test_auth.py` · `features/auth/`
+- 로그인 · 가입 · 카카오 · 비밀번호 바꾸기는 IP 마다 분당 10번 + 한꺼번에 10번 — 비밀번호를 계속 대입하는 길을 막는다 — `nginx/app-routes.conf`
 - 비밀번호 scrypt — ADR-029 · 같은 원은 정부 어린이집 목록으로 묶고 다른 반은 담임 승인 뒤 보기만 — ADR-068 · ADR-059
 
 - 생성에 쓰는 기관 근거 자료에서 사람이 개인정보로 판정한 기록 42개를 통째 제외하고 분류 4종을 같은 SHA에 연결했다 — [검토·승인 기록](../evidence-store-v0-2-human-review.md) · `p0-planning/tests/evidence/test_evidence_store.py` · `p0-planning/tests/finalization/test_freeze.py`
 - 그 42개가 남아 있던 옛 근거 본체 v0.1.0 을 저장소에서 지웠다(git 이력에는 남는다) — `p0-planning/data/evidence/` · `p0-planning/tests/unit/test_safety_evidence_classification.py`
+- 남의 이메일로 먼저 가입해 둔 사람이 진짜 주인의 카카오 로그인 뒤에도 남지 못한다 — 이을 때 비밀번호와 그 전 토큰을 끊고, 비밀번호를 바꿔도 그 전 토큰을 끊는다 — ADR-092 · `test_auth_kakao.py` `test_이으면_먼저_가입한_비밀번호와_토큰을_끊는다` · `backend/app/shared/auth/tokens.py`
 
 - 계획안의 장소 경계: 검토된 특정 장소명·명시적 현장학습 근거를 맥락형 월간/주간 후보에서 제외한다. 생성의 장소 허용은 긍정 요청·교사가 입력/수정한 확정 부모 값에 한하며, 단순 확정·무변경 저장·거절 요청은 허용하지 않는다. 출처 전달·수리 거절은 `p0-planning/tests/planner/test_venue_policy.py`, 소주제 저장·재조회는 `backend/tests/test_plans_api.py`로 확인한다. 목록에 없는 새 장소명과 일반 외부 방문을 전부 감지하지는 않는다 — `p0-planning/CLAUDE.md`의 Named venue boundary.
 
 ## 아직 아닌 것
 
-- 속도 제한(rate limit)이 없다
+- 속도 제한은 IP 단위뿐이다 — 공유기 하나를 쓰는 원은 교사들이 한 몫을 나눠 쓰고, 계정 단위 제한은 없다(`nginx/nginx.conf`). 숫자는 파일럿 첫 값이라 운영 429 기록을 보고 다시 정한다
 - 로그에서 개인정보를 거르는 검사가 자동이 아니다 — `test_error_logging.py` · `test_llm_logging.py` 가 일부만 본다
+- 이메일 가입이 메일 주인인지 확인하지 않는다(인증 메일 없음). ADR-092 이전에 카카오로 이어진 계정의 비밀번호는 그대로 남아 운영 DB 에서 사람이 확인해야 한다 — ADR-092 「결과」
 - 소방대피 · 재난대비 후보 문장의 대피 장소 · 절차 · 주제 적합성을 결정적으로 거르는 검사기가 없다 — 지금은 프롬프트와 교사 검토뿐(§소방대피 · 재난대비 훈련 칸)
 
 ## 더 모을 근거

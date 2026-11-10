@@ -18,6 +18,14 @@ export const RECORD_KINDS = ["dailyLog", "weeklyLog", "observation", "assessment
 export type RecordKind = (typeof RECORD_KINDS)[number];
 export const isRecordKind = (kind: string): kind is RecordKind =>
   (RECORD_KINDS as readonly string[]).includes(kind);
+/**
+ * AI 초안을 만드는 세 종류. 영유아 평가는 만들지 않고 올린 것만 받는다 (ADR-091) —
+ * 서버도 `POST /api/documents` 에 `assessment` 를 보내면 422 다.
+ */
+export const GENERATED_KINDS = ["dailyLog", "weeklyLog", "observation"] as const;
+export type GeneratedKind = (typeof GENERATED_KINDS)[number];
+export const isGeneratedKind = (kind: string): kind is GeneratedKind =>
+  (GENERATED_KINDS as readonly string[]).includes(kind);
 
 // 서버 id 는 테이블마다 1 부터 센다. 화면 id 와 섞이지 않게 접두사를 붙인다.
 const DOCUMENT_PREFIX = "document:";
@@ -36,17 +44,28 @@ export function documentServerId(localId: string): number | null {
   return Number.isSafeInteger(id) ? id : null;
 }
 
+type SourceKind = NonNullable<Source["kind"]>;
+const SOURCE_KINDS: readonly SourceKind[] = ["observation", "document", "routine"];
 /**
  * 근거 id 가 가리키는 것은 종류마다 다르다 (§11).
- * 주간 보육일지는 문서, 일일 보육일지는 일과 기록(ADR-025), 나머지는 관찰 기록이다.
+ * 서버가 `source_kind` 를 주면 그것을 따른다 — 주간 보육일지는 일일 문서이거나 일과 기록이다.
+ * 안 주는 서버(옛 응답)면 문서 종류로 짐작한다: 주간은 문서, 일일은 일과 기록(ADR-025),
+ * 나머지는 관찰 기록.
  */
-function sourceLocalId(kind: string, id: number) {
-  if (kind === "weeklyLog") return documentLocalId(id);
-  if (kind === "dailyLog") return routineLocalId(id);
+function sourceKindOf(docKind: string, given?: string | null): SourceKind {
+  if (given && (SOURCE_KINDS as readonly string[]).includes(given)) return given as SourceKind;
+  if (docKind === "weeklyLog") return "document";
+  if (docKind === "dailyLog") return "routine";
+  return "observation";
+}
+function sourceLocalId(kind: SourceKind, id: number) {
+  if (kind === "document") return documentLocalId(id);
+  if (kind === "routine") return routineLocalId(id);
   return observationLocalId(id);
 }
 function sourceServerId(kind: string, localId: string) {
-  if (kind === "weeklyLog") return documentServerId(localId);
+  // 주간은 근거가 두 종류다. 화면 id 의 접두사가 종류를 들고 있다.
+  if (kind === "weeklyLog") return documentServerId(localId) ?? routineServerId(localId);
   if (kind === "dailyLog") return routineServerId(localId);
   return observationServerId(localId);
 }
@@ -55,7 +74,13 @@ export interface ApiDocumentGeneration {
   method: string | null;
   rule_id: string | null;
   rule_version: string | null;
+  /** 초안을 못 만들어 사실만 채운 초안이다 (ADR-093). 해석 · 지원은 빈 칸으로 왔다. */
+  fallback?: { reason: string; at: string } | null;
 }
+
+/** 사실만 채운 초안(ADR-093) 위에 띄우는 말. 일지 편집기 둘이 같이 쓴다. */
+export const FALLBACK_DRAFT =
+  "AI 가 이번에는 초안을 쓰지 못했어요. 사실은 그대로 담았으니 해석 · 지원을 직접 써 주세요.";
 export interface ApiDocumentListItem {
   id: number;
   kind: string;
@@ -71,6 +96,8 @@ export interface ApiDocumentListItem {
   stale: boolean;
   generation: ApiDocumentGeneration;
   sources_count: number;
+  /** 지금 글에 붙은 AI 검토 상태 (ADR-083). 없거나 글이 바뀌었으면 null. */
+  ai_review_state?: AiReviewState | null;
   created_at: string;
   updated_at: string;
 }
@@ -87,6 +114,12 @@ export interface ApiDocumentSource {
   id: number;
   date: string | null;
   text: string;
+  /** 관찰일지 근거에만 있다. 양식의 영역 행을 이것으로 나눈다 (§11). */
+  domain?: string | null;
+  /** 관찰 기록의 상황 사본 (ADR-088). 옛 문서 · 그 밖의 근거는 null 이다. */
+  context?: string | null;
+  /** 근거 종류. 아직 상세 응답에 없는 서버가 있어 비어 있을 수 있다. */
+  source_kind?: string | null;
   class_id: number;
   child_id: number | null;
 }
@@ -95,6 +128,9 @@ export interface ApiDocumentDetail extends Omit<ApiDocumentListItem, "sources_co
   sources: ApiDocumentSource[];
   review_note: string;
   class_note: string;
+  /** 관찰일지를 만들 때 찍은 영역 축 (ADR-088). 옛 문서 · 그 밖의 문서는 null 이다. */
+  observation_axis?: string | null;
+  ai_review?: { state: AiReviewState; issues: ApiVerifyIssue[]; message: string } | null;
 }
 
 /**
@@ -121,6 +157,8 @@ export interface DocumentSummary {
   origin: SavedDocument["origin"];
   stale: boolean;
   sourcesCount: number;
+  /** 목록에서만 온다 (ADR-083). */
+  aiReviewState?: AiReviewState | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -134,6 +172,8 @@ export interface ServerDocument extends SavedDocument {
   stale: boolean;
   /** 확정 취소 응답에서만 온다. 이 문서를 직접 근거로 쓴 문서 중 이번에 새로 stale 이 된 수. */
   newlyStaleCount?: number;
+  /** 지금 글을 검토한 결과 (ADR-083). 검토한 적 없거나 글이 바뀌었으면 null. */
+  aiReview: AiReview | null;
 }
 
 const STATUS: Record<string, SavedDocument["status"]> = { DRAFT: "draft", CONFIRMED: "confirmed" };
@@ -165,18 +205,25 @@ function summary(dto: ApiDocumentListItem): DocumentSummary {
     origin: ORIGIN[dto.origin] ?? "teacher",
     stale: dto.stale,
     sourcesCount: dto.sources_count,
+    aiReviewState: dto.ai_review_state ?? null,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   };
 }
 
 export function toDocument(dto: ApiDocumentDetail): ServerDocument {
+  // 한 문서의 근거는 한 종류라 번호가 겹치지 않는다. 칸의 번호도 이 표로 종류를 찾는다.
+  const kinds = new Map(dto.sources.map((s) => [s.id, sourceKindOf(dto.kind, s.source_kind)]));
+  const localId = (id: number) => sourceLocalId(kinds.get(id) ?? sourceKindOf(dto.kind), id);
   const sources: Source[] = dto.sources.map((s) => ({
-    id: sourceLocalId(dto.kind, s.id),
+    id: localId(s.id),
+    kind: kinds.get(s.id),
     date: s.date ?? "",
     text: s.text,
     classId: localClass(s.class_id),
     childId: localChild(s.child_id),
+    ...(s.domain ? { domain: s.domain } : {}),
+    ...(s.context ? { context: s.context } : {}),
   }));
   const generatedSection = (s: ApiDocumentSection) =>
     dto.origin === "AI" && ["해석", "지원"].includes(s.heading);
@@ -184,7 +231,7 @@ export function toDocument(dto: ApiDocumentDetail): ServerDocument {
   const sections: Section[] = dto.sections.map((s) => ({
     heading: s.heading,
     body: generatedSection(s) ? s.body.replace(MOCK_PREFIX, "") : s.body,
-    sourceIds: s.source_ids.map((id) => sourceLocalId(dto.kind, id)),
+    sourceIds: s.source_ids.map(localId),
   }));
   return {
     ...summary({ ...dto, sources_count: dto.sources.length }),
@@ -194,6 +241,15 @@ export function toDocument(dto: ApiDocumentDetail): ServerDocument {
     classNote: dto.class_note ?? "",
     // 새 문서는 서버가 `<규칙버전>-mock` 으로 알리고, 예전 문서는 떼어낸 접두어로 안다.
     mockDraft: legacyMock || /-mock$/.test(dto.generation.rule_version ?? ""),
+    fallbackDraft: !!dto.generation.fallback,
+    ...(dto.observation_axis ? { observationAxis: dto.observation_axis } : {}),
+    aiReview: dto.ai_review
+      ? {
+          state: dto.ai_review.state,
+          issues: dto.ai_review.issues.map(toIssue),
+          message: dto.ai_review.message,
+        }
+      : null,
   };
 }
 
@@ -253,7 +309,7 @@ export async function getRelatedDocuments(localId: string): Promise<RelatedDocum
 
 /** 반·아동·근거를 서버 id 로 옮기지 못하면 요청을 보내지 않는다. */
 export interface DocumentCreateInput {
-  kind: RecordKind;
+  kind: GeneratedKind;
   classId: string;
   childId: string;
   start: string;
@@ -264,14 +320,23 @@ export interface DocumentCreateInput {
    * `"routine"` 은 일일 보육일지를 쓰지 않는 원 — 그 주 일과 기록을 바로 받는다.
    */
   sourceKind?: "dailyLog" | "routine";
+  /**
+   * 관찰일지 「넣어서 다시」. 같은 아이 · 같은 기간 초안이 있으면 서버는 그것을 돌려주는데(ADR-083),
+   * 이걸 켜면 새로 만들고 옛 초안을 지운다.
+   */
+  replaceDraft?: boolean;
 }
 
 export async function createDocument(input: DocumentCreateInput): Promise<ServerDocument> {
   const class_id = classServerId(input.classId);
   const child_id = input.childId ? childServerId(input.childId) : null;
-  // 일과 기록을 근거로 쓰는 주간은 id 가 일과 표의 것이다 — 문서 접두사로 풀면 안 된다.
+  // 주간은 고른 종류의 id 만 받는다 — 일과 근거면 일과 표, 아니면 문서 표의 번호다.
   const source_ids = input.sourceIds.map((id) =>
-    input.sourceKind === "routine" ? routineServerId(id) : sourceServerId(input.kind, id),
+    input.kind !== "weeklyLog"
+      ? sourceServerId(input.kind, id)
+      : input.sourceKind === "routine"
+        ? routineServerId(id)
+        : documentServerId(id),
   );
   if (
     class_id === null ||
@@ -290,6 +355,7 @@ export async function createDocument(input: DocumentCreateInput): Promise<Server
       end: input.end,
       source_ids,
       ...(input.sourceKind ? { source_kind: input.sourceKind } : {}),
+      ...(input.replaceDraft ? { replace_draft: true } : {}),
     }),
   });
   return toDocument(dto);
@@ -392,6 +458,31 @@ export interface VerifyIssue {
   fix: string;
 }
 
+/** 붙여 둔 검토 상태 (ADR-083). `mock` · `failed` 의 빈 목록은 「문제없음」이 아니다. */
+export type AiReviewState = "done" | "mock" | "failed";
+export interface AiReview {
+  state: AiReviewState;
+  issues: VerifyIssue[];
+  /** `failed` 일 때 이유. */
+  message: string;
+}
+interface ApiVerifyIssue {
+  heading: "해석" | "지원";
+  sentence: string;
+  code: string;
+  source_text: string | null;
+  reason: string;
+  fix: string;
+}
+const toIssue = (i: ApiVerifyIssue): VerifyIssue => ({
+  heading: i.heading,
+  sentence: i.sentence,
+  code: i.code,
+  sourceText: i.source_text ?? null,
+  reason: i.reason,
+  fix: i.fix,
+});
+
 export interface VerifyResult {
   issues: VerifyIssue[];
   /** false 면 서버가 판정하지 않았다(mock). 빈 목록을 「문제없음」으로 읽으면 안 된다. */
@@ -399,7 +490,8 @@ export interface VerifyResult {
 }
 
 /**
- * 3단 AI 검토 (§11 · ADR-071). 저장 전 글을 보내고, 서버는 저장하지 않는다.
+ * 3단 AI 검토 (§11 · ADR-071). 저장 전 글을 보낸다. 서버는 결과를 그 글의 지문과 함께
+ * 붙여 두고(ADR-083), 같은 글이 저장돼 있을 때만 상세 응답에 다시 준다.
  * 아이 이름은 서버가 가명으로 바꾼 뒤 판정 모델에 보낸다 — 화면은 이름을 바꾸지 않는다.
  */
 export async function verifyDocument(
@@ -409,38 +501,75 @@ export async function verifyDocument(
 ): Promise<VerifyResult> {
   const id = documentServerId(localId);
   if (id === null) throw new Error(UNMAPPED);
+  const dto = await apiRequest<{ issues: ApiVerifyIssue[]; judge: "jev" | "mock" }>(
+    "/api/documents/" + id + "/verify",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sections: sectionsBody(kind, sections) }),
+    },
+  );
+  return { judged: dto.judge !== "mock", issues: dto.issues.map(toIssue) };
+}
+
+function sectionsBody(kind: string, sections: Section[]) {
   const body = sections.map((s) => ({
     heading: s.heading,
     body: s.body,
     source_ids: s.sourceIds.map((sid) => sourceServerId(kind, sid)),
   }));
   if (body.some((s) => s.source_ids.some((sid) => sid === null))) throw new Error(UNMAPPED);
+  return body;
+}
+
+export type RewriteStyle = "fix" | "shorter" | "concrete";
+export interface RewriteResult {
+  /** 1 · 2단을 지난 고친 문장. 걸렸으면 null — 보여 주지 않는다. */
+  sentence: string | null;
+  /** 고친 문장에 대한 jev 판정 — 「확인할 곳」. 거르는 데 쓰지 않는다. */
+  issues: VerifyIssue[];
+  /** false 면 판정하지 않았다(mock · 실패). 빈 목록을 「확인할 곳 없음」으로 읽으면 안 된다. */
+  judged: boolean;
+}
+
+/** 걸린 문장 하나 고쳐 쓰기 (AI ②, §11 · ADR-083). 서버는 저장하지 않는다. */
+export async function rewriteSentence(
+  localId: string,
+  kind: string,
+  input: {
+    heading: "해석" | "지원";
+    sentence: string;
+    style: RewriteStyle;
+    reason: string;
+    sections: Section[];
+  },
+): Promise<RewriteResult> {
+  const id = documentServerId(localId);
+  if (id === null) throw new Error(UNMAPPED);
   const dto = await apiRequest<{
-    issues: {
-      heading: "해석" | "지원";
-      sentence: string;
-      code: string;
-      source_text: string | null;
-      reason: string;
-      fix: string;
-    }[];
-    judge: "jev" | "mock";
-  }>("/api/documents/" + id + "/verify", {
+    sentence: string | null;
+    issues: ApiVerifyIssue[];
+    judge: "jev" | "mock" | "failed";
+  }>("/api/documents/" + id + "/rewrite", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sections: body }),
+    body: JSON.stringify({
+      heading: input.heading,
+      sentence: input.sentence,
+      style: input.style,
+      reason: input.reason,
+      sections: sectionsBody(kind, input.sections),
+    }),
   });
-  return {
-    judged: dto.judge !== "mock",
-    issues: dto.issues.map((i) => ({
-      heading: i.heading,
-      sentence: i.sentence,
-      code: i.code,
-      sourceText: i.source_text ?? null,
-      reason: i.reason,
-      fix: i.fix,
-    })),
-  };
+  return { sentence: dto.sentence, issues: dto.issues.map(toIssue), judged: dto.judge === "jev" };
+}
+
+/** 확정본 여러 장을 zip 하나로 (§11 「묶음 받기」). 내보낼 수 있는 것만 보낸다 — 하나라도 아니면 409. */
+export async function downloadDocumentBundle(localIds: string[]): Promise<void> {
+  const ids = localIds.map(documentServerId);
+  if (!ids.length || ids.some((id) => id === null)) throw new Error(UNMAPPED);
+  const query = ids.map((id) => `ids=${id}`).join("&");
+  return downloadHwpx(`/api/documents/export/bundle?${query}`, "일지 묶음.zip");
 }
 
 /**

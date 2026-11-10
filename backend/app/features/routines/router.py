@@ -5,22 +5,43 @@
 
 `PUT` · `DELETE` 는 이 기록을 근거로 쓴 §11 일일 보육일지를 `stale` 로 바꾼다. 판정은 문서
 쪽이 갖고 있다 — `stale` 칸의 주인이 documents 다 (features/documents/stale.py).
+
+하루치 조회에는 그날 날씨가 붙고, 교사가 그 날씨를 고를 수 있다 (`weather.py`, ADR-089).
 """
 
+from dataclasses import asdict
 from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import Select, select
+from sqlalchemy import Select, delete, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.features.auth.models import User
 from app.features.centers.models import Class
 from app.features.documents.stale import SourceImpact, source_changed
-from app.features.routines.models import RoutineRecord
+from app.features.routines.drafts import (
+    fact_key,
+    find_draft,
+    mark_if_changed,
+    paper_marks,
+    save_draft,
+)
+from app.features.routines.models import (
+    ClassRoutineTemplate,
+    RoutineDraft,
+    RoutineRecord,
+    RoutineWeather,
+)
+from app.features.routines.presets import day_preset
 from app.features.routines.schemas import (
+    DayWeatherResponse,
+    DraftResponse,
+    DraftSave,
+    DraftSaveResponse,
     RoutineCreate,
     RoutineDeleteResponse,
     RoutineListResponse,
@@ -28,7 +49,11 @@ from app.features.routines.schemas import (
     RoutineResponse,
     RoutineReviewImpact,
     RoutineUpdate,
+    TemplateResponse,
+    TemplateSave,
+    WeatherChoice,
 )
+from app.features.routines.weather import DayWeather, day_weather
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import own_class_clause, require_own_class
 
@@ -64,6 +89,8 @@ def _response(row) -> RoutineResponse:
         name=record.name,
         plan=record.plan,
         execution=record.execution,
+        reflected=record.reflected,
+        activities=record.activities,
         created_at=record.created_at,
     )
 
@@ -125,7 +152,105 @@ def list_routines(
         RoutineRecord.start_time.asc().nulls_last(),
         RoutineRecord.id,
     )
-    return RoutineListResponse(items=[_response(row) for row in session.execute(query)])
+    items = [_response(row) for row in session.execute(query)]
+    # 보육일지 화면은 반 하나 · 하루 하나로 부른다. 그때만 그날 날씨 · 임시본을 붙인다
+    # (ADR-089 · ADR-084).
+    one_day = class_id is not None and date_from is not None and date_from == date_to
+    if not one_day:
+        return RoutineListResponse(items=items)
+    draft = find_draft(session, class_id, date_from)  # type: ignore[arg-type]
+    return RoutineListResponse(
+        items=items,
+        weather=_weather(day_weather(session, class_id, date_from)),  # type: ignore[arg-type]
+        draft=_draft(draft) if draft else None,
+        preset=None if items else day_preset(session, class_id, date_from),  # type: ignore[arg-type]
+    )
+
+
+def _draft(draft: RoutineDraft) -> DraftResponse:
+    return DraftResponse.model_validate(draft, from_attributes=True)
+
+
+@router.get("/template", response_model=TemplateResponse | None)
+def get_template(class_id: int, session: DbSession, user: CurrentUser) -> TemplateResponse | None:
+    """반 기본 일과표. 없으면 null (ADR-085)."""
+    require_own_class(session, user, class_id, read_only=True)
+    template = session.scalar(
+        select(ClassRoutineTemplate).where(ClassRoutineTemplate.class_id == class_id)
+    )
+    return TemplateResponse.model_validate(template, from_attributes=True) if template else None
+
+
+@router.put("/template", response_model=TemplateResponse)
+def put_template(body: TemplateSave, session: DbSession, user: CurrentUser) -> TemplateResponse:
+    """반 기본 일과표를 통째로 바꾼다. 이미 적은 날은 그대로다 — 새 날을 깔 때만 쓴다."""
+    require_own_class(session, user, body.class_id)
+    rows = [row.model_dump(mode="json", exclude_none=True) for row in body.rows]
+    session.execute(
+        insert(ClassRoutineTemplate)
+        .values(class_id=body.class_id, rows=rows)
+        .on_conflict_do_update(
+            index_elements=["class_id"], set_={"rows": rows, "updated_at": func.now()}
+        )
+    )
+    session.commit()
+    return get_template(body.class_id, session, user)  # type: ignore[return-value]
+
+
+@router.put("/draft", response_model=DraftSaveResponse)
+def put_draft(body: DraftSave, session: DbSession, user: CurrentUser) -> DraftSaveResponse:
+    """하루치 임시본을 둔다. `promote` 면 같은 요청에서 그날 일과 기록으로 올린다 (ADR-084).
+
+    `/{record_id}` 보다 먼저 둔다 — 뒤에 두면 「draft」를 기록 id 로 읽고 422 를 낸다.
+    """
+    require_own_class(session, user, body.class_id)
+    draft, impact = save_draft(session, user, body)
+    session.commit()
+    if impact is None:
+        return DraftSaveResponse(draft=_draft(draft))
+    day = (
+        _visible(user)
+        .where(RoutineRecord.class_id == body.class_id, RoutineRecord.date == body.date)
+        .order_by(
+            RoutineRecord.position,
+            RoutineRecord.start_time.asc().nulls_last(),
+            RoutineRecord.id,
+        )
+    )
+    return DraftSaveResponse(
+        draft=_draft(draft),
+        items=[_response(row) for row in session.execute(day)],
+        review_impact=_impact_response(impact),
+    )
+
+
+def _weather(value: DayWeather) -> DayWeatherResponse:
+    return DayWeatherResponse(**asdict(value))
+
+
+@router.put("/weather", response_model=DayWeatherResponse)
+def choose_weather(
+    body: WeatherChoice, session: DbSession, user: CurrentUser
+) -> DayWeatherResponse:
+    """교사가 그날 날씨를 고른다. 자동 값과 따로 남기고, 있으면 그것이 이긴다 (ADR-089).
+
+    `/{record_id}` 보다 먼저 둔다 — 뒤에 두면 「weather」를 기록 id 로 읽고 422 를 낸다.
+    """
+    require_own_class(session, user, body.class_id)
+    where = (RoutineWeather.class_id == body.class_id, RoutineWeather.date == body.date)
+    if body.sky is None:
+        session.execute(delete(RoutineWeather).where(*where))
+    else:
+        session.execute(
+            insert(RoutineWeather)
+            .values(class_id=body.class_id, date=body.date, sky=body.sky)
+            .on_conflict_do_update(
+                index_elements=["class_id", "date"],
+                set_={"sky": body.sky, "updated_at": func.now()},
+            )
+        )
+    session.commit()
+    return _weather(day_weather(session, body.class_id, body.date))
 
 
 def _impact_response(impact: SourceImpact) -> RoutineReviewImpact:
@@ -145,22 +270,10 @@ def update_routine(
 ) -> RoutineResponse | RoutineMutationResponse:
     record = _own(session, user, record_id, lock=True)[0]
     require_own_class(session, user, record.class_id)
-    # 사본이 이미 과거 값이어도 계획/자리만 고친 요청은 새 근거 변경이 아니다.
-    before = (record.date, record.start_time, record.end_time, record.name, record.execution)
+    # 자리만 고친 요청은 근거 변경이 아니다. 계획은 확정 때 박은 사본과 비교한다(ADR-086).
+    before, before_marks = fact_key(record), paper_marks(record)
     _apply(record, body)
-    after = (record.date, record.start_time, record.end_time, record.name, record.execution)
-    impact = SourceImpact()
-    if before != after:
-        impact = source_changed(
-            session,
-            "routine",
-            record_id,
-            record.fact_text(),
-            record.date,
-            center_id=user.center_id,
-            # 사실 사본에는 분까지만 남는다. 초만 고쳐도 시간 변경은 놓치지 않는다.
-            force=before[1:3] != after[1:3],
-        )
+    impact = mark_if_changed(session, record, before, user.center_id, before_marks)  # type: ignore[arg-type]
     session.commit()
     result = _response(_own(session, user, record_id))
     if include_impact:

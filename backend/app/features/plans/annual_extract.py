@@ -28,7 +28,7 @@ from app.features.forms import hwp_form
 from app.features.plans.memo_privacy import center_name_table
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_class
-from app.shared.childCode import SubstitutionError, mask, unmask_from
+from app.shared.childCode import CallNameNeeded, SubstitutionError, mask, unmask_from
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable, complete_json, is_mock
 
 router = APIRouter(prefix="/plans/annual", tags=["plans"])
@@ -234,7 +234,7 @@ def _squash(value: str) -> str:
 def _mock_answer(source: str) -> str:
     """mock 모드. 「N월」 칸 바로 다음 줄을 그 달 주제로 놓는다 — 결정적이고 원문 안에 있다."""
     lines = source.split("\n")
-    months = []
+    months = []  # type: ignore[var-annotated]
     for month in ACADEMIC_MONTHS:
         index = next((i for i, line in enumerate(lines) if line == f"{month}월"), None)
         theme = lines[index + 1] if index is not None and index + 1 < len(lines) else None
@@ -302,6 +302,8 @@ def extract_annual_import(
     # 아이 이름도 가린다 — 반 아이만이 아니라 원 아이 전부(멘토 리뷰 #380).
     try:
         names = center_name_table(session, klass.id, personal)
+    except CallNameNeeded as error:
+        raise _error(422, "VALUE_INVALID", str(error), ["file"]) from error
     except SubstitutionError as error:
         raise _MASK_FAILED from error
     source = (personal if names is None else mask(personal, names))[:MAX_SOURCE_CHARS]

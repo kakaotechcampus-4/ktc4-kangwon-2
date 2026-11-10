@@ -727,14 +727,14 @@ def test_drill_candidates_are_five_curriculum_topics_and_the_drill_cell_stays_bl
     use_case, command, _, provider, _ = _run()
     plan = use_case.execute(command)
 
-    # April has no seasonal topic: the five all-month topics in catalog order.
-    assert [d.topic_id for d in plan.drill_candidates] == ["fire_a", "quake", "fire_b", "fire_c", "fire_d"]
+    # April has no seasonal topic: the five all-month topics, catalog order started one step on (April = 1).
+    assert [d.topic_id for d in plan.drill_candidates] == ["quake", "fire_b", "fire_c", "fire_d", "fire_a"]
     for n, candidate in enumerate(plan.drill_candidates, 1):
         (source,) = candidate.cell.evidence
         assert (source.source_type, source.source_id) == (EvidenceSourceType.CURRICULUM, "t.4")
         assert candidate.cell.semantic_key == f"fire_disaster_drill.candidate.{candidate.topic_id}"
         assert candidate.cell.value == f"{n}번째 상황을 가정해 대피 훈련을 해요"
-    assert [d.label for d in plan.drill_candidates] == ["화재 가", "지진", "화재 나", "화재 다", "화재 라"]
+    assert [d.label for d in plan.drill_candidates] == ["지진", "화재 나", "화재 다", "화재 라", "화재 가"]
     (drill_cell,) = [t for t in plan.teacher_inputs if t.semantic_key == "fire_disaster_drill"]
     assert drill_cell.value == "" and drill_cell.generation is None
     assert (plan.references.drill_catalog_id, plan.references.drill_catalog_version) == (
@@ -750,11 +750,12 @@ def test_drill_candidates_are_five_curriculum_topics_and_the_drill_cell_stays_bl
     ("month", "topics"),
     [
         (1, ["snow", "fire_a", "quake", "fire_b", "fire_c"]),
-        (7, ["flood", "fire_a", "quake", "fire_b", "fire_c"]),
-        (4, ["fire_a", "quake", "fire_b", "fire_c", "fire_d"]),
+        (7, ["flood", "fire_d", "fire_a", "quake", "fire_b"]),
+        (4, ["quake", "fire_b", "fire_c", "fire_d", "fire_a"]),
     ],
 )
 def test_seasonal_drill_topics_come_first_in_their_months(month, topics):
+    # Seasonal first; the year-round topics start one step further each school month (March = 0).
     year = 2027 if month >= 3 else 2028
     use_case, command, *_ = _run(target_month=YearMonth(year, month))
 
@@ -767,9 +768,9 @@ def test_repair_rewrites_only_the_flagged_drill_sentence():
     plan = use_case.execute(command)
 
     repair = json.loads(provider.requests[1].user_content)
-    assert repair["issues"] == [{"location": "drills:fire_b", "code": "UNSUPPORTED_FACT"}]
+    assert repair["issues"] == [{"location": "drills:fire_c", "code": "UNSUPPORTED_FACT"}]
     versions = {d.topic_id: d.cell.generation.rule_version for d in plan.drill_candidates}
-    assert versions.pop("fire_b") == PLAY_MONTHLY_REPAIR_PROMPT_VERSION
+    assert versions.pop("fire_c") == PLAY_MONTHLY_REPAIR_PROMPT_VERSION
     assert set(versions.values()) == {PLAY_MONTHLY_PROMPT_VERSION}
 
 
@@ -960,10 +961,10 @@ def test_domain_rejects_duplicate_drill_topics():
 
 def test_a_sentence_about_another_topic_is_not_caught_so_the_label_goes_with_it():
     # Known limit: only ids and invented facts are checked. The teacher sees the Rule's label.
-    use_case, command, *_ = _run(_set(("drills", 0, "text"), "지진이 나면 책상 아래로 몸을 숨겨요"))
+    use_case, command, *_ = _run(_set(("drills", 0, "text"), "불이 나면 코와 입을 막고 밖으로 나가요"))
     first = use_case.execute(command).drill_candidates[0]
 
-    assert (first.topic_id, first.label) == ("fire_a", "화재 가")
+    assert (first.topic_id, first.label) == ("quake", "지진")
 
 
 def test_drill_origins_need_unique_ids_and_sha256_digests():
@@ -1246,6 +1247,39 @@ def test_without_usable_trends_the_request_is_the_one_before_trends(context):
     (request,), (before,) = provider.requests, plain.requests
     assert request == before and request.fingerprint == before.fingerprint
     assert request.trend_addresses is None and "trends" not in json.loads(request.user_content)
+
+
+def test_lyrics_in_a_candidate_go_to_the_one_repair_and_fail_if_kept():
+    """ADR-072 결정 12: 가사 꼴은 결정적 검사로 고쳐 쓰기 1회, 남으면 저장하지 않는다."""
+    from ssuksak.planning.planner.play_monthly import TREND_LYRICS_REPAIR_INSTRUCTION
+
+    sung = _set(
+        ("together", 2, "description"),
+        "‘산토끼 토끼야 어디를 가느냐 깡충깡충 뛰면서 어디를 가느냐’ 노래를 부르며 뛴다.",
+    )
+
+    def opening(data):
+        sung(data)
+        data["trend_applied"] = []
+
+    use_case, command, plans, provider, _ = _run(opening, None, optional_context=_Context(value=_trends()))
+    assert use_case.execute(command)
+    _, repair = provider.requests
+    assert TREND_LYRICS_REPAIR_INSTRUCTION in repair.system_prompt
+    assert json.loads(repair.user_content)["issues"] == [
+        {"location": "together[2]", "code": "TREND_LYRICS_IN_TEXT"},
+        {"location": "together[2].description", "code": "TREND_LYRICS_IN_TEXT"},
+    ]
+
+    use_case, command, plans, provider, _ = _run(opening, sung, optional_context=_Context(value=_trends()))
+    with pytest.raises(ProposalRejectedError) as error:
+        use_case.execute(command)
+    assert error.value.validation_codes == ("TREND_LYRICS_IN_TEXT",)
+    assert plans.save_count == 0
+
+    # Without trends nothing is checked — the request and result are the ones before ADR-072.
+    use_case, command, plans, provider, _ = _run(sung)
+    assert use_case.execute(command) and len(provider.requests) == 1
 
 
 def test_a_trend_name_in_a_candidate_goes_to_the_one_repair_unless_the_memo_asked_for_it():

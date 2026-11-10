@@ -73,7 +73,7 @@ class ClassCreate(BaseModel):
     def check_age_range(
         cls, data: Any, handler: ModelWrapValidatorHandler["ClassCreate"]
     ) -> "ClassCreate":
-        errors = []
+        errors: list[Any] = []
         try:
             result = handler(data)
         except ValidationError as exc:
@@ -125,7 +125,7 @@ class ClassUpdate(BaseModel):
     def check_age_pair(
         cls, data: Any, handler: ModelWrapValidatorHandler["ClassUpdate"]
     ) -> "ClassUpdate":
-        errors = []
+        errors: list[Any] = []
         result = None
         try:
             result = handler(data)
@@ -146,7 +146,7 @@ class ClassUpdate(BaseModel):
 
         if (low is None) != (high is None):
             reason = "age_min 과 age_max 는 함께 보낸다"
-        elif low is not None and low > high:
+        elif low is not None and low > high:  # type: ignore[operator]
             reason = "age_min 은 age_max 보다 클 수 없습니다."
         else:
             reason = None
@@ -163,7 +163,7 @@ class ClassUpdate(BaseModel):
             )
         if errors:
             raise ValidationError.from_exception_data(cls.__name__, errors)
-        return result
+        return result  # type: ignore[return-value]
 
 
 class CenterResponse(BaseModel):
@@ -254,6 +254,9 @@ class GreetingItem(BaseModel):
 
 # 고를 수 있는 축. 목록을 다시 적지 않는다 — observations/models.py 의 AXES 가 출처다.
 ObservationAxis = Literal[tuple(AXES)]  # type: ignore[valid-type]
+# 실물 일지 표기 — A원 「(반영)」, 울산센터 매뉴얼 「(놀이반영)」, 대부분은 표기 없이 잇는다
+# (journal-form-resurvey.md 주장 7). 빈 문자열이 「붙이지 않음」이다.
+ReflectMark = Literal["(반영)", "(놀이반영)", ""]
 
 
 class CenterSettings(BaseModel):
@@ -267,7 +270,12 @@ class CenterSettings(BaseModel):
     trends_enabled: Annotated[bool, Field(strict=True)]
     weekly_saturday_enabled: Annotated[bool, Field(strict=True)]
     # 관찰 기록의 영역 축. 화면이 영역 고르는 칸을 이 값으로 그린다 (observations AXES).
-    observation_axis: ObservationAxis
+    # 256 줄의 ObservationAxis 는 tuple(AXES) 로 만든 Literal 이라 mypy 가 타입으로 안 본다.
+    observation_axis: ObservationAxis  # type: ignore[valid-type]
+    # 어제 지원을 반영한 일과 줄에 종이가 붙이는 글자 (ADR-086).
+    reflect_mark: ReflectMark
+    # 이 계정이 바꿀 수 있는지 — 원을 만든 교사만 참이다 (ADR-087). 저장된 값이 아니다.
+    can_edit: bool
 
 
 class CenterSettingsUpdate(BaseModel):
@@ -283,7 +291,9 @@ class CenterSettingsUpdate(BaseModel):
     weekly_saturday_enabled: Annotated[bool, Field(strict=True)] | None = None
     # **이미 쌓인 기록은 그대로 둔다.** 축을 바꿔도 전에 쓴 영역 이름은 살아 있다 —
     # 지우면 교사가 쓴 사실이 사라진다. 새 기록부터 새 축을 쓴다.
-    observation_axis: ObservationAxis | None = None
+    # 256 줄의 ObservationAxis 는 tuple(AXES) 로 만든 Literal 이라 mypy 가 타입으로 안 본다.
+    observation_axis: ObservationAxis | None = None  # type: ignore[valid-type]
+    reflect_mark: ReflectMark | None = None
 
     @field_validator("trends_enabled", "weekly_saturday_enabled")
     @classmethod
@@ -314,7 +324,7 @@ class GreetingsSettings(BaseModel):
         try:
             items = handler(value)
         except ValidationError as exc:
-            errors = exc.errors(include_url=False)
+            errors: list[Any] = exc.errors(include_url=False)
             for error in errors:
                 loc = error["loc"]
                 if loc and isinstance(loc[0], int):

@@ -1,4 +1,4 @@
-"""놀이 프로젝트형 연간계획안 생성 · 조회 계약 (api-spec §4 · ADR-043)."""
+"""놀이 프로젝트형 연간계획안 생성 · 조회 계약 (api-spec §4 · ADR-043 · ADR-077)."""
 
 import json
 from dataclasses import replace
@@ -17,7 +17,11 @@ from ssuksak.adapters.json_curriculum_reference_repository import JsonCurriculum
 from ssuksak.planning import PlanId
 from ssuksak.planning.domain.theme_reference import ActivationStatus
 from ssuksak.planning.planner.contracts import RawLlmResponse
-from ssuksak.planning.planner.play_project import PLAY_PROJECT_PROMPT_VERSION
+from ssuksak.planning.planner.play_project import (
+    PLAY_PROJECT_PROMPT_VERSION,
+    SEED_EXCLUDED_PREFIXES,
+    PlayProjectRequest,
+)
 
 from app.features.centers.models import Center, Class
 from app.features.plans import monthly_router, play_project
@@ -26,7 +30,7 @@ from app.features.plans.models import Plan
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.plans.runtime import UuidGenerator
 from app.main import app
-from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
+from app.shared.llm import LlmBudgetExceeded, LlmCallCapExceeded, LlmFailed, LlmUnavailable
 
 # Core 가 공개 창구(`ssuksak.planning`)에 아직 안 내놓아 안쪽에서 가져온다 — router.py 와 같다.
 from ssuksak.planning.application.generate_play_project_plan import (  # isort: skip
@@ -82,16 +86,56 @@ class _FailingProvider:
         raise self.error
 
 
-class _ThirdPeriodInvalidProvider:
+class _Recording:
+    """목업 그대로 답하고 요청을 남긴다. 구간은 동시에 불리므로 순서는 보지 않는다."""
+
     def __init__(self):
-        self.calls = []
+        self.requests: list[PlayProjectRequest] = []
+
+    @property
+    def calls(self):
+        return [request.period_key for request in self.requests]
 
     def generate_play_project(self, request):
-        self.calls.append(request.period_key)
-        if len(self.calls) == 3:
+        self.requests.append(request)
+        return self.answer(request)
+
+    def answer(self, request):
+        return play_project.MockPlayProjectProvider().generate_play_project(request)
+
+
+class _InvalidPeriodProvider(_Recording):
+    """`period_key` 구간의 처음 `times` 번을 계약 위반(후보 0개)으로 답한다."""
+
+    def __init__(self, period_key="m09_m11", times=1):
+        super().__init__()
+        self.period_key, self.times = period_key, times
+
+    def answer(self, request):
+        if (
+            request.period_key == self.period_key
+            and self.calls.count(self.period_key) <= self.times
+        ):
             content = json.dumps({"period_key": request.period_key, "rows": []})
             return RawLlmResponse(content=content, model="mock")
-        return play_project.MockPlayProjectProvider().generate_play_project(request)
+        return super().answer(request)
+
+
+class _OverlappingProvider(_Recording):
+    """3~5월 · 6~8월의 세 번째 후보 이름을 똑같이 낸다. `again` 이면 다시 만들어도 같은 이름이다."""
+
+    NAME = "같은 이름 놀이"
+
+    def __init__(self, again=False):
+        super().__init__()
+        self.again = again
+
+    def answer(self, request):
+        body = json.loads(super().answer(request).content)
+        first = request.row_count == 10
+        if request.period_key in ("m03_m05", "m06_m08") and (first or self.again):
+            body["rows"][2 if first else 0]["play_name"] = self.NAME
+        return RawLlmResponse(content=json.dumps(body, ensure_ascii=False), model="mock")
 
 
 def _approved(monkeypatch, provider=None):
@@ -300,13 +344,21 @@ def test_월별_주제형은_format_이_MONTHLY_THEME_이고_목록은_둘을_�
 
 
 def test_생성은_승인된_누리과정으로_네_구간을_저장하고_읽는다(world, monkeypatch):
-    _approved(monkeypatch)
+    provider = _Recording()
+    _approved(monkeypatch, provider)
 
     response = client.post(
         "/api/plans/annual", json={"class_id": world["play"].id, "format": "PLAY_PROJECT"}
     )
 
     assert response.status_code == 201, response.text
+    # ADR-077: 네 구간을 한 번씩 동시에 — 다른 구간 놀이명 대신 Rule 힌트를 후보마다 하나씩 받는다.
+    assert sorted(provider.calls) == sorted(period.key for period in LAYOUT.periods)
+    seeds = [seed for request in provider.requests for seed in request.play_seeds]
+    assert all(request.avoid_play_names == frozenset() for request in provider.requests)
+    assert all(len(request.play_seeds) == 10 for request in provider.requests)
+    assert len({seed.nuri_content_id for seed in seeds}) == 40
+    assert not any(seed.nuri_content_id.startswith(SEED_EXCLUDED_PREFIXES) for seed in seeds)
     body = response.json()
     assert body["format"] == "PLAY_PROJECT"
     assert body["format_version"] == "play-project-layout-v0.2.0"
@@ -413,8 +465,23 @@ def test_승인_전_누리과정이면_503이고_행을_저장하지_않는다(w
     assert world["session"].scalar(select(Plan.id).where(Plan.kind == "annual")) is None
 
 
-def test_세번째_구간이_거절되면_아무것도_저장하지_않는다(world, monkeypatch):
-    provider = _ThirdPeriodInvalidProvider()
+def test_거절된_구간만_한_번_더_부르고_통과하면_저장한다(world, monkeypatch):
+    provider = _InvalidPeriodProvider(times=1)
+    _approved(monkeypatch, provider)
+
+    response = client.post(
+        "/api/plans/annual", json={"class_id": world["play"].id, "format": "PLAY_PROJECT"}
+    )
+
+    assert response.status_code == 201, response.text
+    assert sorted(provider.calls) == ["m03_m05", "m06_m08", "m09_m11", "m09_m11", "m12_m02"]
+    retried = [r for r in provider.requests if r.period_key == "m09_m11"]
+    assert retried[0].play_seeds == retried[1].play_seeds  # 같은 입력으로 다시
+    assert [len(p["candidates"]) for p in response.json()["periods"]] == [10] * 4
+
+
+def test_다시_불러도_거절되면_아무것도_저장하지_않는다(world, monkeypatch):
+    provider = _InvalidPeriodProvider(times=2)
     _approved(monkeypatch, provider)
 
     response = client.post(
@@ -423,18 +490,61 @@ def test_세번째_구간이_거절되면_아무것도_저장하지_않는다(wo
 
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "GENERATION_FAILED"
-    assert provider.calls == ["m03_m05", "m06_m08", "m09_m11"]
+    assert provider.calls.count("m09_m11") == 2 and len(provider.calls) == 5
     assert world["session"].scalar(select(Plan.id).where(Plan.kind == "annual")) is None
 
 
-@pytest.mark.parametrize("after", [1, 4])
-def test_생성_멈추기로_끊기면_남은_구간을_부르지_않고_저장하지_않는다(world, monkeypatch, after):
-    """하민 결정 2026-11-06: 구간 사이 · 마지막 구간 뒤에 끊긴 요청을 보고 멈춘다."""
-    provider = _ThirdPeriodInvalidProvider()
-    provider.generate_play_project = lambda request: (
-        provider.calls.append(request.period_key)
-        or play_project.MockPlayProjectProvider().generate_play_project(request)
+def test_구간끼리_겹친_후보만_그_자리에서_다시_만든다(world, monkeypatch):
+    provider = _OverlappingProvider()
+    _approved(monkeypatch, provider)
+
+    response = client.post(
+        "/api/plans/annual",
+        json={
+            "class_id": world["play"].id,
+            "format": "PLAY_PROJECT",
+            "memo": "물놀이를 넣어 주세요",
+        },
     )
+
+    assert response.status_code == 201, response.text
+    first = {r.period_key: r for r in provider.requests if r.row_count == 10}
+    (redo,) = [r for r in provider.requests if r.row_count != 10]
+    # 나중 구간의 세 번째 후보 하나만, 같은 힌트로 — 나머지 39개를 피하고 요청 사항은 넣지 않는다.
+    assert redo.period_key == "m06_m08"
+    assert redo.play_seeds == first["m06_m08"].play_seeds[2:3]
+    assert len(redo.avoid_play_names) == 39 and _OverlappingProvider.NAME in redo.avoid_play_names
+    assert redo.memo_addresses is None
+    periods = {p["period_key"]: p["candidates"] for p in response.json()["periods"]}
+    assert [c["row_key"] for c in periods["m06_m08"]] == [f"cand{n}" for n in range(1, 11)]
+    assert periods["m03_m05"][2]["play_name"]["value"] == _OverlappingProvider.NAME
+    assert periods["m06_m08"][2]["play_name"]["value"] != _OverlappingProvider.NAME
+    assert periods["m06_m08"][2]["memo_applied"] is False
+    names = [c["play_name"]["value"] for candidates in periods.values() for c in candidates]
+    assert len(set(names)) == 40
+
+
+def test_다시_만들어도_같은_이름이_남으면_저장하지_않는다(world, monkeypatch):
+    provider = _OverlappingProvider(again=True)
+    _approved(monkeypatch, provider)
+
+    response = client.post(
+        "/api/plans/annual", json={"class_id": world["play"].id, "format": "PLAY_PROJECT"}
+    )
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "GENERATION_FAILED"
+    assert len(provider.calls) == 5
+    assert world["session"].scalar(select(Plan.id).where(Plan.kind == "annual")) is None
+
+
+@pytest.mark.parametrize("after", [0, 4])
+def test_생성_멈추기로_끊기면_다음_단계를_부르지_않고_저장하지_않는다(world, monkeypatch, after):
+    """하민 결정 2026-11-06 · ADR-077: 동시 호출 · 다시 부르기 · 저장 전에 끊긴 요청을 보고 멈춘다.
+
+    `stopped()` 는 요청 스레드에서만 불린다 — 작업 스레드에서 부르면 anyio 가 오류를 낸다.
+    """
+    provider = _Recording()
     _approved(monkeypatch, provider)
     monkeypatch.setattr(
         plans_router, "_disconnected", lambda request: lambda: len(provider.calls) >= after
@@ -514,20 +624,25 @@ def test_format과_form_id_요청을_검증한다(world):
 
 
 @pytest.mark.parametrize(
-    ("error", "status_code", "code"),
+    ("error", "status_code", "code", "calls"),
     [
         (
             MonthlyLlmConfigurationError("this LLM transport cannot stream"),
             503,
             "DEPENDENCY_UNAVAILABLE",
+            4,
         ),
-        (LlmUnavailable("missing configuration"), 503, "DEPENDENCY_UNAVAILABLE"),
-        (_wrapped_budget_error(), 503, "LLM_BUDGET_EXCEEDED"),
-        (LlmFailed("provider failed"), 500, "GENERATION_FAILED"),
+        (LlmUnavailable("missing configuration"), 503, "DEPENDENCY_UNAVAILABLE", 4),
+        (_wrapped_budget_error(), 503, "LLM_BUDGET_EXCEEDED", 4),
+        # ADR-077: 다시 불러 풀릴 수 있는 실패만 구간마다 한 번 더 부른다.
+        (LlmFailed("provider failed"), 500, "GENERATION_FAILED", 8),
+        # ADR-081: 호출 상한은 `LlmFailed` 의 하위라 계약이 같지만 다시 불러도 풀리지 않는다.
+        (LlmCallCapExceeded("cap"), 500, "GENERATION_FAILED", 4),
     ],
 )
-def test_provider_오류가_계약_코드로_변환된다(world, monkeypatch, error, status_code, code):
-    _approved(monkeypatch, _FailingProvider(error))
+def test_provider_오류가_계약_코드로_변환된다(world, monkeypatch, error, status_code, code, calls):
+    provider = _FailingProvider(error)
+    _approved(monkeypatch, provider)
 
     response = client.post(
         "/api/plans/annual", json={"class_id": world["play"].id, "format": "PLAY_PROJECT"}
@@ -535,6 +650,7 @@ def test_provider_오류가_계약_코드로_변환된다(world, monkeypatch, er
 
     assert response.status_code == status_code
     assert response.json()["error"]["code"] == code
+    assert provider.calls == calls
     assert world["session"].scalar(select(Plan.id).where(Plan.kind == "annual")) is None
 
 

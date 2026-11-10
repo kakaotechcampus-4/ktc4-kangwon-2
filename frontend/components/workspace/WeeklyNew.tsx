@@ -13,6 +13,7 @@ import { existingAfterConflict } from "@/lib/api/conflict";
 import { memoError, PlanMemoField } from "@/components/plan-generator/PlanMemo";
 import { getMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
 import { listAnnualPlans } from "@/lib/api/plans";
+import { newRunId } from "@/lib/api/generationRuns";
 import { createWeeklyPlan, listWeeklyPlans } from "@/lib/api/weekly";
 import { syncClass } from "@/lib/api/onboarding";
 import type { MonthlyPlan, WeeklyPlanSummary } from "@/lib/api/types";
@@ -21,6 +22,7 @@ import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER, planClassLine } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { topicMemo } from "@/lib/api/trends";
 import GenerationRing, { ringFinished, STOPPED_NOTE } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { BACK_BUTTON, BACK_ICON } from "@/components/plan-generator/AnnualFrame";
@@ -73,7 +75,11 @@ type MonthData = { month: number; monthly: MonthlyPlan | null; plans: WeeklyPlan
 export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }) {
   const [problem, setProblem] = useState("");
   const [stopped, setStopped] = useState(false);
-  const [memo, setMemo] = useState("");
+  // 트렌드 화면 [계획안에 활용하기] 가 `?topic` 으로 넘긴 글을 요청 사항 첫 값으로 둔다(ADR-072).
+  const [memo, setMemo] = useClientState(
+    () => topicMemo(typeof window === "undefined" ? "" : window.location.search),
+    "",
+  );
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
   const classes = useClasses(setProblem);
   const [chosen] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
@@ -91,6 +97,8 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
   const [weekId, setWeekId] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  // 이번 생성 POST 의 헤더와 링이 같은 값을 쓴다 — 요청마다 새로 만든다(api-spec §9-8).
+  const [runId, setRunId] = useState<string>();
   const controller = useRef<AbortController | null>(null);
   useCompactShell(busy);
   useEffect(() => () => controller.current?.abort(), []);
@@ -171,7 +179,9 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
   const blocked: ReactNode = data.play ? (
     <>
       놀이 중심형은 주간계획안 없이 월간계획안으로 운영해요.{" "}
-      <Link href="/plans/monthly">월간계획안으로 가기</Link>
+      <Link href={memo ? `/plans/monthly?topic=${encodeURIComponent(memo)}` : "/plans/monthly"}>
+        월간계획안으로 가기
+      </Link>
     </>
   ) : !ready ? (
     "불러오는 중…"
@@ -201,6 +211,8 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     controller.current?.abort();
     const ctl = new AbortController();
     controller.current = ctl;
+    const id = newRunId();
+    setRunId(id);
     setBusy(true);
     setDone(false);
     setProblem("");
@@ -216,6 +228,7 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
           ...(memo.trim() ? { memo: memo.trim() } : {}),
         },
         ctl.signal,
+        id,
       );
       if (ctl.signal.aborted) return;
       setDone(true);
@@ -249,12 +262,15 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
     return (
       <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
-          kind="weekly"
-          // Sol 실측: 33초(2026-11-05).
-          expect={35}
           title={`${label} 주간계획안을 만들고 있어요`}
+          runId={runId}
           done={done}
-          steps={[`${label} 놀이 이어받기`, "요일별 활동 나누기", "문서로 정리하기"]}
+          steps={[
+            ["prepare", `${label} 놀이 이어받기`],
+            ["generate", "요일별 활동 나누기"],
+            ["check", "살펴보고 다듬기"],
+            ["save", "문서로 정리하기"],
+          ]}
           onCancel={() => {
             controller.current?.abort();
             setBusy(false);

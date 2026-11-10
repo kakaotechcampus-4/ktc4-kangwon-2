@@ -21,7 +21,7 @@ import ChildPicker from "@/components/app/ChildPicker";
 import { SsampleNote } from "@/components/app/SsampleNote";
 import { useClasses } from "@/components/workspace/WorkspaceUI";
 import { DOMAIN_LOOK } from "@/lib/workspace/domain-look";
-import { listRecords, addRecord } from "@/lib/api/records";
+import { listRecords, addRecord, suggestRecordDomain } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import { listRoutines, routineTime, type Routine } from "@/lib/api/routines";
 import { today } from "@/lib/workspace/model";
@@ -35,10 +35,10 @@ import {
   firstWrittenDay,
   lastWeekLook,
   shiftDays,
-  shortDate,
   type LastWeek,
 } from "@/lib/workspace/home-blocks";
 import { koreanDateParts } from "@/lib/greeting";
+import { dayLabel } from "@/lib/workspace/journal-day";
 import { roomReady } from "@/lib/auth/local-account";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { useDictation } from "@/lib/hooks/use-dictation";
@@ -49,7 +49,7 @@ const PRIMARY =
   "hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40";
 /** 보조 버튼. 보라 버튼 옆에 설 때 테두리와 도장 그림자로 버튼인 것을 분명히 한다. */
 const SECONDARY =
-  "inline-flex min-h-9 items-center justify-center rounded-md border border-line bg-paper px-3.5 " +
+  "inline-flex min-h-11 items-center justify-center rounded-md border border-line bg-paper px-3.5 " +
   "text-xs font-semibold text-ink shadow-pg-card transition-transform " +
   "active:translate-x-[2px] active:translate-y-[3px] active:shadow-none";
 /** 영수증 줄 사이의 점선. 선 하나로 「따로 적은 것」이 갈린다. */
@@ -58,6 +58,9 @@ const DASH = "border-0 border-t border-dashed border-line";
 const LABEL = "text-[13px] font-medium tracking-[0.12em]";
 /** 일과를 얼마나 거슬러 보나. 두 주면 「비어 있는 날」이 들어온다. */
 const LOOK_BACK = 14;
+// 크롬 · 엣지의 받아쓰기는 소리를 브라우저 회사 서버로 보낸다(app/privacy 2번, #114).
+const DICTATION_NOTICE =
+  "말소리는 브라우저 회사(구글 등) 서버를 거쳐 글자로 바뀌어요. 아이 이름은 직접 적어 주세요.";
 /** 칠판에 붙이는 아이 쪽지. 색과 기울기를 번갈아 쓴다 — 같은 모양이 줄줄이 붙으면 한 장으로 보인다. */
 const KID_NOTE = [
   "border-note-soft-line bg-note-soft -rotate-2",
@@ -200,6 +203,8 @@ export default function HomePage() {
           교사가 매일 보는 맨 윗자리를 라벨로 채우지 않는다. */}
         <h1 className="mb-7 font-display text-[40px] font-bold leading-none text-primary-deep lg:text-[54px]">
           {head.day}
+          {/* 화면 낭독기가 「11월 10일화요일」로 붙여 읽지 않게 띄운다(점검 H-E2). */}
+          <span className="sr-only"> </span>
           <span className="relative ml-2.5 inline-block font-display text-[24px] font-bold text-ink-soft lg:text-[30px]">
             {head.dow}
             {/* 달력에서 오늘에 치는 동그라미. 한 바퀴를 덜 닫아 손으로 그은 자국으로 보인다.
@@ -282,7 +287,7 @@ export default function HomePage() {
                 쪽지는 그 밑에 붙는다 — 종이마다 머리글이 달리면 쪽지가 서류로 보인다. */}
             <div
               data-tour="home-board"
-              className="chalkboard flex min-w-0 flex-col gap-[38px] self-start px-4 pb-7 pt-6 xl:w-[310px] xl:shrink-0"
+              className="chalkboard flex min-w-0 flex-col gap-[38px] self-start px-4 pb-7 pt-6 max-sm:self-stretch xl:w-[310px] xl:shrink-0"
             >
               {todayDate && (
                 <UnseenChildren
@@ -332,11 +337,12 @@ function Compose({
   const [many, setMany] = useState(false);
   // 원마다 축이 다르다 (observation-axis.ts). 5영역 원이면 다섯, 2축 원이면 둘이다.
   //
-  // **고른 영역 하나만 둔다.** 칸에는 첫 영역을 띄우고 상태는 빈 채로 두면, 교사가 고르지
-  // 않고 저장했을 때 화면이 보여준 것과 다른 값(빈 값)이 서버로 간다 — 422 다.
+  // **기본값이 없다.** 첫 영역이 눌린 채 저장돼 블록 놀이가 종이의 신체 줄에 들어갔다.
+  // 교사가 고르기 전에는 남기기가 막힌다 — 관찰 기록 화면과 같다(ADR-082).
   const domains = useObservationDomains();
-  const [picked, setDomain] = useState("");
-  const domain = picked || domains[0];
+  const [domain, setDomain] = useState("");
+  /** AI 가 제안한 영역과 그때 적혀 있던 글. 글이 바뀌면 그 제안은 안 띄운다. */
+  const [suggested, setSuggested] = useState<{ fact: string; domain: string | null } | null>(null);
   const [fact, setFact] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -351,16 +357,23 @@ function Compose({
   // 바쁜 교사가 확인하지 않고 「이대로 남기기」를 누르면 조용히 그렇게 저장됐다.
   const classroom = classes.find((c) => c.id === activeClassId);
   const chosen = (classroom?.children ?? []).filter((c) => childIds.includes(c.id));
-  const saveLabel =
-    chosen.length === 1
-      ? `${chosen[0].name} 기록으로 남기기`
-      : chosen.length > 1
-        ? `${chosen.length}명으로 남기기`
-        : "이대로 남기기";
+
+  const suggestion =
+    !domain && suggested?.fact === fact.trim() ? (suggested?.domain ?? null) : null;
+
+  /** 「누구 기록인지 고르기」 — 다 쓴 글로 AI 에게 영역을 한 번 묻는다. 제안일 뿐이다. */
+  function startConfirm() {
+    setConfirming(true);
+    const written = fact.trim();
+    if (domain || !activeClassId || suggested?.fact === written) return;
+    void suggestRecordDomain(activeClassId, written, "").then((found) =>
+      setSuggested({ fact: written, domain: found }),
+    );
+  }
 
   async function save() {
     const written = fact.trim();
-    if (!written || !activeClassId || !chosen.length || busy) return;
+    if (!written || !activeClassId || !chosen.length || !domain || busy) return;
     setBusy(true);
     try {
       /*
@@ -400,6 +413,8 @@ function Compose({
       }
       setFact("");
       setChildIds([]);
+      setDomain("");
+      setSuggested(null);
       setConfirming(false);
       onSaved();
     } catch (e) {
@@ -452,12 +467,15 @@ function Compose({
                 {dictation.error}
               </p>
             )}
+            {dictation.listening && (
+              <p className="mt-2 text-[13px] text-ink-soft">{DICTATION_NOTICE}</p>
+            )}
             <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3">
               {/* 적는 순서를 보여준다(FR-404). 교사가 빠뜨리기 쉬운 것이 「반응」과 「교사 지원」인데,
                   그 둘이 없으면 AI 가 해석과 지원을 쓸 근거가 없다. 안내일 뿐 막지는 않는다.
                   한 줄짜리 빠른 기록 자리라 RecordsPage 보다 짧게 적는다. */}
               <span className="hidden text-[13px] text-ink-soft sm:block">
-                <b>상황 · 행동 · 반응 · 교사 지원</b> 순서면 좋아요
+                <b>상황, 행동, 아이 반응</b> 순서로 적으면 일지에 바로 쓰여요
               </span>
               <div className="ml-auto flex items-center gap-3">
                 {dictation.supported && (
@@ -465,9 +483,10 @@ function Compose({
                     type="button"
                     aria-label={dictation.listening ? "받아쓰기 중지" : "음성 받아쓰기"}
                     aria-pressed={dictation.listening}
+                    title={DICTATION_NOTICE}
                     disabled={confirming}
                     onClick={dictation.toggle}
-                    className={`flex h-10 w-10 items-center justify-center rounded-full border transition-colors ${
+                    className={`tap44 flex h-10 w-10 items-center justify-center rounded-full border transition-colors ${
                       dictation.listening
                         ? "animate-pulse border-peach-strong bg-peach-tint text-peach-ink"
                         : "border-primary-tint-line bg-primary-tint text-primary"
@@ -480,7 +499,7 @@ function Compose({
                   <button
                     type="button"
                     disabled={!fact.trim() || dictation.listening}
-                    onClick={() => setConfirming(true)}
+                    onClick={startConfirm}
                     className={PRIMARY}
                   >
                     <Icon name="check" className="h-4 w-4" />
@@ -494,62 +513,120 @@ function Compose({
       </div>
 
       {confirming && (
-        <section className="mt-5 rounded-lg border border-primary-tint-line bg-primary-tint p-4">
-          <h3 className="mb-4 flex items-center gap-2.5 font-display text-2xl font-bold text-primary-ink">
-            <SsampleNote size={34} label={null} />
-            이렇게 남길까요?
-          </h3>
-          {/* 아이는 격자로 깔아 반 전체를 보여준다. 고르개가 「누가 오래 비었는지」까지
-                  같이 말해 주므로, 적을 아이를 고르는 자리가 치우침을 보는 자리도 된다. */}
-          <div className="rounded-md border border-line bg-paper p-3.5">
-            <ChildPicker
-              childList={classroom?.children ?? []}
-              records={records}
-              today={date}
-              selected={childIds}
-              onSelect={setChildIds}
-              multiple={many}
-              onMultipleChange={(on) => {
-                setMany(on);
-                // 한 명 고르기로 돌아갈 때 둘 이상 골라 둔 것을 들고 가지 않는다.
-                setChildIds((ids) => (on ? ids : ids.slice(0, 1)));
-              }}
-            />
-          </div>
-          <label className="mt-3 block max-w-[260px] text-[13px] text-primary-ink">
+        /* 확인 판은 노란 쪽지 한 장(시안 4). 둥근 보라 판 안에 둥근 흰 판을 또 두면 카드 안의 카드다. */
+        <section className="relative mt-7 -rotate-[0.6deg] border border-note-soft-line bg-note-soft px-4 pb-4 pt-5 shadow-pg-card lg:px-5">
+          <Tape />
+          <h3 className="mb-3 font-display text-2xl font-bold text-ink">이렇게 남길까요?</h3>
+          {/* 아이는 칩으로 깔아 반 전체를 보여준다. 연노랑 칩이 「한 주 넘게 비었다」를 알려 주므로,
+              적을 아이를 고르는 자리가 치우침을 보는 자리도 된다. */}
+          <ChildPicker
+            label="누구"
+            childList={classroom?.children ?? []}
+            records={records}
+            today={date}
+            selected={childIds}
+            onSelect={setChildIds}
+            multiple={many}
+            onMultipleChange={(on) => {
+              setMany(on);
+              // 한 명 고르기로 돌아갈 때 둘 이상 골라 둔 것을 들고 가지 않는다.
+              setChildIds((ids) => (on ? ids : ids.slice(0, 1)));
+            }}
+          />
+          {/* 영역은 하나만 고른다. 고르는 자리라 그림 · 색에 이름까지 쓴다. AI 제안은 보라 점선. */}
+          <p
+            id="home-domain-label"
+            className="mt-4 text-[13px] font-medium tracking-[0.12em] text-ink-soft"
+          >
             영역
-            <select
-              value={domain}
-              onChange={(e) => setDomain(e.target.value)}
-              className="selectField mt-1 block min-h-11 w-full rounded-md border border-line bg-paper px-3 text-xs text-ink"
-            >
-              {domains.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="mt-4 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              className="min-h-11 px-3 text-xs text-primary-ink underline underline-offset-4"
-            >
-              더 쓸래요
+          </p>
+          <div
+            role="radiogroup"
+            aria-labelledby="home-domain-label"
+            className="mt-2 flex flex-wrap gap-2.5"
+          >
+            {domains.map((d) => (
+              <DomainButton
+                key={d}
+                domain={d}
+                on={d === domain}
+                suggested={d === suggestion}
+                onPick={() => setDomain(d)}
+              />
+            ))}
+          </div>
+          {suggestion && (
+            <p className="mt-2 text-xs text-ink-soft">점선은 AI 제안이에요. 맞으면 눌러 주세요.</p>
+          )}
+          <div className="mt-4 flex items-center justify-end gap-2.5">
+            <button type="button" onClick={() => setConfirming(false)} className={SECONDARY}>
+              고쳐 쓰기
             </button>
             <button
               type="button"
-              disabled={busy || !chosen.length}
+              disabled={busy || !chosen.length || !domain}
+              aria-describedby={!domain || !chosen.length ? "home-save-hint" : undefined}
               onClick={save}
               className={PRIMARY}
             >
-              {busy ? "남기는 중" : saveLabel}
+              {busy ? "남기는 중" : "남기기"}
             </button>
           </div>
+          {(!domain || !chosen.length) && (
+            <p id="home-save-hint" className="mt-2 text-right text-xs text-ink-soft">
+              {!domain ? "영역을 고르면 남길 수 있어요" : "아이를 고르면 남길 수 있어요"}
+            </p>
+          )}
         </section>
       )}
     </section>
+  );
+}
+
+/**
+ * 영역 고르기 버튼 — 그림 · 색 · 이름(시안 4). 색은 영수증 줄의 영역 꼬리표와 같아서, 여기서 고른
+ * 색이 쌓인 기록에서 그대로 보인다. 고르면 굵은 먹 테두리로 눌린 채 있고, AI 제안은 보라 점선을 두른다.
+ * 그림이 없는 영역(2축 원)은 흰 면에 이름만.
+ */
+function DomainButton({
+  domain,
+  on,
+  suggested,
+  onPick,
+}: {
+  domain: string;
+  on: boolean;
+  suggested: boolean;
+  onPick: () => void;
+}) {
+  const look = DOMAIN_LOOK[domain];
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={on}
+      data-suggested={suggested || undefined}
+      onClick={onPick}
+      className={`inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 text-[13px] font-semibold transition-transform ${
+        on
+          ? "translate-x-[2px] translate-y-[3px] border-2 border-ink"
+          : "border shadow-pg-card active:translate-x-[2px] active:translate-y-[3px] active:shadow-none"
+      } ${suggested ? "outline-dashed outline-2 outline-offset-2 outline-primary" : ""} ${
+        look ? "" : "border-line bg-paper text-ink"
+      }`}
+      style={
+        look
+          ? {
+              background: `var(--pg-domain-${look.tone})`,
+              borderColor: on ? undefined : `var(--pg-domain-${look.tone}-line)`,
+              color: `var(--pg-domain-${look.tone}-ink)`,
+            }
+          : undefined
+      }
+    >
+      {look && <Icon name={look.icon} className="h-[18px] w-[18px]" strokeWidth={1.9} />}
+      {domain}
+    </button>
   );
 }
 
@@ -647,16 +724,16 @@ function ChildSpotlight({
                   제목과 같은 말이 한 쪽지에 두 번 나온다. */}
               {/* 이름 · 언제 무슨 영역 · 적힌 글 · 가는 길. 넷이 줄 없이 붙어 있으면
                   글자 크기만으로 갈라야 해서 한 덩어리로 읽힌다. */}
-              {/* 영역은 관찰 기록 배지와 같은 그림 · 색에 손글씨(PM 점검 안 1). 색은 그림에만 칠한다 —
-                  영역 색 글씨는 살구 쪽지에서 대비가 4.5 : 1 아래로 떨어진다. */}
+              {/* 영역은 관찰 기록 배지와 같은 그림 · 색. 색은 그림에만 칠한다 — 영역 색 글씨는 살구 쪽지에서
+                  대비가 4.5 : 1 아래로 떨어진다. 글자는 손글씨가 아니라 본문 글꼴(점검 H-D1). */}
               {latest ? (
                 <div className="mt-3 flex items-center justify-between gap-2 border-t border-ink/35 pt-2.5">
-                  <span className="flex min-w-0 items-center gap-1.5 font-display text-[18px] font-bold leading-none text-ink">
+                  <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-none text-ink">
                     {look && <Icon name={look.icon} className={`h-4 w-4 shrink-0 ${look.ink}`} />}
                     <span className="truncate">{latest.domain}</span>
                   </span>
                   <span className="shrink-0 text-[12.5px] text-ink-soft">
-                    {shortDate(latest.date)}
+                    {dayLabel(latest.date)}
                   </span>
                 </div>
               ) : (
@@ -670,7 +747,7 @@ function ChildSpotlight({
               {/* 가는 길은 쪽지 오른쪽 아래 끝 — 「다음으로 가는 곳」으로 읽힌다(PM 점검). */}
               <Link
                 href={childHref}
-                className="mt-3 flex min-h-10 items-center justify-end gap-1 border-t border-ink/35 pt-2.5 text-[12.5px] font-semibold text-ink-soft"
+                className="tap44 mt-3 flex min-h-10 items-center justify-end gap-1 border-t border-ink/35 pt-2.5 text-[12.5px] font-semibold text-ink-soft"
               >
                 이 아이 기록 보기
                 <Icon name="arrow" className="h-3 w-3" />
@@ -716,7 +793,7 @@ function SpotControls({
         type="button"
         aria-label="이전 아이"
         onClick={() => onTurn(-1)}
-        className={`${ROUND} h-9 w-9 border-board-ink text-board-ink`}
+        className={`${ROUND} h-11 w-11 border-board-ink text-board-ink`}
       >
         <Icon name="chevronLeft" className="h-4 w-4" />
       </button>
@@ -727,7 +804,7 @@ function SpotControls({
         type="button"
         aria-label="다음 아이"
         onClick={() => onTurn(1)}
-        className={`${ROUND} h-9 w-9 border-board-ink text-board-ink`}
+        className={`${ROUND} h-11 w-11 border-board-ink text-board-ink`}
       >
         <Icon name="chevron" className="h-4 w-4" />
       </button>
@@ -736,7 +813,7 @@ function SpotControls({
           type="button"
           aria-label={stopped ? "다시 넘기기" : "넘기기 멈추기"}
           onClick={onToggle}
-          className={`${ROUND} h-[30px] w-[30px] border-board-ink-soft text-board-ink-soft`}
+          className={`${ROUND} h-11 w-11 border-board-ink-soft text-board-ink-soft`}
         >
           <Icon name={stopped ? "play" : "pause"} className="h-3.5 w-3.5" />
         </button>
@@ -785,7 +862,7 @@ function TodaySlip({
           <h2 className={`${LABEL} min-w-0 text-ink-soft`}>
             오늘 적은 기록 <b className="text-primary">{records.length}</b>건
           </h2>
-          <Link href="/records" className="shrink-0 text-xs font-semibold text-primary">
+          <Link href="/records" className="tap44 shrink-0 text-xs font-semibold text-primary">
             전체 기록 →
           </Link>
         </div>
@@ -877,7 +954,7 @@ function RoutineLine({
   const line = (
     <>
       <span className="w-[52px] shrink-0 text-[13px] text-ink-soft">{time}</span>
-      <span className="min-w-0 flex-1 text-sm text-ink">{`일과 — ${names.join(" · ")}`}</span>
+      <span className="min-w-0 flex-1 text-sm text-ink">{`일과 — ${names.join(", ")}`}</span>
     </>
   );
   if (!href) return <div className={row}>{line}</div>;
@@ -907,7 +984,7 @@ function BoardSection({
       {href && linkLabel && (
         <Link
           href={href}
-          className="self-start font-display text-[17px] font-bold text-board-ink-soft underline underline-offset-4"
+          className="flex min-h-11 items-center self-start text-[13px] font-semibold text-board-ink-soft underline underline-offset-4"
         >
           {linkLabel}
         </Link>
@@ -916,13 +993,13 @@ function BoardSection({
   );
 }
 
-/** 칠판에 쓰는 분필 글. 쪽지가 없는 자리를 빈 칸으로 두지 않는다. */
+/** 칠판에 쓰는 분필 글. 쪽지가 없는 자리를 빈 칸으로 두지 않는다. 본문이라 손글씨가 아니다(점검 H-D1). */
 function ChalkLine({ children }: { children: ReactNode }) {
-  return <p className="font-display text-[18px] leading-[1.6] text-board-ink-soft">{children}</p>;
+  return <p className="text-[14px] leading-[1.7] text-board-ink-soft">{children}</p>;
 }
 
 /**
- * 기록 안된 아이들 — 한 주 넘게 기록이 없는 아이. 제목은 PM 이 정한 말이다.
+ * 기록 안 된 아이들 — 한 주 넘게 기록이 없는 아이. 제목은 PM 이 정한 말이다.
  *
  * 평가제에서 교사가 제일 걱정하는 것이 기록의 치우침이다. 셈은 아이 고르개와 **같은
  * 것**을 쓴다(`child-mark.ts`) — 두 자리가 다른 숫자를 말하면 둘 다 못 믿는다.
@@ -954,13 +1031,13 @@ function UnseenChildren({
     unseen.length === roster.length && unseen.every(({ tally }) => tally.days === null);
 
   return (
-    <BoardSection title="기록 안된 아이들" href="/records/children" linkLabel="아이별 기록 →">
+    <BoardSection title="기록 안 된 아이들" href="/records/children" linkLabel="아이별 기록 →">
       {unseen.length === 0 ? (
         // 흰 분필 한 색이라 칭찬하는 말이 칠판 제목 · 안내와 섞여 묻혔다. 노란 분필로 갈라 쓴다.
-        <p className="font-display text-[20px] leading-[1.6] text-board-ink">
+        <p className="text-[15px] leading-[1.7] text-board-ink">
           이번 주{" "}
           <span className="relative inline-block">
-            <span className="text-[42px] font-bold leading-none text-note">모두</span>
+            <span className="font-display text-[42px] font-bold leading-none text-note">모두</span>
             {/* 분필로 두 번 그은 밑줄 */}
             <span
               aria-hidden="true"
@@ -974,7 +1051,7 @@ function UnseenChildren({
             />
           </span>
           <br />
-          <span className="text-note">한 번씩</span> 적혔어요
+          <b className="text-note">한 번씩</b> 적혔어요
         </p>
       ) : neverStarted ? (
         <ChalkLine>
@@ -1021,15 +1098,20 @@ function UnseenChildren({
  * 빠뜨린 날을 다 세어 들이밀면 첫 화면이 빚 목록이 된다.
  */
 function EmptyDayNote({ date, href }: { date: string; href: string | null }) {
+  const label = dayLabel(date);
+  const cut = label.lastIndexOf(" ");
+  const [day, dow] = [label.slice(0, cut), label.slice(cut + 1)];
   return (
     <BoardSection title="비어 있는 날">
       {/* 칠판 위에서는 찢긴 밑(`tornPaper`)을 쓰지 않는다. 어두운 판 위에 흰 반원이
           줄지어 떠서 종이가 톱니처럼 보인다. 판에 붙인 쪽지는 네 변이 다 반듯하다. */}
       <div className="relative mt-1 border border-peach-line bg-peach p-5 shadow-pg-hard">
         <Tape className="right-8 rotate-3" />
-        <span className="font-display text-[40px] font-bold leading-none text-peach-ink">
-          {shortDate(date)}
+        {/* 날짜 표기는 「11월 9일 (일)」 하나(점검 H-D2). 숫자 쪽만 크게 손글씨로. */}
+        <span className="font-display text-[34px] font-bold leading-none text-peach-ink">
+          {day}
         </span>
+        <span className="ml-1.5 text-[13px] font-semibold text-peach-ink">{dow}</span>
         {/* 무슨 기록 · 무슨 일지인지 밝힌다(13주차 멘토 리뷰). 날짜 옆에 두면 세 줄로 꺾여 밑으로 내린다. */}
         <p className="mt-2.5 text-[13.5px] leading-[1.65] text-ink">
           <b>일과</b>를 적지 않아
@@ -1065,7 +1147,7 @@ function LastWeekNote({ look }: { look: LastWeek }) {
             지난주 돌아보기
           </span>
           <span className="-rotate-2 rounded-md border-[1.5px] border-dashed border-[color:var(--pg-primary-tint-line)] bg-paper px-2.5 py-0.5 text-[13px] font-bold tabular-nums tracking-[0.04em] text-primary-ink">
-            {shortDate(look.from)} ~ {shortDate(look.to)}
+            {dayLabel(look.from)} ~ {dayLabel(look.to)}
           </span>
         </h2>
         <Link
@@ -1075,16 +1157,41 @@ function LastWeekNote({ look }: { look: LastWeek }) {
           주간 보육일지 보기 →
         </Link>
       </div>
-      <p className="mt-3 max-w-[60ch] text-sm leading-[1.85] text-ink">
-        기록 <b>{look.count}건</b>
+      {/* 한 줄짜리라 손글씨로 쓴다 · 건수는 빨강(PM 2026-11-10, 종이와-판.md 빨강 예외 ③). */}
+      <p className="mt-3 max-w-[60ch] break-keep font-display text-[21px] leading-[1.9] text-ink">
+        기록 <b className="text-[24px] text-alert-ink">{look.count}건</b>
         {look.domain && (
           <>
-            {" · 제일 많이 적은 영역은 "}
-            <b>{look.domain}</b> {look.domainCount}건이에요.
+            {", 제일 많이 적은 영역은 "}
+            <DomainBadge domain={look.domain} /> {look.domainCount}건이에요.
           </>
         )}
       </p>
     </TornNote>
+  );
+}
+
+/**
+ * 영역 이름 딱지 — 관찰 기록 영역 칩의 색 · 그림을 그대로 쓴다. 납작하게 둔다(PM 11-10) —
+ * 두께 · 그림자를 주면 누르는 단추로 읽힌다.
+ */
+function DomainBadge({ domain }: { domain: string }) {
+  const look = DOMAIN_LOOK[domain];
+  // 2축(일상생활 · 놀이활동)은 영역 색이 없다 — 종이색 딱지로 둔다.
+  const color = (part = "") =>
+    look ? `var(--pg-domain-${look.tone}${part})` : part ? "var(--pg-line)" : "var(--pg-paper)";
+  return (
+    <b
+      className="mx-0.5 inline-flex -translate-y-[2px] items-center gap-1 whitespace-nowrap rounded-full border px-3 pb-[1px] align-middle text-[20px] leading-[1.5]"
+      style={{
+        background: color(),
+        borderColor: color("-line"),
+        color: look ? color("-ink") : "var(--pg-ink)",
+      }}
+    >
+      {look && <Icon name={look.icon} width={17} height={17} aria-hidden="true" />}
+      {domain}
+    </b>
   );
 }
 

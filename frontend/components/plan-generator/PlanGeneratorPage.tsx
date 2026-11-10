@@ -14,6 +14,7 @@ import {
 } from "@/lib/api/plans";
 import { syncClass } from "@/lib/api/onboarding";
 import { ApiError } from "@/lib/api/client";
+import { newRunId } from "@/lib/api/generationRuns";
 import type { AnnualInput } from "@/lib/api/types";
 import { classAnnualContext, saveAnnualContext } from "@/lib/plan-generator/context";
 import { loadClassSettings, primaryClassFor } from "@/lib/onboarding/settings";
@@ -42,7 +43,11 @@ const FORMAT = {
     image: "monthly-theme-crop",
     alt: "쌤플 기본 연간계획안 양식 예시",
     chip: "bg-[#e8f1ea] text-[#3b5441]",
-    steps: ["주제 정하기", "소주제 나누기", "문서로 정리하기"],
+    steps: [
+      ["generate", "주제 정하기"],
+      ["subthemes", "소주제 나누기"],
+      ["save", "문서로 정리하기"],
+    ],
   },
   PLAY_PROJECT: {
     name: "놀이 중심형",
@@ -50,7 +55,11 @@ const FORMAT = {
     image: "play-project-crop",
     alt: "놀이 중심형 연간계획안 양식 예시",
     chip: "bg-[#eee4f4] text-[#5e4b96]",
-    steps: ["놀이 떠올리기", "계절별로 나누기", "문서로 정리하기"],
+    steps: [
+      ["generate", "놀이 떠올리기"],
+      ["check", "겹치는 놀이 살펴보기"],
+      ["save", "문서로 정리하기"],
+    ],
   },
 } as const;
 
@@ -87,6 +96,8 @@ function AnnualGenerator({ format }: { format: Format }) {
   }, NO_ROOM);
   const [generating, setGenerating] = useState(false);
   const [done, setDone] = useState(false);
+  // 이번 생성 POST 의 헤더와 링이 같은 값을 쓴다 — 요청마다 새로 만든다(api-spec §9-8).
+  const [runId, setRunId] = useState<string>();
   const [error, setError] = useState("");
   const [stopped, setStopped] = useState(false);
   const [memo, setMemo] = useState("");
@@ -105,6 +116,8 @@ function AnnualGenerator({ format }: { format: Format }) {
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
+    const id = newRunId();
+    setRunId(id);
     setGenerating(true);
     setDone(false);
     setError("");
@@ -126,6 +139,7 @@ function AnnualGenerator({ format }: { format: Format }) {
           ...(memo.trim() ? { memo: memo.trim() } : {}),
         },
         controller.signal,
+        id,
       );
       if (controller.signal.aborted) return;
       try {
@@ -147,7 +161,7 @@ function AnnualGenerator({ format }: { format: Format }) {
     }
   }
 
-  /** [생성 멈추기]. 요청을 끊는다 — 놀이 중심형은 서버도 남은 구간을 부르지 않고 저장하지 않는다. */
+  /** [생성 멈추기]. 요청을 끊는다 — 놀이 중심형은 서버가 다음 단계를 부르지 않고 저장하지 않는다. */
   function stop() {
     controllerRef.current?.abort();
     setGenerating(false);
@@ -174,14 +188,7 @@ function AnnualGenerator({ format }: { format: Format }) {
   if (generating)
     return (
       <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
-        <GenerationRing
-          kind={`annual:${format}`}
-          // Sol 실측(2026-11-05): 놀이 중심형은 4구간을 차례로 불러 약 176초. 주제형은 아직 안 쟀다.
-          expect={format === "PLAY_PROJECT" ? 180 : 20}
-          steps={[...look.steps]}
-          done={done}
-          onCancel={stop}
-        />
+        <GenerationRing steps={[...look.steps]} runId={runId} done={done} onCancel={stop} />
       </div>
     );
 

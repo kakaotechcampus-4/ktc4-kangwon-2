@@ -42,6 +42,25 @@ html:has(.lp) {
       calc(var(--r-br, var(--r)) * var(--sq)) calc(var(--r-bl, var(--r)) * var(--sq));
   }
 }
+/* 휴대폰 누르는 자리 — 보이는 크기는 그대로 두고, 누르는 자리만 투명하게 44 × 44px 까지 넓힌다
+   (종이와-판 「접근성」). 단추를 직접 키우면 모양이 바뀐다. 요소에 ::after 를 따로 쓰고 있으면 붙이지 않는다.
+   components 층이라 `absolute` 같은 유틸리티 · CSS 모듈의 position 이 이긴다 — 그때도 기준 상자가 되므로 그대로 맞다. */
+@layer components {
+  @media (max-width: 1023px) {
+    .tap44 {
+      position: relative;
+    }
+    .tap44::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      transform: translate(-50%, -50%);
+    }
+  }
+}
 @supports (corner-shape: squircle) {
   .squircle {
     --sq: 1.65;
@@ -60,6 +79,22 @@ body {
   background: var(--pg-cream);
   /* 한글은 단어 중간에서 줄이 끊기면 읽기 나쁘다. */
   word-break: keep-all;
+}
+
+/* ── 휴대폰(1024 아래 — 사이드바가 하단 띠가 되는 폭) ─────────────────────
+   layout.tsx 가 viewport-fit=cover 를 켜서 env(safe-area-inset-*) 가 실제 값을 갖는다.
+   가로로 눕히면 노치가 왼쪽 · 오른쪽을 먹으니 본문을 그만큼 들인다(세로에서는 0 이다).
+   scroll-padding 은 칸으로 옮겨 갈 때(키보드 「다음」, 탭) 위 띠(60px) · 아래 메뉴(약 84px)
+   밑으로 숨지 않게 그만큼 비우고 멈추게 한다. */
+@media (max-width: 1023px) {
+  html {
+    scroll-padding-top: 72px;
+    scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  }
+  body {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
 }
 
 /* 고르는 칸의 화살표.
@@ -129,6 +164,50 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .pageTurn {
+    animation: none;
+  }
+}
+
+/* 찍힌 도장 `.inkStamp` — 인주가 덜 묻은 결(계획안 머리 크레용 동그라미와 같은 알갱이를 옅게)을 씌우고,
+ * 처음 그릴 때 한 번 크게 떴다가 꾹 찍힌다. 기울기는 각 도장이 `rotate` 로 따로 준다. */
+@keyframes inkStampIn {
+  from {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.94);
+  }
+}
+.inkStamp {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.45' numOctaves='2' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1.1 1.45'/%3E%3C/filter%3E%3Crect width='90' height='90' filter='url(%23g)'/%3E%3C/svg%3E");
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.45' numOctaves='2' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1.1 1.45'/%3E%3C/filter%3E%3Crect width='90' height='90' filter='url(%23g)'/%3E%3C/svg%3E");
+  animation: inkStampIn 0.42s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .inkStamp {
+    animation: none;
+  }
+}
+
+/* 연간 파일 가져오기 대기 링(GenerationRing `spin`). 진행률이 아니다 — 보라 호가 한 바퀴 휙 돌고(가속 → 감속)
+ * 잠깐 쉬었다가 다시 돈다. 움직임을 줄인 화면에서는 12시에 멈춰 있다. */
+@keyframes ringSweep {
+  from {
+    transform: rotate(-90deg);
+  }
+  65%,
+  to {
+    transform: rotate(270deg);
+  }
+}
+.ringSweep {
+  transform: rotate(-90deg);
+  animation: ringSweep 1.3s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ringSweep {
     animation: none;
   }
 }

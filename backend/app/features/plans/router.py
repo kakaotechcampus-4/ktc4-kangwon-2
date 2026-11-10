@@ -7,7 +7,7 @@
 """
 
 import logging
-from typing import Annotated
+from typing import Annotated, Any, cast
 
 import anyio
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
@@ -76,6 +76,7 @@ from app.features.plans.annual_content import (
     with_teacher_subthemes,
 )
 from app.features.plans.codec import to_jsonable
+from app.features.plans.generation_runs import RunRecord
 from app.features.plans.llm import theme_text_generator
 from app.features.plans.memo_privacy import (
     mask_memo,
@@ -146,7 +147,10 @@ _STOPPED = {"code": "GENERATION_STOPPED", "message": "생성을 멈췄습니다.
 
 def _repo(session: Session, user: User) -> PostgresPlanRepository[YearlyPlan]:
     return PostgresPlanRepository(
-        session, center_id=user.center_id, kind="annual", plan_type=YearlyPlan
+        session,
+        center_id=user.center_id,  # type: ignore[arg-type]
+        kind="annual",
+        plan_type=YearlyPlan,
     )
 
 
@@ -312,7 +316,7 @@ def _generation_error(error: YearlyApplicationError) -> HTTPException:
 
 def _exception_chain(error: Exception):
     seen = set()
-    current = error
+    current: BaseException | None = error
     while current is not None and id(current) not in seen:
         seen.add(id(current))
         yield current
@@ -384,7 +388,7 @@ def _play_project_plan(session: Session, user: User, klass, memo: str, names, st
             stopped,
         )
     except play_project.GenerationStopped as stop:
-        # 받는 쪽이 없다. 남은 구간의 Sol 을 부르지 않고 저장하지 않는다(다시 만들어도 409 가 없다).
+        # 받는 쪽이 없다. 다음 단계의 Sol 을 부르지 않고 저장하지 않는다(다시 만들어도 409 가 없다).
         _log.info("annual play-project generation stopped before=%s", stop)
         raise HTTPException(499, detail=_STOPPED) from None
     except Exception as error:
@@ -403,7 +407,10 @@ def _play_project_plan(session: Session, user: User, klass, memo: str, names, st
     if duplicate is not None:
         raise _ALREADY_EXISTS
     repo = PostgresPlanRepository(
-        session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+        session,
+        center_id=user.center_id,  # type: ignore[arg-type]
+        kind="annual",
+        plan_type=PlayProjectYearlyPlan,
     )
     try:
         repo.save(plan.plan_id, plan)
@@ -413,7 +420,7 @@ def _play_project_plan(session: Session, user: User, klass, memo: str, names, st
             raise _ALREADY_EXISTS from error
         raise
     row = session.scalar(select(Plan).where(Plan.plan_ref == plan.plan_id.value))
-    detail = play_project.to_out(row, plan)
+    detail = play_project.to_out(row, plan)  # type: ignore[arg-type]
     session.commit()
     return detail
 
@@ -454,7 +461,7 @@ def _domain_error(error: Exception) -> HTTPException:
 )
 @timing.timed("annual_theme", logging.getLogger("app.server.timing").info)
 def create_annual_plan(
-    body: CreateAnnualPlan, request: Request, session: DbSession, user: CurrentUser
+    body: CreateAnnualPlan, request: Request, session: DbSession, user: CurrentUser, run: RunRecord
 ):
     """12개월치를 만들어 DRAFT 로 저장한다.
 
@@ -462,6 +469,9 @@ def create_annual_plan(
     생기므로 따로 받으면 불일치 경로만 생긴다(§4).
     """
     klass = require_own_class(session, user, body.class_id)
+    if body.format == "PLAY_PROJECT":
+        timing.set_kind("annual_play")
+    run.begin(klass)
     # 요청 사항 속 아이 이름은 LLM 에 보내기 전에 가명으로 바꾼다. 못 바꾸면 여기서 422(ADR-060).
     names = memo_name_table(session, klass.id, body.memo)
     # 연간은 반 하나에 하나다. 막지 않으면 교사가 새로고침하고 다시 눌렀을 때 두 개가
@@ -477,7 +487,6 @@ def create_annual_plan(
     if duplicate is not None:
         raise _ALREADY_EXISTS
     if body.format == "PLAY_PROJECT":
-        timing.set_kind("annual_play")
         return _play_project_plan(session, user, klass, body.memo, names, _disconnected(request))
     if body.form_id is not None and find_own_form(session, user.center_id, body.form_id) is None:
         # 남의 원 양식 번호를 넣어도 통과하면 안 된다. 없는 것과 남의 것을 가르지 않는다(ADR-017).
@@ -527,7 +536,8 @@ def create_annual_plan(
     # **응답을 다 만든 뒤에 확정한다.** 먼저 commit 하면 아래에서 터졌을 때 DB 에는
     # 계획안이 남고 교사는 500 을 본다 — 실패한 줄 알고 다시 눌러 두 개가 생긴다.
     # 저장소가 이미 flush 해두어 commit 전에도 행을 읽을 수 있다.
-    timing.phase("save")
+    # 소주제 단계의 시작 — 생성 기록 단계가 저장으로 먼저 넘어가지 않게(ADR-096).
+    timing.phase("subthemes")
     row = session.scalar(select(Plan).where(Plan.plan_ref == result.plan.plan_id.value))
     plan = result.plan
     try:
@@ -536,16 +546,18 @@ def create_annual_plan(
             sub_themes, applied, notices = generate_subthemes_with_memo(
                 plan, mask_memo(body.memo, names)
             )
-            row.sub_themes = {
-                month: [unmask_text(text, names) for text in texts]
+            row.sub_themes = {  # type: ignore[union-attr]
+                month: [unmask_text(text, names, body.memo) for text in texts]
                 for month, texts in sub_themes.items()
             }
-            notices = tuple(MemoNotice(unmask_text(n.summary, names), n.reason) for n in notices)
+            notices = tuple(
+                MemoNotice(unmask_text(n.summary, names, body.memo), n.reason) for n in notices
+            )
             plan = with_yearly_memo(plan, body.memo, applied, notices)
             # Core 가 이미 저장한 행을 고쳐 쓴다. 저장소 save 는 revision 을 올리므로 쓰지 않는다.
-            row.body = to_jsonable(plan)
+            row.body = to_jsonable(plan)  # type: ignore[union-attr]
         else:
-            row.sub_themes = generate_subthemes(plan)
+            row.sub_themes = generate_subthemes(plan)  # type: ignore[union-attr]
     except (LlmUnavailable, LlmBudgetExceeded, LlmFailed) as error:
         # Core 가 이미 flush 했다. 실패한 생성에서 부분 계획안을 남기지 않는다.
         session.rollback()
@@ -568,8 +580,8 @@ def create_annual_plan(
         ) from error
     # 어느 양식에서 나왔는지 남긴다. 도메인은 양식을 모르므로 서버가 칸에 넣는다.
     timing.phase("save")
-    row.form_id = body.form_id
-    detail = _detail(row, plan)
+    row.form_id = body.form_id  # type: ignore[union-attr]
+    detail = _detail(row, plan)  # type: ignore[arg-type]
     session.commit()
     return detail
 
@@ -613,10 +625,13 @@ def get_annual_plan(plan_id: int, session: DbSession, user: CurrentUser):
     row = _row(session, user, plan_id, read_only=True)
     if format_of(row) == PLAY_PROJECT_FORMAT:
         repo = PostgresPlanRepository(
-            session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+            session,
+            center_id=user.center_id,  # type: ignore[arg-type]
+            kind="annual",
+            plan_type=PlayProjectYearlyPlan,
         )
-        return play_project.to_out(row, repo.get(PlanId(row.plan_ref)))
-    return _detail(row, _repo(session, user).get(PlanId(row.plan_ref)))
+        return play_project.to_out(row, repo.get(PlanId(row.plan_ref)))  # type: ignore[arg-type]
+    return _detail(row, _repo(session, user).get(PlanId(row.plan_ref)))  # type: ignore[arg-type]
 
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -629,7 +644,8 @@ def delete_annual_plan(plan_id: int, session: DbSession, user: CurrentUser) -> R
 
     **확정본도 지운다**(Human Decision 2026-11-05 하민, ADR-064). 화면에서 확정 취소를 없앴다 —
     확정본을 고치려면 문서 보관함에서 지우고 다시 만든다. 이력 · 근거는 본문(`body`) 안에
-    있어 행과 함께 사라지고, `plans` 를 가리키는 FK 는 없어 고아가 남지 않는다.
+    있어 행과 함께 사라진다. `generation_runs.plan_id` FK 는 `ON DELETE SET NULL` 이라 생성 기록
+    줄은 남고 `plan_id` 만 빈다(ADR-096 D5).
 
     **월간이 딸려 있으면 안 지운다.** 월간은 이 계획안을 부모로 들고 있어서(§9-1
     `parent`), 부모가 사라지면 조회가 깨진다. 월간을 먼저 지워야 한다.
@@ -722,7 +738,7 @@ def update_month(
         raise _error(409, "GATE_BLOCKED", "놀이 프로젝트형은 칸 편집으로 고칩니다.", [])
     repo = _repo(session, user)
     plan = repo.get(PlanId(row.plan_ref))
-    period = next((p for p in plan.periods if p.period.calendar_month == month), None)
+    period = next((p for p in plan.periods if p.period.calendar_month == month), None)  # type: ignore[union-attr]
     if period is None:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
@@ -731,7 +747,7 @@ def update_month(
     try:
         updated = EditYearlyPlanItem(plan_repository=repo, clock=SystemClock()).execute(
             EditYearlyPlanItemCommand(
-                plan_id=plan.plan_id,
+                plan_id=plan.plan_id,  # type: ignore[union-attr]
                 item_id=period.theme.item_id,
                 new_value=body.theme,
                 actor_id=ActorId(f"user_{user.id}"),
@@ -795,7 +811,7 @@ def confirm_annual_plan(
     plan = repo.get(PlanId(row.plan_ref))
     mismatched = [
         str(period.period.calendar_month)
-        for period in plan.periods
+        for period in plan.periods  # type: ignore[union-attr]
         if len(subthemes_for_month(row.sub_themes, period.period.calendar_month))
         != len(canonical_week_periods(period.period))
     ]
@@ -842,8 +858,8 @@ def get_audit(plan_id: int, session: DbSession, user: CurrentUser):
             ),
         )
 
-    items = [out(event) for event in plan.audit.events]
-    for period in plan.periods:
+    items = [out(event) for event in plan.audit.events]  # type: ignore[union-attr]
+    for period in plan.periods:  # type: ignore[union-attr]
         items += [out(event, period.period.calendar_month) for event in period.theme.audit.events]
     # 시간순. 어느 쪽에 담겼는지가 아니라 언제 일어났는지로 읽어야 한다.
     items.sort(key=lambda item: item.occurred_at)
@@ -878,12 +894,12 @@ def _play_project_error(error: Exception) -> HTTPException:
         return _NOT_FOUND
     if code == "selection_incomplete":
         # problems 는 "m09_m11: 3 kept, needs 5" 꼴이다. 접두사 없는 구간 키를 구간 순서대로.
-        keys = dict.fromkeys(p.split(":")[0] for p in error.problems if ":" in p)
+        keys = dict.fromkeys(p.split(":")[0] for p in cast(Any, error).problems if ":" in p)
         return _invalid(list(keys))
     if code == "invalid_selection":
         # problems 는 "m03_m05: unknown candidate" 꼴이다. 구간을 못 뽑으면 selections 전체.
-        keys = {f"selections.{p.split(':')[0]}" for p in error.problems if ":" in p}
-        return _invalid(sorted(keys) or ["selections"])
+        fields = {f"selections.{p.split(':')[0]}" for p in cast(Any, error).problems if ":" in p}
+        return _invalid(sorted(fields) or ["selections"])
     if code in (
         "invalid_item_id",
         "play_project_item_not_found",
@@ -899,7 +915,10 @@ def _play_project_error(error: Exception) -> HTTPException:
 
 def _play_plan(session: Session, user: User, row: Plan) -> PlayProjectYearlyPlan:
     plan = PostgresPlanRepository(
-        session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+        session,
+        center_id=user.center_id,  # type: ignore[arg-type]
+        kind="annual",
+        plan_type=PlayProjectYearlyPlan,
     ).get(PlanId(row.plan_ref))
     if plan is None:  # _row 와 get 사이에 지워졌다
         raise _NOT_FOUND
@@ -916,7 +935,10 @@ def _play_read(session: Session, user: User, plan_id: int, expected_revision: in
     if row.revision != expected_revision:
         raise _STALE_WRITE
     repo = PostgresPlanRepository(
-        session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+        session,
+        center_id=user.center_id,  # type: ignore[arg-type]
+        kind="annual",
+        plan_type=PlayProjectYearlyPlan,
     )
     plan = repo.get(PlanId(row.plan_ref))
     if plan is None:  # _row 와 get 사이에 지워졌다
@@ -1049,7 +1071,10 @@ def unconfirm_annual_plan(
             plan_repository=_drafts(plan), clock=SystemClock()
         ).execute(UnconfirmPlayProjectPlanCommand(plan.plan_id, actor))
         repo = PostgresPlanRepository(
-            session, center_id=user.center_id, kind="annual", plan_type=PlayProjectYearlyPlan
+            session,
+            center_id=user.center_id,  # type: ignore[arg-type]
+            kind="annual",
+            plan_type=PlayProjectYearlyPlan,
         )
         plan_id = row.id  # rollback 이 row 를 만료시킨다
         written = repo.update_if_revision(
@@ -1067,12 +1092,12 @@ def unconfirm_annual_plan(
         return detail
     # 월별 주제형은 확정처럼 잠그고 다시 읽는다. revision 을 받지 않는다.
     row = _row(session, user, plan_id, lock=True)
-    repo = _repo(session, user)
+    theme_repo = _repo(session, user)
     if row.status != "CONFIRMED":
-        return _detail(row, repo.get(PlanId(row.plan_ref)))
-    changed = UnconfirmYearlyPlan(plan_repository=repo, clock=SystemClock()).execute(
+        return _detail(row, theme_repo.get(PlanId(row.plan_ref)))  # type: ignore[arg-type]
+    theme_changed = UnconfirmYearlyPlan(plan_repository=theme_repo, clock=SystemClock()).execute(
         UnconfirmYearlyPlanCommand(plan_id=PlanId(row.plan_ref), actor_id=actor)
     )
-    detail = _detail(row, changed)
+    theme_detail = _detail(row, theme_changed)
     session.commit()
-    return detail
+    return theme_detail

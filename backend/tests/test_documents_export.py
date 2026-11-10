@@ -23,11 +23,12 @@ from app.features.documents.export import TEMPLATE_DIR
 from app.features.documents.models import Document, DocumentSection, DocumentSource
 from app.features.forms import hwp_form
 from app.features.observations.models import Observation
-from app.features.routines.models import RoutineRecord
+from app.features.routines.models import RoutineRecord, RoutineWeather
 from app.main import app
 from app.shared.hwpx import NS, TemplateMismatch, fill_grid
 
 client = TestClient(app)
+CHECKS = {"fact": True, "interpretation": True, "support": True}
 
 INTERPRETATION = "개미의 움직임을 오래 지켜보며 작은 생물에 관심을 보였다."
 SUPPORT = "돋보기를 바깥놀이 영역에 두고 개미가 다니는 길을 함께 찾아본다."
@@ -60,13 +61,13 @@ def mine(db_session, teacher):
     return klass, child
 
 
-def _observation(session, klass, child, day, domain, fact):
+def _observation(session, klass, child, day, domain, fact, context=""):
     observation = Observation(
         class_id=klass.id,
         child_id=child.id,
         date=date(2026, 9, day),
         domain=domain,
-        context="",
+        context=context,
         fact=fact,
     )
     session.add(observation)
@@ -74,8 +75,22 @@ def _observation(session, klass, child, day, domain, fact):
     return observation
 
 
-def _document(session, klass, child, observations, *, kind="observation", status="CONFIRMED"):
-    """근거 사본과 사실 · 해석 · 지원을 갖춘 문서. `observations` 순서가 교사가 고른 순서다."""
+def _document(
+    session,
+    klass,
+    child,
+    observations,
+    *,
+    kind="observation",
+    status="CONFIRMED",
+    snapshot=True,
+):
+    """근거 사본과 사실 · 해석 · 지원을 갖춘 문서. `observations` 순서가 교사가 고른 순서다.
+
+    `snapshot` 이면 생성 API 처럼 영역 · 상황 · 원의 지금 축을 사본으로 찍는다(ADR-088).
+    끄면 그 칸이 생기기 전의 옛 문서(「다시 확인」)다.
+    """
+    axis = session.get(Center, klass.center_id).observation_axis if snapshot else None
     doc = Document(
         kind=kind,
         title="이가명 관찰일지 (9월)",
@@ -90,6 +105,7 @@ def _document(session, klass, child, observations, *, kind="observation", status
         generation_rule_id="observation-draft",
         generation_rule_version="v1",
         review_note="",
+        observation_axis=axis,
     )
     session.add(doc)
     session.flush()
@@ -102,6 +118,8 @@ def _document(session, klass, child, observations, *, kind="observation", status
                 class_id=klass.id,
                 child_id=child.id,
                 date=o.date,
+                domain=o.domain if snapshot else None,
+                context=o.context if snapshot else None,
                 text=o.fact,
             )
         )
@@ -174,11 +192,30 @@ def test_2축_원은_두_줄짜리_양식으로_나간다(db_session, mine):
     assert table["총평"] == [f"▸ 배움) {INTERPRETATION}", "", f"▸ 지원) {SUPPORT}"]
 
 
-def test_축을_바꾼_뒤_옛_축_기록을_내보내면_이유를_말한다(db_session, mine):
-    """조용히 버리면 교사가 고른 근거가 종이에서 사라진다."""
+def test_원이_축을_바꿔도_확정본은_만들_때의_축으로_나간다(db_session, mine):
+    """ADR-088 전에는 422 였다 — 종이가 원의 지금 축을 따라서 옛 확정본을 못 내보냈다."""
     klass, child = mine
     old = _observation(db_session, klass, child, 5, "자연탐구", "지렁이를 찾았다.")
     doc = _document(db_session, klass, child, [old])
+    db_session.get(Center, klass.center_id).observation_axis = "DAILY_PLAY_2"
+    db_session.flush()
+
+    response = client.get(f"/api/documents/{doc.id}/export/hwp")
+
+    assert response.status_code == 200, response.text
+    table = _table(response.content)
+    assert list(table)[-1] == "종합해석"
+    assert table["자연탐구"] == ["(9/5) 지렁이를 찾았다."]
+
+
+def test_축_사본이_없는_옛_문서는_원의_지금_축이라_옛_축_기록이면_이유를_말한다(db_session, mine):
+    """채우기 규칙이 못 채운 옛 문서는 예전 동작 그대로다.
+
+    조용히 버리면 교사가 고른 근거가 종이에서 사라진다.
+    """
+    klass, child = mine
+    old = _observation(db_session, klass, child, 5, "자연탐구", "지렁이를 찾았다.")
+    doc = _document(db_session, klass, child, [old], snapshot=False)
     db_session.get(Center, klass.center_id).observation_axis = "DAILY_PLAY_2"
     db_session.flush()
 
@@ -189,6 +226,19 @@ def test_축을_바꾼_뒤_옛_축_기록을_내보내면_이유를_말한다(db
     assert body["code"] == "VALIDATION_FAILED"
     assert "자연탐구" in body["message"]
     assert body["fields"] == [f"sources.{old.id}"]
+
+
+def test_상황이_있으면_관찰_칸에_괄호로_붙는다(db_session, mine):
+    klass, child = mine
+    record = _observation(
+        db_session, klass, child, 5, "자연탐구", "지렁이를 찾았다.", context="바깥놀이"
+    )
+    plain = _observation(db_session, klass, child, 9, "자연탐구", "개미를 보았다.")
+    doc = _document(db_session, klass, child, [record, plain])
+
+    table = _table(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+
+    assert table["자연탐구"] == ["(9/5) (바깥놀이) 지렁이를 찾았다.", "(9/9) 개미를 보았다."]
 
 
 def _hwp_rows(content: bytes, tmp_path) -> list[list[str]]:
@@ -246,11 +296,28 @@ def test_영역_행은_누리과정_순서로_고정이다(db_session, mine):
     ]
 
 
-def test_만든_뒤_고친_영역이_종이에_나간다(db_session, mine):
-    """영역만 고치면 사실은 그대로라 stale 이 아니다. 고친 영역 행에 들어가야 한다."""
+def test_종이의_영역_행은_만들_때의_사본이다(db_session, mine):
+    """ADR-088 전에는 고친 원본 영역을 따라 행이 옮겨 갔다. 배움 칸은 옛 영역으로 쓴 글이다.
+
+    API 로 고치면 문서가 stale 이 되어 내보내지 않는다.
+    여기는 DB 를 직접 바꿔 종이가 무엇을 읽는지만 본다.
+    """
     klass, child = mine
     record = _observation(db_session, klass, child, 5, "자연탐구", "블록으로 탑을 쌓았다.")
     doc = _document(db_session, klass, child, [record])
+    record.domain = "신체운동·건강"
+    db_session.flush()
+
+    table = _table(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+
+    assert table["자연탐구"] == ["(9/5) 블록으로 탑을 쌓았다."]
+    assert table["신체운동·건강"] == [""]
+
+
+def test_영역_사본이_없는_옛_문서는_원본_영역을_따른다(db_session, mine):
+    klass, child = mine
+    record = _observation(db_session, klass, child, 5, "자연탐구", "블록으로 탑을 쌓았다.")
+    doc = _document(db_session, klass, child, [record], snapshot=False)
     record.domain = "신체운동·건강"
     db_session.flush()
 
@@ -351,11 +418,13 @@ def test_관찰일지_일일_보육일지가_아니면_422(db_session, mine):
     assert response.json()["error"]["fields"] == ["kind"]
 
 
-def test_근거_관찰_기록이_사라졌으면_빼고_내보내지_않는다(db_session, mine):
+def test_영역_사본이_없는_옛_문서는_근거_기록이_사라졌으면_빼고_내보내지_않는다(db_session, mine):
+    """영역을 원본에서 읽어야 하는 옛 문서만이다. 사본이 있으면 원본 없이도 행을 안다 —
+    API 로 지우면 문서가 stale 이 되어 거기서 막힌다."""
     klass, child = mine
     kept = _observation(db_session, klass, child, 5, "자연탐구", "개미를 바라보았다.")
     gone = _observation(db_session, klass, child, 6, "의사소통", "개미 이야기를 했다.")
-    doc = _document(db_session, klass, child, [kept, gone])
+    doc = _document(db_session, klass, child, [kept, gone], snapshot=False)
     db_session.delete(gone)
     db_session.flush()
 
@@ -550,6 +619,54 @@ def test_일과가_하나면_원형_줄만_채운다(db_session, mine):
     assert rows[1] == ["09:00~10:00", "실내놀이", "", "블록으로 다리를 만들었다."]
 
 
+def test_일일_보육일지_머리_줄에_날짜와_날씨를_넣고_없으면_비운다(db_session, mine):
+    """실물 일일 양식의 머리는 날짜 · 요일 · 날씨다(ADR-089). 표 밖, 제목 바로 아래 문단이다."""
+    klass, _ = mine
+    only = _routine(
+        db_session, klass, position=0, start=None, end=None, name="등원", execution="인사했다."
+    )
+    doc = _daily_log(db_session, klass, [only])
+
+    def head_line() -> str:
+        content = client.get(f"/api/documents/{doc.id}/export/hwp").content
+        section = etree.fromstring(_archive(content).read("Contents/section0.xml"))
+        title, head = section.findall("hp:p", NS)[:2]
+        assert "".join(title.itertext()) == "햇살반 일일 보육일지 (9/22)"
+        return "".join(head.itertext())
+
+    # 지난 날이라 자동 값이 없다 — 「날씨 :」 뒤를 비워 손으로 적게 둔다.
+    assert head_line() == "날짜 : 2026년 9월 22일 (화)      날씨 : "
+
+    db_session.add(RoutineWeather(class_id=klass.id, date=date(2026, 9, 22), sky="비나 눈"))
+    db_session.flush()
+    assert head_line() == "날짜 : 2026년 9월 22일 (화)      날씨 : 비나 눈"
+
+
+def test_확정_뒤_날씨를_바꿔도_확정본_종이는_확정_때_값이다(db_session, mine):
+    """확정한 종이가 확정 뒤에 바뀌면 안 된다(ADR-089 보완, ADR-088 과 같은 원칙)."""
+    klass, _ = mine
+    only = _routine(
+        db_session, klass, position=0, start=None, end=None, name="등원", execution="인사했다."
+    )
+    db_session.add(RoutineWeather(class_id=klass.id, date=date(2026, 9, 22), sky="흐림"))
+    doc = _daily_log(db_session, klass, [only], status="DRAFT")
+    assert (
+        client.post(f"/api/documents/{doc.id}/confirm", json={"checks": CHECKS}).status_code == 200
+    )
+    assert doc.weather == "흐림"
+
+    weather = db_session.scalar(select(RoutineWeather).where(RoutineWeather.class_id == klass.id))
+    weather.sky = "맑음"
+    db_session.flush()
+    content = client.get(f"/api/documents/{doc.id}/export/hwp").content
+    head = etree.fromstring(_archive(content).read("Contents/section0.xml")).findall("hp:p", NS)[1]
+    assert "".join(head.itertext()).endswith("날씨 : 흐림")
+
+    # 확정을 풀면 박아 둔 값도 푼다 — 다시 확정할 때 그때 값을 다시 박는다.
+    assert client.post(f"/api/documents/{doc.id}/unconfirm").status_code == 200
+    assert doc.weather is None
+
+
 def test_줄을_늘린_일일_보육일지도_hwp_로_바꿔_내려준다(db_session, mine, tmp_path):
     """일과 줄은 양식의 원형 한 줄을 복제한다(fill_grid). 늘린 표가 hwp 에서도 그대로여야 한다."""
     klass, _ = mine
@@ -619,6 +736,88 @@ def test_일일_보육일지도_근거_기록이_사라졌으면_내보내지_�
 
     assert response.status_code == 409
     assert response.json()["error"]["fields"] == [f"sources.{gone.id}"]
+
+
+def _other_class(session):
+    """다른 원의 반. 같은 번호의 기록이 여기 있으면 내보내기가 남의 일과를 읽는지 드러난다."""
+    center = Center(
+        name="다른어린이집",
+        director_name="박원장",
+        region_sido="강원특별자치도",
+        region_sigungu="원주시",
+    )
+    session.add(center)
+    session.flush()
+    klass = Class(
+        center_id=center.id,
+        name="달빛반",
+        school_year=2026,
+        age_min=4,
+        age_max=4,
+        teacher_name="박선생",
+    )
+    session.add(klass)
+    session.flush()
+    return klass
+
+
+def test_관찰_근거로_만든_옛_일일_보육일지는_다른_원_일과를_읽지_않고_거절한다(db_session, mine):
+    """옛 일일 보육일지는 관찰 기록을 근거로 만들었다(ADR-024). 그 번호를 일과 번호로 읽으면
+    번호가 우연히 같은 다른 원의 일과 이름 · 계획 · 실행이 종이에 찍힌다."""
+    klass, child = mine
+    observation = _observation(db_session, klass, child, 22, "자연탐구", "개미를 바라보았다.")
+    db_session.add(
+        RoutineRecord(
+            id=observation.id,
+            class_id=_other_class(db_session).id,
+            date=date(2026, 9, 22),
+            position=0,
+            name="남의 일과",
+            plan="남의 계획",
+            execution="남의 실행",
+        )
+    )
+    doc = _daily_log(db_session, klass, [])
+    db_session.add(
+        DocumentSource(
+            document_id=doc.id,
+            source_kind="observation",
+            source_id=observation.id,
+            class_id=klass.id,
+            child_id=child.id,
+            date=observation.date,
+            text=observation.fact,
+        )
+    )
+    db_session.flush()
+
+    response = client.get(f"/api/documents/{doc.id}/export/hwp")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "GATE_BLOCKED"
+    assert response.json()["error"]["fields"] == ["source_kind"]
+
+
+@pytest.mark.parametrize("where", ["other_class", "other_day"])
+def test_일일_보육일지는_그_반_그날의_일과만_읽는다(db_session, mine, where):
+    klass, _ = mine
+    kept = _routine(
+        db_session, klass, position=0, start=None, end=None, name="등원", execution="인사했다."
+    )
+    stray = _routine(
+        db_session, klass, position=1, start=None, end=None, name="남의 일과", execution="먹었다."
+    )
+    doc = _daily_log(db_session, klass, [kept, stray])
+    if where == "other_class":
+        stray.class_id = _other_class(db_session).id
+    else:
+        stray.date = date(2026, 9, 23)
+    db_session.flush()
+
+    response = client.get(f"/api/documents/{doc.id}/export/hwp")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["fields"] == [f"sources.{stray.id}"]
 
 
 def test_양식_표_줄_수가_머리_원형_꼬리와_다르면_만들지_않는다():
@@ -830,6 +1029,182 @@ def test_일과_기록을_근거로_쓴_주간은_날짜별_해석_지원_칸을
     ]
 
 
+@pytest.mark.parametrize(
+    ("mark", "expected"), [("(반영)", "(반영) "), ("(놀이반영)", "(놀이반영) "), ("", "")]
+)
+def test_어제_지원을_반영한_줄은_원_설정_표기를_활동실행_앞에_붙인다(
+    db_session, mine, mark, expected
+):
+    """표시는 일과 기록의 칸이고 사실 글에 섞지 않는다 — 종이에서만 붙인다 (ADR-086)."""
+    klass, _ = mine
+    klass_center = db_session.get(Center, klass.center_id)
+    klass_center.reflect_mark = mark
+    plain = _routine(
+        db_session, klass, position=0, start=None, end=None, name="등원", execution="인사했다."
+    )
+    reflected = _routine(
+        db_session,
+        klass,
+        position=1,
+        start=None,
+        end=None,
+        name="바깥놀이",
+        execution="둑을 쌓았다.",
+    )
+    reflected.reflected = True
+    doc = _daily_log(db_session, klass, [plain, reflected])
+
+    _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+    assert rows[1][3] == "인사했다."
+    assert rows[2][3] == f"{expected}둑을 쌓았다."
+
+
+def test_주간_우리반_놀이는_교사가_맞다고_한_활동_이름이고_없으면_일과_이름이다(db_session, mine):
+    klass, _ = mine
+    doc = _weekly_log(
+        db_session,
+        klass,
+        [
+            (date(2026, 9, 21), "활동", "낙엽 모자이크를 했다.", ""),
+            (date(2026, 9, 22), "쌓기놀이", "블록으로 성을 쌓았다.", ""),
+        ],
+    )
+    monday = db_session.scalar(select(RoutineRecord).where(RoutineRecord.name == "활동"))
+    monday.activities = ["낙엽 모자이크", "가을 소리 찾기"]
+    db_session.flush()
+
+    _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+    assert rows[1][1] == "낙엽 모자이크\n가을 소리 찾기"
+    assert rows[2][1] == "쌓기놀이"
+
+
+def test_확정본_종이는_확정_때_박은_반영과_활동을_싣는다(db_session, mine):
+    """확정한 종이는 확정 뒤 바뀌지 않는다 — 일과 기록을 나중에 고쳐도 사본을 읽는다 (ADR-086)."""
+    klass, _ = mine
+    outdoor = _routine(
+        db_session,
+        klass,
+        position=0,
+        start=None,
+        end=None,
+        name="바깥놀이",
+        execution="둑을 쌓았다.",
+    )
+    outdoor.reflected = True
+    doc = _daily_log(db_session, klass, [outdoor], status="DRAFT")
+    confirmed = client.post(f"/api/documents/{doc.id}/confirm", json={"checks": CHECKS})
+    assert confirmed.status_code == 200, confirmed.text
+    copy = db_session.scalar(select(DocumentSource).where(DocumentSource.document_id == doc.id))
+    assert (copy.reflected, copy.activities) == (True, [])
+
+    # stale 을 거치지 않고 원본만 바뀐 경우(옛 코드 · 손 고침)도 종이는 사본이다.
+    outdoor.reflected = False
+    db_session.flush()
+    _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+    assert rows[1][3] == "(반영) 둑을 쌓았다."
+
+    # 확정을 풀면 사본도 푼다 — 다시 확정할 때 그때 값을 박는다.
+    assert client.post(f"/api/documents/{doc.id}/unconfirm").status_code == 200
+    db_session.refresh(copy)
+    assert (copy.reflected, copy.activities) == (None, None)
+
+
+def test_확정본_종이의_반영_표기는_확정_때_원_설정이다_뒤에_바꿔도_그대로(db_session, mine):
+    """원이 「(반영)」을 「(놀이반영)」으로 바꿔도 낸 확정본 종이는 그대로다 (ADR-086 결정 7)."""
+    klass, _ = mine
+    center = db_session.get(Center, klass.center_id)
+    center.reflect_mark = "(반영)"
+    outdoor = _routine(
+        db_session,
+        klass,
+        position=0,
+        start=None,
+        end=None,
+        name="바깥놀이",
+        execution="둑을 쌓았다.",
+    )
+    outdoor.reflected = True
+    doc = _daily_log(db_session, klass, [outdoor], status="DRAFT")
+    assert (
+        client.post(f"/api/documents/{doc.id}/confirm", json={"checks": CHECKS}).status_code == 200
+    )
+    assert db_session.get(Document, doc.id).reflect_mark == "(반영)"
+
+    center.reflect_mark = "(놀이반영)"
+    db_session.flush()
+    _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+    assert rows[1][3] == "(반영) 둑을 쌓았다."
+
+    # 확정을 풀면 박은 표기도 푼다 — 초안 종이는 지금 원 설정을 쓴다.
+    assert client.post(f"/api/documents/{doc.id}/unconfirm").status_code == 200
+    assert db_session.get(Document, doc.id).reflect_mark is None
+
+
+def test_확정본_종이는_확정_때_박은_일과_이름_시간_계획_순서를_싣는다(db_session, mine):
+    """확정본 종이는 확정 뒤 어느 칸도 바뀌지 않는다 — 일과 기록 원본을 고쳐도 사본을 읽는다."""
+    klass, _ = mine
+    first = _routine(
+        db_session,
+        klass,
+        position=0,
+        start=time(9, 0),
+        end=time(10, 0),
+        name="실내놀이",
+        plan="블록 쌓기",
+        execution="블록으로 다리를 만들었다.",
+    )
+    second = _routine(
+        db_session,
+        klass,
+        position=1,
+        start=None,
+        end=None,
+        name="바깥놀이",
+        execution="둑을 쌓았다.",
+    )
+    doc = _daily_log(db_session, klass, [first, second], status="DRAFT")
+    confirmed = client.post(f"/api/documents/{doc.id}/confirm", json={"checks": CHECKS})
+    assert confirmed.status_code == 200, confirmed.text
+
+    # stale 을 거치지 않고 원본만 바뀐 경우(옛 코드 · 손 고침)
+    first.name, first.start_time, first.plan, first.position = "다른 이름", time(8, 0), "새 계획", 5
+    first.execution = "고친 글"
+    db_session.flush()
+    _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+    assert rows[1] == ["09:00~10:00", "실내놀이", "블록 쌓기", "블록으로 다리를 만들었다."]
+    assert rows[2][1] == "바깥놀이"
+
+
+def test_주간_확정본의_우리반_놀이는_확정_때_박은_활동이다(db_session, mine):
+    klass, _ = mine
+    doc = _weekly_log(
+        db_session,
+        klass,
+        [(date(2026, 9, 21), "활동", "낙엽 모자이크를 했다.", "")],
+        status="DRAFT",
+    )
+    routine = db_session.scalar(select(RoutineRecord).where(RoutineRecord.name == "활동"))
+    routine.activities = ["낙엽 모자이크"]
+    used = [
+        s.source_id
+        for s in db_session.scalars(
+            select(DocumentSource).where(DocumentSource.document_id == doc.id)
+        )
+    ]
+    for section in db_session.scalars(
+        select(DocumentSection).where(DocumentSection.document_id == doc.id)
+    ):
+        section.source_ids = used
+    db_session.flush()
+    confirmed = client.post(f"/api/documents/{doc.id}/confirm", json={"checks": CHECKS})
+    assert confirmed.status_code == 200, confirmed.text
+
+    routine.activities = ["가을 소리 찾기"]
+    db_session.flush()
+    _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
+    assert rows[1][1] == "낙엽 모자이크"
+
+
 def test_일일_보육일지_꼬리에_반_운영_특이사항_줄이_있다(db_session, mine):
     klass, _ = mine
     routine = _routine(
@@ -855,3 +1230,50 @@ def test_일일_보육일지_꼬리에_반_운영_특이사항_줄이_있다(db_
     db_session.flush()
     _, rows = _grid(client.get(f"/api/documents/{doc.id}/export/hwp").content)
     assert rows[-1] == ["반 운영 특이사항", ""]
+
+
+# ── 확정본 묶음 받기 (ADR-083) ───────────────────────────────────────────────
+
+
+def test_확정본_여러_장을_zip_하나로_받는다(db_session, mine):
+    klass, child = mine
+    friend = Child(class_id=klass.id, name="박친구", code="누리")
+    db_session.add(friend)
+    db_session.flush()
+    first = _document(
+        db_session, klass, child, [_observation(db_session, klass, child, 5, "자연탐구", "개미.")]
+    )
+    second = _document(
+        db_session, klass, friend, [_observation(db_session, klass, friend, 6, "의사소통", "말.")]
+    )
+    second.title = "박친구 관찰일지 (9월)"
+    db_session.flush()
+
+    response = client.get(
+        "/api/documents/export/bundle", params=[("ids", first.id), ("ids", second.id)]
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/zip"
+    names = _archive(response.content).namelist()
+    assert names == ["이가명 관찰일지 (9월).hwpx", "박친구 관찰일지 (9월).hwpx"]
+    # 한 장씩 받을 때와 같은 종이다.
+    single = client.get(f"/api/documents/{first.id}/export/hwp").content
+    assert _table(_archive(response.content).read(names[0])) == _table(single)
+
+
+def test_묶음에_초안이나_근거가_바뀐_문서가_있으면_통째로_거절한다(db_session, mine):
+    klass, child = mine
+    record = _observation(db_session, klass, child, 5, "자연탐구", "개미.")
+    done = _document(db_session, klass, child, [record])
+    stale = _document(db_session, klass, child, [record])
+    stale.stale = True
+    db_session.flush()
+
+    response = client.get(
+        "/api/documents/export/bundle", params=[("ids", done.id), ("ids", stale.id)]
+    )
+
+    # 몇 장이 빠졌는지 모른 채 받지 않게 한다 — 화면이 미리 빼고 「n명은 빠졌어요」를 알린다.
+    assert response.status_code == 409
+    assert response.json()["error"]["fields"] == [f"ids.{stale.id}"]

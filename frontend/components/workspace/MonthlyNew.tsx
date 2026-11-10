@@ -15,10 +15,12 @@ import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api/client";
 import { existingAfterConflict } from "@/lib/api/conflict";
 import { memoError, PlanMemoField } from "@/components/plan-generator/PlanMemo";
+import { newRunId } from "@/lib/api/generationRuns";
 import { createMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
 import { createPlayMonthly, listPlayMonthly } from "@/lib/api/playMonthly";
 import { getAnnualPlan, listAnnualPlans } from "@/lib/api/plans";
 import { syncCenter, syncClass } from "@/lib/api/onboarding";
+import { getCenterSettings } from "@/lib/api/centers";
 import {
   createTemplateProfile,
   getCenterDefaultProfile,
@@ -38,6 +40,7 @@ import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { topicMemo } from "@/lib/api/trends";
 import { playSeason } from "@/components/plan-generator/playProjectPagination";
 import GenerationRing, { ringFinished, STOPPED_NOTE } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
@@ -56,18 +59,26 @@ const LOOK = {
     chip: "bg-[#e8f1ea] text-[#3b5441]",
     form: "소주제형 월간 양식",
     image: "monthly-theme-month",
-    steps: (m: number) => [`${m}월 주제 이어받기`, "주별 놀이 나누기", "문서로 정리하기"],
+    steps: (m: number) =>
+      [
+        ["prepare", `${m}월 주제 이어받기`],
+        ["generate", "주별 놀이 나누기"],
+        ["check", "살펴보고 다듬기"],
+        ["save", "문서로 정리하기"],
+      ] as const,
   },
   play: {
     name: "놀이 중심형",
     chip: "bg-[#eee4f4] text-[#5e4b96]",
     form: "놀이 중심형 월간 양식",
     image: "play-monthly",
-    steps: (_: number, season = "") => [
-      `${season} 놀이 이어받기`.trim(),
-      "함께 할 활동 정하기",
-      "문서로 정리하기",
-    ],
+    steps: (_: number, season = "") =>
+      [
+        ["prepare", `${season} 놀이 이어받기`.trim()],
+        ["generate", "함께 할 활동 정하기"],
+        ["check", "살펴보고 다듬기"],
+        ["save", "문서로 정리하기"],
+      ] as const,
   },
 } as const;
 
@@ -395,6 +406,8 @@ type Loaded = {
   plans: Plans;
   /** 월별 주제형만. 원 id · 칸을 고를 기반 양식 · 반이 지금 쓰는 양식 · 원 기본 포인터. */
   centerId: number | null;
+  /** 원 기본 양식을 바꿀 수 있는지 — 원을 처음 등록한 교사만이다(ADR-087). */
+  canSetDefault: boolean;
   template: MonthlyTemplate | null;
   current: ReadyProfile | null;
   pointer: ProfileRef | null;
@@ -409,11 +422,12 @@ async function loadColumns(
   classId: number,
 ) {
   const centerId = await syncCenter(settings);
-  const [templates, ready, resolved, pointer] = await Promise.all([
+  const [templates, ready, resolved, pointer, centerSettings] = await Promise.all([
     listMonthlyTemplates(),
     listReadyTemplateProfiles(centerId),
     getClassTemplateProfile(classId),
     getCenterDefaultProfile(centerId),
+    getCenterSettings(centerId).catch(() => null),
   ]);
   const current = ready.items.find((p) => sameRef(p.profile_ref, resolved.profile_ref)) ?? null;
   return {
@@ -421,6 +435,7 @@ async function loadColumns(
     template: pickTemplate(templates.items),
     current,
     pointer: pointer.profile_ref,
+    canSetDefault: centerSettings?.can_edit !== false,
   };
 }
 
@@ -433,7 +448,11 @@ export default function MonthlyNew({
   const router = useRouter();
   const [problem, setProblem] = useState("");
   const [stopped, setStopped] = useState(false);
-  const [memo, setMemo] = useState("");
+  // 트렌드 화면 [계획안에 활용하기] 가 `?topic` 으로 넘긴 글을 요청 사항 첫 값으로 둔다(ADR-072).
+  const [memo, setMemo] = useClientState(
+    () => topicMemo(typeof window === "undefined" ? "" : window.location.search),
+    "",
+  );
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
   const classes = useClasses(setProblem);
   const [chosen] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
@@ -451,6 +470,8 @@ export default function MonthlyNew({
   const [extras, setExtras] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  // 이번 생성 POST 의 헤더와 링이 같은 값을 쓴다 — 요청마다 새로 만든다(api-spec §9-8).
+  const [runId, setRunId] = useState<string>();
   const controller = useRef<AbortController | null>(null);
   useCompactShell(busy);
   useEffect(() => () => controller.current?.abort(), []);
@@ -465,7 +486,13 @@ export default function MonthlyNew({
         const summary = (await listAnnualPlans(classId)).items[0];
         const annual = summary ? await getAnnualPlan(summary.id) : null;
         const play = annual?.format === "PLAY_PROJECT";
-        const none = { centerId: null, template: null, current: null, pointer: null };
+        const none = {
+          centerId: null,
+          template: null,
+          current: null,
+          pointer: null,
+          canSetDefault: false,
+        };
         const [list, columns] = await Promise.all([
           play ? listPlayMonthly(classId) : listMonthlyPlans(classId),
           play || !annual ? none : loadColumns(settings, classId),
@@ -497,7 +524,7 @@ export default function MonthlyNew({
       </p>
     );
 
-  const { classId, annual, plans, centerId, template, current, pointer } = data;
+  const { classId, annual, plans, centerId, template, current, pointer, canSetDefault } = data;
   const play = annual?.format === "PLAY_PROJECT";
   const inherit = inheritOf(annual, month);
   const open = (m: number) => {
@@ -525,6 +552,8 @@ export default function MonthlyNew({
     controller.current?.abort();
     const ctl = new AbortController();
     controller.current = ctl;
+    const id = newRunId();
+    setRunId(id);
     setBusy(true);
     setDone(false);
     setProblem("");
@@ -542,6 +571,7 @@ export default function MonthlyNew({
             ...note,
           },
           ctl.signal,
+          id,
         );
         if (ctl.signal.aborted) return;
         setDone(true);
@@ -559,14 +589,17 @@ export default function MonthlyNew({
           ref = made.profile_ref;
           setData((d) => d && { ...d, current: made, pointer: made.profile_ref });
           // 다음 달도 이 칸으로 시작하게 원 기본으로 건다. 못 걸어도 이번 달은 이 양식으로 만든다.
-          await putCenterDefaultProfile(centerId, {
-            profile_ref: ref,
-            expected_profile_ref: pointer,
-          }).catch(() => null);
+          // 원 기본은 원을 처음 등록한 교사만 바꾼다(ADR-087) — 다른 교사는 이번 달만 이 양식이다.
+          if (canSetDefault)
+            await putCenterDefaultProfile(centerId, {
+              profile_ref: ref,
+              expected_profile_ref: pointer,
+            }).catch(() => null);
         }
         const plan = await createMonthlyPlan(
           { class_id: classId, month, profile_ref: ref, ...note },
           ctl.signal,
+          id,
         );
         if (ctl.signal.aborted) return;
         setDone(true);
@@ -608,11 +641,8 @@ export default function MonthlyNew({
     return (
       <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
-          // 놀이 중심형은 활동 후보가 8개씩으로 늘어(ADR-065) 예전 기억을 버리려고 kind 를 바꿨다.
-          kind={play ? "monthly:PLAY_PROJECT:v0.3" : "monthly:MONTHLY_THEME"}
-          // Sol 실측: 주제형 28초(2026-10-31) · 38초, 놀이 중심형(후보 8개씩) 55.5 · 51.6 · 55.0초(2026-11-06).
-          expect={play ? 55 : 35}
           title={`${month}월 월간계획안을 만들고 있어요`}
+          runId={runId}
           done={done}
           steps={
             play

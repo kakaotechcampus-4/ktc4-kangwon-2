@@ -24,7 +24,7 @@ tree -a --dirsfirst -I '.git|node_modules|.next|.ruff_cache'
 | `docker-compose.yml` | db · backend · frontend 3개 서비스 |
 | `.env.example` | 환경변수 예시. 실제 `.env` 는 커밋하지 않는다 |
 | `.gitignore` | 무시 목록. 비밀값 패턴이 들어 있어 함부로 지우지 않는다 |
-| `README.md` | 실행 방법과 문서 링크 |
+| `README.md` | 서비스 소개, 구조와 폴더, 실행, 테스트, 알려진 제한, 자주 찾는 문서 |
 | `CLAUDE.md` | AI 도구용 프로젝트 규칙 요약 |
 
 새 최상위 디렉터리는 팀 합의 후에 만든다.
@@ -80,6 +80,7 @@ app/
 | `documents` | 일지 · 평가 문서. 다른 기능은 `service.py` 창구로 읽는다 |
 | `trends` | 트렌드 소재. 승인은 저장소 파일이고 큐가 아니다(ADR-016) |
 | `evaluation` | 평가제 대조 — 라우터 GET · PUT · 판정 규칙 · 지표 카탈로그(resources/evaluation) · 자기 점검 체크 저장(`evaluation_checks`, ADR-022) |
+| `notifications` | 상단바 알림함 — 열람 요청이 오고 답이 나온 사건의 화면 안 알림(`notifications`, ADR-097). 다른 기능은 `service.py` 의 `notify` · `mark_request_read` 로만 부른다 |
 
 ### 규칙
 

@@ -185,7 +185,6 @@ const TOURS: Record<string, Step[]> = {
         "낼 서류가 **몇 칸 비었는지** 보여요.",
         "쌤플이 만들지 않는 서류는 **동그라미를 눌러** 찍어요.",
       ],
-      tip: "쌤플은 서류의 개수만 세어요. 내용은 선생님께서 확인해 주세요.",
     },
     {
       at: "eval-folder",
@@ -194,10 +193,10 @@ const TOURS: Record<string, Step[]> = {
     },
     {
       at: "eval-sheet",
-      title: "채울 서류부터",
+      title: "서류 6가지를 옆으로 넘겨요",
       lines: [
-        "**빈 칸**인 서류가 위에 크게 나와요.",
-        "도장 근거는 **쌤플확정 · 내컴퓨터 · 직접확인**으로 봐요.",
+        "**빈 칸**인 서류가 앞에 나와요.",
+        "도장 안 글자 **쌤플확정 · 내컴퓨터 · 직접확인**이 어디서 확인했는지 알려 줘요.",
       ],
     },
   ],
@@ -225,12 +224,12 @@ const TOURS: Record<string, Step[]> = {
       at: "weekly-journal",
       title: "주간 보육일지",
       lines: ["**확정한 일일 보육일지**로 만들어요."],
-      tip: "초안이 남았으면 「확정하러 가기」부터 눌러요.",
+      tip: "초안이 남았으면 그 줄의 「여기서 확정」부터 눌러요.",
     },
     {
       at: "weekly-make",
       title: "주간 일지 만들기",
-      lines: ["아직 못 만들 때 누르면", "**무엇이 모자란지** 알려 드려요."],
+      lines: ["아직 못 만들 때 누르면", "**무엇이 부족한지** 알려 드려요."],
       pad: 6,
     },
   ],
@@ -540,7 +539,7 @@ export default function Tour() {
   const [open, setOpen] = useState<{ path: string; steps: Step[] }>({ path: "", steps: [] });
   const steps = open.path === path ? open.steps : [];
   const [index, setIndex] = useState(0);
-  const [hole, setHole] = useState<Hole | null>(null);
+  const [raw, setHole] = useState<Hole | null>(null);
   const next = useRef<HTMLButtonElement>(null);
 
   const shut = useCallback(() => {
@@ -586,7 +585,10 @@ export default function Tour() {
     if (!step) return;
     const el = target(step.at);
     if (!el) return;
-    el.scrollIntoView({ block: "center" });
+    // 화면보다 긴 칸(쌓인 기록 목록)은 가운데로 맞추면 위아래가 다 잘린다. 머리부터 보이게 한다.
+    el.scrollIntoView({
+      block: el.offsetHeight > window.innerHeight / appZoom() ? "start" : "center",
+    });
     const pad = step.pad ?? 8;
     const measure = () => {
       const box = toLocal(el.getBoundingClientRect());
@@ -627,12 +629,16 @@ export default function Tour() {
     };
   }, [step, close, steps.length]);
 
-  if (!step || !hole) return null;
+  if (!step || !raw) return null;
   const last = index === steps.length - 1;
 
-  // 칸을 가리지 않는 쪽에 둔다 — 아래 → 위 → 오른쪽 순. 다 좁으면(큰 칸) 화면 아래에 붙인다.
+  // 칸을 가리지 않는 쪽에 둔다 — 아래 → 위 → 오른쪽 → 왼쪽 순. 다 좁으면(큰 칸) 화면 아래에 붙인다.
   const vw = window.innerWidth / appZoom();
   const vh = window.innerHeight / appZoom();
+  // 화면보다 긴 칸은 구멍을 화면 안으로 자른다. 안 자르면 구멍 테두리가 화면 밖으로 나가
+  // 위아래가 열린 띠처럼 보였다(덕철 점검 — 기록이 많은 관찰 기록 화면).
+  const top = Math.max(raw.top, 8);
+  const hole = { ...raw, top, height: Math.min(raw.top + raw.height, vh - 8) - top };
   const left = Math.min(Math.max(16, hole.left), vw - CARD - 16);
   const place =
     vh - (hole.top + hole.height) > 260
@@ -642,7 +648,9 @@ export default function Tour() {
         : vw - (hole.left + hole.width) > CARD + 40
           ? // 위 여백은 포스티(카드 위로 40px 튀어나옴)가 화면 위에 잘리지 않을 만큼 둔다.
             { top: Math.max(52, Math.min(hole.top, vh - 300)), left: hole.left + hole.width + 24 }
-          : undefined;
+          : hole.left > CARD + 40
+            ? { top: Math.max(52, Math.min(hole.top, vh - 300)), left: hole.left - CARD - 24 }
+            : undefined;
 
   return (
     <div className={styles.tour} role="dialog" aria-modal="true" aria-labelledby="tour-title">

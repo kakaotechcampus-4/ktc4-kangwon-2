@@ -102,11 +102,16 @@ export interface ApiClass {
 }
 export interface ChildInput {
   name: string;
+  /** 외자 아이(김민)를 교사가 부르는 꼴(민이). 가명표에 들어간다 (docs/api-spec.md §2-1). */
+  call_name?: string | null;
 }
 export interface ApiChild extends ChildInput {
   id: number;
   class_id: number;
   code: string;
+  call_name: string | null;
+  /** 외자 아이인가 — 서버가 판별한다. 화면은 이 값으로 「부르는 이름」 칸을 띄운다. */
+  needs_call_name: boolean;
   created_at: string;
 }
 /** 발달 추적 집계 (docs/api-spec.md §2-1). by_domain 은 5영역을 늘 다 담는다. */
@@ -833,4 +838,28 @@ export interface ApiForm {
   /** 라벨 → 표준 키(ADR-009). 데이터 값이거나 매핑표에 없는 표현이면 `null`. */
   label_map: Record<string, string | null>;
   created_at: string;
+  /** 이 계정이 지울 수 있는지 — 올린 교사 · 원을 처음 등록한 교사만 참이다 (ADR-087). */
+  can_delete?: boolean;
+}
+
+/**
+ * 생성 기록 한 줄 (docs/api-spec.md §9-8). 숫자와 이름만 든다 — 프롬프트 · 생성 글 · 트렌드 상태는 없다.
+ * `UNKNOWN` 은 서버가 저장하지 않고 읽을 때 만든다(오래 RUNNING 인 줄).
+ */
+export interface GenerationRun {
+  id: string;
+  kind: "annual_theme" | "annual_play" | "monthly_theme" | "monthly_play" | "weekly";
+  class_id: number;
+  status: "RUNNING" | "SUCCEEDED" | "FAILED" | "STOPPED" | "UNKNOWN";
+  /** 서버 단계 키(kind 마다 다르다). 알려진 키가 아니면 화면은 무시한다. */
+  stage: string;
+  plan_id: number | null;
+  error_code: string | null;
+  mode: "mock" | "real";
+  model: string | null;
+  prompt_versions: string[] | null;
+  llm_calls: number | null;
+  phase_ms: Record<string, number> | null;
+  started_at: string;
+  finished_at: string | null;
 }

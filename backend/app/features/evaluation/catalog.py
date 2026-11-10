@@ -79,7 +79,7 @@ def _validate_auto(number: str, rule: Mapping[str, Any]) -> None:
         plan, daily_log = rule.get("plan"), rule.get("daily_log")
         if not isinstance(plan, Mapping) or not isinstance(daily_log, Mapping):
             raise CatalogError(f"{number}: plan · daily_log가 필요하다")
-        minimum = plan.get("min_per_class")
+        minimum = plan.get("min_per_month")
         valid = (
             _has_text(plan.get("plan_kind"))
             and _has_text(daily_log.get("document_kind"))
@@ -115,7 +115,7 @@ def _elements(source: Mapping[str, Any], version: str) -> tuple[Element, ...]:
         if key in seen:
             raise CatalogError(f"{number}: 평가요소 중복: {key}")
         seen.add(key)
-        elements.append(Element(key, text))
+        elements.append(Element(key, text))  # type: ignore[arg-type]
     return tuple(elements)
 
 

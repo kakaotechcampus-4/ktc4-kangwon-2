@@ -1,37 +1,43 @@
 name: Deploy
 
-# main 또는 develop 에 머지되면 서버에 올린다.
+# main 에 머지되면 서버에 올린다(ADR-094). develop 머지는 운영에 나가지 않는다.
 #
-# develop 을 넣은 것은 **빠르게 보기 위해서다**(PM, 2026-11-03). develop 에 머지된 것이
-# 곧바로 운영에 나간다 — CI 와 배포는 따로 돌기 때문에 검사가 빨간불이어도 나간다.
-# 천천히 가고 싶어지면 아래 `branches` 에서 develop 한 줄만 지우면 된다.
+# **push 배포는 같은 커밋의 CI(push)가 성공해야 나간다.** 「CI 기다리기」 job 이 그 CI 가 끝날 때까지 본다
+# (scripts/wait-ci.sh) — 실패면 안 올리고 알림, 더 새 push 가 CI 를 취소했으면 조용히 건너뛴다(뒤 run 이 올린다).
+# 손 배포(workflow_dispatch)는 기다리지 않는다 — 급히 옛 커밋으로 되돌릴 때 막히면 안 된다.
 #
 # 서버에 들어가는 방법은 SSH 가 아니라 SSM 이다 — 카테캠 OIDC 가이드 §7.
 # 인바운드 포트가 0개고, GitHub 에 저장하는 비밀키도 0개다.
 # 22 는 2026-09-22 에 닫았다(다른 팀이 공격을 받았다).
 #
-# 서버에서 실제로 도는 명령은 scripts/deploy.sh 다. 이 워크플로는 그 파일을
+# 서버에서 실제로 도는 명령은 scripts/deploy.sh 다. scripts/ssm-deploy.sh 가 그 파일을
 # 통째로 보내고 결과를 기다릴 뿐이다. 손으로 배포할 때도 같은 파일을 쓴다.
+#
+# **교체 뒤 실패하면 서버 안의 deploy.sh 가 직전 성공 커밋으로 되돌린다**(ADR-078). 되돌리기는 이 워크플로가 아니라
+# 서버에서 한 번의 실행 안에서 일어나고, 직전 성공 커밋 자신의 deploy.sh 를 돌린다. 이 워크플로는 종료 코드를 읽어 알림만 낸다:
+#   0 성공 · 3 실패했고 되돌림 · 4 실패했고 못 되돌림 · 1 교체 전에 멈춤 · 124 안 끝남 · 125 취소 · 시간 초과
+# push 배포는 늘, 손 배포는 `auto_rollback` 을 켰을 때만 되돌린다. 러너가 인터넷 건너 도메인으로 묻는 「Health check」는
+# 알림 몫이다 — DNS · 인증서 · secret 문제는 코드를 되감아도 안 고쳐진다.
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   workflow_dispatch:
     inputs:
       ref:
         description: "올릴 브랜치 또는 커밋 SHA (되감으려면 직전 SHA 를 넣는다)"
         type: string
         default: main
-
-# 같은 서버에 두 배포가 겹치면 컨테이너가 반쯤 바뀐 상태가 된다.
-concurrency:
-  group: deploy-production
-  cancel-in-progress: false
+      auto_rollback:
+        description: "교체 뒤 실패하면 서버가 기억한 마지막 성공 배포로 되돌린다 (push 배포는 늘 켜져 있다)"
+        type: boolean
+        default: false
 
 # 이 블록을 쓰는 순간 명시하지 않은 권한은 전부 none 이 된다.
 permissions:
   id-token: write # 빠지면 OIDC 인증이 실패한다
   contents: read # checkout 용
+  actions: read # 「CI 기다리기」가 CI run 결과를 읽는다
 
 env:
   INSTANCE_ID: i-041ebb00937bd371f # ktc4-team-server
@@ -43,7 +49,46 @@ env:
   DEPLOY_REF: ${{ inputs.ref || github.sha }}
 
 jobs:
+  # push 배포만 돈다. 손 배포에서는 건너뛰고, 아래 deploy 는 그래도 돈다.
+  wait-ci:
+    name: CI 기다리기
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.wait.outputs.ok }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 같은 커밋의 CI 결과 기다림
+        id: wait
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/wait-ci.sh "$GITHUB_SHA"
+      - name: 실패 알림
+        if: ${{ !cancelled() && failure() }}
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          CI_URL: ${{ steps.wait.outputs.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          test -n "$WEBHOOK" || exit 0
+          nl=$'\n'
+          msg="🔴 CI 가 통과하지 않아 배포하지 않았다 — $GITHUB_SHA${nl}CI: ${CI_URL:-찾지 못했다(시간 초과)}${nl}${RUN_URL}"
+          curl -fsS -X POST "$WEBHOOK" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg c "$msg" '{content: $c}')" \
+            || echo "알림 전송 실패"
+
   deploy:
+    needs: wait-ci
+    # 손 배포는 wait-ci 가 건너뛰어져도 돈다. push 는 CI 가 성공했을 때(ok=true)만.
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.wait-ci.outputs.ok == 'true') }}
+    # 같은 서버에 두 배포가 겹치면 컨테이너가 반쯤 바뀐 상태가 된다. 서버 안의 잠금(deploy.sh)이 손 배포와의 겹침을 한 번 더 막는다.
+    # 잠금은 run 이 아니라 이 job 에 건다 — run 에 걸면 CI 를 기다리는 push run 이 최대 45분 잠금을 쥐어 급한 손 배포(되감기)가
+    # 그 뒤에 서고, 그 사이 push 가 또 오면 대기 중인 손 배포가 취소된다. 그래서 「CI 기다리기」는 잠금 밖에서 돈다.
+    # 손으로 되감은 뒤에도 CI 를 기다리던 push 배포가 이어서 나갈 수 있다 — 되감은 상태를 지키려면 그 run 을 취소한다.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -58,61 +103,52 @@ jobs:
           echo "올릴 커밋 $sha"
           echo "DEPLOY_SHA=$sha" >> "$GITHUB_ENV"
 
+      # 잠금을 얻은 뒤 다시 본다(scripts/still-tip.sh). 「CI 기다리기」는 잠금 밖이라, 그 사이 더 새 push 가 먼저
+      # 올라갔으면 이 옛 커밋이 그 위를 덮는다(하민 리뷰 #549). 그러면 서버를 건드리지 않고 끝낸다(stale=true).
+      # 끝을 못 읽으면 막는다. 손 배포는 일부러 옛 커밋을 올리는 것이라 보지 않는다.
+      - name: 아직 브랜치 끝인지
+        id: latest
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/still-tip.sh "$DEPLOY_SHA"
+
       - name: AWS 자격증명 설정
+        if: steps.latest.outputs.stale != 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
           aws-region: ap-northeast-2
 
-      # 스크립트 파일을 서버에 미리 둘 필요가 없다. 이 커밋의 내용을 그대로 보낸다.
-      # executionTimeout 은 서버에서 도는 시간이다. docker build 가 오래 걸린다.
-      - name: 배포 명령 보내기
-        id: send
-        run: |
-          command_id=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name AWS-RunShellScript \
-            --comment "deploy $DEPLOY_SHA" \
-            --parameters "$(jq -n --rawfile script scripts/deploy.sh --arg ref "$DEPLOY_SHA" \
-              '{commands: ["#!/usr/bin/env bash", "export DEPLOY_REF=\($ref)", $script],
-                executionTimeout: ["1800"]}')" \
-            --query Command.CommandId --output text)
-          echo "배포 명령 $command_id"
-          echo "command_id=$command_id" >> "$GITHUB_OUTPUT"
-
-      # send-command 는 보내고 바로 끝난다. 끝날 때까지 안 기다리면 실패해도 초록불이 뜬다.
-      # aws ssm wait 는 100초에서 포기해서 docker build 를 못 기다린다. 직접 돈다.
-      - name: 끝날 때까지 기다린다
+      # deploy.sh 를 서버에 보내고 끝날 때까지 기다린다(scripts/ssm-deploy.sh). 종료 코드는 서버의 것이다(위 머리 주석).
+      # 코드를 output 으로 남기려고 이 스텝은 늘 성공으로 끝낸다. run 의 성패는 아래 「배포 판정」이 정한다.
+      # 서버가 stderr 로 찍는 결과 줄(「되돌렸다 → SHA」 · 「되돌리지 않는다 — 이유」 · 「되돌리기도 실패 — 이유」, 줄 맨 앞)을
+      # output 으로도 남긴다. SSM 이 stdout 은 앞 24000자만 줘서(next build 출력에서 잘린다) 끝에 찍는 줄은 stderr 에 있다.
+      - name: 배포
+        id: deploy
+        if: steps.latest.outputs.stale != 'true'
         env:
-          COMMAND_ID: ${{ steps.send.outputs.command_id }}
+          # 서버가 교체 뒤 실패를 되돌릴지('1' · '0'). push 배포는 늘 '1', 손 배포는 auto_rollback 입력대로.
+          AUTO_ROLLBACK: ${{ (github.event_name == 'push' || inputs.auto_rollback) && '1' || '0' }}
         run: |
-          status=Pending
-          for attempt in $(seq 1 120); do
-            status=$(aws ssm get-command-invocation \
-              --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
-              --query Status --output text 2>/dev/null || echo Pending)
-            case "$status" in
-              Pending | InProgress | Delayed) ;;
-              *) break ;;
-            esac
-            sleep 10
-          done
-
-          echo "--- 서버 출력 ---"
-          aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
-            --query StandardOutputContent --output text
-          echo "--- 서버 오류 ---"
-          aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
-            --query StandardErrorContent --output text
-
-          # 출력은 24000자에서 잘린다. 전문이 필요해지면 S3 로 내보내는 설정을 붙인다.
-          echo "상태 $status"
-          test "$status" = Success
+          # 출력은 화면에 바로 보이고(tee) 파일에도 남는다. 종료 코드는 파이프의 첫 명령 것을 PIPESTATUS 로 받는다 —
+          # pipefail 이 켜져 있든 아니든 같다. 그동안 `set +e` 로 이 스텝이 중간에 죽지 않게 한다.
+          set +e
+          scripts/ssm-deploy.sh "$DEPLOY_SHA" 2>&1 | tee "$RUNNER_TEMP/deploy.out"
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "배포 종료 코드: $code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          result=$(grep -E '^(되돌렸다 → |되돌리지 않는다 — |되돌리기도 실패 — )' "$RUNNER_TEMP/deploy.out" | tail -n 1 || true)
+          echo "서버가 알린 결과: ${result:-없음}"
+          echo "result=$result" >> "$GITHUB_OUTPUT"
 
       # /health 가 아니라 /health/ready 다 — /health 는 DB 를 안 보고 200 을 준다(ADR-011).
+      # 서버 안 확인은 deploy.sh 가 이미 했다. 여기는 **밖에서 닿는지**만 본다 — 실패해도 되돌리지 않는다(알림만).
+      # 성공(0)했거나 되돌렸을 때(3)만 돈다. 서버 안이 죽은 채라면 밖을 물어도 소용없다.
       - name: Health check
+        id: health
+        if: ${{ !cancelled() && (steps.deploy.outputs.code == '0' || steps.deploy.outputs.code == '3') }}
         env:
           # 시크릿에 IP 를 박아 두면 터진다 — DuckDNS 라 IP 가 바뀐다. 2026-10-11 배포가
           # 옛 IP 의 80 포트로 136초 기다리다 실패했다(서버는 멀쩡했다). 도메인을 기본으로 둔다.
@@ -133,14 +169,66 @@ jobs:
           echo "30번 물었지만 200 이 오지 않았다"
           exit 1
 
+      # 되돌렸어도(3) 이번에 올리려던 배포는 실패다. run 이 초록이면 실패한 커밋이 나간 것처럼 보인다.
+      - name: 배포 판정
+        if: ${{ !cancelled() && steps.latest.outputs.stale != 'true' && steps.deploy.outputs.code != '0' }}
+        env:
+          DEPLOY_CODE: ${{ steps.deploy.outputs.code }}
+        run: |
+          echo "배포 종료 코드: ${DEPLOY_CODE:-없음} — 이 run 은 실패다"
+          exit 1
+
       - name: 실패 알림
-        if: failure()
+        if: ${{ !cancelled() && failure() }}
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVENT: ${{ github.event_name }}
+          BRANCH: ${{ github.ref_name }}
+          DEPLOY_CODE: ${{ steps.deploy.outputs.code }}
+          RESULT: ${{ steps.deploy.outputs.result }}
+          HEALTH_OUTCOME: ${{ steps.health.outcome }}
+          LATEST_OUTCOME: ${{ steps.latest.outcome }}
         run: |
           test -n "$WEBHOOK" || exit 0
+          f=${DEPLOY_SHA:-올릴 커밋을 못 정함}
+          nl=$'\n'
+          # 「아직 브랜치 끝인지」가 실패했으면 서버를 건드리지 않았다(배포 스텝이 안 돌아 DEPLOY_CODE 가 비었다)
+          if [ "$LATEST_OUTCOME" = failure ]; then
+            msg="🔴 ${BRANCH} 끝을 읽지 못해 배포하지 않았다 — $f. 서버는 그대로다. run 을 다시 돌린다"
+          else
+          case "$DEPLOY_CODE" in
+            0)
+              msg="🔴 서버 안은 정상인데 밖에서 안 닿는다 — $f. DNS · 인증서 · HEALTHCHECK_URL 을 본다"
+              ;;
+            3)
+              # 서버가 되돌렸다. 대상은 서버가 알린 결과 줄에서 읽는다
+              case "$RESULT" in
+                "되돌렸다 → "*) to=${RESULT#되돌렸다 → }; to=${to%% *} ;; # 「<SHA> (L 의 deploy.sh)」 중 SHA
+                *) to="(결과 줄을 못 읽었다 — 서버 로그를 본다)" ;;
+              esac
+              if [ "$HEALTH_OUTCOME" = failure ]; then
+                msg="🔴 $f 가 교체 뒤 실패해 $to 로 되돌렸지만 밖에서 안 닿는다. DNS · 인증서 · HEALTHCHECK_URL 을 본다"
+              else
+                msg="🟠 배포 실패 → 자동 롤백 성공. $f 가 교체 뒤 실패해 $to 로 되돌렸다"
+                if [ "$EVENT" = push ]; then
+                  msg="${msg}${nl}${BRANCH} 끝은 아직 그대로다 — 되돌리는 PR 이 필요하다"
+                fi
+              fi
+              ;;
+            4)
+              msg="🔴 $f 가 교체 뒤 실패했다. 서버가 알린 결과: ${RESULT:-결과 줄을 못 읽었다}. 서비스 상태를 모른다 — 서버를 직접 본다"
+              ;;
+            124 | 125)
+              msg="🔴 서버 명령이 끝나지 않았거나 취소됐다 — $f. 서버를 직접 본다"
+              ;;
+            *)
+              # 1 은 교체 전에 멈춘 것이 보통이지만 ssm-deploy.sh 가 조회 오류로도 1 을 낸다 — 단정하지 않는다
+              msg="🔴 배포 실패 — $f. 서비스 상태를 확인한다"
+              ;;
+          esac
+          fi
           curl -fsS -X POST "$WEBHOOK" \
             -H 'Content-Type: application/json' \
-            -d "$(printf '{"content":"🔴 배포 실패 — %s\\n%s"}' "${DEPLOY_SHA:-올릴 커밋을 못 정함}" "$RUN_URL")" \
+            -d "$(jq -n --arg c "${msg}${nl}${RUN_URL}" '{content: $c}')" \
             || echo "알림 전송 실패. 배포 결과는 위 스텝들을 본다"

@@ -23,6 +23,7 @@ from app.features.class_access.schemas import (
     ReceivedRequest,
 )
 from app.features.documents.models import Document
+from app.features.notifications.service import NotificationKind, mark_request_read, notify
 from app.features.plans.models import Plan
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import _not_found
@@ -49,6 +50,14 @@ _STALE_WRITE = HTTPException(
 )
 # 지금 상태 -> 주인이 바꿀 수 있는 상태. 거절 · 취소된 줄은 요청하는 쪽이 다시 PENDING 으로 돌린다.
 _TRANSITIONS = {"PENDING": {"APPROVED", "REJECTED"}, "APPROVED": {"REVOKED"}}
+# 주인의 결정 -> 요청자에게 가는 알림 (ADR-097)
+_DECISION_KIND: dict[str, NotificationKind] = {
+    "APPROVED": "ACCESS_APPROVED",
+    "REJECTED": "ACCESS_REJECTED",
+    "REVOKED": "ACCESS_REVOKED",
+}
+# UNIQUE(class_id, requester_id) 의 제약 이름. app/db.py 의 NAMING_CONVENTION 이 정했다.
+_REQUEST_UNIQUE = "uq_class_access_requests_class_id_requester_id"
 
 
 def _month_end(year: int, month: int) -> date:
@@ -112,10 +121,11 @@ def request_access(class_id: int, session: DbSession, user: CurrentUser) -> Clas
         raise _not_found("반", "class_id")
     if classroom.teacher_id is None or classroom.teacher_id == user.id:
         raise _ALREADY_EXISTS  # 이미 읽고 쓸 수 있는 반이다
+    # 잠그고 읽는다 — 거절 뒤 재요청 둘이 동시에 와도 하나만 PENDING 으로 돌려 알림이 하나만 간다.
     row = session.scalar(
-        select(ClassAccessRequest).where(
-            ClassAccessRequest.class_id == class_id, ClassAccessRequest.requester_id == user.id
-        )
+        select(ClassAccessRequest)
+        .where(ClassAccessRequest.class_id == class_id, ClassAccessRequest.requester_id == user.id)
+        .with_for_update()
     )
     if row is None:
         row = ClassAccessRequest(class_id=class_id, requester_id=user.id, status="PENDING")
@@ -127,10 +137,18 @@ def request_access(class_id: int, session: DbSession, user: CurrentUser) -> Clas
         # updated_at 은 모델의 onupdate 가 갱신한다.
         row.status = "PENDING"
     try:
+        # 새 줄은 flush 해야 id 가 생긴다 — 알림이 그 id 를 가리킨다. 두 요청이 동시에 처음 넣은
+        # UNIQUE 위반도 여기서 터지므로 flush 도 try 안이다.
+        session.flush()
+        notify(session, user_id=classroom.teacher_id, kind="ACCESS_REQUESTED", request_id=row.id)
         session.commit()
     except IntegrityError as error:
-        # 걸릴 수 있는 제약은 UNIQUE(class_id, requester_id) 뿐이다 — 두 요청이 동시에 처음 넣었다.
         session.rollback()
+        # UNIQUE 만 「이미 보냄」이다. 알림의 외래키 · CHECK 위반까지 409 로 덮으면 화면이
+        # 그 코드를 조용히 삼켜(ClassAccessPanels) 원인이 묻힌다.
+        constraint = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+        if constraint != _REQUEST_UNIQUE:
+            raise
         raise _ALREADY_EXISTS from error
     session.refresh(row)
     return row
@@ -200,6 +218,10 @@ def _mirror(session: Session, requester_id: int, approver: User, status_value: s
                     )
                 )
             else:
+                if back.status == "PENDING":
+                    # 맞승인 — 상대가 처리할 요청이 이걸로 닫힌다.
+                    # 새로 열리는 줄 · 반대 줄에는 알림을 만들지 않는다.
+                    mark_request_read(session, back.id)
                 back.status = "APPROVED"
         elif back is not None and back.status == "APPROVED":
             back.status = "REVOKED"
@@ -231,6 +253,16 @@ def decide_request(
     row.status = body.status
     if body.status in ("APPROVED", "REVOKED"):
         _mirror(session, row.requester_id, user, body.status)
+    notify(
+        session,
+        user_id=row.requester_id,
+        kind=_DECISION_KIND[body.status],
+        request_id=row.id,
+    )
+    if body.status != "REVOKED":
+        # 승인 · 거절은 요청이 PENDING 을 떠난 것이다 —
+        # 보관함에서 처리해도 종의 「요청이 왔다」가 읽힌 것으로 바뀐다.
+        mark_request_read(session, row.id)
     session.commit()
     session.refresh(row)
     return _received(row, class_name, requester_name)
