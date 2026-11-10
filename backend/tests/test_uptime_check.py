@@ -60,7 +60,14 @@ import os, subprocess, sys
 args = sys.argv[1:]
 with open(os.environ["FAKE_GH_ARGS"], "a") as f:
     f.write(" ".join(args) + "\\n")
-which = "FAKE_DEPLOY_RUNS" if "/deploy.yml/" in args[1] else "FAKE_UPTIME_RUNS"
+path = args[1]  # 모르는 경로는 실패로 끝낸다 — 워크플로 파일 이름이 틀리면 시험이 깨진다
+if path == "repos/o/r/actions/workflows/deploy.yml/runs?per_page=20":
+    which = "FAKE_DEPLOY_RUNS"
+elif path == "repos/o/r/actions/workflows/uptime.yml/runs?status=completed&per_page=5":
+    which = "FAKE_UPTIME_RUNS"
+else:
+    print("gh: 모르는 경로 " + path, file=sys.stderr)
+    sys.exit(2)
 body = open(os.environ[which]).read()
 if body == "ERR":
     print("gh: Not Found (HTTP 404)", file=sys.stderr)
@@ -219,6 +226,29 @@ def test_내려감_배포가_끝나지_않았으면_알리지_않는다(run, dep
     assert sent == []
 
 
+def test_내려감_배포_중이어도_직전이_실패였으면_그_상태를_이어_간다(run):
+    # 새로 알리지는 않지만 초록으로 끝내면 안 된다
+    # — 직전이 success 로 바뀌어 배포 뒤 복구 알림이 빠진다
+    proc, sent, _ = run(DOWN, deploy=["in_progress"], prev=["failure"])
+
+    assert proc.returncode == 1
+    assert sent == []
+
+
+def test_알린_뒤_고치는_배포_중에_낀_run_이_있어도_배포_뒤_복구가_알려진다(run):
+    # 🔴(failure) → 배포 중 run → 배포가 끝난 뒤 정상.
+    # 가운데 run 의 종료 코드가 GitHub 의 결론이 된다
+    during, sent, _ = run(DOWN, deploy=["in_progress"], prev=["failure"])
+    assert (during.returncode, sent) == (1, [])
+    conclusion = "failure" if during.returncode else "success"
+
+    after, sent, _ = run(FINE, prev=[conclusion, "failure"])
+
+    assert after.returncode == 0
+    assert len(sent) == 1
+    assert sent[0].startswith("🟢")
+
+
 def test_내려감_배포가_다_끝났으면_알린다(run):
     proc, sent, _ = run(DOWN, deploy=["completed", "completed"], prev=["success"])
 
@@ -234,7 +264,7 @@ def test_내려감_직전_업타임이_실패였으면_이미_알렸으니_또_�
     assert sent == []
 
 
-@pytest.mark.parametrize("prev", [["success"], ["cancelled", "failure"], ["timed_out"], [], "ERR"])
+@pytest.mark.parametrize("prev", [["success"], ["timed_out"], ["cancelled"], [], "ERR"])
 def test_내려감_직전이_실패가_아니거나_모르면_알린다(run, prev):
     # [] 는 첫 run, ERR 은 조회 실패(uptime.yml 이 아직 기본 브랜치에 없으면 404)
     proc, sent, _ = run(DOWN, prev=prev)
@@ -281,6 +311,24 @@ def test_정상_직전이_실패가_아니거나_모르면_조용하다(run, pre
     assert sent == []
 
 
+@pytest.mark.parametrize("ended", ["cancelled", "timed_out", "skipped", "startup_failure"])
+def test_직전_결론은_success_failure_인_run_만_본다_내려감(run, ended):
+    # 취소 · 시간 초과로 끝난 run 은 알렸는지 아닌지를 말해 주지 않는다 — 그 앞의 failure 를 본다
+    proc, sent, _ = run(DOWN, prev=[ended, "failure"])
+
+    assert proc.returncode == 1
+    assert sent == []
+
+
+@pytest.mark.parametrize("ended", ["cancelled", "timed_out", "skipped", "startup_failure"])
+def test_직전_결론은_success_failure_인_run_만_본다_정상(run, ended):
+    proc, sent, _ = run(FINE, prev=[ended, "failure"])
+
+    assert proc.returncode == 0
+    assert len(sent) == 1
+    assert sent[0].startswith("🟢")
+
+
 def test_직전_run_은_지금_run_을_빼고_찾는다(run):
     # 지금 run(200)의 결론이 아니라 그 앞 run(199)의 것을 본다
     proc, sent, _ = run(FINE, prev=["failure", "success"], run_id="200")
@@ -292,13 +340,21 @@ def test_직전_run_은_지금_run_을_빼고_찾는다(run):
 # ── 시험 알림 ──
 
 
-@pytest.mark.parametrize("prev", [["success"], ["failure"]])
+@pytest.mark.parametrize(
+    ("prev", "code"),
+    [
+        (["success"], 0),
+        # 이미 알린 장애가 이어지는 중이면 시험이 그 상태를 지우지 않는다
+        # — 초록으로 끝나면 복구 알림이 빠진다
+        (["failure"], 1),
+    ],
+)
 @pytest.mark.parametrize("deploy", [["completed"], ["in_progress"]])
-def test_시험_알림은_내려갔어도_늘_보내고_성공으로_끝난다(run, prev, deploy):
+def test_시험_알림은_내려갔어도_늘_보낸다(run, prev, code, deploy):
     # 배포 중이든 이미 알렸든 상관없이 — 알림 경로가 열려 있는지 보려는 것이다
     proc, sent, _ = run(DOWN, prev=prev, deploy=deploy, test_alert=True)
 
-    assert proc.returncode == 0
+    assert proc.returncode == code
     assert len(sent) == 1
     assert sent[0].startswith("🧪")
     assert "실제 장애 아님" in sent[0]
