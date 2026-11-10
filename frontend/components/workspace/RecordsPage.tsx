@@ -8,6 +8,7 @@ import { isUnauthenticated, invalidFields } from "@/lib/api/client";
 import { listRecords, addRecord, editRecord, removeRecord } from "@/lib/api/records";
 import type { ServerObservation } from "@/lib/api/observations";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { useUnsavedWarning } from "@/lib/hooks/use-unsaved-warning";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { Posty } from "@/components/app/Posty";
 import { Icon } from "@/components/app/icons";
@@ -91,6 +92,17 @@ export default function RecordsPage() {
   const [kidsOpen, setKidsOpen] = useState(false);
   const [fact, setFact] = useState("");
   const [editId, setEditId] = useState("");
+  /** 「고치기」 전에 칸에 있던 것. 「그만두기」를 누르면 이대로 되돌린다. 적던 글은 묻고 버렸으므로 없다. */
+  const [beforeEdit, setBeforeEdit] = useState<{
+    classId: string | null;
+    childId: string;
+    date: string;
+    domain: string;
+    invalid: string[];
+  } | null>(null);
+  /** 적던 글이 있어 묻는 중인 일 — 고칠 기록이거나, 관찰일지로 나가기. */
+  const [ask, setAsk] = useState<ServerObservation | "leave" | null>(null);
+  const askDialog = useRef<HTMLDialogElement>(null);
   const [message, setMessage] = useState("");
   const [invalid, setInvalid] = useState<string[]>([]);
   const [classError, setClassError] = useState("");
@@ -113,6 +125,15 @@ export default function RecordsPage() {
   const kidsShown = !editId && (!child || kidsOpen);
   /** 목록과 숫자를 거르고 있는 아이. 없으면 반 전체다. */
   const onlyChild = classroom?.children.find((c) => c.id === onlyChildId);
+  const edited = records.find((r) => r.id === editId);
+  /** 저장하지 않은 글이 있나. 고치는 중이면 그 기록과 달라졌는지 본다. */
+  const unsaved = edited
+    ? fact !== edited.fact || context !== edited.context
+    : !!(fact.trim() || context.trim());
+  useUnsavedWarning(unsaved);
+  const journalHref = child
+    ? `/records/journal?child=${encodeURIComponent(child.id)}&class=${encodeURIComponent(classId)}`
+    : "/records/journal";
   // 늦게 온 옛 조회가 최신 목록을 덮지 않게 조회마다 번호를 매긴다.
   const latest = useRef(0);
 
@@ -186,7 +207,23 @@ export default function RecordsPage() {
   const clearInvalid = (name: string) =>
     setInvalid((prev) => (prev.includes(name) ? prev.filter((f) => f !== name) : prev));
 
+  function askFirst(next: ServerObservation | "leave") {
+    setAsk(next);
+    askDialog.current?.showModal();
+  }
+  function closeAsk() {
+    askDialog.current?.close();
+    setAsk(null);
+  }
+  /** 적던 글을 묻지 않고 덮어쓰지 않는다. */
   function startEdit(record: ServerObservation) {
+    if (unsaved) return askFirst(record);
+    beginEdit(record);
+  }
+  function beginEdit(record: ServerObservation) {
+    closeAsk();
+    // 고치던 기록을 두고 다른 기록을 고칠 때는 처음 것을 그대로 둔다.
+    if (!editId) setBeforeEdit({ classId: pickedClass, childId, date, domain: picked, invalid });
     setEditId(record.id);
     setClassId(record.classId);
     setChildId(record.childId);
@@ -202,6 +239,14 @@ export default function RecordsPage() {
     setEditId("");
     setFact("");
     setContext("");
+    setMessage("");
+    if (!beforeEdit) return setInvalid([]);
+    setClassId(beforeEdit.classId);
+    setChildId(beforeEdit.childId);
+    setDate(beforeEdit.date);
+    setDomain(beforeEdit.domain);
+    setInvalid(beforeEdit.invalid);
+    setBeforeEdit(null);
   }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -294,11 +339,12 @@ export default function RecordsPage() {
                 띄었다. 적는 칸 바로 위, 화면을 열자마자 보이는 자리에 둔다. */}
             <Link
               className={ws.recordJournalLink}
-              href={
-                child
-                  ? `/records/journal?child=${encodeURIComponent(child.id)}`
-                  : "/records/journal"
-              }
+              href={journalHref}
+              onClick={(e) => {
+                if (!unsaved) return;
+                e.preventDefault();
+                askFirst("leave");
+              }}
             >
               관찰일지 만들기 →
             </Link>
@@ -538,6 +584,31 @@ export default function RecordsPage() {
           />
         </section>
       </div>
+      <dialog
+        ref={askDialog}
+        className={ws.ojLeave}
+        aria-labelledby="record-ask-title"
+        onClose={() => setAsk(null)}
+      >
+        <Posty pose="hand" face="oh" tone="note" size={78} label={null} />
+        <h3 id="record-ask-title">잠깐만요!</h3>
+        <p>{ask === "leave" ? "적던 글이 사라져요." : "적던 글을 버리고 이 기록을 고칠까요?"}</p>
+        <div>
+          <button type="button" className={ws.secondary} autoFocus onClick={closeAsk}>
+            계속 쓰기
+          </button>
+          {ask === "leave" && (
+            <Link className={ws.link} href={journalHref}>
+              버리고 나가기
+            </Link>
+          )}
+          {ask && ask !== "leave" && (
+            <button type="button" className={ws.link} onClick={() => beginEdit(ask)}>
+              버리고 고치기
+            </button>
+          )}
+        </div>
+      </dialog>
     </WorkspacePage>
   );
 }
@@ -657,7 +728,7 @@ function RecordItem({
           {editable ? (
             <Link
               className={ws.secondary}
-              href={`/records/journal?record=${encodeURIComponent(record.id)}`}
+              href={`/records/journal?record=${encodeURIComponent(record.id)}&class=${encodeURIComponent(record.classId)}`}
             >
               이 기록으로 일지 만들기
             </Link>

@@ -779,9 +779,9 @@ export default function RoutinesPage() {
   const ready = listStatus === "ready" && dateOk && !needClass;
   // 활동실행을 적은 줄 수 (FR-402 출력). **화면에 적힌 것으로 센다** — 저장 전이어도 센다.
   const doneCount = rows.filter((row) => row.execution.trim()).length;
-  /** 날짜를 옮긴다. 적어 둔 줄이 있으면 먼저 묻는다. */
+  /** 날짜를 옮긴다. 적어 둔 줄이나 펴 놓은 일지에 저장 안 한 글이 있으면 먼저 묻는다. */
   const moveTo = (next: string, month: string | null) => {
-    if (!leaveRows()) return;
+    if (!leaveRows() || !journal.leave()) return;
     setPickedDate(next);
     setPickedMonth(month);
     revisit();
