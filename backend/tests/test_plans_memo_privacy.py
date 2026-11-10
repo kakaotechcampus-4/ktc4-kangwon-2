@@ -387,7 +387,8 @@ def test_연간_가져오기_원문의_원_아이_이름을_가리고_주제는_
 
     monkeypatch.setattr(settings, "llm_mode", "real")
     monkeypatch.setattr(annual_extract, "complete_json", fake)
-    data = _docx([["3월", "가명이와 다솜이 친구"], ["7월", "여름"]])
+    # 원문 앞쪽에 김여름의 전체 이름도 있다 — 7월 주제가 「김여름」으로 돌아오면 안 된다(#422).
+    data = _docx([["비고", "김여름 생일 잔치"], ["3월", "가명이와 다솜이 친구"], ["7월", "여름"]])
     response = client.post(
         "/api/plans/annual/import/extract",
         data={"class_id": str(klass.id)},

@@ -182,6 +182,11 @@ def unmask_from(text: str, table: NameTable, original: str) -> str:
     unmask 는 「김여름」을 돌려준다. 옮겨 온 글이니 가명 자리에 그 아이의 표기를 넣어 원문에서
     찾고, 찾은 글자를 그대로 준다. 원문에서 못 찾으면(모델이 글을 고쳐 옮겼으면)
     unmask_as_written 과 같다.
+
+    원문 여러 곳에 맞으면 처음 것이 아니라, 다른 맞은 자리 안에 들어 있지 않은 것 가운데 가장
+    짧은 것을 준다. 원문에 「김여름이 …」와 7월 주제 「여름」이 함께 있으면 가명 하나뿐인 주제는
+    두 자리에 다 맞는다 — 처음 것을 주면 주제가 「김여름」이 된다. 「김여름이 웃었다」 안의
+    「여름이 웃었다」처럼 더 긴 자리 안에 든 것은 빼서, 전체 이름을 적은 문장은 그대로 돌아온다.
     """
     restoring = table.restoring
     if not any(code in text for code in restoring):
@@ -196,5 +201,14 @@ def unmask_from(text: str, table: NameTable, original: str) -> str:
         options = sorted({part, *forms}, key=len, reverse=True)
         return "(?:" + "|".join(map(re.escape, options)) + ")"
 
-    found = re.search("".join(spot(i, p) for i, p in enumerate(parts)), original)
-    return found[0] if found else unmask_as_written(text, table, original)
+    pattern = "".join(spot(i, p) for i, p in enumerate(parts))
+    # 겹치는 자리까지 모두: 각 시작점에서 맞는 가장 긴 글.
+    spans = [
+        (m.start(), m.start() + len(m[1]), m[1]) for m in re.finditer(f"(?=({pattern}))", original)
+    ]
+    spans = [s for s in spans if s[2]]
+    # 앞에서 시작해 이 자리를 덮는 더 긴 맞은 자리가 있으면 그 안에 든 것이다.
+    outer = [s for s in spans if not any(o[0] < s[0] and o[1] >= s[1] for o in spans)]
+    if not outer:
+        return unmask_as_written(text, table, original)
+    return min(outer, key=lambda s: (len(s[2]), s[0]))[2]
