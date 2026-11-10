@@ -13,7 +13,9 @@
   /* 상단바가 60px 이다 (AppLayout 의 Suspense fallback 과 WorkspaceTopBar 가 같은 값). */
   min-height: calc(calc(100 * var(--app-dvh)) - 60px);
   padding: 24px 32px 36px;
-  background: radial-gradient(ellipse at 70% 0, #fffaf0 0, transparent 48%), #faf7f1;
+  /* 바탕을 칠하지 않는다 — 다른 작업 화면처럼 크림 배경과 낙서가 보이게.
+     선은 다른 작업 화면과 같은 값으로 한 단계 진하게. */
+  --pg-line: var(--pg-line-strong);
 }
 .archive > .archiveHeading {
   grid-column: 1 / -1;
@@ -1794,4 +1796,44 @@
   font-size: 12px;
   font-weight: 800;
   text-align: center;
+}
+
+/* ── 다른 작업 화면과 맞추기 — 큰 종이(.split · .panel) 바깥만. 종이 안은 원래 선 색 그대로 ── */
+.archive :is(.split, .panel) {
+  --pg-line: #ddd6ca;
+}
+
+/* 문서 종류 다섯 — 무지개 대신 쌤플 쪽지 색 */
+.archive .typeCard[data-type="annual"] {
+  --type-bg: var(--pg-sage-tint);
+  --type-line: var(--pg-sage-line);
+  --type-press: var(--pg-sage-ink);
+  --type-ink: var(--pg-sage-ink);
+}
+.archive .typeCard[data-type="monthly"] {
+  --type-bg: #fbeee6;
+  --type-line: var(--pg-clay-line);
+  --type-press: #9a5b42;
+  --type-ink: #9a5b42;
+}
+.archive .typeCard[data-type="weekly"] {
+  --type-bg: var(--pg-sky-tint);
+  --type-line: var(--pg-sky-line);
+  --type-press: var(--pg-sky-ink);
+  --type-ink: var(--pg-sky-ink);
+}
+.archive .typeCard[data-type="care"] {
+  --type-bg: var(--pg-note-soft);
+  --type-line: var(--pg-note-line);
+  --type-press: #8a6d1f;
+  --type-ink: #7a5f17;
+}
+.archive .typeCard[data-type="observation"] {
+  --type-bg: var(--pg-mint-tint);
+  --type-line: var(--pg-plum-line);
+  --type-press: var(--pg-primary);
+  --type-ink: var(--pg-primary-ink);
+}
+.archive .typeCard svg {
+  color: var(--type-ink);
 }

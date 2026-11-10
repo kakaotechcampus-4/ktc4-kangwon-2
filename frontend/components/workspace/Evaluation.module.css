@@ -1,18 +1,5 @@
 /* 평가 준비 화면 전용. 공통 Workspace.module.css 는 다른 화면도 쓰므로 여기 둔다. */
 
-.sectionTitle {
-  font-size: 18px;
-  font-weight: 700;
-}
-/* 페이지 안에서 제일 큰 덩어리의 머리다. 고딕 18px 로는 바로 밑 설명과 같은 무게였다. */
-.sheetTitle {
-  font-family: var(--font-display), sans-serif;
-  font-size: 29px;
-  font-weight: 700;
-  line-height: 1.1;
-  color: var(--pg-ink);
-}
-
 .card {
   display: grid;
   gap: 14px;
@@ -20,7 +7,6 @@
   border: 1px solid var(--pg-line);
   border-radius: 12px;
   background: var(--pg-paper);
-  box-shadow: var(--pg-shadow-card);
 }
 .kicker {
   display: flex;
@@ -148,13 +134,6 @@
 .notes li::before {
   content: "ⓘ ";
 }
-.counted {
-  font-size: 13px;
-  line-height: 1.8;
-  padding: 12px 16px;
-  border-radius: 8px;
-  background: var(--pg-cream);
-}
 /* 예전 서류 올리기. 누른 버튼 바로 밑에 열린다. */
 .evidence {
   display: grid;
@@ -276,20 +255,9 @@
   flex-shrink: 0;
   accent-color: var(--pg-primary);
 }
-.fileMore {
-  padding-left: 0;
-}
-.fileMore summary {
-  list-style: none;
-  min-height: 0;
-}
-.fileMore summary::-webkit-details-marker {
-  display: none;
-}
 .fileDetail {
   display: grid;
   gap: 6px;
-  padding-top: 6px;
   font-size: 13px;
   line-height: 1.7;
   color: var(--pg-ink-soft);
@@ -327,107 +295,632 @@
   }
 }
 
-/* ── 평가 때 낼 서류 한 장 ──────────────────────────────────────────
-   평가항목이 아니라 서류를 앞세운 표. 한 줄에 쌤플 쪽 숫자와 내 컴퓨터 쪽 결과를
-   나란히 두므로, 열 이름을 지우지 않는다 — 두 숫자의 뜻이 다르다(ADR-045). */
-
-/* 「5」 하나를 40px 로 놓았더니 그 숫자가 뭘 센 것인지 옆 글을 읽어야 알았다.
-   세는 일은 글 안에서 하고, 눈이 먼저 닿는 자리는 포스티에게 준다. */
-.leadTitle {
+/* ── 평가 서류 도장판 ─────────────────────────────────────────────
+   시안 ⑥ · 포스티 도장(평가 점검 디자인 시안, 2026-11-08). 서류마다 칸 하나, 챙긴 칸에 포스티 도장.
+   종이는 공책 띠 색(paper-warm)에 테이프 두 장 — 기록 · 계획안 화면의 첫 판과 같은 결이다. */
+/* 칸 수는 창 폭이 아니라 도장판 폭으로 정한다(@container) — 사이드바를 접고 펴면 같은 창에서도 폭이 192px 달라진다. */
+.stampCard {
+  container-type: inline-size;
+  position: relative;
+  padding: 30px 32px 28px;
+  border: 1px solid var(--pg-paper-warm-line);
+  border-radius: 6px;
+  background: var(--pg-paper-warm);
+  box-shadow: var(--pg-shadow-card);
+}
+.tapeRight {
+  left: auto;
+  right: 34px;
+  transform: rotate(4deg);
+}
+.stampHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 28px;
+  margin-bottom: 26px;
+}
+.stampTitle {
+  margin: 0;
   font-family: var(--font-display), sans-serif;
-  font-size: 26px;
+  font-size: 32px;
   font-weight: 700;
-  line-height: 1.2;
-  color: var(--pg-ink);
+  line-height: 1.1;
 }
-.leadTitle b {
-  color: var(--pg-alert-ink);
-}
-.today[data-done] .leadTitle {
-  color: var(--pg-sage-ink);
-}
-.leadNote {
-  margin-top: 5px;
+.stampSub {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
   font-size: 13px;
   line-height: 1.7;
   color: var(--pg-ink-soft);
 }
-
-.sheet {
-  border: 1px solid var(--pg-line);
-  border-radius: 12px;
-  background: var(--pg-paper);
-  overflow: hidden;
-}
-.row {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 16px 22px;
-}
-.row + .row {
-  border-top: 1px solid var(--pg-line);
-}
-/* 챙긴 줄은 흐리게 두되 글자는 읽히게 둔다 — 지우지 않는다. */
-.row[data-done] .docTitle {
-  color: var(--pg-ink-soft);
-}
-
-/* 끝난 줄과 빈 줄이 똑같이 생겨서 표를 다 읽어야 어디를 손댈지 알았다.
-   왼쪽에 표식 한 칸을 세워, 훑기만 해도 남은 줄이 보이게 한다. */
-.rowState {
-  display: grid;
-  flex: none;
+/* 「다시 세기」 — 기준일 바로 옆 새로고침 아이콘. 글자가 없어 aria-label · title 로 이름을 단다.
+   누르는 자리는 다른 단추처럼 44px 로 두되 위아래 여백을 당겨 줄 높이는 늘리지 않는다. */
+.recount {
+  display: inline-grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  margin-top: 1px;
+  width: 44px;
+  height: 44px;
+  margin: -12px -6px -12px 0;
   border-radius: 50%;
-  background: var(--pg-alert-soft);
-  color: var(--pg-alert-strong);
+  color: var(--pg-primary);
+  cursor: pointer;
 }
-.rowState[data-done] {
-  background: var(--pg-sage-tint);
+.recount:hover {
+  background: var(--pg-primary-tint);
+}
+.recount svg {
+  width: 18px;
+  height: 18px;
+}
+.stampSay {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.stampLead {
+  font-family: var(--font-display), sans-serif;
+  font-size: 27px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.stampLead b {
+  color: var(--pg-alert-ink);
+}
+.stampCard[data-done] .stampLead {
   color: var(--pg-sage-ink);
 }
-.rowState svg {
-  width: 15px;
-  height: 15px;
+/* 동그라미 크기(--ring)와 그 안 도장 · 포스티 배율(--stamp-scale)은 함께 줄어든다. 맨 아래 @container 참고. */
+.slots {
+  --ring: 118px;
+  --stamp-scale: 1;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.colDoc {
-  flex: 1 1 0;
-  min-width: 0;
-}
-.colAct {
+.slot {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  flex: 0 0 176px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  text-align: center;
 }
-/* 표 안의 단추는 줄 높이에 맞춰 글자만 줄인다. 누르는 자리는 44px 로 둔다. */
-.colAct a,
-.colAct button {
-  font-size: 13px;
-  padding: 8px 13px;
+.ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--ring);
+  height: var(--ring);
+  border-radius: 50%;
 }
-
-.docTitle {
-  font-size: 15px;
+/* 찍힌 칸과 빈 칸이 둘 다 흰 동그라미에 포스티 윤곽이라 구분이 안 됐다(11-08).
+   찍힌 칸은 흰 칸에 빨간 이중 원 도장(안에 노란 포스티), 빈 칸은 종이가 비쳐 보이는 점선 구멍에 흐린 포스티. */
+.ring[data-state="done"] {
+  border: 2.5px solid var(--pg-line);
+  background: var(--pg-paper);
+}
+.ring[data-state="empty"] {
+  border: 2.5px dashed var(--pg-ink-hint);
+  background: transparent;
+}
+/* 118 칸에서 92px · 위아래 13px 이던 비율 그대로 — 줄 높이가 다른 칸과 맞는다. */
+.ring[data-state="opt"] {
+  width: calc(var(--ring) * 0.78);
+  height: calc(var(--ring) * 0.78);
+  margin: calc(var(--ring) * 0.11) 0;
+  border: 2px dashed var(--pg-line);
+}
+/* 쌤플이 만들지 않는 서류만 칸 전체가 단추다. 칸보다 조금 크게 잡아 누르기 쉽게 한다. */
+.press {
+  position: absolute;
+  inset: -5px;
+  z-index: 4;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.ring[data-state="empty"]:has(.press:hover),
+.ring[data-state="opt"]:has(.press:hover) {
+  border-color: var(--pg-primary);
+  background: var(--pg-primary-tint);
+}
+.slotName {
+  font-size: 14.5px;
   font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
-.docIndicator {
-  margin-left: 8px;
-  font-size: 12px;
+.slotValue {
+  font-size: 13px;
+}
+.pressHint {
   font-weight: 600;
   color: var(--pg-primary-ink);
 }
-.docBasis {
-  margin-top: 3px;
+
+/* 도장 — 빨간 이중 원(::before)이 「찍혔다」를 맡고(보라에서 바꿈, 사용자 결정 11-10), 안의 노란 만세 포스티가 쌤플 얼굴을 맡는다(찍힌 모양 시안 ④).
+   꽉 찬 보라 몸에 하얀 얼굴은 탈처럼 보여 뺐다 — 포스티는 앱 어디서나 쓰는 노란 모습 그대로다.
+   칸마다 조금씩 기울여 손으로 찍은 티를 낸다. 기울기는 테두리 · 포스티 · 글자가 함께 받는다. */
+.stampMark {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 104px;
+  height: 104px;
+  transform: rotate(var(--tilt, 0deg));
+  /* 칸이 줄면 도장을 통째로 줄인다. 글자 · 포스티 · 이중 원 비율이 그대로 남는다. */
+  scale: var(--stamp-scale);
+}
+.stampMark::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 3.5px solid var(--pg-alert-strong-line);
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 4px var(--pg-paper),
+    inset 0 0 0 6px var(--pg-alert-strong-line);
+  pointer-events: none;
+}
+.slot:nth-child(6n + 1) .stampMark {
+  --tilt: -6deg;
+}
+.slot:nth-child(6n + 2) .stampMark {
+  --tilt: 4deg;
+}
+.slot:nth-child(6n + 3) .stampMark {
+  --tilt: -3deg;
+}
+.slot:nth-child(6n + 4) .stampMark {
+  --tilt: 6deg;
+}
+.slot:nth-child(6n + 5) .stampMark {
+  --tilt: -4deg;
+}
+.slot:nth-child(6n + 6) .stampMark {
+  --tilt: 3deg;
+}
+/* 도장 안 포스티 상자(46 × 49). 찍힐 때는 근거 글자와 같이 그 자리에서 나타난다. */
+.stampArt {
+  position: relative;
+  width: 46px;
+  height: 49px;
+  margin-top: 2px;
+}
+.stampArt > span {
+  position: absolute;
+  inset: 0;
+}
+/* Posty 의 width · height 속성을 상자 크기로 덮는다 — 근거가 두 줄이면 상자만 줄인다. */
+.stampArt svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* 근거 두 줄은 아랫줄이 안쪽 원에 닿아서 포스티를 줄인다. */
+.stampMark[data-lines="2"] .stampArt {
+  width: 40px;
+  height: 43px;
+}
+/* 도장 안 근거 글자. 둘이면 줄을 쌓고 조금 작게 — 104px 도장 안에 포스티와 같이 들어가야 한다. */
+.stampWords {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: var(--font-display), sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--pg-alert-strong-line);
+  white-space: nowrap;
+}
+.stampWords[data-count="2"] {
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1;
+}
+/* 빈 칸 — 점선 포스티가 기다린다. 몸(첫 path)만 점선이다. */
+.wait {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  scale: var(--stamp-scale);
+  --pg-ink: var(--pg-ink-hint);
+  --pg-shell: var(--pg-paper);
+  --pg-shell-line: var(--pg-ink-hint);
+  --pg-shell-fold: var(--pg-paper);
+}
+/* 포스티만 흐리게 둔다. 「비었어요」 글자까지 흐리면 읽기 어렵다.
+   글자는 회색 — 찍힌 도장이 빨강이라 빈 칸 글자까지 빨강이면 찍힌 칸과 한 색으로 보였다(11-10). */
+.wait svg {
+  display: block;
+  opacity: 0.55;
+}
+.wait svg > path:first-of-type {
+  stroke-dasharray: 4 3;
+}
+.wait b {
+  font-family: var(--font-display), sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.1;
   color: var(--pg-ink-soft);
 }
+.optWord {
+  font-size: 13px;
+  color: var(--pg-ink-soft);
+}
+
+/* 찍히는 동작 — 방금 빈 칸에서 찍힌 칸에만(`data-fresh`). 0.45초.
+   빨간 이중 원이 크게 떴다가 꾹 찍히고(0~0.32초) 칸이 한 번 눌린다. 안의 포스티와 근거 글자는 같은 느낌으로
+   그 자리에서 스르륵 나타난다(0.1~0.4초, 사용자 결정 11-08). */
+.ring[data-fresh] {
+  animation: thump 0.3s 0.12s ease-out both;
+}
+/* 끝값은 요소 제 모습이라 from 만 둔다. */
+@keyframes inkIn {
+  from {
+    opacity: 0;
+  }
+}
+/* 이중 원은 크게 떴다가 꾹 눌려 자리 잡는다 — 도장을 찍는 순간. */
+@keyframes ringIn {
+  from {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.96);
+  }
+}
+.stampMark[data-fresh]::before {
+  animation: ringIn 0.32s cubic-bezier(0.3, 0.6, 0.4, 1) both;
+}
+.stampMark[data-fresh] .imprint,
+.stampMark[data-fresh] .stampWords {
+  animation: inkIn 0.3s 0.1s ease-out both;
+}
+@keyframes thump {
+  40% {
+    transform: scale(0.95);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stampMark[data-fresh]::before,
+  .stampMark[data-fresh] .imprint,
+  .stampMark[data-fresh] .stampWords,
+  .ring[data-fresh] {
+    animation: none;
+  }
+}
+
+/* ── 도장판 아래 — 서류 6장이 한 줄로 서는 가로 칸(2026-11-09) ──
+   시안 ⑤ 「빈 칸 먼저」를 가로로 옮겼다. 빈 서류 카드(점선) → 찍힌 서류 카드(실선) → 해당 반만 내는 서류 카드(옅게).
+   카드 폭은 고정이고 키는 모두 같다(flex stretch). 높이를 아끼려고 카드 안은 촘촘하게 둔다 — 도장판 아래에서 세로 스크롤이 없어야 한다. */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.sheetHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.secTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0 2px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.secTitle span {
+  font-family: var(--font-body), sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--pg-ink-soft);
+}
+.sheetArrows {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+.sheetArrows button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--pg-line);
+  border-radius: 50%;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  cursor: pointer;
+}
+.sheetArrows svg {
+  width: 18px;
+  height: 18px;
+}
+.sheetArrows button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* 카드가 옆으로 선다. 스크롤바는 숨기고 ‹ › · Tab 으로 넘긴다. 오른쪽 끝 흐림은 끝에 닿으면 걷는다(data-end).
+   overflow-x 만 auto 로 두면 y 도 auto 가 되어 세로 스크롤이 생긴다 — hidden 으로 못 박는다.
+   쪽지 · 예전 서류 올리기 판은 맨 위 층에 올라 이 칸에 잘리지 않는다(DocCard). */
+.rail {
+  display: flex;
+  gap: 14px;
+  padding: 0 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-padding-left: 2px;
+  scrollbar-width: none;
+  mask-image: linear-gradient(90deg, #000 88%, transparent);
+}
+.rail::-webkit-scrollbar {
+  display: none;
+}
+.rail[data-end] {
+  mask-image: none;
+}
+/* 카드 폭은 고정 — 1440 에서 둘 하고 셋째가 조금 보인다. 좁은 화면(390)에서는 칸의 85%.
+   안쪽 여백 · 줄 간격은 글이 빽빽해 보여 늘렸다(11-09). 왼쪽 칸이 오른쪽 칸(폴더 쪽지 · 단추)보다 길어지지 않는 만큼만 —
+   1440×900 에서 세로 스크롤이 생기지 않는다. */
+.docCard {
+  position: relative;
+  display: flex;
+  flex: 0 0 min(310px, 85%);
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--pg-line);
+  border-radius: 10px;
+  background: var(--pg-paper);
+  scroll-snap-align: start;
+}
+.docCard[data-kind="todo"] {
+  border: 1.5px dashed var(--pg-ink-hint);
+}
+.docCard[data-kind="opt"] {
+  border: 1.5px dashed var(--pg-line);
+  background: var(--pg-ivory);
+}
+.docTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.docTitle .mini {
+  width: 28px;
+  height: 28px;
+}
+/* 이름은 한 줄 — min-width: 0 이 있어야 flex 안에서 말줄임이 된다. */
+.todoName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.todoKinds {
+  margin-left: 6px;
+  font-family: var(--font-body), sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pg-ink-soft);
+}
+.docIndicator {
+  margin-left: 6px;
+  font-family: var(--font-body), sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pg-primary-ink);
+  white-space: nowrap;
+}
+/* 기준 한 줄 · 쪽지 단추 — 단추는 오른쪽 끝. 모자라면 단추가 다음 줄로 내려간다. */
+.docMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 8px;
+}
+.docBasis {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--pg-ink-soft);
+}
+/* 누르는 자리는 32px 이고 줄 높이(19px)는 늘리지 않는다 — 위아래로 겹쳐 잡는다. */
+.docMeta .linkButton,
+.docActs .linkButton {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  margin-block: -7px;
+  font-weight: 600;
+}
+.docMeta .linkButton {
+  margin-left: auto;
+  font-size: 12.5px;
+}
+.need {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--pg-sun-ink);
+}
+.optNote {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--pg-ink-soft);
+}
+/* 단추 줄은 카드 맨 아래에 붙는다 — 카드 키가 같아도 단추는 같은 높이에 선다. */
+.docActs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+  margin-top: auto;
+}
+.docActs > :is(a, button):not(.linkButton) {
+  min-height: 40px;
+  padding: 6px 12px;
+  font-size: 14px;
+}
+/* 「찾은 파일 · 이름 규칙 · 자세히」 쪽지 — popover 라 맨 위 층에 서서 가로 칸에 잘리지 않는다.
+   폭 · 자리(left · top)는 열 때 DocCard 가 카드와 단추를 재서 넣는다(placeNote). display 는 건드리지 않는다 — 닫힌 쪽지는 UA 규칙이 감춘다. */
+.foundNote {
+  position: fixed;
+  inset: auto;
+  width: 330px;
+  max-width: calc(100 * var(--app-vw) - 16px);
+  max-height: min(360px, calc(100 * var(--app-dvh) - 16px));
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 44px 14px 16px;
+  border: 1px solid var(--pg-paper-warm-line);
+  border-radius: 8px;
+  background: var(--pg-paper-warm);
+  color: var(--pg-ink);
+  box-shadow: 0 8px 16px rgba(52, 49, 47, 0.16);
+}
+.foundNote:popover-open {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.foundNote > .fileDetail {
+  justify-self: stretch;
+}
+.noteClose {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--pg-ink-soft);
+  cursor: pointer;
+}
+.noteClose:hover {
+  background: var(--pg-primary-tint);
+}
+/* 예전 서류 올리기 판 — 화면 가운데에 뜨는 작은 모달. 앱 전체가 --app-zoom 으로 줄어서 vh 대신 --app-dvh 를 쓴다(globals.css).
+   [open] 에만 display 를 준다 — 닫힌 dialog 에 flex 를 주면 그대로 보인다. */
+.importDialog {
+  width: min(560px, calc(100 * var(--app-vw) - 24px));
+  max-width: none;
+  max-height: calc(100 * var(--app-dvh) - 32px);
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  box-shadow: 0 16px 40px rgba(52, 49, 47, 0.3);
+}
+.importDialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.importDialog::backdrop {
+  background: rgba(52, 49, 47, 0.4);
+}
+.importHead {
+  position: relative;
+  flex: none;
+  padding: 14px 60px 6px 18px;
+}
+.importHead h2 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.importHead .noteClose {
+  top: 6px;
+  right: 8px;
+}
+.importBody {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 18px 18px;
+}
+/* 폴더를 처음 고를 때 뜨는 안내 — 예전 서류 올리기 판과 같은 틀(.importDialog)에 단계 셋. */
+.guideHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.guideSteps {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 18px;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.guideSteps li {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.guideSteps li::before {
+  content: counter(step);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--pg-primary-tint);
+  color: var(--pg-primary-ink);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.guideActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+/* 가로 칸 바로 아래 한 줄 — 도장은 서류가 있다는 표시일 뿐이라는 당부(ADR-019). */
+.sheetNote {
+  margin: 0 2px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--pg-ink-soft);
+}
+/* 도장판 칸 아래 숫자 */
 .madeDone {
   font-weight: 700;
   color: var(--pg-success);
@@ -436,234 +929,392 @@
   font-weight: 700;
   color: var(--pg-sun-ink);
 }
-.rowFaint {
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--pg-ink-soft);
-}
-.rowCheck {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.rowCheck input {
-  width: 20px;
-  height: 20px;
-  accent-color: var(--pg-primary);
-}
-.sheetFoot {
-  padding: 14px 22px;
-  border-top: 1px solid var(--pg-line);
-  background: var(--pg-paper-warm);
-  font-size: 12px;
-  line-height: 1.8;
-  color: var(--pg-ink-soft);
-}
 
-/* 원장님 서류처럼 평소에 안 보는 묶음은 접어 둔다. */
-.fold {
-  padding: 4px 0;
-  border: 1px dashed var(--pg-line);
-  border-radius: 10px;
-  background: var(--pg-paper);
-}
-.fold > summary {
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 22px;
-  list-style: none;
-  font-family: var(--font-display), sans-serif;
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--pg-ink);
-  cursor: pointer;
-}
-.fold > summary::-webkit-details-marker {
-  display: none;
-}
-.fold[open] > summary {
-  border-bottom: 1px dashed var(--pg-line);
-}
-.foldMark {
-  flex: none;
-  width: 17px;
-  height: 17px;
-  color: var(--pg-primary);
-  transition: transform 140ms ease;
-}
-.fold[open] .foldMark {
-  transform: rotate(90deg);
-}
-@media (prefers-reduced-motion: reduce) {
-  .foldMark {
-    transition: none;
-  }
-}
-.fold > p {
-  padding: 0 22px;
-}
-.foldBody {
-  padding: 2px 4px 10px;
-}
-
-@media (max-width: 900px) {
-  /* 좁아지면 할 일 단추를 서류 밑 줄로 내린다. */
-  .row {
-    flex-wrap: wrap;
-    gap: 10px 16px;
-  }
-  .colDoc {
-    flex: 1 1 100%;
-  }
-  .colAct {
-    flex: 1 1 auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 14px;
-  }
-}
-
-@media (max-width: 640px) {
-  .row,
-  .sheetFoot {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-  .fold > summary,
-  .fold > p {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-}
-
-/* ── 좌우 짜임 — 왼쪽 「오늘」 요약 · 폴더, 오른쪽 서류 한 장 ── */
-.layout {
-  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
-}
-@media (max-width: 1100px) {
-  .layout {
-    grid-template-columns: 1fr;
-  }
-}
-.today {
-  position: relative;
+/* 도장 근거 — 도장 안 낱말(쌤플확정 · 내컴퓨터 · 직접확인)을 그대로 쓴다.
+   보라 실선은 도장을 찍은 근거, 노란 점선은 있지만 모자람, 회색 점선은 아직 없음. */
+.srcs {
   display: grid;
-  gap: 12px;
-  padding: 24px 22px 18px;
-  border-color: var(--pg-note-soft-line);
-  background: var(--pg-note-soft);
+  gap: 6px;
 }
-.today[data-done] {
-  border-color: var(--pg-sage-line);
-  background: var(--pg-sage-tint);
-}
-.todayEyebrow {
-  font-size: 12.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--pg-ink-soft);
-}
-.todaySay {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-/* 서류마다 한 칸. 챙긴 칸만 칠한다. */
-.meter {
-  display: grid;
-  grid-auto-columns: minmax(0, 1fr);
-  grid-auto-flow: column;
-  gap: 5px;
-  margin: 2px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.meter li {
-  height: 12px;
-  border: 1.5px solid var(--pg-ink);
-  border-radius: 3px;
-  background: var(--pg-paper);
-}
-.meter li[data-done] {
-  background: var(--pg-sage);
-}
-.meterText {
-  font-size: 13px;
-  color: var(--pg-ink-soft);
-}
-.meterText b {
-  color: var(--pg-ink);
-}
-.todayFoot {
+.srcs[data-inline] {
   display: flex;
   flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.src {
+  display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 4px 10px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--pg-line);
-  font-size: 12px;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.src > b {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1.5px solid;
+  border-radius: 999px;
+  background: var(--pg-paper);
+  font-family: var(--font-display), sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+.src[data-state="on"] > b {
+  border-color: var(--pg-primary);
+  color: var(--pg-primary);
+}
+.src[data-state="short"] > b {
+  border-color: var(--pg-sun);
+  border-style: dashed;
+  background: var(--pg-sun-tint);
+  color: var(--pg-sun-ink);
+}
+.src[data-state="none"] > b {
+  border-color: var(--pg-line);
+  border-style: dashed;
   color: var(--pg-ink-soft);
 }
-.folder {
+.src[data-state="none"] {
+  color: var(--pg-ink-soft);
+}
+/* 줄 맨 앞 작은 동그라미 — 찍힌 서류는 도장판과 같은 빨간 이중 원 */
+.mini {
+  flex: none;
   display: grid;
-  gap: 10px;
-  padding: 20px 22px;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+.mini[data-state="done"] {
+  border: 2.5px solid var(--pg-alert-strong-line);
+  background: var(--pg-paper);
+  box-shadow:
+    inset 0 0 0 2.5px var(--pg-paper),
+    inset 0 0 0 4px var(--pg-alert-strong-line);
+  transform: rotate(-6deg);
+}
+.mini[data-state="empty"] {
+  border: 2px dashed var(--pg-ink-hint);
+}
+.mini[data-state="opt"] {
+  border: 1.5px dashed var(--pg-line);
+}
+
+/* ── 아래 짜임 — 왼쪽 서류 칸, 오른쪽 칸(폴더 · 서랍 단추 셋) ──
+   채울 서류를 한 줄에 둘로 줄인 만큼 오른쪽을 넓힌다(사용자 결정 11-09). 왼쪽은 카드 두 장이
+   예전 셋일 때 크기(약 380px)를 넘지 않는 776px 까지만, 남는 폭은 오른쪽 칸이 가진다 — 오른쪽은 330px 아래로 줄지 않는다.
+   1440 기준 창(사이드바 편 채)은 남는 폭이 없어 지금과 같다. */
+.layout {
+  grid-template-columns: minmax(0, 776px) minmax(330px, 1fr);
+}
+/* 사이드바를 편 1280 아래에서는 표 칸이 560px 보다 좁아져 마지막 칸이 가려졌다. 그 전에 한 줄로 쌓는다. */
+@media (max-width: 1260px) {
+  .layout {
+    /* 그냥 1fr 이면 표의 min-width(560px)만큼 칸이 버텨 스마트폰(390)에서 페이지가 옆으로 밀렸다. */
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* 페이지와 같이 스크롤한다. `ws.side` 처럼 따로 스크롤하면 노트북 높이에서 접힌 칸이 안쪽 밑으로 숨었다. */
+.aside {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  min-width: 0;
+}
+/* 내 컴퓨터 폴더 — 테이프로 붙인 노란 쪽지(시안 ③). 사이드바 쪽지 · 시작 설정 쪽지와 같은 색이다.
+   제목 · 안내는 왼쪽, 단추는 오른쪽에 둔다 — 아래 서랍 단추 셋과 폴더를 고른 뒤의 결과 줄까지 도장판 아래 한 화면(안쪽 800px)에 들어와야 한다. */
+.folderNote {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 6px 4px 4px;
+  padding: 16px 18px 10px;
+  border: 1px solid var(--pg-note-line);
+  background: var(--pg-note);
+  box-shadow: 0 8px 16px rgba(52, 49, 47, 0.16);
+  transform: rotate(1.5deg);
+}
+.noteTape {
+  left: 38%;
 }
 .folderTitle {
+  grid-column: 1;
   margin: 0;
   font-family: var(--font-display), sans-serif;
   font-size: 22px;
   font-weight: 700;
+  line-height: 1.2;
 }
 .folderLead {
+  grid-column: 1;
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.5;
+}
+.folderNote > button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  min-height: 40px;
+  padding: 6px 14px;
+  font-size: 14px;
+}
+.scanStat {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0;
+  margin-top: 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--pg-note-line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--pg-paper) 55%, transparent);
+}
+.scanStat b {
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.scanStat span {
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--pg-ink-soft);
 }
-.sheetHeadline {
+/* 두 칸으로 설 때는 안쪽 1440×800 한 화면에 들어온다(사용자 결정 11-10) — 빈 여백만 줄였고 글자 · 도장 · 단추 크기는 그대로다.
+   가장 긴 때는 폴더를 고른 뒤 파일 이름이 100개를 넘어 결과가 두 줄일 때로, 그때 아래에 11px 남는다. 이 화면에 줄을 더하면 다시 잰다.
+   한 줄로 쌓이는 좁은 창(1260 아래)은 페이지가 훨씬 길어 그대로 스크롤된다. 위 칸들보다 뒤에 둬야 덮어쓴다. */
+@media (min-width: 1261px) {
+  :global(main):has(.layout) {
+    padding-bottom: 16px;
+  }
+  /* 페이지 머리(WorkspacePage 의 pageHead) */
+  :global(main):has(.layout) > :first-child {
+    margin-bottom: 16px;
+  }
+  /* 도장판과 아래 두 칸 사이(ws.stack) */
+  :global(div):has(> .layout) {
+    gap: 14px;
+  }
+  .stampCard {
+    padding-top: 22px;
+    padding-bottom: 20px;
+  }
+  .stampHead {
+    margin-bottom: 16px;
+  }
+  .aside {
+    gap: 4px;
+  }
+  .folderNote {
+    row-gap: 2px;
+    margin: 4px 4px 2px;
+    padding: 12px 18px 8px;
+  }
+  .scanStat {
+    margin-top: 2px;
+    padding: 4px 10px;
+  }
+  /* 페이지 스크롤바를 숨긴다(#505). 한 화면에 들어오면 생기지 않지만, 맨 위 오류 줄이 뜬 동안처럼 잠깐 넘칠 때를 위해 남긴다. */
+  :global(html):has(.layout) {
+    scrollbar-width: none;
+  }
+  :global(html):has(.layout)::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* 서랍 단추 — 평소에는 수만 보이고, 누르면 오른쪽에서 서랍이 나온다(시안 ④). 접어 두는 칸이 아니다. */
+.pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 40px;
+  padding: 4px 18px;
+  border: 1px dashed var(--pg-line);
+  border-radius: 10px;
+  background: var(--pg-paper);
+  font-family: var(--font-display), sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: left;
+  color: var(--pg-ink);
+  cursor: pointer;
+}
+.pill > span {
+  flex: none;
+  font-family: var(--font-body), sans-serif;
+  font-size: 12.5px;
+  color: var(--pg-primary-ink);
+}
+/* 서랍 — 화면 오른쪽 끝에 붙고 높이는 창 전체다. 앱 전체가 --app-zoom 으로 줄어서 vh 대신 --app-dvh 를 쓴다(globals.css).
+   [open] 에만 display 를 준다 — 닫힌 dialog 에 flex 를 주면 그대로 보인다. */
+.drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(470px, 100%);
+  max-width: none;
+  height: calc(100 * var(--app-dvh));
+  max-height: none;
   margin: 0;
-  padding: 18px 22px 14px;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--pg-line);
+  background: var(--pg-cream);
+  color: var(--pg-ink);
+  box-shadow: -10px 0 24px rgba(52, 49, 47, 0.18);
+}
+.drawer[open] {
+  display: flex;
+  flex-direction: column;
+  animation: drawerIn 220ms ease-out;
+}
+.drawer::backdrop {
+  background: rgba(52, 49, 47, 0.28);
+}
+.drawer[open]::backdrop {
+  animation: drawerFade 220ms ease-out;
+}
+@keyframes drawerIn {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes drawerFade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drawer[open],
+  .drawer[open]::backdrop {
+    animation: none;
+  }
+}
+.drawerHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 22px;
   border-bottom: 1px solid var(--pg-line);
   background: var(--pg-paper-warm);
 }
-/* 쌤플 쪽 숫자와 컴퓨터 쪽 결과. 이름표를 달아 나란히 둔다 — 뜻이 다른 두 숫자다. */
-.facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 22px;
-  margin: 8px 0 2px;
+.drawerHead h2 {
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
 }
-.facts > div {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.drawerClose {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--pg-line-strong);
+  border-radius: 50%;
+  background: var(--pg-paper);
+  font-size: 20px;
+  line-height: 1;
+  color: var(--pg-ink-soft);
+  cursor: pointer;
 }
-.facts dt {
+/* 몸통만 안에서 스크롤한다. 끝에 닿아도 뒤 페이지가 따라 움직이지 않게 한다. */
+.drawerBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 18px 22px;
+}
+/* 안쪽 컴포넌트의 간격(22px)과 빈 「저장됨」 줄이 힌트와 첫 카드 사이를 40px 넘게 벌렸다. 시안은 14px 이다. */
+.drawerBody > div {
+  gap: 14px;
+}
+.drawerBody .savedState:empty {
+  display: none;
+}
+/* 원장님 서류 — 항목 이름 밑에 기준을 작게(시안 ⑤). 흰 카드 틀은 영역 카드(.area)와 같다. */
+.director {
+  display: grid;
+  gap: 12px;
+}
+.directorCard {
+  border: 1px solid var(--pg-line);
+  border-radius: 12px;
+  background: var(--pg-paper);
+  overflow: hidden;
+}
+.directorItem + .directorItem {
+  border-top: 1px solid var(--pg-line);
+}
+.directorItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 40px;
+  padding: 12px 16px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.directorItem input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--pg-primary);
+}
+.directorItem small {
+  display: block;
   font-size: 12px;
-  color: var(--pg-ink-hint);
+  color: var(--pg-ink-soft);
 }
-.facts dd {
-  margin: 0;
-  font-size: 14px;
+
+/* 도장 6칸은 한 줄로 둔다(11-08). 1220 아래에서 3칸씩 두 줄로 나누던 것을 바꿨다 — 사이드바를 접은 창에서도
+   두 줄이 됐고, 1280 · 1366 노트북은 한 줄에 넉넉했다.
+   창 폭 미디어 쿼리는 화면 배율(--app-zoom, 1024 이상에서 0.8~1)을 모른다 — 1100~1220 창은 배율로 넓게 그려
+   여섯 칸이 넉넉한데도 두 줄이 됐다. 그래서 도장판 안쪽 폭으로 정하고, 모자라면 줄을 나누기 전에 동그라미를 줄인다:
+     798px 이상   118px · 간격 18 — 1024 이상 데스크톱 전부(사이드바 접힘 · 펼침), 그 아래 창 폭 944 이상
+     674px 이상   104px · 간격 10 — 창 폭 820~943
+     614px 이상    94px            — 태블릿 세로(768)
+     그 아래       94px 세 칸씩    — 스마트폰(390). 여섯 칸이면 글자가 읽히지 않는다
+   동그라미 사이를 10px 아래로 줄이지 않는다 — 누르는 자리(.press)가 동그라미보다 5px 씩 넓다. */
+@container (max-width: 797.98px) {
+  .slots {
+    --ring: 104px;
+    --stamp-scale: 0.88;
+    gap: 10px;
+  }
 }
-/* 두 칸 다 `ws.card` 라 공통 `.card p`(15px · 줄높이 1.9)가 손글씨 제목까지 덮는다. 칸 안에서 다시 잡는다. */
-.today .leadTitle {
-  max-width: none;
-  font-size: 25px;
-  line-height: 1.25;
+@container (max-width: 673.98px) {
+  .slots {
+    --ring: 94px;
+    --stamp-scale: 0.8;
+  }
 }
-.today .todayEyebrow,
-.today .meterText,
-.today .leadNote,
-.folder .folderLead {
-  max-width: none;
-  font-size: 13px;
-  line-height: 1.7;
+@container (max-width: 613.98px) {
+  .slots {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 22px;
+  }
+}
+@container (max-width: 301.98px) {
+  .slots {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .stampCard {
+    padding: 24px 16px 20px;
+  }
 }

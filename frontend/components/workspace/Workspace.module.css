@@ -1237,7 +1237,7 @@ a.item {
   border-left: 1px solid rgba(255, 255, 255, 0.6);
   border-right: 1px solid rgba(255, 255, 255, 0.6);
   background: var(--pg-tape);
-  box-shadow: 0 1px 2px rgba(106, 96, 80, 0.09);
+  box-shadow: var(--pg-shadow-tape);
   transform: rotate(-3deg);
   pointer-events: none;
 }
@@ -2571,6 +2571,82 @@ button.recordBlank:disabled {
 /* 왼쪽 칸은 화면 높이 안에 「기록하기」까지 들어와야 한다. 머리와 칸 사이를 줄인다. */
 .recordGrid .recordForm {
   padding: 22px 24px 24px;
+}
+/* 크림 배경 위에서 칸 · 칩 · 버튼의 경계가 묻혀, 이 화면에서만 선을 한 단계 진하게 하고
+   옅은 그림자로 띄운다. 색은 그대로 둔다. 고른 칩(어두운 칠)은 제 선을 그대로 쓴다. */
+.recordGrid {
+  --record-line: var(--pg-line-strong);
+  --record-lift: var(--pg-shadow-lift);
+}
+.recordGrid .card {
+  border-color: var(--record-line);
+  box-shadow: var(--record-lift);
+}
+/* 빈 목록 칸은 보라 도장 그림자를 그대로 두고 선만 진하게 */
+.recordGrid .empty {
+  border-color: var(--record-line);
+}
+.recordGrid
+  :is(
+    .recordKid,
+    .recordFilter,
+    .recordArea,
+    .recordDayPick,
+    .recordFind,
+    .recordWay,
+    .secondary
+  ):not([aria-pressed="true"]) {
+  border-color: var(--record-line);
+}
+.recordGrid :is(.recordFind, .recordDayPick, .recordWay, .secondary) {
+  box-shadow: var(--record-lift);
+}
+.recordGrid .recordFactInput {
+  border: 1px solid var(--record-line);
+}
+.recordGrid .recordBlank {
+  border-bottom-color: color-mix(in srgb, var(--pg-primary) 55%, transparent);
+}
+.recordGrid .primary {
+  border-color: var(--pg-primary);
+  box-shadow: var(--pg-shadow-card);
+}
+/* 보육일지(일일 · 주간)도 관찰 기록과 같게 — 「일일 / 주간」 탭이 있는 화면에서만 선을 진하게, 옅은 그림자. */
+.page:has(.journalTabs) {
+  --record-line: var(--pg-line-strong);
+  --record-lift: var(--pg-shadow-lift);
+}
+.page:has(.journalTabs) .card {
+  border-color: var(--record-line);
+  box-shadow: var(--record-lift);
+}
+.page:has(.journalTabs) .journalTabs {
+  border-bottom-color: var(--record-line);
+}
+.page:has(.journalTabs) .journalTabs a[aria-current="page"] {
+  border-color: var(--record-line);
+  border-bottom-color: var(--pg-paper);
+}
+.page:has(.journalTabs) .calendarJump input {
+  border-color: var(--record-line);
+}
+.page:has(.journalTabs) .secondary {
+  border-color: var(--record-line);
+  box-shadow: var(--record-lift);
+}
+.page:has(.journalTabs) .primary {
+  border-color: var(--pg-primary);
+  box-shadow: var(--pg-shadow-card);
+}
+/* 계획안 화면 — 선 색은 globals.css 의 .lineScope 가 바꾸고, 여기서는 그림자만 더한다.
+   평가 점검 화면은 선만 진하게 하고 그림자는 주지 않는다. */
+:global(.plansScope) .card,
+:global(.plansScope) .secondary {
+  box-shadow: var(--pg-shadow-lift);
+}
+:global(.plansScope) .primary {
+  border-color: var(--pg-primary);
+  box-shadow: var(--pg-shadow-card);
 }
 
 /* ── 문서 보관함 · 같은 원 남의 반 (ADR-059) ── */

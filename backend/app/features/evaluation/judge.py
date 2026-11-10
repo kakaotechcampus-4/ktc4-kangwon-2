@@ -108,6 +108,10 @@ class AutoResult:
     plan_ids: tuple[int, ...]
     document_ids: tuple[int, ...]
     period: Window
+    # 4-1 만 — 두 조건을 따로 채운 반 수.
+    # 화면이 서류(보육일지 · 계획안)마다 도장을 찍는다(ADR-074 결정 2).
+    journal_classes: Ratio | None = None
+    plan_classes: Ratio | None = None
 
 
 def _verdict(count: int, ratio: Ratio) -> str:
@@ -122,9 +126,9 @@ def judge_4_1(
     plans: Iterable[PlanFact],
     daily_logs: Iterable[DailyLogFact],
     *,
-    min_plans_per_class: int = 1,
+    min_plans_per_month: int = 1,
 ) -> AutoResult:
-    """반마다 계획안과 기간 안 모든 평일의 일지가 있는지 센다."""
+    """반마다 기간 안의 달마다 계획안이, 기간 안 모든 평일에 일지가 있는지 센다."""
     roster = set(class_ids)
     months = set(window.months())
     # 입력 유일성을 계약이 보장하지 않는다 — 같은 문서를 두 번 세면 거짓 충족. id 로 하나만 남긴다.
@@ -135,13 +139,21 @@ def judge_4_1(
         if log.class_id in roster and window.contains(log.day)
     }
     plans, daily_logs = list(plans.values()), list(daily_logs.values())
-    plan_counts = Counter(plan.class_id for plan in plans)
+    plan_counts = Counter((plan.class_id, plan.year, plan.month) for plan in plans)
     log_days: dict[int, set[date]] = defaultdict(set)
     for log in daily_logs:
         log_days[log.class_id].add(log.day)
     weekdays = set(window.weekdays())
-    met = sum(plan_counts[c] >= min_plans_per_class and weekdays <= log_days[c] for c in roster)
-    ratio = Ratio(met, len(roster))
+    # 기간에 걸친 달마다 따로 센다 — 두 달 중 한 달만 있으면 못 채운다(ADR-080).
+    # 폴더 검사(ADR-045 결정 3)와 세는 단위가 같다.
+    # 폴더는 주간 · 일일 계획안 파일도 그 달 1건으로 센다.
+    plan_ok = {
+        c
+        for c in roster
+        if all(plan_counts[(c, year, month)] >= min_plans_per_month for year, month in months)
+    }
+    journal_ok = {c for c in roster if weekdays <= log_days[c]}
+    ratio = Ratio(len(plan_ok & journal_ok), len(roster))
     plan_ids = tuple(sorted(plan.plan_id for plan in plans))
     document_ids = tuple(sorted(log.document_id for log in daily_logs))
     count = len(plan_ids) + len(document_ids)
@@ -154,6 +166,8 @@ def judge_4_1(
         plan_ids=plan_ids,
         document_ids=document_ids,
         period=window,
+        journal_classes=Ratio(len(journal_ok), len(roster)),
+        plan_classes=Ratio(len(plan_ok), len(roster)),
     )
 
 

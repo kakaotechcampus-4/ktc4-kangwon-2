@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 # 있어도 직접 import 한다 — ADR-002 가 「두 번째 규칙을 완화해서 해결했다」고 정한 지점이다.
 from app.db import get_session
 from app.features.auth.models import User
-from app.features.centers.models import Child, Class
+from app.features.centers.models import Center, Child, Class
 from app.features.documents.draft import (
     KIND_LABELS,
+    NAME_MASK_FAILED,
     DraftFailed,
     draft_sections,
     rule_id,
@@ -28,6 +29,7 @@ from app.features.documents.models import (
     DocumentSourceResolution,
 )
 from app.features.documents.review import (
+    class_ages,
     lock_sources,
     locked_review,
     plan_resolutions,
@@ -52,10 +54,14 @@ from app.features.documents.schemas import (
     DocumentSourceItem,
     DocumentUnconfirmResponse,
     DocumentUpdateRequest,
+    DocumentVerifyIssue,
+    DocumentVerifyRequest,
+    DocumentVerifyResponse,
     RelatedDocumentsResponse,
 )
 from app.features.documents.stale import SourceImpact, document_changed
-from app.features.observations.models import Observation
+from app.features.documents.verify import name_table, verify_sections
+from app.features.observations.models import AXES, DEFAULT_AXIS, Observation
 from app.features.routines.models import RoutineRecord
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import (
@@ -63,8 +69,10 @@ from app.shared.auth.ownership import (
     require_own_child,
     require_own_class,
 )
-from app.shared.gates.sections import check_sections, join_facts
-from app.shared.llm import LlmBudgetExceeded
+from app.shared.childCode import CallNameNeeded, SubstitutionError
+from app.shared.gates.judge import JUDGED_KINDS, MAX_SENTENCES, TooLong
+from app.shared.gates.sections import check_sections, input_extras, join_facts
+from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -164,18 +172,35 @@ def _sources(session: Session, document_id: int) -> list[DocumentSource]:
 
 
 def _observation_domains(session: Session, sources: list[DocumentSource]) -> dict[int, str]:
-    """관찰 기록 근거의 영역. 사본에 두지 않고 원본에서 읽는다.
+    """관찰 기록 근거의 영역. **사본에 있으면 사본, 없으면 지금 원본이다** (ADR-088).
 
-    영역만 고치면 사실은 그대로라 `stale` 이 아니다(stale.py). 그러니 사본에 남겨 둘 이유가
-    없고, 교사가 나중에 고친 영역이 종이에 그대로 나가는 게 맞다. 원본이 사라졌으면 빠진다.
+    사본이 없는(NULL) 것은 이 칸이 생기기 전에 만든 문서 중 채우기 규칙이 확실하지 않다고 본
+    「다시 확인」 행이다. 그때는 예전처럼 원본을 읽는다. 원본도 사라졌으면 빠진다.
     """
-    ids = [s.source_id for s in sources if s.source_kind == "observation"]
+    known = {
+        s.source_id: s.domain
+        for s in sources
+        if s.source_kind == "observation" and s.domain is not None
+    }
+    ids = [s.source_id for s in sources if s.source_kind == "observation" and s.domain is None]
     if not ids:
-        return {}
+        return known
     rows = session.execute(
         select(Observation.id, Observation.domain).where(Observation.id.in_(ids))
     )
-    return {observation_id: domain for observation_id, domain in rows}
+    return {observation_id: domain for observation_id, domain in rows} | known
+
+
+def center_axis(session: Session, class_id: int) -> str:
+    """그 반의 원이 **지금** 쓰는 관찰 영역 축."""
+    center_id = select(Class.center_id).where(Class.id == class_id).scalar_subquery()
+    axis = session.scalar(select(Center.observation_axis).where(Center.id == center_id))
+    return axis or DEFAULT_AXIS
+
+
+def document_axis(session: Session, doc: Document) -> str:
+    """문서의 영역 축. 만들 때 찍은 사본이 없으면(옛 문서) 원의 지금 축이다 (ADR-088)."""
+    return doc.observation_axis or center_axis(session, doc.class_id)
 
 
 def _period(start: date, end: date) -> str:
@@ -213,6 +238,7 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
         status=doc.status,
         origin=doc.origin,
         stale=doc.stale,
+        observation_axis=doc.observation_axis,
         sections=[
             DocumentSectionItem(heading=s.heading, body=s.body, source_ids=s.source_ids)
             for s in sections
@@ -220,8 +246,10 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
         sources=[
             DocumentSourceItem(
                 id=s.source_id,
+                source_kind=s.source_kind,
                 date=s.date,
                 domain=domains.get(s.source_id) if s.source_kind == "observation" else None,
+                context=s.context,
                 text=s.text,
                 class_id=s.class_id,
                 child_id=s.child_id,
@@ -397,9 +425,67 @@ def import_document(
     return DocumentImportResponse(**detail.model_dump(), notices=notices)
 
 
+def _sources_changed(session: Session, copies: list[DocumentSource]) -> bool:
+    """사본을 만든 뒤 원본이 바뀌었나. 원본 → 문서, 종류 안에서 id 오름차순으로 잠근다.
+
+    review.lock_sources 와 같은 순서다. 일과 · 관찰 PUT · DELETE 도 원본을 먼저 잠근다.
+    """
+
+    def locked(model, kind):
+        ids = sorted({c.source_id for c in copies if c.source_kind == kind})
+        if not ids:
+            return {}
+        rows = session.scalars(
+            select(model)
+            .where(model.id.in_(ids))
+            .order_by(model.id)
+            .with_for_update(of=model)
+            .execution_options(populate_existing=True)
+        ).all()
+        return {row.id: row for row in rows}
+
+    routines = locked(RoutineRecord, "routine")
+    observations = locked(Observation, "observation")
+    documents = locked(Document, "document")
+    for copy in copies:
+        if copy.source_kind == "routine":
+            row = routines.get(copy.source_id)
+            same = row is not None and (row.fact_text(), row.date) == (copy.text, copy.date)
+        elif copy.source_kind == "observation":
+            row = observations.get(copy.source_id)
+            same = row is not None and (row.fact, row.date, row.domain, row.context) == (
+                copy.text,
+                copy.date,
+                copy.domain,
+                copy.context,
+            )
+        else:
+            row = documents.get(copy.source_id)
+            fact = session.scalar(
+                select(DocumentSection.body).where(
+                    DocumentSection.document_id == copy.source_id, DocumentSection.heading == "사실"
+                )
+            )
+            same = (
+                row is not None
+                and row.status == "CONFIRMED"
+                and not row.stale
+                and fact == copy.text
+            )
+        if not same:
+            return True
+    return False
+
+
 @router.post("", response_model=DocumentDetailResponse, status_code=status.HTTP_201_CREATED)
 def create_document(
     body: DocumentCreateRequest, session: DbSession, user: CurrentUser
+) -> DocumentDetailResponse:
+    return _create_document(body, session, user, retry=True)
+
+
+def _create_document(
+    body: DocumentCreateRequest, session: Session, user: User, *, retry: bool
 ) -> DocumentDetailResponse:
     """교사가 고른 근거로 초안을 만든다 (docs/api-spec.md §11).
 
@@ -411,8 +497,9 @@ def create_document(
         fields.append("child_id")
     if body.kind == "dailyLog" and body.start != body.end:
         fields.append("end")
-    if body.kind == "dailyLog" and body.child_id is not None:
-        # 반 단위 문서다 — 근거인 일과 기록에 아이가 없다 (§11 「종이 한 장」).
+    if body.kind in ("dailyLog", "weeklyLog") and body.child_id is not None:
+        # 반 단위 문서다 — 근거인 일과 기록 · 일일 보육일지에 아이가 없다
+        # (§11 「종이 한 장」, ADR-044).
         fields.append("child_id")
     if body.start > body.end:
         fields.append("start")
@@ -435,6 +522,8 @@ def create_document(
     copies: list[DocumentSource] = []
     # 관찰 기록에 교사가 고른 누리과정 영역. 관찰일지 배움 칸을 그 영역의 내용에 잇는다.
     domains: set[str] = set()
+    # 관찰 기록 근거 문서만 영역 축을 가진다 (ADR-088).
+    axis: str | None = None
     if body.kind != "weeklyLog" and body.source_kind != "dailyLog":
         # 나머지 종류는 근거가 하나로 정해져 있다. 보낸 값이 반영되지 않는데 받으면
         # 교사는 고른 대로 만들어진 줄 안다.
@@ -489,6 +578,15 @@ def create_document(
                     status.HTTP_409_CONFLICT,
                     "GATE_BLOCKED",
                     "확정된 일일 보육일지만 근거로 쓸 수 있습니다.",
+                    [f"sources.{source_id}"],
+                )
+            if source.stale:
+                # 근거가 바뀐 일일 보육일지다. 그대로 받으면 낡은 사실로 만든 주간이
+                # stale=False 로 확정 · 출력된다.
+                raise _error(
+                    status.HTTP_409_CONFLICT,
+                    "GATE_BLOCKED",
+                    "근거가 바뀐 일일 보육일지예요. 먼저 바뀐 근거를 반영하고 다시 확정해주세요.",
                     [f"sources.{source_id}"],
                 )
             if source.class_id != body.class_id or not (
@@ -547,6 +645,8 @@ def create_document(
                 )
             )
     else:
+        # 문서는 원이 지금 쓰는 축으로 만든다. 종이 양식이 축마다 다르다 (ADR-088).
+        axis = center_axis(session, body.class_id)
         by_id = {
             o.id: o
             for o in session.scalars(
@@ -562,6 +662,8 @@ def create_document(
                 or source.class_id != body.class_id
                 or (body.child_id is not None and source.child_id != body.child_id)
                 or not (body.start <= source.date <= body.end)
+                # 원이 축을 바꾸기 전에 쓴 기록이다. 이 문서의 양식에 그 영역 줄이 없다.
+                or source.domain not in AXES[axis]
             ):
                 fields.append(f"sources.{source_id}")
                 continue
@@ -573,6 +675,8 @@ def create_document(
                     class_id=source.class_id,
                     child_id=source.child_id,
                     date=source.date,
+                    domain=source.domain,
+                    context=source.context,
                     text=source.fact,
                 )
             )
@@ -580,12 +684,22 @@ def create_document(
         raise _invalid(fields)
 
     facts = [c.text for c in copies]
-    children = {
-        c.name: c.code
-        for c in session.scalars(select(Child).where(Child.class_id == body.class_id))
-    }
     try:
-        drafted = draft_sections(body.kind, facts, body.source_ids, children, sorted(domains))
+        # 교사는 옆 반 아이 이름도 적는다. 검증 · 계획안 메모와 같게 원 전체 아이로 표를 만든다.
+        # 상황(`context`)도 모델로 나간다 — 표를 만드는 글에 같이 넣는다(ADR-088).
+        table = name_table(
+            session, body.class_id, "\n".join([*facts, *(c.context or "" for c in copies)])
+        )
+        drafted = draft_sections(body.kind, copies, body.source_ids, table, sorted(domains))
+    except CallNameNeeded as exc:
+        # 교사가 고칠 수 있다 — 부르는 이름을 적거나 낱말을 바꾼다. 다시 시도해도 안 된다.
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "VALUE_INVALID", str(exc), ["source_ids"]
+        ) from exc
+    except SubstitutionError as exc:
+        raise _error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, "GENERATION_FAILED", NAME_MASK_FAILED, []
+        ) from exc
     except LlmBudgetExceeded as exc:
         # 예산을 넘기면 키가 지워진다. 다시 눌러도 안 되니 「다시 시도」로 뭉치지 않는다 (§공통).
         raise _error(
@@ -606,11 +720,35 @@ def create_document(
             for d in drafted
         ),
     ]
-    if check_sections(sections, facts, set(body.source_ids), stage="generate"):
+    if check_sections(
+        sections,
+        facts,
+        set(body.source_ids),
+        stage="generate",
+        extras=input_extras(copies, class_ages(session, body.class_id)),
+    ):
         raise _error(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "GENERATION_FAILED",
             "초안이 문서 규격을 통과하지 못했습니다. 다시 시도해주세요.",
+            [],
+        )
+
+    # 모델을 기다리는 동안 원본이 바뀌었을 수 있다. 저장 직전에 원본을 잠그고 다시 본다.
+    # 그대로 저장하면 옛 사본이 stale=False 로 남는다 — 그 사이의 수정은 아직 사본 행이
+    # 없어 stale 전파가 이 문서를 못 찾는다. 바뀌었으면 최신 기록으로 한 번 다시 만든다.
+    # 생성 시간 동안 원본을 붙잡지는 않는다.
+    if _sources_changed(session, copies):
+        if retry:
+            # 최신 기록으로 한 번 더 만든다. 아직 아무것도 쓰지 않았다 — 커밋은 잠금만 푼다.
+            # 잠근 채로 다시 모델을 부르면 그동안 교사의 기록 수정이 기다린다.
+            assert not session.new and not session.dirty
+            session.commit()
+            return _create_document(body, session, user, retry=False)
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "STALE_WRITE",
+            "초안을 만드는 동안 근거 기록이 계속 바뀌었어요. 잠시 뒤 다시 만들어주세요.",
             [],
         )
 
@@ -635,6 +773,7 @@ def create_document(
         generation_rule_id=rule_id(body.kind),
         generation_rule_version=rule_version(),
         review_note="",
+        observation_axis=axis,
     )
     session.add(doc)
     session.flush()
@@ -702,7 +841,11 @@ def update_document(
             raise _invalid(["sections"])
         sources = _sources(session, document_id)
         fields = check_sections(
-            body.sections, [s.text for s in sources], {s.source_id for s in sources}, stage="edit"
+            body.sections,
+            [s.text for s in sources],
+            {s.source_id for s in sources},
+            stage="edit",
+            extras=input_extras(sources, class_ages(session, doc.class_id)),
         )
         if fields:
             raise _invalid(fields)
@@ -809,6 +952,113 @@ def related_documents(
     )
 
 
+@router.post("/{document_id}/verify", response_model=DocumentVerifyResponse)
+def verify_document(
+    document_id: int,
+    session: DbSession,
+    user: CurrentUser,
+    body: DocumentVerifyRequest | None = None,
+) -> DocumentVerifyResponse:
+    """3단 게이트 3단 — 교사가 고친 해석 · 지원을 근거 기록과 대조한다 (ADR-071 · api-spec §11).
+
+    순서: 1 · 2단(모델 없음) → 원 전체 가명 처리 → jev 판정 → 화면용 이름 되돌림.
+    **판정하지 못하면 빈 목록이 아니라 오류를 낸다.** 빈 목록은 「문제없음」이라서다.
+    결과는 저장하지 않고, 확정은 이 단계를 요구하지 않는다.
+    """
+    doc = _own_document(session, user, document_id)
+    if doc.kind not in JUDGED_KINDS:
+        # 판정 질문과 기준값은 이 세 가지로 실측했다(ADR-071). 영유아 평가는 재지 않았다.
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "VALIDATION_FAILED",
+            "관찰일지 · 일일 보육일지 · 주간 보육일지만 AI 검토를 합니다.",
+            ["kind"],
+        )
+    if doc.origin == "IMPORT":
+        # 증빙 등록은 원문 그대로다. 해석 · 지원을 AI 가 쓰지 않았고 교사가 고친 것도 아니다.
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "VALIDATION_FAILED",
+            "증빙으로 올린 문서는 AI 검토를 하지 않습니다.",
+            ["origin"],
+        )
+    sources = _sources(session, doc.id)
+    if body is not None and body.sections is not None:
+        sections = list(body.sections)
+    else:
+        sections = list(
+            session.scalars(select(DocumentSection).where(DocumentSection.document_id == doc.id))
+        )
+    fields = check_sections(
+        sections,
+        [s.text for s in sources],
+        {s.source_id for s in sources},
+        stage="verify",
+        extras=input_extras(sources, class_ages(session, doc.class_id)),
+    )
+    if fields:
+        # 1 · 2단에 걸린 글은 3단에 보내지 않는다 (CLAUDE.md 「3단 게이트」 — 순서를 바꾸지 않는다).
+        raise _invalid(fields)
+    try:
+        issues, judge_name = verify_sections(session, doc, sections, sources)
+    except CallNameNeeded as exc:
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "VALUE_INVALID", str(exc), ["sections"]
+        ) from exc
+    except SubstitutionError as exc:
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "VALUE_INVALID",
+            "아이 이름을 가명으로 바꾸지 못해 AI 검토를 하지 않았어요.",
+            ["sections"],
+        ) from exc
+    except TooLong as exc:
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "VALUE_INVALID",
+            f"해석 · 지원 문장이 {MAX_SENTENCES}개를 넘어 AI 검토를 하지 않았어요. "
+            "나눠서 적어 주세요.",
+            ["sections"],
+        ) from exc
+    except LlmBudgetExceeded as exc:
+        raise _error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "LLM_BUDGET_EXCEEDED",
+            "AI 사용 한도를 넘었습니다. 담당자에게 알려주세요.",
+            [],
+        ) from exc
+    except LlmUnavailable as exc:
+        raise _error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "DEPENDENCY_UNAVAILABLE",
+            "지금은 AI 검토를 쓸 수 없어요. 확정은 그대로 할 수 있어요.",
+            [],
+        ) from exc
+    except (LlmFailed, KeyError) as exc:
+        raise _error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "GENERATION_FAILED",
+            "AI 검토를 하지 못했어요. 다시 시도해 주세요.",
+            [],
+        ) from exc
+    texts = {s.source_id: s.text for s in sources}
+    return DocumentVerifyResponse(
+        issues=[
+            DocumentVerifyIssue(
+                heading=i.heading,
+                sentence=i.sentence,
+                code=i.code,
+                source_id=i.source_id,
+                source_text=texts.get(i.source_id),
+                reason=i.reason,
+                fix=i.fix,
+            )
+            for i in issues
+        ],
+        judge=judge_name,
+    )
+
+
 @router.post("/{document_id}/confirm", response_model=DocumentDetailResponse)
 def confirm_document(
     document_id: int, body: DocumentConfirmRequest, session: DbSession, user: CurrentUser
@@ -844,7 +1094,11 @@ def confirm_document(
             session.scalars(select(DocumentSection).where(DocumentSection.document_id == doc.id))
         )
         fields = check_sections(
-            stored, [s.text for s in sources], {s.source_id for s in sources}, stage="confirm"
+            stored,
+            [s.text for s in sources],
+            {s.source_id for s in sources},
+            stage="confirm",
+            extras=input_extras(sources, class_ages(session, doc.class_id)),
         )
         if fields:
             raise _invalid(fields)
@@ -929,21 +1183,38 @@ def refresh_document(
     # 전부 확인한 뒤에 한꺼번에 바꾼다. 도중에 거절하면 사본이 반쯤 바뀐 채 남지 않는다.
     # 사본 목록은 문서 잠금 아래에서 다시 읽는다 — 근거를 바꾸는 길은 전부 이 잠금을 지난다.
     sources = _sources(session, document_id)
-    # 사본 순서 그대로 (텍스트, 날짜, 상태) 이거나 사라졌으면 None 이다.
-    fresh: list[tuple[str, date, str | None] | None] = []
+    # 사본 순서 그대로 (텍스트, 날짜, 상태, 영역, 상황) 이거나 사라졌으면 None 이다.
+    fresh: list[tuple[str, date, str | None, str | None, str | None] | None] = []
     missing: list[str] = []
     missing_ids: set[int] = set()
     unconfirmed: list[str] = []
+    # 영역 축은 문서가 만들 때 찍은 것이다. 옛 문서(NULL)는 원의 지금 축으로 정해 찍는다.
+    observed = any(c.source_kind == "observation" for c in sources)
+    axis = document_axis(session, doc) if observed else None
+    off_axis: list[str] = []
     for copy in sources:
         field = f"sources.{copy.source_id}"
         if copy.source_kind == "observation":
             observation = session.get(Observation, copy.source_id)
-            if observation is None:
+            if observation is None or not (doc.start_date <= observation.date <= doc.end_date):
+                # 문서 기간 밖으로 옮긴 기록은 이 문서의 근거가 아니다 — 만들 때와 같은 규칙.
+                # 일과 근거와 같이 「사라진 근거」로 다룬다.
                 missing.append(field)
                 missing_ids.add(copy.source_id)
                 fresh.append(None)
             else:
-                fresh.append((observation.fact, observation.date, None))
+                if observation.domain not in AXES[axis]:
+                    # 다른 축의 영역으로 옮긴 기록이다. 이 문서의 양식에 그 줄이 없다 (ADR-088).
+                    off_axis.append(field)
+                fresh.append(
+                    (
+                        observation.fact,
+                        observation.date,
+                        None,
+                        observation.domain,
+                        observation.context,
+                    )
+                )
             continue
         if copy.source_kind == "routine":
             routine = session.get(RoutineRecord, copy.source_id)
@@ -958,7 +1229,7 @@ def refresh_document(
                 missing_ids.add(copy.source_id)
                 fresh.append(None)
             else:
-                fresh.append((routine.fact_text(), routine.date, None))
+                fresh.append((routine.fact_text(), routine.date, None, None, None))
             continue
         source = session.get(Document, copy.source_id)
         fact = session.scalar(
@@ -970,12 +1241,12 @@ def refresh_document(
             missing.append(field)
             missing_ids.add(copy.source_id)
             fresh.append(None)
-        elif source.status != "CONFIRMED":
-            # 만들 때와 같은 규칙이다 — 초안인 일일 보육일지를 근거로 두지 않는다.
+        elif source.status != "CONFIRMED" or source.stale:
+            # 만들 때와 같은 규칙이다 — 초안이거나 근거가 바뀐 일일 보육일지를 근거로 두지 않는다.
             unconfirmed.append(field)
             fresh.append(None)
         else:
-            fresh.append((fact, source.start_date, source.status))
+            fresh.append((fact, source.start_date, source.status, None, None))
     plan = None
     # **살아 있는 근거를 고르면 검사한다** (#180 수린님 리뷰). 전에는 `missing and ...` 이라
     # 사라진 근거가 없으면 `resolutions` 를 통째로 무시하고 200 을 냈다. 교사가 고른
@@ -1023,8 +1294,16 @@ def refresh_document(
             "근거 일일 보육일지를 먼저 확정해주세요.",
             unconfirmed,
         )
+    if off_axis:
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "GATE_BLOCKED",
+            "이 문서와 다른 관찰 영역 축의 기록이 있어 다시 불러올 수 없습니다. "
+            "지금 영역으로 문서를 새로 만들어주세요.",
+            off_axis,
+        )
 
-    survivors: list[tuple[DocumentSource, int, str, date, str | None]] = []
+    survivors: list[tuple[DocumentSource, int, str, date, str | None, str | None, str | None]] = []
     dropped: list[DocumentSource] = []
     for copy, current in zip(sources, fresh, strict=True):
         pick = plan.get(copy.source_id) if plan else None
@@ -1032,7 +1311,7 @@ def refresh_document(
             if pick is None:
                 dropped.append(copy)
             else:
-                survivors.append((copy, pick.id, pick.fact_text(), pick.date, None))
+                survivors.append((copy, pick.id, pick.fact_text(), pick.date, None, None, None))
             continue
         assert current is not None
         survivors.append((copy, copy.source_id, *current))
@@ -1041,8 +1320,9 @@ def refresh_document(
     # 같은 트랜잭션이라 아래가 실패하면 흔적도 남지 않는다. 문서는 DRAFT 그대로다.
     for entry in resolution_trail(sources, plan) if plan else []:
         session.add(DocumentSourceResolution(document_id=doc.id, actor_user_id=user.id, **entry))
-    for copy, new_id, text, day, source_status in survivors:
+    for copy, new_id, text, day, source_status, domain, context in survivors:
         copy.source_id, copy.text, copy.date, copy.source_status = new_id, text, day, source_status
+        copy.domain, copy.context = domain, context
     if plan:
         for copy in dropped:
             session.delete(copy)
@@ -1061,6 +1341,8 @@ def refresh_document(
             .where(DocumentSection.document_id == doc.id, DocumentSection.heading == "사실")
             .values(body=join_facts([copy.text for copy, *_ in survivors]))
         )
+    if axis is not None:
+        doc.observation_axis = axis
     doc.stale = False
     doc.updated_at = datetime.now(UTC)
     session.commit()

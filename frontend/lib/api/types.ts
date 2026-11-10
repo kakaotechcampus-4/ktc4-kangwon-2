@@ -102,11 +102,16 @@ export interface ApiClass {
 }
 export interface ChildInput {
   name: string;
+  /** 외자 아이(김민)를 교사가 부르는 꼴(민이). 가명표에 들어간다 (docs/api-spec.md §2-1). */
+  call_name?: string | null;
 }
 export interface ApiChild extends ChildInput {
   id: number;
   class_id: number;
   code: string;
+  call_name: string | null;
+  /** 외자 아이인가 — 서버가 판별한다. 화면은 이 값으로 「부르는 이름」 칸을 띄운다. */
+  needs_call_name: boolean;
   created_at: string;
 }
 /** 발달 추적 집계 (docs/api-spec.md §2-1). by_domain 은 5영역을 늘 다 담는다. */
@@ -204,6 +209,8 @@ export interface WeeklyActivityCandidate {
   activity_type: string;
   name: string;
   description: string;
+  /** 트렌드봇 자료를 반영한 후보(ADR-072) — 빨간 ✦ 하나만 단다. */
+  trend_applied: boolean;
   cell: WeeklyCell;
 }
 

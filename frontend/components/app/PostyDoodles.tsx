@@ -187,7 +187,8 @@ export default function PostyDoodles() {
             <Eyes />
             <path className="thin" d="M18 24q6 4.6 12 0" />
           </g>
-          <Sparkle transform="translate(1040 290)" />
+          {/* 관찰 기록 「쌓인 기록」 제목과 겹쳐 위로 올렸다 */}
+          <Sparkle transform="translate(1040 150)" />
           <g transform="translate(1300 232)">
             <path
               className="thin"

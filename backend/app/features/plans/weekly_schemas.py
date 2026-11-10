@@ -77,6 +77,8 @@ class WeeklyActivityCandidateOut(BaseModel):
     activity_type: str
     name: str
     description: str
+    # 이 후보가 트렌드봇 자료를 반영했는가(그 칸 Evidence 에 TREND) — 빨간 ✦ 표시용(ADR-072)
+    trend_applied: bool
     cell: WeeklyCellOut
 
 

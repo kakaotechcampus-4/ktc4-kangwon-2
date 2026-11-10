@@ -111,17 +111,23 @@ def test_4_1_no_facts(roster):
 
 @pytest.mark.parametrize("repetitions", [1, 2])
 def test_4_1_all_classes_supported_and_threshold(repetitions):
+    # 기간 9월 1일 ~ 10월 2일 — 두 반 모두 9월 · 10월 계획안이 있다(달마다, ADR-080).
     window = previous_month_start_window(date(2026, 10, 3))
-    plans = [PlanFact(20, 1, 2026, 10), PlanFact(10, 2, 2026, 9)]
+    plans = [
+        PlanFact(20, 1, 2026, 10),
+        PlanFact(21, 1, 2026, 9),
+        PlanFact(10, 2, 2026, 9),
+        PlanFact(11, 2, 2026, 10),
+    ]
     logs = logs_for(window, 1) + logs_for(window, 2)
     result = judge_4_1(window, [1, 2, 1], plans * repetitions, reversed(logs * repetitions))
     assert (result.verdict, result.classes) == (SUPPORTED, Ratio(2, 2))
     assert result.required is None and result.children is None and result.period == window
-    assert result.plan_ids == (10, 20)
+    assert result.plan_ids == (10, 11, 20, 21)
     assert result.document_ids == tuple(sorted(log.document_id for log in logs))
     assert result.count == len(result.plan_ids) + len(result.document_ids)
     assert judge_4_1(
-        window, [1, 2], plans * repetitions, logs * repetitions, min_plans_per_class=2
+        window, [1, 2], plans * repetitions, logs * repetitions, min_plans_per_month=2
     ).classes == Ratio(0, 2)
 
 
@@ -129,21 +135,46 @@ def test_4_1_missing_day_with_weekend_and_duplicate_logs():
     window = previous_month_start_window(date(2026, 10, 3))
     logs = logs_for(window, 1)[1:] + logs_for(window, 2)
     logs += [DailyLogFact(999, 1, date(2026, 9, 5)), DailyLogFact(998, 1, logs[0].day)]
-    result = judge_4_1(window, [1, 2], [PlanFact(1, 1, 2026, 9), PlanFact(2, 2, 2026, 9)], logs)
+    plans = [PlanFact(n, c, 2026, m) for n, (c, m) in enumerate([(1, 9), (1, 10), (2, 9), (2, 10)])]
+    result = judge_4_1(window, [1, 2], plans, logs)
     assert (result.verdict, result.classes) == (INSUFFICIENT, Ratio(1, 2))
     assert result.document_ids == tuple(sorted(log.document_id for log in logs))
-    assert result.count == 2 + len(logs)
+    assert result.count == 4 + len(logs)
 
 
 @pytest.mark.parametrize(
     ("roster", "plans", "expected"),
-    [([1], [], Ratio(0, 1)), ([1, 2], [PlanFact(1, 1, 2026, 9)], Ratio(1, 2))],
+    [
+        ([1], [], Ratio(0, 1)),
+        ([1, 2], [PlanFact(1, 1, 2026, 9), PlanFact(2, 1, 2026, 10)], Ratio(1, 2)),
+    ],
 )
 def test_4_1_logs_without_plan(roster, plans, expected):
     window = previous_month_start_window(date(2026, 10, 3))
     logs = [log for class_id in roster for log in logs_for(window, class_id)]
     result = judge_4_1(window, roster, plans, logs)
     assert (result.verdict, result.classes) == (INSUFFICIENT, expected)
+
+
+def test_4_1_계획안은_기간에_걸친_달마다_따로_센다():
+    # ADR-080 — 9월 1일 ~ 10월 2일이면 9월 · 10월 계획안이 각각 있어야 한다.
+    window = previous_month_start_window(date(2026, 10, 3))
+    logs = logs_for(window, 1)
+    # 9월 계획안만(같은 달 두 건이어도) → 10월이 비어 못 채움. 계획안 · 문서는 그대로 센다.
+    only_sept = [PlanFact(1, 1, 2026, 9), PlanFact(2, 1, 2026, 9)]
+    result = judge_4_1(window, [1], only_sept, logs)
+    assert (result.verdict, result.plan_classes, result.classes) == (
+        INSUFFICIENT,
+        Ratio(0, 1),
+        Ratio(0, 1),
+    )
+    assert result.plan_ids == (1, 2)
+    both = judge_4_1(window, [1], only_sept + [PlanFact(3, 1, 2026, 10)], logs)
+    assert (both.verdict, both.plan_classes) == (SUPPORTED, Ratio(1, 1))
+    # 1일이면 기간이 지난달뿐이다 — 지난달 계획안 하나로 채운다.
+    first = previous_month_start_window(date(2026, 10, 1))
+    single = judge_4_1(first, [1], [PlanFact(4, 1, 2026, 9)], logs_for(first, 1))
+    assert (single.verdict, single.plan_classes) == (SUPPORTED, Ratio(1, 1))
 
 
 def test_4_1_filters_roster_month_and_dates():
@@ -207,3 +238,19 @@ def test_4_2_filters_roster_and_dates():
     assert result.children == Ratio(0, 1)
     empty = judge_4_2(window, [], [AssessmentFact(4, 1, window.start)])
     assert (empty.verdict, empty.children, empty.count) == (NONE, Ratio(0, 0), 0)
+
+
+def test_4_1_은_보육일지_계획안_조건을_반마다_따로_센다():
+    # ADR-074 결정 2 — 화면이 서류마다 도장을 찍는다. 1반은 계획안만, 2반은 평일 일지만 다 있다.
+    window = Window(date(2026, 10, 1), date(2026, 10, 2))
+    plans = [PlanFact(plan_id=1, class_id=1, year=2026, month=10)]
+    logs = [
+        DailyLogFact(document_id=10 + i, class_id=2, day=day)
+        for i, day in enumerate(window.weekdays())
+    ]
+    result = judge_4_1(window, [1, 2], plans, logs)
+    assert result.classes == Ratio(0, 2)
+    assert result.plan_classes == Ratio(1, 2)
+    assert result.journal_classes == Ratio(1, 2)
+    # 4-2 에는 없다
+    assert judge_4_2(window, [], []).journal_classes is None

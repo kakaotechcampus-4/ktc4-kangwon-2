@@ -97,7 +97,7 @@ const TOURS: Record<string, Step[]> = {
       at: "records-order",
       title: "이 순서로 적으면 좋아요",
       steps: ["상황", "행동", "반응", "교사 지원"],
-      lines: ["순서대로 채우면 **관찰일지가 잘 나와요**."],
+      lines: ["순서대로 채우면 **관찰일지가 더 자세하게 작성돼요**."],
       tip: "다 안 채워도 저장돼요.",
       pad: 6,
     },
@@ -180,9 +180,11 @@ const TOURS: Record<string, Step[]> = {
   "/evaluation": [
     {
       at: "eval-today",
-      title: "오늘 평가를 받는다면",
-      lines: ["낼 서류가 **몇 가지 비었는지** 보여요."],
-      tip: "쌤플은 서류가 있는지만 세요. 내용은 선생님께서 확인해 주세요.",
+      title: "평가 서류 도장판",
+      lines: [
+        "낼 서류가 **몇 칸 비었는지** 보여요.",
+        "쌤플이 만들지 않는 서류는 **동그라미를 눌러** 찍어요.",
+      ],
     },
     {
       at: "eval-folder",
@@ -191,10 +193,10 @@ const TOURS: Record<string, Step[]> = {
     },
     {
       at: "eval-sheet",
-      title: "평가 때 낼 서류",
+      title: "서류 6가지를 옆으로 넘겨요",
       lines: [
-        "줄마다 **쌤플에서 만든 것**과 **내 컴퓨터**를 나란히 봐요.",
-        "챙긴 서류는 직접 체크해요.",
+        "**빈 칸**인 서류가 앞에 나와요.",
+        "도장 안 글자 **쌤플확정 · 내컴퓨터 · 직접확인**이 어디서 확인했는지 알려 줘요.",
       ],
     },
   ],
@@ -227,7 +229,7 @@ const TOURS: Record<string, Step[]> = {
     {
       at: "weekly-make",
       title: "주간 일지 만들기",
-      lines: ["아직 못 만들 때 누르면", "**무엇이 모자란지** 알려 드려요."],
+      lines: ["아직 못 만들 때 누르면", "**무엇이 부족한지** 알려 드려요."],
       pad: 6,
     },
   ],
@@ -637,7 +639,8 @@ export default function Tour() {
       : hole.top > 260
         ? { bottom: vh - hole.top + 18, left }
         : vw - (hole.left + hole.width) > CARD + 40
-          ? { top: Math.max(16, Math.min(hole.top, vh - 300)), left: hole.left + hole.width + 24 }
+          ? // 위 여백은 포스티(카드 위로 40px 튀어나옴)가 화면 위에 잘리지 않을 만큼 둔다.
+            { top: Math.max(52, Math.min(hole.top, vh - 300)), left: hole.left + hole.width + 24 }
           : undefined;
 
   return (

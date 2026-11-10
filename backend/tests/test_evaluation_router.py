@@ -69,7 +69,7 @@ def test_GET은_파일_순서의_9개_지표와_종류별_필드를_반환한다
     assert sum(len(item.get("elements", [])) for item in body["items"]) == 19
     common = {"indicator", "area", "title", "content", "kind"}
     auto = {"verdict", "required", "count", "children", "classes"}
-    auto |= {"plan_ids", "document_ids", "period"}
+    auto |= {"plan_ids", "document_ids", "period", "journal_classes", "plan_classes"}
     for item, indicator in zip(body["items"], expected, strict=True):
         assert all(
             item[key] == getattr(indicator, "area_title" if key == "area" else key)
@@ -93,8 +93,31 @@ def test_GET은_파일_순서의_9개_지표와_종류별_필드를_반환한다
     four_one, four_two = body["items"][:2]
     assert four_one["required"] is None and four_one["children"] is None
     assert four_one["classes"] == {"met": 0, "total": 0}
+    assert four_one["journal_classes"] == four_one["plan_classes"] == {"met": 0, "total": 0}
     assert four_two["classes"] is None and four_two["children"] == {"met": 0, "total": 0}
+    assert four_two["journal_classes"] is None and four_two["plan_classes"] is None
     assert four_two["required"] == 2
+    # 도장 근거는 늘 서류 6줄 · 원장 서류 5줄이다(ADR-074). 아무것도 안 했으면 다 비었다.
+    assert [d["doc"] for d in body["documents"]] == [
+        "journal",
+        "plan",
+        "assessment",
+        "parent",
+        "training",
+        "iep",
+    ]
+    assert all(
+        d == {"doc": d["doc"], "checked": False, "checked_at": None, "folder": None}
+        for d in body["documents"]
+    )
+    assert [d["item"] for d in body["director"]] == [
+        "operation-plan",
+        "annual-plan",
+        "interaction-record",
+        "duty-training",
+        "day-papers",
+    ]
+    assert not any(d["checked"] for d in body["director"])
 
 
 def test_GET은_자동_판정의_문서_번호와_개수를_그대로_싣는다(own_center, db_session, clock):

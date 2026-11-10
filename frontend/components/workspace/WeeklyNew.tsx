@@ -21,6 +21,7 @@ import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER, planClassLine } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { topicMemo } from "@/lib/api/trends";
 import GenerationRing, { ringFinished, STOPPED_NOTE } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
 import { BACK_BUTTON, BACK_ICON } from "@/components/plan-generator/AnnualFrame";
@@ -73,7 +74,11 @@ type MonthData = { month: number; monthly: MonthlyPlan | null; plans: WeeklyPlan
 export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }) {
   const [problem, setProblem] = useState("");
   const [stopped, setStopped] = useState(false);
-  const [memo, setMemo] = useState("");
+  // 트렌드 화면 [계획안에 활용하기] 가 `?topic` 으로 넘긴 글을 요청 사항 첫 값으로 둔다(ADR-072).
+  const [memo, setMemo] = useClientState(
+    () => topicMemo(typeof window === "undefined" ? "" : window.location.search),
+    "",
+  );
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
   const classes = useClasses(setProblem);
   const [chosen] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
@@ -171,7 +176,9 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
   const blocked: ReactNode = data.play ? (
     <>
       놀이 중심형은 주간계획안 없이 월간계획안으로 운영해요.{" "}
-      <Link href="/plans/monthly">월간계획안으로 가기</Link>
+      <Link href={memo ? `/plans/monthly?topic=${encodeURIComponent(memo)}` : "/plans/monthly"}>
+        월간계획안으로 가기
+      </Link>
     </>
   ) : !ready ? (
     "불러오는 중…"
@@ -250,8 +257,9 @@ export default function WeeklyNew({ onOpen }: { onOpen: (plan: Opened) => void }
       <div className="flex min-h-[calc(calc(100*var(--app-vh))-60px)]">
         <GenerationRing
           kind="weekly"
-          // Sol 실측: 33초(2026-11-05).
-          expect={35}
+          // 배포 서버 실측(2026-11-10, 29회, docs/evaluation/runs/2026-11-10-weekly): 중앙 26초.
+          // 만4 중앙 28.4 · 만5 26.3초. 링은 예상 시간에 90% 가 차서 조금 넉넉히 둔다.
+          expect={30}
           title={`${label} 주간계획안을 만들고 있어요`}
           done={done}
           steps={[`${label} 놀이 이어받기`, "요일별 활동 나누기", "문서로 정리하기"]}

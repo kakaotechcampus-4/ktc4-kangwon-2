@@ -3,22 +3,27 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { SavedDocument } from "@/lib/workspace/model";
-import { downloadDocumentHwpx, isStaleWrite } from "@/lib/api/documents";
+import { downloadDocumentHwpx, isStaleWrite, verifyLines } from "@/lib/api/documents";
 import type { ExportFormat } from "@/lib/api/export";
 import { EXPORTS, FileLogo } from "@/components/plan-generator/AnnualFrame";
 import { Icon } from "@/components/app/icons";
+import { invalidFields } from "@/lib/api/client";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import { useUnsavedWarning } from "@/lib/hooks/use-unsaved-warning";
 import { Posty } from "@/components/app/Posty";
 import { DOMAIN_LOOK } from "@/lib/workspace/domain-look";
 import { Message, ws } from "./WorkspaceUI";
 import { serverIssues } from "./document-selection";
+import { FieldError, fieldErrorProps } from "./WorkspaceViewState";
 import type { ServerDocumentActions } from "./DocumentEditor";
 
 const LAYERS = [
   { heading: "해석", hint: "위 쪽지에서 읽을 수 있는 의미만 적어요." },
   { heading: "지원", hint: "다음 놀이에서 교사가 할 일을 구체적으로 적어요." },
 ] as const;
+
+/** 서버가 짚는 칸 → 고칠 수 있는 공책 이름. 사실은 여기서 못 고친다. */
+const SECTION_FIELDS: Record<string, string> = { "sections.해석": "해석", "sections.지원": "지원" };
 
 /** 양식 맨 아래 칸 이름 (backend documents/export.py AXIS_TAIL). 2축 원은 「총평」이다. */
 const tailName = (domains: readonly string[]) => (domains.length === 2 ? "총평" : "종합해석");
@@ -36,13 +41,10 @@ const tailName = (domains: readonly string[]) => (domains.length === 2 ? "총평
 export default function ObservationJournalEditor({
   initial,
   server,
-  domainOf,
   domains,
 }: {
   initial: SavedDocument;
   server: ServerDocumentActions;
-  /** 근거 기록 id → 영역. 관찰 기록 id 와 근거 id 가 같다. */
-  domainOf: (sourceId: string) => string;
   domains: readonly string[];
 }) {
   const [baseline, setBaseline] = useState(initial);
@@ -51,6 +53,8 @@ export default function ObservationJournalEditor({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [issues, setIssues] = useState<string[]>([]);
+  /** 서버가 짚은 공책 (`해석` · `지원`). */
+  const [invalid, setInvalid] = useState<string[]>([]);
   const [staleWrite, setStaleWrite] = useState(false);
   const hwpx = useHwpxDownload(setMessage);
   const [exporting, setExporting] = useState<ExportFormat | null>(null);
@@ -69,6 +73,7 @@ export default function ObservationJournalEditor({
     }));
     setChecked(false);
     setIssues([]);
+    setInvalid((prev) => prev.filter((name) => name !== heading));
   }
 
   function adopt(next: SavedDocument, note: string) {
@@ -76,6 +81,7 @@ export default function ObservationJournalEditor({
     setDoc(next);
     setChecked(false);
     setIssues([]);
+    setInvalid([]);
     setStaleWrite(false);
     setMessage(note);
   }
@@ -90,8 +96,13 @@ export default function ObservationJournalEditor({
       if (next) adopt(next, note);
       return true;
     } catch (e) {
-      if (isStaleWrite(e)) setStaleWrite(true);
-      else setMessage(e instanceof Error ? e.message : "요청을 처리하지 못했어요.");
+      if (isStaleWrite(e)) {
+        setStaleWrite(true);
+        return false;
+      }
+      // 서버가 짚은 칸을 버리지 않는다 — 어느 공책을 고칠지 알아야 한다.
+      setInvalid(invalidFields(e, SECTION_FIELDS));
+      setMessage(e instanceof Error ? e.message : "요청을 처리하지 못했어요.");
       return false;
     } finally {
       setBusy(false);
@@ -99,6 +110,45 @@ export default function ObservationJournalEditor({
   }
 
   const save = () => run(() => server.save(doc.sections, "교사 검토 전"), "초안을 저장했어요.");
+  const refresh = () =>
+    run(() => server.refresh(), "바뀐 근거를 받아 왔어요. 해석과 지원을 다시 봐 주세요.");
+
+  /** 반영하면 서버 글로 바뀐다 — 저장 안 한 해석 · 지원이 있으면 먼저 묻는다. */
+  const refreshAsk = useRef<HTMLDialogElement>(null);
+  function askRefresh() {
+    if (!dirty) return void refresh();
+    refreshAsk.current?.showModal();
+  }
+  async function refreshAfter(keep: boolean) {
+    refreshAsk.current?.close();
+    if (keep && !(await save())) return;
+    await refresh();
+  }
+
+  /** 3단 AI 검토 — 쪽지(기록)와 어긋나거나 써선 안 되는 표현을 문장마다 짚는다. 저장하지 않는다. */
+  async function review() {
+    if (working) return;
+    const blocking = serverIssues(doc);
+    if (blocking.length) {
+      setIssues(blocking);
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    setIssues([]);
+    try {
+      const result = await server.verify(doc.sections);
+      setIssues(verifyLines(result));
+      if (!result.judged)
+        setMessage("AI 검토가 꺼져 있어 판정하지 않았어요. 쪽지와 직접 대조해 주세요.");
+      else if (!result.issues.length)
+        setMessage("AI 검토에서 고칠 곳을 찾지 못했어요. 확정 전에 쪽지와 한 번 더 대조해 주세요.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "AI 검토를 하지 못했어요.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function confirm() {
     const blocking = serverIssues(doc);
@@ -135,7 +185,7 @@ export default function ObservationJournalEditor({
       )}
 
       {doc.status === "confirmed" ? (
-        <JournalSheet doc={doc} domainOf={domainOf} domains={domains}>
+        <JournalSheet doc={doc} domains={domains}>
           {server.stale && (
             <Message error>
               근거 기록이 바뀌어 내려받을 수 없어요. 다시 고치기를 눌러 반영해 주세요.
@@ -200,7 +250,7 @@ export default function ObservationJournalEditor({
 
           <ul className={ws.ojNotes} aria-label="근거 기록">
             {doc.sources.map((s) => {
-              const domain = domainOf(s.id);
+              const domain = s.domain ?? "";
               return (
                 <li key={s.id} data-tone={DOMAIN_LOOK[domain]?.tone}>
                   <small>
@@ -223,12 +273,7 @@ export default function ObservationJournalEditor({
                 type="button"
                 className={ws.secondary}
                 disabled={working}
-                onClick={() =>
-                  run(
-                    () => server.refresh(),
-                    "바뀐 근거를 받아 왔어요. 해석과 지원을 다시 봐 주세요.",
-                  )
-                }
+                onClick={askRefresh}
               >
                 바뀐 근거 반영하기
               </button>
@@ -245,8 +290,10 @@ export default function ObservationJournalEditor({
                   maxLength={15000}
                   disabled={working}
                   value={body(heading)}
+                  {...fieldErrorProps(heading, invalid)}
                   onChange={(e) => edit(heading, e.target.value)}
                 />
+                <FieldError name={heading} invalid={invalid} />
               </label>
             ))}
           </div>
@@ -263,6 +310,9 @@ export default function ObservationJournalEditor({
               />
               쪽지와 대조했어요 — 사실과 맞고, 해석 · 지원이 알맞아요
             </label>
+            <button type="button" className={ws.ojSave} disabled={working} onClick={review}>
+              AI 검토
+            </button>
             <button type="button" className={ws.ojSave} disabled={working || !dirty} onClick={save}>
               {busy ? "저장하는 중…" : dirty ? "초안 저장" : "저장됨"}
             </button>
@@ -317,6 +367,38 @@ export default function ObservationJournalEditor({
           </button>
           <button type="button" className={ws.link} onClick={go}>
             저장 안 하고 나가기
+          </button>
+        </div>
+      </dialog>
+
+      <dialog ref={refreshAsk} className={ws.ojLeave} aria-labelledby="oj-refresh-title">
+        <Posty pose="hand" face="oh" tone="note" size={78} label={null} />
+        <h3 id="oj-refresh-title">잠깐만요!</h3>
+        <p>바뀐 근거를 받으면 저장 안 한 해석 · 지원이 사라져요.</p>
+        <div>
+          <button
+            type="button"
+            className={ws.primary}
+            disabled={working}
+            onClick={() => refreshAfter(true)}
+          >
+            저장하고 반영
+          </button>
+          <button
+            type="button"
+            className={ws.secondary}
+            disabled={working}
+            onClick={() => refreshAfter(false)}
+          >
+            편집 버리고 반영
+          </button>
+          <button
+            type="button"
+            className={ws.link}
+            autoFocus
+            onClick={() => refreshAsk.current?.close()}
+          >
+            취소
           </button>
         </div>
       </dialog>
@@ -450,12 +532,10 @@ function useLeaveGuard(dirty: boolean) {
 /** 확정본 — 내려받는 한글 양식과 같은 칸으로 그린다 (backend documents/export.py `_observation`). */
 function JournalSheet({
   doc,
-  domainOf,
   domains,
   children,
 }: {
   doc: SavedDocument;
-  domainOf: (sourceId: string) => string;
   domains: readonly string[];
   children: React.ReactNode;
 }) {
@@ -463,7 +543,7 @@ function JournalSheet({
   const rows = domains.map((domain) => ({
     domain,
     lines: sorted
-      .filter((s) => domainOf(s.id) === domain)
+      .filter((s) => s.domain === domain)
       .map((s) => `(${shortNumber(s.date)}) ${s.text}`),
   }));
   const section = (heading: string) => doc.sections.find((s) => s.heading === heading)?.body ?? "";

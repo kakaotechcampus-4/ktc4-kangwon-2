@@ -144,6 +144,83 @@ def _create(world, week: str = WEEK):
     )
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_trend_applied_follows_the_center_setting_and_the_candidate_evidence(
+    world, enabled, monkeypatch
+):
+    """ADR-072: 원이 켜면 트렌드를 넘기고, 반영한 후보만 trend_applied · TREND Evidence."""
+    from ssuksak.planning.application.ports import OptionalContextResult, OptionalContextStatus
+    from ssuksak.planning.domain.trend import TrendItem, TrendKind
+
+    items = tuple(
+        TrendItem(
+            f"youtube:t{n}", kind, f"{kind.value} 자료", "", "채널", "2026-W36", date(2026, 9, 1)
+        )
+        for n, kind in enumerate(TrendKind)
+    )
+    seen = []
+
+    class Trends:
+        def __init__(self, *, enabled, today, book_words):
+            assert book_words  # 그림책 Rule 낱말 = 부모 그 주 주제(2026-11-10 보완)
+            seen.append(enabled)
+            self._enabled = enabled
+
+        def fetch(self, name):
+            if not self._enabled:
+                return OptionalContextResult(name, OptionalContextStatus.UNAVAILABLE)
+            return OptionalContextResult(name, OptionalContextStatus.AVAILABLE, items)
+
+    monkeypatch.setattr(weekly_router, "TrendContextProvider", Trends)
+    world["session"].get(Center, world["mine"]["center"]).trends_enabled = enabled
+    world["session"].flush()
+    response = client.post(
+        "/api/plans/weekly",
+        json={"class_id": world["mine"]["class"], "week_id": WEEK, "indoor_play_candidates": True},
+    )
+    assert response.status_code == 201, response.text
+    candidates = response.json()["activity_candidates"]
+    assert seen == [enabled]
+    assert sum(c["trend_applied"] for c in candidates) == enabled  # mock: 맞는 첫 후보 하나에만
+    for c in candidates:
+        assert c["trend_applied"] == any(e["source_type"] == "TREND" for e in c["cell"]["evidence"])
+
+
+def test_앞_주차가_후보에_쓴_근거는_다음_주가_뒤로_미룬다(world, monkeypatch):
+    """2026-11-09 하민: 같은 반 · 같은 달 앞 주차 후보 근거만 넘긴다.
+
+    뒤 주차 · 다른 칸은 넘기지 않는다."""
+    seen = []
+    original = weekly_router._prior_week_evidence
+    monkeypatch.setattr(
+        weekly_router, "_prior_week_evidence", lambda *a: seen.append(original(*a)) or seen[-1]
+    )
+
+    def create(week):
+        response = client.post(
+            "/api/plans/weekly",
+            json={
+                "class_id": world["mine"]["class"],
+                "week_id": week,
+                "indoor_play_candidates": True,
+            },
+        )
+        assert response.status_code == 201, response.text
+        return {
+            e["source_id"]
+            for c in response.json()["activity_candidates"]
+            for e in c["cell"]["evidence"]
+            if e["source_type"] == "INSTITUTION_SAMPLE"
+        }
+
+    second = create(WEEK)
+    third = create("2026-09-W3")
+    create("2026-09-W1")
+    assert seen[0] == () and seen[2] == ()  # 앞 주차가 없거나 뒤 주차만 있다
+    assert second and set(seen[1]) == second
+    assert len(third & second) < len(second)
+
+
 @pytest.mark.parametrize("saturday", [False, True])
 def test_activity_candidates_copy_split_reload_and_export(world, saturday):
     center = world["session"].get(Center, world["mine"]["center"])

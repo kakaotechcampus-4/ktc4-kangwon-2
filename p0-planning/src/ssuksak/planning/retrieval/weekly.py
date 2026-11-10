@@ -8,6 +8,7 @@ only (2026-10-21 decision B: no AGE_UNKNOWN), age-balanced, source-diverse.
 from __future__ import annotations
 
 import collections
+import random
 import re
 
 from ..venue_policy import venue_bound_evidence
@@ -28,6 +29,7 @@ from .ranking import (
 )
 
 WEEKLY_SECTION_TOP_K = 10  # the Monthly section block default
+WEEKLY_SAMPLE_POOL = 20  # 2026-11-09 sim: N=20 kept the age tier closest to today (analysis §7)
 
 # shortcut: only reviewed sources are filtered; extend after reviewing new unclear candidates (ADR-054).
 # Match both id and text so a revised source does not inherit this decision.
@@ -43,6 +45,18 @@ REVIEWED_UNCLEAR_ACTIVITY_SOURCES = frozenset({
     ("ev_010245b6472d_p01_r00208_c04_i01", "같은 신발 다른 신발"),  # no language activity method
     ("ev_5d3e713585b1_p01_r00252_c04_i01", "새로운 우리반, 새로운 선생님"),  # topic heading only
     ("ev_5d3e713585b1_p01_r00252_c07_i01", "이럴땐 이렇게"),  # no situation or activity
+    ("ev_7650ed22cba2_p03_r00337_c02_i02", "우리나라 지도 퍼즐 -"),  # extraction cut mid-title (2026-11-10 live: 12월 5주 500)
+    ("ev_7650ed22cba2_p03_r00337_c02_i03", "<컴톡> 고장난 키보"),  # extraction cut mid-title (2026-11-10 live: 12월 5주 500)
+    # program/event name only, no activity (2026-11-10 live: seed 202 10월 1주 blank cell)
+    ("ev_1a38525ff65b_p01_r00472_c01_i03", "<교육> 유아수업 마음자람"),
+    ("ev_1a38525ff65b_p03_r00486_c01_i05", "<교육> 유아수업 마음자람"),
+    ("ev_afbdb8956312_p01_r00478_c01_i04", "<교육> 하나금융그룹 유아AI 코딩교육"),
+    ("ev_afbdb8956312_p04_r00057_c01_i03", "<교육> 하나금융그룹 유아 AI코딩 교육"),
+    ("ev_1a38525ff65b_p01_r00472_c01_i01", "<특별한날> 개천절, 추석, 한글날"),
+    ("ev_1a38525ff65b_p03_r00486_c01_i04", "<특별한날> 개천절, 추석, 한글날"),
+    ("ev_3a610d1983a6_p03_r00470_c01_i01", "<행사> 어린이날, 어버이날"),
+    ("ev_af259877ba7c_p03_r00493_c01_i01", "<중점프로그램> 한마음 쑥쑥 프로그램"),
+    ("ev_af259877ba7c_p01_r00437_c01_i03", "<행사> 식목일 행사"),
 })
 
 
@@ -113,8 +127,17 @@ def weekly_section_evidence(
     preferred_refs: tuple[str, ...] = (),
     explicit_indoor_methods: bool = False,
     exclude_venue_bound: bool = False,
+    prior_week_refs: tuple[str, ...] = (),
+    sample_seed: int | None = None,
+    sample_pool: int = WEEKLY_SAMPLE_POOL,
 ) -> tuple[RetrievedEvidence, ...]:
-    """query_text: the parent theme and this week's focus, for the Korean 2-gram score."""
+    """query_text: the parent theme and this week's focus, for the Korean 2-gram score.
+
+    prior_week_refs: evidence ids earlier weeks of the same month cited (repeats count).
+    They go last and fill only a shortfall, least-used first; none keeps today's result.
+    sample_seed: pick top_k at random from the top sample_pool instead of the top top_k.
+    None keeps the deterministic cut (Golden, regeneration).
+    """
     classification.require_bound_to(store.content_sha256)
     records = [
         record for record in store.by_month(calendar_month)
@@ -148,8 +171,8 @@ def weekly_section_evidence(
             if title in seen:
                 continue
             seen.add(title)
-            if re.match(r"^\s*[【\[<][^】\]>]*$", item.record.text):
-                continue  # an incomplete extracted tag is not an activity title
+            if re.match(r"^\s*[【\[<][^】\]>]*[】\]>]?\s*$", item.record.text):
+                continue  # an incomplete or tag-only extracted text (「[절기놀이]」) is not an activity title
             kind = indoor_play_type(item.record) if weekly_class is WeeklySemanticClass.INDOOR_PLAY else activity_type(item.record)
             groups.setdefault(kind, []).append(item)
         ordered = []
@@ -158,4 +181,43 @@ def weekly_section_evidence(
                 if group:
                     ordered.append(group.pop(0))
     # Human Decision 2026-11-05(하민): for candidate pools the source cap orders, it does not cut (ADR-054).
-    return apply_source_diversity(ordered, top_k=top_k, institution_cap=institution_cap, fill=by_activity_type)
+    if not prior_week_refs and sample_seed is None:
+        return apply_source_diversity(ordered, top_k=top_k, institution_cap=institution_cap, fill=by_activity_type)
+    # 2026-11-09 하민: skip what earlier weeks used before the cap; fill a shortfall least-used first.
+    used = collections.Counter(prior_week_refs)
+    fresh = [item for item in ordered if item.record_id not in used]
+    if sample_seed is None:
+        picked = apply_source_diversity(fresh, top_k=top_k, institution_cap=institution_cap, fill=by_activity_type)
+    else:
+        # 2026-11-10 하민: pick top_k of the top sample_pool at random, kept in rank order (filters unchanged).
+        # No age-tier preference (하민 11-10: blind human judging showed no age gain and worse theme fit).
+        # Draw one activity type at a time (ADR-054 type spread); a mixed class keeps one per requested age.
+        pool = apply_source_diversity(fresh, top_k=len(fresh), institution_cap=institution_cap, fill=by_activity_type)
+        keep = list(range(min(len(pool), sample_pool)))
+        if len(keep) > top_k:
+            rng = random.Random(f"{sample_seed}:{weekly_class.value}")
+            kind_of = indoor_play_type if weekly_class is WeeklySemanticClass.INDOOR_PLAY else activity_type
+            shuffled = rng.sample(keep, len(keep))
+            keep = []
+            if len(ages) > 1:  # keep balance_by_age: one per requested age the pool has
+                for age in sorted(ages):
+                    hit = next((i for i in shuffled if pool[i].record.single_age == age), None)
+                    if hit is not None:
+                        keep.append(hit)
+            by_kind: dict[str, list[int]] = {}
+            for i in shuffled:
+                if i not in keep:
+                    by_kind.setdefault(kind_of(pool[i].record), []).append(i)
+            while len(keep) < top_k:
+                keep += [group.pop() for group in by_kind.values() if group][: top_k - len(keep)]
+        picked = tuple(item for i, item in enumerate(pool) if i in set(keep))
+    if len(picked) < top_k:
+        have = {item.record_id for item in picked}
+        rest = sorted(
+            (item for item in apply_source_diversity(
+                ordered, top_k=len(ordered), institution_cap=institution_cap, fill=by_activity_type
+            ) if item.record_id not in have),
+            key=lambda item: used[item.record_id],
+        )
+        picked += tuple(rest[: top_k - len(picked)])
+    return picked

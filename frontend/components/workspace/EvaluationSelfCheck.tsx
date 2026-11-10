@@ -34,7 +34,7 @@ function AreaGroup({
           <span style={{ width: `${total ? (checked / total) * 100 : 0}%` }} />
         </span>
         <span className={styles.areaCount}>
-          {checked} / {total}
+          {checked}/{total}
         </span>
       </div>
       {items.map((item) => (
@@ -87,13 +87,10 @@ export default function EvaluationSelfCheck({
   return (
     <div className={ws.stack}>
       <div className={styles.titleRow}>
-        <div>
-          <h2 className={styles.sectionTitle}>자체평가 · 원에서 스스로 확인하는 평가항목</h2>
-          <p className={ws.hint}>
-            해당하는 평가요소를 누르면 바로 저장돼요. 선생님이 직접 확인한 항목이고, 공식 평가
-            통과를 뜻하지 않아요.
-          </p>
-        </div>
+        {/* 제목은 서랍 머리줄이 맡는다. api-spec §12 가 요구하는 「선생님이 직접 확인한 항목」만 남겼다(11-09 문구 토론). */}
+        <p className={ws.hint}>
+          해당하는 평가요소를 누르면 바로 저장돼요. 선생님이 직접 확인한 항목이에요.
+        </p>
         <p role="status" className={styles.savedState}>
           {savedAt &&
             `✓ 저장됨 · ${savedAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`}
@@ -108,9 +105,9 @@ export default function EvaluationSelfCheck({
           onCheck={onCheck}
         />
       ))}
+      {/* 「위원회」는 어떤 기록에도 없었다. 기록(ADR-022 결정 3 · api-spec §12)은 「평가자가 현장에서 보는 6개」다. */}
       <p className={styles.footnote}>
-        영역 1 · 2 · 3(평가항목 6개)은 쌤플 문서로 확인할 수 없어 여기서 다루지 않아요. 자체평가 때
-        위원회가 교실을 보며 함께 확인해요.
+        영역 1 · 2 · 3(평가항목 6개)은 평가자가 현장에서 보는 것이라 여기서 다루지 않아요.
       </p>
     </div>
   );

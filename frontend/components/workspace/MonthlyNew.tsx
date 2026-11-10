@@ -38,6 +38,7 @@ import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { topicMemo } from "@/lib/api/trends";
 import { playSeason } from "@/components/plan-generator/playProjectPagination";
 import GenerationRing, { ringFinished, STOPPED_NOTE } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
@@ -433,7 +434,11 @@ export default function MonthlyNew({
   const router = useRouter();
   const [problem, setProblem] = useState("");
   const [stopped, setStopped] = useState(false);
-  const [memo, setMemo] = useState("");
+  // 트렌드 화면 [계획안에 활용하기] 가 `?topic` 으로 넘긴 글을 요청 사항 첫 값으로 둔다(ADR-072).
+  const [memo, setMemo] = useClientState(
+    () => topicMemo(typeof window === "undefined" ? "" : window.location.search),
+    "",
+  );
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
   const classes = useClasses(setProblem);
   const [chosen] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
@@ -610,8 +615,9 @@ export default function MonthlyNew({
         <GenerationRing
           // 놀이 중심형은 활동 후보가 8개씩으로 늘어(ADR-065) 예전 기억을 버리려고 kind 를 바꿨다.
           kind={play ? "monthly:PLAY_PROJECT:v0.3" : "monthly:MONTHLY_THEME"}
-          // Sol 실측: 주제형 28초(2026-10-31) · 38초, 놀이 중심형(후보 8개씩) 55.5 · 51.6 · 55.0초(2026-11-06).
-          expect={play ? 55 : 35}
+          // 배포 서버 실측(2026-11-10, 10회씩, docs/evaluation/runs/2026-11-10-plan-repeat-after):
+          // 주제형 중앙 17.5 · 최대 18.5초, 놀이 중심형 중앙 48.3 · 최대 52.9초.
+          expect={play ? 55 : 20}
           title={`${month}월 월간계획안을 만들고 있어요`}
           done={done}
           steps={

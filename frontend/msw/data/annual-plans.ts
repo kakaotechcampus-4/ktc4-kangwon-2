@@ -78,7 +78,7 @@ export const months = (schoolYear: number): AnnualMonth[] =>
 const projectGeneration = {
   method: "RULE_LLM",
   rule_id: "play_project.generate",
-  rule_version: "play-project-planner-v6",
+  rule_version: "play-project-planner-v8",
 };
 /** 서버처럼 `item_` + 32자리 hex. 목업은 계획안 · 구간 · 후보 · 칸 번호로 결정적으로 만든다. */
 const itemId = (...parts: number[]) =>

@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # 아무도 안 읽어서 "키를 넣었는데 왜 안 되지" 가 났다.
     elice_mlapi_base_url: str | None = None
     elice_mlapi_api_key: str | None = None
+    # 판정 전용 모델 jev 의 주소(ADR-071). 엘리스는 모델마다 주소가 달라 Luna 주소와 따로 둔다.
+    # 키는 위 `elice_mlapi_api_key` 를 같이 쓴다. 없으면 일지 AI 검토(`/verify`)만 503 이다.
+    elice_jev_base_url: str | None = None
     # str 이면 'Real' · 'production' 이 들어와도 통과하고 mock 분기에 안 걸려
     # 실제 호출이 나간다. 이제 기동 시점에 터진다.
     llm_mode: Literal["mock", "real"] = "mock"
@@ -50,6 +53,13 @@ class Settings(BaseSettings):
     naver_client_secret: str | None = None
     # 도서관 정보나루. 전국 도서관의 실제 대출 기록이라 광고로 순위가 안 바뀐다(ADR-016).
     library_auth_key: str | None = None
+
+    # 일지 날씨 (ADR-089). 공공데이터포털 인증키 하나로 기상청 단기예보 · 에어코리아를 같이 부른다.
+    # 없으면 날씨가 「값 없음」일 뿐이다 — 일과 기록 · 일지 · 내보내기는 그대로 돈다.
+    data_go_kr_service_key: str | None = None
+    # LLM_MODE 와 같은 규칙이다. real 은 서버(IS_SERVER)에서만 부른다. mock 은 서버 밖에서
+    # 가짜 응답을 쓰고, 서버에서는 아무것도 부르지 않는다 — 가짜 날씨가 교사 종이에 찍히면 안 된다.
+    weather_mode: Literal["mock", "real"] = "mock"
 
 
 settings = Settings()

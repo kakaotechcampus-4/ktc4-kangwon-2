@@ -326,11 +326,11 @@ test("멘토: 일과 입력부터 보육일지 한글 다운로드·평가 현�
     "유아들이 블록으로 길을 만들고 자연물을 길 옆에 놓았다.",
   ]);
   await page.getByRole("link", { name: "평가 점검", exact: true }).click();
-  // 화면 본문은 서류 한 장이고, 평가항목별 보기는 접혀 있다.
-  await page.getByText(/^평가항목별로 보기/).click();
+  // 화면 본문은 서류 도장판이고, 평가항목별 보기는 단추를 누르면 오른쪽 서랍에 나온다.
+  await page.getByRole("button", { name: /^평가항목 4-1 · 4-2/ }).click();
   await expect(
     page.getByRole("region", { name: "4-1 관찰 및 실행 계획", exact: true }),
-  ).toContainText("집계에 들어간 문서 1건");
+  ).toContainText("확정 보육일지 1건");
   const checklist = await api(page, `/api/centers/${user.center_id}/evaluation-checklist`);
   expect(checklist.items[0].count).toBe(1);
   expect(checklist.items[0].verdict).toBe("INSUFFICIENT");
@@ -425,9 +425,9 @@ test("멘토: 평가 점검은 서버의 9개 지표·19개 요소를 보여주�
 }, info) => {
   const user = await enterPilot(page);
   await page.getByRole("link", { name: "평가 점검", exact: true }).click();
-  // 현장에서 보는 19가지는 접혀 있다.
-  await page.getByText(/^현장에서 보는 것 직접 확인/).click();
-  const selfCheck = page.getByRole("group", { name: "현장에서 보는 것 직접 확인" });
+  // 현장에서 보는 19가지는 단추를 누르면 오른쪽 서랍에 나온다.
+  await page.getByRole("button", { name: /^나머지 평가항목/ }).click();
+  const selfCheck = page.getByRole("dialog", { name: /^나머지 평가항목/ });
   // 안 끝난 첫 평가항목만 펼쳐져 있다. 접힌 평가항목을 하나씩 펼쳐 19개를 센다.
   // 펼칠 때마다 「접힌 것」 목록이 줄어 매번 첫 번째를 다시 찾는다. 영역(section) 밖의 옛 사전점검 접기는 열지 않는다.
   const closed = selfCheck.locator("section details:not([open]) > summary");
@@ -441,7 +441,7 @@ test("멘토: 평가 점검은 서버의 9개 지표·19개 요소를 보여주�
   await check.check();
   await expect(page.getByText(/저장됨/)).toBeVisible();
   await page.reload();
-  await page.getByText(/^현장에서 보는 것 직접 확인/).click();
+  await page.getByRole("button", { name: /^나머지 평가항목/ }).click();
   await expect(check).toBeChecked();
   const saved = await api(page, `/api/centers/${user.center_id}/evaluation-checklist`);
   expect(

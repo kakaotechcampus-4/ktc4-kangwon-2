@@ -4,9 +4,11 @@
 """
 
 import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+
+from app.features.routines.models import SKIES
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
 Body = Annotated[str, StringConstraints(strip_whitespace=True, max_length=5000)]
@@ -55,8 +57,33 @@ class RoutineResponse(BaseModel):
     created_at: datetime.datetime
 
 
+class DayWeatherResponse(BaseModel):
+    """그날 날씨 (ADR-089). `source` 는 `sky` 의 출처다 — 미세먼지는 늘 자동이거나 없다."""
+
+    date: datetime.date
+    sky: str | None
+    dust: str | None
+    source: Literal["auto", "teacher", "none"]
+    indoor_hint: Literal["rain", "dust"] | None
+
+
 class RoutineListResponse(BaseModel):
     items: list[RoutineResponse]
+    # 반 하나 · 하루 하나(`class_id` · `from == to`)로 불렀을 때만 온다. 그 밖은 null.
+    weather: DayWeatherResponse | None = None
+
+
+class WeatherChoice(BaseModel):
+    """`PUT /api/routines/weather`. 교사가 고른 그날 날씨.
+
+    `sky: null` 이면 고른 것을 지워 자동 값으로 돌린다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    class_id: int
+    date: datetime.date
+    sky: Literal[SKIES] | None
 
 
 class RoutineReviewImpact(BaseModel):

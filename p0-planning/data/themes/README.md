@@ -10,7 +10,7 @@ curriculum.
 - Version: `theme-reference-v0.1.2`
 - Review state: `HUMAN_APPROVED`
 - SHA-256:
-  `dae9f62db452c56b3b529aaa8e620411e9c11a2072163d6f9cc2a9d2ebc4d902`
+  `b1f181a28a5bb4c6373886a268ab2ea4282313714f38d8c1f9633498fbf9772e`
 
 The JSON bytes were carried forward unchanged from the approved historical
 artifact. Its `applicable_months` values are observations from institution

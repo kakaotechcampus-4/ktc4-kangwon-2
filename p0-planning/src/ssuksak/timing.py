@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextvars
 import functools
 import json
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -46,6 +47,59 @@ class Run:
             f"plan_timing run={self.id} kind={self.kind} outcome={outcome} total_ms={total:.0f} "
             f"{parts} llm_calls={self.llm_calls}"
         )
+
+
+class _Worker:
+    """다른 스레드에서 본 실행 — 같은 run id · kind 로 `llm_call` 줄을 남기되 시간 구간은 나누지 않는다.
+
+    여러 스레드가 한 `Run` 의 구간을 번갈아 바꾸면 구간 이름이 섞인다. 그래서 구간은 요청 스레드만 나누고,
+    여기서는 이름만 따라간다(`llm_call` 의 phase). **부른 수는 세지 않고 `root` 의 것을 같이 쓴다** —
+    스레드마다 따로 세면 상한이 스레드 수만큼 늘어난다. 작업 스레드가 또 스레드를 열어도 `root` 는 같다.
+    """
+
+    def __init__(self, run: Run | _Worker) -> None:
+        self.id, self.kind, self.phase = run.id, run.kind, run.phase
+        self.root = run.root if isinstance(run, _Worker) else run
+
+    def switch(self, name: str) -> str:
+        previous, self.phase = self.phase, name
+        return previous
+
+
+_count = threading.Lock()
+
+
+def in_thread(fn: Callable) -> Callable:
+    """`fn` 을 다른 스레드(ThreadPoolExecutor)에서 부를 수 있게 감싼다 — 지금 실행이 그 스레드에도 보인다."""
+    run = _current.get()
+    if run is None:
+        return fn
+
+    def call(*args, **kwargs):
+        token = _current.set(_Worker(run))
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _current.reset(token)
+
+    return call
+
+
+def reserve_llm_call(limit: int) -> bool | None:
+    """LLM 호출 한 번을 센다. 실행이 없으면 `None`, 이미 `limit` 번이면 세지 않고 `False`, 아니면 세고 `True`.
+
+    검사와 증가를 한 락 안에서 한다 — 스레드 여러 개가 동시에 와도 합이 `limit` 을 넘지 않는다.
+    세는 곳은 요청의 `Run` 하나다(`in_thread` 로 열린 스레드도 같은 것을 쓴다).
+    """
+    run = _current.get()
+    if run is None:
+        return None
+    root = run.root if isinstance(run, _Worker) else run
+    with _count:
+        if root.llm_calls >= limit:
+            return False
+        root.llm_calls += 1
+    return True
 
 
 def current() -> Run | None:

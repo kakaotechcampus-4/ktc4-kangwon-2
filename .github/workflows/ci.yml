@@ -24,6 +24,7 @@ jobs:
   # develop · main push 는 머지 결과라 늘 전부 돈다(마지막 안전망).
   #   문서만 바뀐 PR            → 아래 잡 전부 건너뜀
   #   frontend/ 만 바뀐 PR      → backend 잡 4개(ruff · alembic · pytest · docker) 건너뜀
+  #   backend/alembic/versions 가 안 바뀐 PR → rollback compat 건너뜀(migrations)
   #   그 밖 · 판단할 수 없을 때  → 전부 돈다
   # 이 잡이 실패해도 아래 잡은 전부 돈다(needs.changes.result). 건너뛴 잡은 GitHub 이 통과로 쳐서
   # main 필수 검사(ruff · alembic · frontend)를 판정 실패 하나로 비켜 갈 수 있기 때문이다.
@@ -35,6 +36,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.pick.outputs.docs_only }}
       frontend_only: ${{ steps.pick.outputs.frontend_only }}
+      migrations: ${{ steps.pick.outputs.migrations }}
     steps:
       - uses: actions/checkout@v4
         if: github.event_name == 'pull_request'
@@ -47,6 +49,14 @@ jobs:
         run: |
           docs=false
           front=false
+          # 판단할 수 없으면 true(= rollback compat 이 돈다). 경로 이름을 글자로 맞추지 않는다 — 탭 같은 글자가 든
+          # 파일 이름은 git 이 따옴표로 감싸 찍어서 맞추기를 빠져나간다. git 이 「안 바뀌었다」(종료 0)고 할 때만 false 다.
+          # 바뀜(1)도 오류(128, base 를 못 읽음 등)도 true 로 남는다.
+          migr=true
+          if [ "$EVENT" = pull_request ] &&
+            git diff --quiet --no-renames HEAD^1 HEAD -- backend/alembic/versions/; then
+            migr=false
+          fi
           if [ "$EVENT" = pull_request ] &&
             files=$(git -c core.quotepath=off diff --no-renames --name-only HEAD^1 HEAD) &&
             [ -n "$files" ]; then
@@ -65,9 +75,10 @@ jobs:
             done <<< "$files"
             printf '%s\n' "$files"
           fi
-          echo "docs_only=$docs frontend_only=$front"
+          echo "docs_only=$docs frontend_only=$front migrations=$migr"
           echo "docs_only=$docs" >> "$GITHUB_OUTPUT"
           echo "frontend_only=$front" >> "$GITHUB_OUTPUT"
+          echo "migrations=$migr" >> "$GITHUB_OUTPUT"
 
   backend:
     name: backend (ruff)
@@ -233,6 +244,85 @@ jobs:
       # job 을 새로 만들지 않고 스텝으로 붙인다 — job 개수는 멘토 리뷰 후 정한다.
       - name: planning core pytest
         working-directory: p0-planning
+        run: pytest
+
+  # **운영 코드가 이 PR 의 새 DB 에서 도는가**를 본다(ADR-073). 롤백이 마이그레이션을 건너뛰어도 되는
+  # 근거가 이 job 이다 — scripts/deploy.sh 는 「이 job 이 시험한 코드」로 되감을 때만 `alembic upgrade`
+  # 를 건너뛴다.
+  #
+  #   코드      = base(HEAD^1). main 으로 가는 PR 이면 운영에서 돌고 있는 main 끝, develop 으로 가는 PR 이면 develop 끝이다.
+  #   DB 스키마 = 이 PR 의 마이그레이션까지 올린 것(머지 뒤 운영 DB 와 같다).
+  #   통과      = backend pytest 전부. 대조군과 비교하지 않는다.
+  #
+  # base 를 HEAD^1 로 잡아도 되는 이유: develop 규칙이 「브랜치를 최신으로」(strict)를 요구해서 PR 머지 커밋의
+  # 첫 부모가 develop 끝이다. 머지하면 그 커밋이 머지 커밋 M 의 앞 커밋 B 가 되고, deploy.sh 가 같은 B 를
+  # 찾아 판정한다. 그래서 둘이 같은 가정 위에 있다.
+  # 필수 검사로 켜기 전에는 경고등일 뿐이다 — develop 규칙의 required 에 `backend (rollback compat)` 를 더한다.
+  #
+  # **main · develop 으로 가는 PR 에서** 돈다(ADR-094). push 에는 base 가 없다. main 으로 가는 PR 은 develop 이 쌓은
+  # 마이그레이션을 한꺼번에 얹는다 — 배포는 main 머지로 나가서 직전 main 이 되감을 곳이고, deploy.sh 가 main 의
+  # first-parent 에서 같은 B 를 찾는다. main 규칙에는 필수 검사가 없어서 main 쪽은 경고등이다.
+  # 마이그레이션이 안 바뀐 PR 은 건너뛰고, 판단할 수 없으면 돈다.
+  rollback-compat:
+    name: backend (rollback compat)
+    needs: changes
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && (github.base_ref == 'develop' || github.base_ref == 'main') && (needs.changes.result != 'success' || needs.changes.outputs.migrations != 'false') }}
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ssuksak
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+          POSTGRES_DB: ssuksak
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ssuksak -d ssuksak"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://ssuksak:ci-only-not-a-secret@localhost:5432/ssuksak
+      SECRET_KEY: ci-only-not-a-secret
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # HEAD = PR 머지 커밋(M), HEAD^1 = base(B).
+          fetch-depth: 2
+      # 이미 있는 마이그레이션을 고치거나 지우면 운영 DB 에 올라간 리비전이 바뀐다 — 롤백이 어느 쪽으로도 안 맞는다.
+      # 그래서 M·D·R 이 있으면 여기서 멈추고, 새 파일(A)만 base 위에 얹는다.
+      # `git restore` 는 overlay 가 아니다 — M 에 없는 파일은 작업 폴더에서도 사라진다
+      # (`git checkout M -- 경로` 는 B 에만 있는 파일을 남긴다).
+      - name: base 코드에 이 PR 의 마이그레이션만 얹는다
+        run: |
+          M=$(git rev-parse HEAD)
+          B=$(git rev-parse HEAD^1)
+          changed=$(git diff --name-only --diff-filter=MDR "$B" "$M" -- backend/alembic/versions)
+          if [ -n "$changed" ]; then
+            echo "이미 있는 마이그레이션을 고치거나 지웠다. 운영 DB 에 올라간 리비전이라 되감기가 깨진다:"
+            echo "$changed"
+            exit 1
+          fi
+          git checkout --detach "$B"
+          git restore --source="$M" --worktree -- backend/alembic/versions
+          echo "코드 $B (base) · 마이그레이션 $M (PR 머지 커밋)"
+          git status --short
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # 아래는 test job 과 같다. 다만 이 작업 폴더는 base 코드다.
+      - name: Install planning core
+        working-directory: p0-planning
+        run: pip install -e .
+      - name: Install
+        working-directory: backend
+        run: pip install -e ".[dev]"
+      # PDF 내보내기 테스트가 한글 글꼴을 쓴다 (ADR-061, hwpx_pdf.FONT_CANDIDATES).
+      - name: Install Korean font
+        run: sudo apt-get update && sudo apt-get install -y fonts-nanum
+      - name: pytest
+        working-directory: backend
         run: pytest
 
   docker:

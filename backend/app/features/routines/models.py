@@ -2,7 +2,18 @@
 
 import datetime
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, String, Text, Time, func
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    Time,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -73,3 +84,61 @@ class RoutineRecord(Base):
         if self.end_time:
             return f"~{self.end_time:%H:%M}"
         return ""
+
+
+# 날씨 · 미세먼지 값. 화면 · 종이 · DB CHECK 가 같은 글자를 쓴다 (ADR-089).
+SKIES = ("맑음", "구름많음", "흐림", "비", "눈", "비나 눈")
+DUSTS = ("좋음", "보통", "나쁨", "매우나쁨")
+
+
+def _one_of(column: str, values: tuple[str, ...]) -> str:
+    return f"{column} IN ({', '.join(repr(v) for v in values)})"
+
+
+class RegionWeather(Base):
+    """원 지역 하루의 **자동** 날씨 (ADR-089).
+
+    기상청 · 에어코리아를 지역 · 날짜마다 한 번만 부르려고 둔다.
+
+    받은 값만 남긴다. 둘 다 못 받았으면 행을 만들지 않는다 — 다음 조회 때 다시 부른다.
+    한쪽만 받았으면 받은 쪽만 채워 남기고, 못 받은 쪽만 다음 조회 때 다시 부른다.
+    """
+
+    __tablename__ = "region_weather"
+    __table_args__ = (
+        UniqueConstraint("region_sido", "region_sigungu", "date"),
+        CheckConstraint(f"sky IS NULL OR {_one_of('sky', SKIES)}", name="sky_value"),
+        CheckConstraint(f"dust IS NULL OR {_one_of('dust', DUSTS)}", name="dust_value"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # 원이 적은 글자가 아니라 격자 표(resources/weather/kma_grid.csv)의 이름이다 — 「강원 · 춘천」과
+    # 「강원특별자치도 · 춘천시」가 같은 행을 쓴다 (weather.region_of).
+    region_sido: Mapped[str] = mapped_column(String(30), comment="격자 표의 시도 이름")
+    region_sigungu: Mapped[str] = mapped_column(String(30), comment="격자 표의 시군구 이름")
+    date: Mapped[datetime.date] = mapped_column(Date)
+    sky: Mapped[str | None] = mapped_column(String(10), comment="기상청 단기예보로 만든 낮 날씨")
+    dust: Mapped[str | None] = mapped_column(
+        String(10), comment="에어코리아 실시간 측정 등급 — PM10 · PM2.5 중 나쁜 쪽"
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class RoutineWeather(Base):
+    """교사가 고른 그날 날씨 — 반 × 날짜 하나 (ADR-089). 있으면 자동 값보다 이긴다."""
+
+    __tablename__ = "routine_weather"
+    __table_args__ = (
+        UniqueConstraint("class_id", "date"),
+        CheckConstraint(_one_of("sky", SKIES), name="sky_value"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"))
+    date: Mapped[datetime.date] = mapped_column(Date)
+    sky: Mapped[str] = mapped_column(String(10))
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

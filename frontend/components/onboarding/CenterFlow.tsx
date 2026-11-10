@@ -89,7 +89,10 @@ export default function CenterFlow() {
   const [sheet, setSheet] = useState(false);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
-  const [found, setFound] = useState<{ key: string; items: Daycare[] } | null>(null);
+  const [found, setFound] = useState<{ key: string; items: Daycare[]; failed?: boolean } | null>(
+    null,
+  );
+  const [searchRetry, setSearchRetry] = useState(0);
   const [picked, setPicked] = useState<Daycare | null>(null);
   const saving = useRef(false);
   const searchKey = `${settings.regionProvince}|${settings.regionDistrict}|${query.trim()}`;
@@ -101,13 +104,13 @@ export default function CenterFlow() {
     const timer = window.setTimeout(() => {
       searchDaycares(settings.regionProvince, settings.regionDistrict, query.trim())
         .then((items) => live && setFound({ key: searchKey, items }))
-        .catch(() => live && setFound({ key: searchKey, items: [] }));
+        .catch(() => live && setFound({ key: searchKey, items: [], failed: true }));
     }, 250);
     return () => {
       live = false;
       window.clearTimeout(timer);
     };
-  }, [step, settings, query, searchKey]);
+  }, [step, settings, query, searchKey, searchRetry]);
 
   async function run(job: () => Promise<void>, failure: string) {
     if (saving.current) return;
@@ -226,6 +229,11 @@ export default function CenterFlow() {
           query={query}
           onQuery={setQuery}
           results={results}
+          failed={found?.key === searchKey && !!found.failed}
+          onRetry={() => {
+            setFound(null);
+            setSearchRetry((n) => n + 1);
+          }}
           settings={settings}
           hint={hint}
           onPick={pick}
@@ -313,6 +321,8 @@ function FindField({
   query: q,
   onQuery,
   results: items,
+  failed,
+  onRetry,
   settings: s,
   hint,
   onPick,
@@ -321,12 +331,14 @@ function FindField({
   query: string;
   onQuery: (q: string) => void;
   results: Daycare[] | null;
+  failed: boolean;
+  onRetry: () => void;
   settings: ClassSettings;
   hint?: string;
   onPick: (d: Daycare) => void;
   onManual: () => void;
 }) {
-  const empty = items !== null && items.length === 0;
+  const empty = !failed && items !== null && items.length === 0;
   // 칠판 높이(760px)를 다른 화면과 같게 두려고 이 칸만 여백을 줄인다 — 질문 쪽으로 8px 당기고(-mt-2),
   // 안내와 상자 사이 4px(-mt-6), 출처 줄을 상자에 바짝(mt-1). 결과 상자 270px 를 지키려는 것이다.
   return (
@@ -346,7 +358,14 @@ function FindField({
       <div
         className={`-mt-6 ${RESULT_BOX} squircle [--r:16px] border-2 border-dashed border-line p-1.5`}
       >
-        {empty ? (
+        {failed ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-3">
+            <p role="alert" className="text-[15px] text-ink-soft">
+              어린이집 목록을 불러오지 못했어요. 다시 찾아 주세요.
+            </p>
+            <CtaButton onClick={onRetry}>다시 찾기</CtaButton>
+          </div>
+        ) : empty ? (
           <NoDaycare query={q} district={s.regionDistrict} onManual={onManual} />
         ) : (
           <DaycareResults items={items} settings={s} onPick={onPick} />
@@ -354,7 +373,7 @@ function FindField({
       </div>
       <div className="mt-1 flex flex-wrap items-center justify-between gap-x-4">
         <p className="text-[13px] text-board-ink-soft">어린이집 목록: 어린이집정보공개포털</p>
-        {!empty && <ManualLink onClick={onManual} />}
+        {!empty && !failed && <ManualLink onClick={onManual} />}
       </div>
     </div>
   );

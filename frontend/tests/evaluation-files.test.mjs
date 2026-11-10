@@ -90,11 +90,83 @@ test("영유아 평가 · 면담 · 이수증은 1년 이내 1건이면 찾음�
   assert.equal(checkDoc(doc("parent"), ["2025-10_부모면담.hwp"], TODAY).status, "found");
 });
 
-test("이름으로 찾은 서류만 체크에 더하고, 교사가 한 체크는 남긴다", async () => {
-  const { withFound } = await import("../lib/workspace/evaluation-files.ts");
-  const scan = scanNames(["2026-05_수료증.pdf", "2026-10_월간계획안.hwp"], TODAY);
-  assert.deepEqual(withFound(["director:annual-plan"], scan).sort(), [
-    "director:annual-plan",
-    "doc:training",
+test("도장 근거는 쌤플 확정 · 폴더 · 교사 체크를 따로 세고, 한 칸에 여럿이면 다 낸다", async () => {
+  const { stampSources } = await import("../lib/workspace/evaluation-files.ts");
+  const found = { status: "found" };
+  // 쌤플 서류 — 확정 + 폴더 둘 다
+  assert.deepEqual(stampSources({ done: true }, found, false), ["ssample", "folder"]);
+  // 「일부 빠짐」은 도장이 아니다
+  assert.deepEqual(stampSources({ done: false }, { status: "partial" }, false), []);
+  // 쌤플 서류에 남은 옛 체크(옛 화면이 폴더 결과를 써 넣은 것)는 근거가 아니다
+  assert.deepEqual(stampSources({ done: false }, undefined, true), []);
+  // 쌤플 서류가 확정 0건이어도 폴더에서 찾았으면 「내컴퓨터」만 — 옛 체크가 있어도 같다
+  assert.deepEqual(stampSources({ done: false }, found, false), ["folder"]);
+  assert.deepEqual(stampSources({ done: false }, found, true), ["folder"]);
+  // 쌤플이 만들지 않는 서류 — 폴더 + 교사 체크
+  assert.deepEqual(stampSources(null, found, true), ["folder", "teacher"]);
+  assert.deepEqual(stampSources(null, undefined, true), ["teacher"]);
+  assert.deepEqual(stampSources(null, undefined, false), []);
+});
+
+test("도장 근거 줄은 쌤플 · 폴더 · 직접확인을 따로 적고 상태를 나눈다", async () => {
+  const { sourceLines } = await import("../lib/workspace/evaluation-files.ts");
+  const brief = (lines) => lines.map((l) => `${l.source}:${l.state}:${l.text}`);
+  // 서버에 남는 모양(ADR-074) — 이름 · 날짜 없이 숫자만
+  const partial = { status: "partial", files: 2, gaps: 2 };
+  // 쌤플 서류 — 확정 0건 · 폴더는 일부 빠짐(빈 평일 수로 적는다)
+  assert.deepEqual(
+    brief(
+      sourceLines(doc("journal"), { done: false, some: false, text: "확정 0건" }, partial, false),
+    ),
+    ["ssample:none:확정 0건", "folder:short:일부 빠짐 · 빈 평일 2일"],
+  );
+  // 계획안은 달로 센다 · 확정은 있지만 모자라면 점선
+  assert.deepEqual(
+    brief(
+      sourceLines(
+        doc("plan"),
+        { done: false, some: true, text: "확정 1건" },
+        { ...partial, gaps: 1 },
+        false,
+      ),
+    ),
+    ["ssample:short:확정 1건", "folder:short:일부 빠짐 · 빈 달 1개"],
+  );
+  // 폴더를 안 골랐으면 「—」(안내는 폴더 쪽지 한 번) · 쌤플이 만들지 않는 서류는 쌤플 줄이 없고 누른 것만 직접확인
+  assert.deepEqual(brief(sourceLines(doc("parent"), null, undefined, true)), [
+    "folder:none:—",
+    "teacher:on:도장판에서 눌렀어요",
   ]);
+  // 쌤플 서류의 옛 체크는 직접확인 줄을 만들지 않는다
+  assert.deepEqual(
+    brief(
+      sourceLines(
+        doc("journal"),
+        { done: true, some: true, text: "확정 3건" },
+        { status: "found", files: 1, gaps: 0 },
+        true,
+      ),
+    ),
+    ["ssample:on:확정 3건", "folder:on:파일 이름으로 찾음 · 1개"],
+  );
+});
+
+test("폴더 결과 요약은 이름을 버리고 숫자만 남긴다 — 빈 날은 일부 빠짐일 때만", async () => {
+  const { summarize, windowOf } = await import("../lib/workspace/evaluation-files.ts");
+  const names = ["2026-10-01_보육일지.hwp", "2026-10-02_보육일지.hwp"];
+  const partial = checkDoc(doc("journal"), names, TODAY);
+  assert.equal(partial.status, "partial");
+  assert.deepEqual(summarize(partial), {
+    status: "partial",
+    files: 2,
+    gaps: partial.missing.length,
+  });
+  assert.ok(partial.missing.length > 0);
+  // 못 찾은 서류는 빈 평일이 기간 전부지만 0 으로 보낸다 — 서버가 「일부 빠짐일 때만 빈 날」을 본다
+  const missing = checkDoc(doc("journal"), [], TODAY);
+  assert.ok(missing.missing.length > 0);
+  assert.deepEqual(summarize(missing), { status: "missing", files: 0, gaps: 0 });
+  // 기간은 checkDoc 과 같다 — 보육일지는 최근, 면담은 1년
+  assert.deepEqual(windowOf(doc("journal"), TODAY), windowsFor(TODAY).recent);
+  assert.deepEqual(windowOf(doc("parent"), TODAY), windowsFor(TODAY).year);
 });

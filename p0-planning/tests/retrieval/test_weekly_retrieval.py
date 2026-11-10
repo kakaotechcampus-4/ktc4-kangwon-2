@@ -144,6 +144,67 @@ def test_candidate_pools_fill_leftover_slots_with_capped_sources_after_distinct_
     assert len(_search(records, top_k=20, by_activity_type=True)) == 8
 
 
+def test_earlier_weeks_evidence_goes_last_and_fills_a_shortfall_least_used_first():
+    # 2026-11-09 하민: skip what earlier weeks of the month used; fill only a shortfall.
+    records = tuple(_record(f"ev_{i}", text=f"가을 열매 쌓기 {i}", institution=f"I{i}") for i in range(1, 7))
+    today = _search(records, top_k=3, by_activity_type=True)
+    assert _search(records, top_k=3, by_activity_type=True, prior_week_refs=()) == today
+    assert _search(records, top_k=3, by_activity_type=True, prior_week_refs=tuple(today)) == [
+        r for r in _search(records, top_k=6, by_activity_type=True) if r not in today
+    ]
+    used = ("ev_1", "ev_1", "ev_2", "ev_3", "ev_4", "ev_5")  # ev_6 unused; ev_1 used twice
+    found = _search(records, top_k=4, by_activity_type=True, prior_week_refs=used)
+    assert found[0] == "ev_6" and "ev_1" not in found and len(found) == 4
+    # A tag-only title surfaced in the 11-09 live run once earlier weeks took the top of the pool.
+    tagged = records + (_record("ev_7", text="[절기놀이]", institution="I7"),
+                        _record("ev_8", text="【동시", institution="I8"))
+    assert {"ev_7", "ev_8"}.isdisjoint(_search(tagged, top_k=8, by_activity_type=True, prior_week_refs=used))
+
+
+def test_a_sample_seed_picks_top_k_from_the_top_pool_in_rank_order():
+    # 2026-11-10 하민: sample 10 of the top 20; no seed keeps the fixed cut.
+    records = tuple(_record(f"ev_{i:02}", text=f"가을 열매 쌓기 {i}", institution=f"I{i}") for i in range(30))
+    ranked = _search(records, top_k=30, by_activity_type=True)
+    assert _search(records, top_k=10, by_activity_type=True, sample_seed=None) == ranked[:10]
+    picks = {seed: _search(records, top_k=10, by_activity_type=True, sample_seed=seed) for seed in range(5)}
+    for found in picks.values():
+        assert len(found) == 10 and set(found) <= set(ranked[:20])
+        assert found == sorted(found, key=ranked.index)
+    assert picks[0] == _search(records, top_k=10, by_activity_type=True, sample_seed=0)
+    assert len({tuple(found) for found in picks.values()}) > 1
+    used = tuple(ranked[:5])  # earlier weeks still go out first, before sampling
+    assert set(used).isdisjoint(_search(records, top_k=10, by_activity_type=True, sample_seed=1, prior_week_refs=used))
+    # 2026-11-10 하민: no age-tier preference — exact-age records are sampled with the rest of the top pool.
+    mixed = tuple(_record(f"ev_m{i:02}", text=f"가을 열매 쌓기 m{i}", institution=f"M{i}", age_scope=(3, 4))
+                  for i in range(10))
+    exact = {f"ev_{i:02}" for i in range(6)}
+    found = [set(_search(mixed + records[:6], top_k=10, by_activity_type=True, sample_seed=s)) for s in range(10)]
+    assert all(len(f) == 10 for f in found) and any(not exact <= f for f in found)
+    # PR #469 review: a mixed class keeps every requested age the pool has (balance_by_age).
+    by_age = tuple(_record(f"ev_a{age}{i:02}", text=f"가을 열매 쌓기 {age}-{i}", institution=f"A{age}{i}",
+                           age_scope=(age,)) for age, n in ((3, 12), (4, 1), (5, 12)) for i in range(n))
+    for seed in range(30):
+        found = _search(by_age, top_k=10, by_activity_type=True, sample_seed=seed, ages=frozenset({3, 4, 5}))
+        assert len(found) == 10 and "ev_a400" in found
+
+
+def test_a_sample_seed_draws_one_activity_kind_at_a_time():
+    # PR #469 review: the pool mixes kinds, so a plain shuffle would be caught here.
+    # 4 kinds x 5 records = the whole top-20; drawing by kind gives every kind 2-3 of the 10.
+    kinds = ("동화", "새노래", "미술", "게임")
+    records = tuple(_record(f"ev_{kind}{i}", label="이야기 나누기", text=f"[{kind}] 가을 열매 {i}", institution=f"I{kind}{i}")
+                    for kind in kinds for i in range(5))
+    for seed in range(30):
+        found = _search(records, weekly_class=WeeklySemanticClass.GROUP_ACTIVITY, top_k=10, by_activity_type=True,
+                        sample_seed=seed)
+        by_kind = collections.Counter(activity_type(_by_id(records, rid)) for rid in found)
+        assert len(found) == 10 and all(by_kind[kind] >= 2 for kind in kinds), (seed, dict(by_kind))
+
+
+def _by_id(records, record_id):
+    return next(r for r in records if r.record_id == record_id)
+
+
 def test_parent_citation_survives_top_k_without_bypassing_eligibility_or_source_cap():
     records = tuple(_record(f"ev_{i:02}", institution=f"I{i}") for i in range(12)) + (
         _record("ev_99", text="놀이터 약속", institution="parent"),
@@ -202,7 +263,7 @@ def test_reviewed_candidate_sources_match_the_unchanged_evidence_artifact():
     assert REVIEWED_UNCLEAR_ACTIVITY_SOURCES
     for ref, text in REVIEWED_UNCLEAR_ACTIVITY_SOURCES:
         assert records[ref].text == text
-        assert records[ref].month == 3
+        assert records[ref].month in {3, 4, 5, 9, 10, 12}  # the months reviewed so far
 
 
 @pytest.mark.parametrize("text,expected,terms", [

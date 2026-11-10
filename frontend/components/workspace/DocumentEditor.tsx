@@ -9,16 +9,17 @@ import {
   type Section,
   type Source,
 } from "@/lib/workspace/model";
-import { requestAI } from "@/lib/workspace/ai-client";
-import { AIHint, Message, useAIStatus, ws } from "./WorkspaceUI";
+import { Message, ws } from "./WorkspaceUI";
 import { serverIssues } from "./document-selection";
 import { Icon } from "@/components/app/icons";
 import { invalidFields } from "@/lib/api/client";
 import {
   downloadDocumentHwpx,
   isStaleWrite,
+  verifyLines,
   type ReconfirmInput,
   type SourceResolution,
+  type VerifyResult,
 } from "@/lib/api/documents";
 import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import SourceReview from "./SourceReview";
@@ -88,6 +89,8 @@ export interface ServerDocumentActions {
   refresh: (resolutions?: SourceResolution[]) => Promise<SavedDocument>;
   remove: () => Promise<void>;
   reconfirm?: (input: ReconfirmInput) => Promise<SavedDocument>;
+  /** 3단 AI 검토. 저장하지 않고 지금 화면의 글을 판정한다 (ADR-071). */
+  verify: (sections: Section[]) => Promise<VerifyResult>;
 }
 
 /**
@@ -107,10 +110,12 @@ export default function DocumentEditor({
   initial,
   onSave,
   server,
+  onEditStateChange,
 }: {
   initial: SavedDocument;
   onSave: (doc: SavedDocument, expected: SavedDocument) => boolean;
   server?: ServerDocumentActions;
+  onEditStateChange?: (state: { dirty: boolean; pending: boolean }) => void;
 }) {
   const [baseline, setBaseline] = useState(initial);
   const [doc, setDoc] = useState(initial);
@@ -128,7 +133,6 @@ export default function DocumentEditor({
   const [staleWrite, setStaleWrite] = useState(false);
   /** 사라진 근거 복구 화면이 떠 있나. 떠 있으면 초안용 「변경된 근거 반영하기」를 숨긴다. */
   const [recovering, setRecovering] = useState(false);
-  const available = useAIStatus();
   const annual = useRef<AnnualPlan | null>(null);
   const [annualError, setAnnualError] = useState(false);
   useEffect(() => {
@@ -172,6 +176,11 @@ export default function DocumentEditor({
   const recordDocument =
     !imported && ["dailyLog", "weeklyLog", "observation", "assessment"].includes(doc.kind);
   const editable = doc.status !== "confirmed";
+  // AI 검토는 서버 문서의 3단 검토(jev)만 쓴다 — 아이 이름을 가명으로 바꾼 뒤 판정한다.
+  // 로컬 문서는 화면 서버가 OpenAI 로 그대로 보내던 길이라 쓰지 않는다 (ADR-071).
+  // 판정 기준을 잰 세 가지 문서만 받는다 — 영유아 평가는 서버도 422 다.
+  const aiReview =
+    !!server && !imported && ["observation", "dailyLog", "weeklyLog"].includes(doc.kind);
   const factSource = recordDocument
     ? doc.kind === "dailyLog"
       ? routinesPath(doc.classId, doc.start)
@@ -184,6 +193,14 @@ export default function DocumentEditor({
     (!!server && !imported && ["observation", "dailyLog", "weeklyLog"].includes(doc.kind));
   // 서버 요청 중에는 입력·저장·확정·삭제가 서로 끼어들지 못한다.
   const working = busy || hwpx.exporting || !!server?.pending;
+  const dirty =
+    editable &&
+    (JSON.stringify(doc.sections) !== JSON.stringify(baseline.sections) ||
+      doc.classNote !== baseline.classNote ||
+      doc.reviewNote !== baseline.reviewNote);
+  useEffect(() => {
+    onEditStateChange?.({ dirty, pending: working });
+  }, [dirty, working, onEditStateChange]);
   function change(index: number, body: string) {
     setDoc((prev) => ({
       ...prev,
@@ -196,7 +213,7 @@ export default function DocumentEditor({
     setIssuesOpen(false);
   }
   async function verify() {
-    if (working || stale || available === null) return;
+    if (working || stale) return;
     // 같은 버튼을 다시 누르면 펼친 결과를 접는다. **결과 자체는 들고 있는다.**
     if (issuesOpen) {
       setIssuesOpen(false);
@@ -207,12 +224,13 @@ export default function DocumentEditor({
     setIssuesOpen(true);
     setMessage("");
     setVerified(false);
-    if (local.length || !available || !recordDocument) return;
+    if (local.length || !server || !aiReview) return;
     setBusy(true);
     try {
-      const result = await requestAI<{ issues: string[] }>("verify", doc);
-      setIssues(result.issues);
-      setVerified(!result.issues.length);
+      const result = await server.verify(doc.sections);
+      setIssues(verifyLines(result));
+      setVerified(result.judged && !result.issues.length);
+      if (!result.judged) setMessage("AI 검토가 꺼져 있어 판정하지 않았어요. 직접 대조해 주세요.");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "검증에 실패했어요.");
     } finally {
@@ -270,15 +288,9 @@ export default function DocumentEditor({
       return;
     }
     const local = validateDocument(doc);
-    if (
-      confirm &&
-      (available === null ||
-        local.length ||
-        !checks.every(Boolean) ||
-        (available && recordDocument && !verified))
-    ) {
+    if (confirm && (local.length || !checks.every(Boolean))) {
       setIssues(local);
-      setMessage("원본 대조와 교사 검토를 마쳐주세요. AI 연결 시 AI 검증 통과도 필요해요.");
+      setMessage("원본 대조와 교사 검토를 마쳐주세요.");
       return;
     }
     if (annualPlanId) {
@@ -314,7 +326,7 @@ export default function DocumentEditor({
       reviewNote: confirm
         ? imported
           ? "기존 증빙 원문·대상·기간 검토 완료 (공식 평가 판정 별도)"
-          : `${available && verified ? "AI 검증 + " : ""}교사 사실·해석·지원 검토 완료`
+          : `${verified ? "AI 검증 + " : ""}교사 사실·해석·지원 검토 완료`
         : "교사 검토 전",
     });
     if (onSave(next, baseline)) {
@@ -625,13 +637,19 @@ export default function DocumentEditor({
       {editable && (
         <div className={ws.verify}>
           <h3>사실 · 해석 · 지원 검증</h3>
-          <AIHint available={available} />
+          {aiReview ? (
+            <p className={ws.hint}>
+              AI 검토는 아이 이름을 가명으로 바꾼 뒤 문장마다 기록과 대조해요. 확정은 선생님이 해요.
+            </p>
+          ) : (
+            <p className={ws.hint}>이 문서는 AI 검토 대상이 아니에요. 기본 항목만 검사해요.</p>
+          )}
           <button className={ws.secondary} disabled={working || stale} onClick={verify}>
             {busy
               ? "근거를 대조하고 있어요…"
               : issuesOpen
                 ? "검사 결과 접기"
-                : available && recordDocument
+                : aiReview
                   ? "AI 검증하기"
                   : "기본 항목 검사"}
           </button>
@@ -639,7 +657,7 @@ export default function DocumentEditor({
             <Message error={issues.length > 0}>
               {issues.length
                 ? `반려 · 수정이 필요해요\n${issues.map((s) => `• ${s}`).join("\n")}`
-                : available && verified
+                : verified
                   ? "AI 검증에서 문제를 찾지 못했어요. 교사 최종 검토를 진행해주세요."
                   : "기본 항목은 통과했어요. 원본 대조는 확정할 때 서버가 합니다."}
             </Message>
@@ -701,9 +719,7 @@ export default function DocumentEditor({
             </button>
             <button
               className={ws.primary}
-              disabled={
-                working || stale || !checks.every(Boolean) || (!server && available === null)
-              }
+              disabled={working || stale || !checks.every(Boolean)}
               onClick={() => persist(true)}
             >
               검토 완료 · 문서 확정

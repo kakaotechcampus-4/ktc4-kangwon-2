@@ -1,4 +1,4 @@
-"""평가제 체크리스트 조회·체크 저장 (api-spec.md §12)."""
+"""평가제 체크리스트 조회·체크 저장 (api-spec.md §12 · ADR-074)."""
 
 from datetime import UTC, datetime
 from typing import Annotated
@@ -10,15 +10,31 @@ from app.db import get_session
 from app.features.evaluation.auto import judge_auto
 from app.features.evaluation.catalog import load_catalog
 from app.features.evaluation.schemas import (
+    DIRECTOR_KEYS,
+    DOC_KEYS,
     AutoItem,
     CheckedElement,
     ChecksRequest,
+    DirectorCheck,
+    DirectorRequest,
+    DocumentMark,
+    DocumentsRequest,
     EvaluationChecklist,
+    FolderResult,
     Period,
     Progress,
     SelfCheckItem,
 )
-from app.features.evaluation.service import InvalidChecks, read_checks, save_checks
+from app.features.evaluation.service import (
+    FolderScanRow,
+    InvalidChecks,
+    read_checks,
+    read_director_checks,
+    read_doc_marks,
+    save_checks,
+    save_director_checks,
+    save_doc_marks,
+)
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import require_own_center
 from app.shared.school_year import school_year_of
@@ -27,9 +43,39 @@ router = APIRouter(prefix="/centers", tags=["evaluation"])
 DbSession = Annotated[Session, Depends(get_session)]
 
 
-def _checklist(session: Session, center_id: int, now: datetime) -> EvaluationChecklist:
+def _documents(
+    session: Session, center_id: int, school_year: int, user_id: int
+) -> list[DocumentMark]:
+    marks = read_doc_marks(session, center_id, school_year, user_id)
+    documents = []
+    for doc in DOC_KEYS:
+        mark = marks.get(doc)
+        folder = (
+            FolderResult(
+                status=mark.folder_status,
+                scanned_at=mark.folder_scanned_at,
+                period=Period(from_=mark.folder_from, to=mark.folder_to),
+                files=mark.folder_files,
+                gaps=mark.folder_gaps,
+            )
+            if mark and mark.folder_status
+            else None
+        )
+        checked_at = mark.checked_at if mark else None
+        documents.append(
+            DocumentMark(
+                doc=doc, checked=checked_at is not None, checked_at=checked_at, folder=folder
+            )
+        )
+    return documents
+
+
+def _checklist(
+    session: Session, center_id: int, user_id: int, now: datetime
+) -> EvaluationChecklist:
     school_year = school_year_of(now)
     checks = read_checks(session, center_id, school_year)
+    director = read_director_checks(session, center_id, school_year)
     auto = judge_auto(session, center_id, now)
     items = []
     for indicator in load_catalog().indicators:
@@ -54,6 +100,8 @@ def _checklist(session: Session, center_id: int, now: datetime) -> EvaluationChe
                     plan_ids=result.plan_ids,
                     document_ids=result.document_ids,
                     period=Period(from_=result.period.start, to=result.period.end),
+                    journal_classes=result.journal_classes,
+                    plan_classes=result.plan_classes,
                 )
             )
         else:
@@ -75,14 +123,22 @@ def _checklist(session: Session, center_id: int, now: datetime) -> EvaluationChe
                     complete=total > 0 and checked == total,
                 )
             )
-    return EvaluationChecklist(school_year=school_year, items=items)
+    return EvaluationChecklist(
+        school_year=school_year,
+        items=items,
+        documents=_documents(session, center_id, school_year, user_id),
+        director=[
+            DirectorCheck(item=item, checked=item in director, checked_at=director.get(item))
+            for item in DIRECTOR_KEYS
+        ],
+    )
 
 
 @router.get("/{center_id}/evaluation-checklist", response_model=EvaluationChecklist)
 def get_checklist(center_id: int, session: DbSession, user: CurrentUser) -> EvaluationChecklist:
     require_own_center(user, center_id)
     now = datetime.now(UTC)
-    return _checklist(session, center_id, now)
+    return _checklist(session, center_id, user.id, now)
 
 
 @router.put("/{center_id}/evaluation-checklist/checks", response_model=EvaluationChecklist)
@@ -109,6 +165,52 @@ def put_checks(
                 "fields": [f"checks.{element}" for element in error.elements],
             },
         ) from error
-    response = _checklist(session, center_id, now)
+    response = _checklist(session, center_id, user.id, now)
+    session.commit()
+    return response
+
+
+@router.put("/{center_id}/evaluation-checklist/documents", response_model=EvaluationChecklist)
+def put_documents(
+    center_id: int, body: DocumentsRequest, session: DbSession, user: CurrentUser
+) -> EvaluationChecklist:
+    """로그인한 교사의 직접확인 · 폴더 검사 결과.
+
+    다른 교사의 줄은 건드리지 않는다(ADR-074 결정 4).
+    """
+    require_own_center(user, center_id)
+    now = datetime.now(UTC)
+    scan = (
+        [
+            FolderScanRow(
+                doc=r.doc,
+                status=r.status,
+                period_from=r.period.from_,
+                period_to=r.period.to,
+                files=r.files,
+                gaps=r.gaps,
+            )
+            for r in body.folder_scan.results
+        ]
+        if body.folder_scan
+        else None
+    )
+    save_doc_marks(
+        session, center_id, user.id, now, [(c.doc, c.checked) for c in body.checks], scan
+    )
+    response = _checklist(session, center_id, user.id, now)
+    session.commit()
+    return response
+
+
+@router.put("/{center_id}/evaluation-checklist/director", response_model=EvaluationChecklist)
+def put_director(
+    center_id: int, body: DirectorRequest, session: DbSession, user: CurrentUser
+) -> EvaluationChecklist:
+    """원장 서류 체크 — 같은 원 교사 누구나 같은 체크를 본다(ADR-074 결정 4)."""
+    require_own_center(user, center_id)
+    now = datetime.now(UTC)
+    save_director_checks(session, center_id, now, [(c.item, c.checked) for c in body.checks])
+    response = _checklist(session, center_id, user.id, now)
     session.commit()
     return response

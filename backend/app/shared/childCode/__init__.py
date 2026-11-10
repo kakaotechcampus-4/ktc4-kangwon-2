@@ -14,19 +14,23 @@
 """
 
 from .allocation import table_for_text
-from .names import name_variants
-from .pool import PseudonymPool, SubstitutionError, has_final, load_pool
-from .substitute import NameTable, mask, unmask, unmask_from
+from .names import call_suffix, name_variants, one_syllable
+from .pool import CallNameNeeded, PseudonymPool, SubstitutionError, has_final, load_pool
+from .substitute import NameTable, mask, unmask, unmask_as_written, unmask_from
 
 __all__ = [
+    "CallNameNeeded",
     "NameTable",
     "PseudonymPool",
     "SubstitutionError",
+    "call_suffix",
     "has_final",
     "load_pool",
     "mask",
     "name_variants",
+    "one_syllable",
     "table_for_text",
     "unmask",
+    "unmask_as_written",
     "unmask_from",
 ]

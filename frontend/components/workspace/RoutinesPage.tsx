@@ -28,7 +28,7 @@ import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { today, validDate } from "@/lib/workspace/model";
 import { routinesQuery, routinesScope } from "@/lib/workspace/routines-route";
 import { Posty } from "@/components/app/Posty";
-import { WorkspacePage, Empty, JournalTabs, Message, Notice, Tape, ws } from "./WorkspaceUI";
+import { WorkspacePage, Empty, JournalTabs, Message, Notice, ws } from "./WorkspaceUI";
 import { WorkspaceViewState, type ViewStatus } from "./WorkspaceViewState";
 import RoutineCalendar, { koreanDay, monthRange } from "./RoutineCalendar";
 import RoutineClock from "./RoutineClock";
@@ -781,7 +781,7 @@ export default function RoutinesPage() {
   const doneCount = rows.filter((row) => row.execution.trim()).length;
   /** 날짜를 옮긴다. 적어 둔 줄이 있으면 먼저 묻는다. */
   const moveTo = (next: string, month: string | null) => {
-    if (!leaveRows()) return;
+    if (!leaveRows() || (next !== date && !journal.leave())) return;
     setPickedDate(next);
     setPickedMonth(month);
     revisit();
@@ -838,13 +838,12 @@ export default function RoutinesPage() {
         <div className={ws.grid}>
           <div className={ws.side}>
             <aside className={`${ws.card} ${ws.calendarCard}`} data-tour="routines-calendar">
-              <Tape />
               <RoutineCalendar
                 date={dateOk ? date : todayDate}
                 month={month}
                 today={todayDate}
                 marked={marked}
-                disabled={!!busy}
+                disabled={!!busy || journal.pending}
                 onMonth={setPickedMonth}
                 onPick={(next) => moveTo(next, null)}
               />
@@ -855,7 +854,7 @@ export default function RoutinesPage() {
                   name="date"
                   type="date"
                   value={date}
-                  disabled={!!busy}
+                  disabled={!!busy || journal.pending}
                   onChange={(e) => moveTo(e.target.value, null)}
                 />
               </label>
