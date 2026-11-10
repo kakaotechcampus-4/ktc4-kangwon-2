@@ -3263,6 +3263,19 @@ button.recordBlank:disabled {
 .jrPeriod input::-webkit-calendar-picker-indicator {
   cursor: pointer;
 }
+/* 휴대폰 — 360px 에서 둘째 날짜가 아랫줄로 떨어지고 「~」만 윗줄 끝에 남았다. 두 칸을 같은 폭으로 한 줄에 둔다. */
+@media (max-width: 1023px) {
+  .jrPeriod {
+    flex-wrap: nowrap;
+  }
+  /* width: 0 — 날짜 칸은 글자 폭(약 150px)을 최소로 고집해서, 한 줄에 두면 카드까지 밀어 넓혔다. */
+  .jrPeriod input {
+    flex: 1 1 0;
+    width: 0;
+    min-height: 44px;
+    padding: 0 8px;
+  }
+}
 .jrSources {
   display: grid;
   gap: 6px;
@@ -3296,7 +3309,11 @@ button.recordBlank:disabled {
   accent-color: var(--pg-primary);
 }
 .jrSources small {
-  display: block;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  margin-bottom: 2px;
   font-size: 12px;
   font-weight: 700;
   color: var(--pg-ink-soft);
@@ -3574,6 +3591,23 @@ button.recordBlank:disabled {
   font-size: 20px;
   color: var(--pg-board-ink-soft);
 }
+/* 기간 — 분필보다 밝게 쓰고 빨간 손 동그라미를 친다. 칠판 위라 진한 alert-strong 대신 밝은 alert. */
+.ojHead .ojPeriod {
+  position: relative;
+  display: inline-block;
+  margin-left: 16px;
+  padding: 0 4px;
+  color: var(--pg-board-ink);
+  white-space: nowrap;
+}
+.ojPeriodRing {
+  position: absolute;
+  inset: -9px -14px -8px;
+  width: calc(100% + 28px);
+  height: calc(100% + 17px);
+  color: var(--pg-alert);
+  pointer-events: none;
+}
 .ojHead em {
   margin-left: auto;
   padding: 2px 10px;
@@ -3650,21 +3684,78 @@ button.recordBlank:disabled {
 .ojNotes li[data-tone="nature"] {
   background: var(--pg-sage);
 }
-/* 쪽지마다 그 관찰 기록을 여는 「고치기」 — 본문 뒤 작은 글씨 */
-.ojNotes a {
-  display: block;
-  margin-top: 6px;
+/* 쪽지마다 그 관찰 기록을 여는 「수정」 — 연필 그림 + 글자의 작은 종이 단추. 오른쪽 아래에 붙는다. */
+.ojNotes .ojNoteEdit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  min-height: 32px;
+  margin: 10px 0 -4px auto;
+  padding: 0 10px 0 8px;
+  border: 1px solid color-mix(in srgb, var(--pg-ink) 35%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--pg-paper) 72%, transparent);
+  box-shadow: var(--pg-shadow-card);
   color: var(--pg-ink);
-  font-size: 13px;
-  text-underline-offset: 3px;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color 0.15s;
+}
+.ojNotes .ojNoteEdit:hover {
+  background: var(--pg-paper);
+}
+.ojNotes .ojNoteEdit:active {
+  translate: 2px 3px;
+  box-shadow: none;
+}
+.ojNotes .ojNoteEdit:focus-visible {
+  outline: 3px solid var(--pg-primary);
+  outline-offset: 2px;
 }
 .ojNotes small {
-  display: block;
-  margin-bottom: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-bottom: 6px;
   font-family: var(--font-display), sans-serif;
   font-size: 16px;
   font-weight: 700;
   color: var(--pg-ink-soft);
+}
+/* 쪽지 머리의 영역 — 그 영역 진한 색 동그라미에 흰 그림(관찰 기록 카드와 같은 짝), 옆에 이름. */
+.ojNoteDomain {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  /* 손글씨는 숫자 · 제목에만 — 영역 이름은 본문 글꼴 */
+  font-family: var(--font-body), sans-serif;
+  font-size: 12.5px;
+  color: var(--note-deep, var(--pg-ink));
+}
+.ojNoteDomain svg {
+  box-sizing: content-box;
+  padding: 4px;
+  border-radius: 50%;
+  background: var(--note-deep, var(--pg-ink-soft));
+  color: var(--pg-paper);
+}
+.ojNotes li[data-tone="body"] {
+  --note-deep: var(--pg-domain-body-deep);
+}
+.ojNotes li[data-tone="talk"] {
+  --note-deep: var(--pg-domain-talk-deep);
+}
+.ojNotes li[data-tone="social"] {
+  --note-deep: var(--pg-domain-social-deep);
+}
+.ojNotes li[data-tone="art"] {
+  --note-deep: var(--pg-domain-art-deep);
+}
+.ojNotes li[data-tone="nature"] {
+  --note-deep: var(--pg-domain-nature-deep);
 }
 .ojStale {
   display: flex;
@@ -3733,14 +3824,35 @@ button.recordBlank:disabled {
   align-items: center;
   gap: 14px 18px;
 }
+/* 대조 확인 — 옆 「저장됨」과 같은 분필 타원 안에 둔다. 체크하면 선이 노랗게 진해진다. */
 .ojCheck {
   display: flex;
-  flex: 1 1 280px;
+  flex: 0 1 auto;
   align-items: center;
   gap: 10px;
+  min-height: 44px;
+  /* 단추들은 오른쪽 끝으로 */
+  margin-right: auto;
+  padding: 6px 20px 6px 14px;
+  border: 1.5px solid var(--pg-board-ink-soft);
+  border-radius: 999px;
   font-size: 14.5px;
   color: var(--pg-board-ink);
   cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+.ojCheck:has(input:checked) {
+  border-color: var(--pg-note);
+  background: color-mix(in srgb, var(--pg-note) 10%, transparent);
+}
+.ojCheck:has(input:focus-visible) {
+  outline: 3px solid var(--pg-note);
+  outline-offset: 2px;
+}
+.ojCheck input {
+  flex: none;
 }
 .ojCheck input {
   width: 20px;
@@ -3799,16 +3911,33 @@ button.recordBlank:disabled {
 .ojStamp:disabled {
   cursor: not-allowed;
 }
+/* 초안 삭제 — 휴지통 그림 + 글자의 빨간 종이 단추. 되돌릴 수 없는 일이라 alert 계열이다. 누르면 한 번 묻는다. */
 .ojRemove {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   justify-self: start;
-  padding: 0;
-  border: 0;
-  background: none;
-  font-size: 12.5px;
-  color: var(--pg-board-ink-soft);
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  min-height: 38px;
+  padding: 0 14px 0 11px;
+  border: 1.5px solid var(--pg-alert-line);
+  border-radius: 6px;
+  background: var(--pg-alert-soft);
+  box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.35);
+  color: var(--pg-alert-ink);
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
+}
+.ojRemove:hover:not(:disabled) {
+  border-color: var(--pg-alert-strong);
+}
+.ojRemove:active:not(:disabled) {
+  translate: 2px 3px;
+  box-shadow: none;
+}
+.ojRemove:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 /* 출력 미리보기 — A4 종이 비율의 한 장 + 오른쪽 내려받기 */
@@ -3900,16 +4029,20 @@ button.recordBlank:disabled {
   font-size: 13.5px;
   color: var(--pg-ink-soft);
 }
+/* 확정 도장 — 빨간 인주 이중 테두리, 인주 결(`.inkStamp`), 비스듬히. 처음 펼 때 한 번 꾹 찍힌다. */
 .ojDone {
   justify-self: start;
-  padding: 4px 14px;
-  border: 2.5px double var(--pg-alert-strong-line);
-  border-radius: 6px;
+  margin: 2px 0 4px 4px;
+  padding: 6px 18px 3px;
+  border: 4px double var(--pg-alert-strong-line);
+  border-radius: 8px;
   color: var(--pg-alert-strong-line);
   font-family: var(--font-display), sans-serif;
-  font-size: 20px;
+  font-size: 30px;
   font-weight: 700;
-  rotate: -6deg;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  rotate: -8deg;
 }
 .ojExportHead {
   margin: 4px 0 0;
@@ -3945,35 +4078,58 @@ button.recordBlank:disabled {
   font-size: 13px;
   color: var(--pg-ink-soft);
 }
-/* 확정본에서 다시 고치기 — 그림 · 굵은 이름 · 무슨 일이 생기는지 한 줄 */
+/* 확정본에서 다시 고치기 — 도톰하게 솟은 단추. 아래 두께(4px)만큼 눌려 내려간다. */
 .ojRedo {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
   min-height: 56px;
+  margin-bottom: 4px;
   padding: 10px 14px;
-  border: 1px dashed var(--pg-line);
+  border: 1.5px solid var(--pg-line-strong);
   border-radius: 10px;
-  background: var(--pg-paper-warm);
+  background: linear-gradient(180deg, var(--pg-paper) 0%, var(--pg-paper-warm) 100%);
+  box-shadow:
+    0 4px 0 var(--pg-line-strong),
+    0 10px 16px -8px rgba(43, 36, 28, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
   color: var(--pg-ink);
   text-align: left;
   font: inherit;
+  font-size: 15.5px;
+  font-weight: 700;
   cursor: pointer;
+  transition:
+    translate 0.1s,
+    box-shadow 0.1s;
 }
 .ojRedo:hover:not(:disabled) {
-  border-style: solid;
-  border-color: var(--pg-ink-soft);
+  translate: 0 -1px;
+  box-shadow:
+    0 5px 0 var(--pg-line-strong),
+    0 14px 20px -10px rgba(43, 36, 28, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
-.ojRedo span {
+.ojRedo:active:not(:disabled) {
+  translate: 0 4px;
+  box-shadow:
+    0 0 0 var(--pg-line-strong),
+    0 2px 4px -2px rgba(43, 36, 28, 0.35),
+    inset 0 2px 3px rgba(43, 36, 28, 0.12);
+}
+.ojRedo:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.ojRedoIcon {
   display: grid;
-}
-.ojRedo b {
-  font-size: 15px;
-}
-.ojRedo small {
-  font-size: 12.5px;
-  color: var(--pg-ink-soft);
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1.5px solid var(--pg-note-line);
+  border-radius: 50%;
+  background: var(--pg-note);
 }
 /* 누구 · 언제 — 손글씨 두 줄 */
 .ojWho {
@@ -4188,5 +4344,211 @@ button.recordBlank:disabled {
   }
   .deck:hover {
     transform: none;
+  }
+}
+
+/* 관찰일지 만들기 — 초안 전 오른쪽 칠판(「가람이의 이번 주」). 편집기와 같은 .chalkboard 바탕에 분필 글씨,
+   영역은 같은 크기 칸으로 늘 다 세운다: 있는 영역은 그 영역 색 쪽지 + 손글씨 건수, 없는 영역은 점선 빈 쪽지.
+   칸 수는 원의 영역 축(5 또는 2)을 따르고, 좁으면(칠판 안쪽 520px 아래) 다섯 칸을 3 + 2 두 줄로 세운다. */
+.jbBoard {
+  display: grid;
+  gap: 16px;
+  padding: 24px 26px 30px;
+  border-radius: 6px;
+  margin-bottom: 14px;
+  color: var(--pg-board-ink);
+  container-type: inline-size;
+}
+.jbBoard h2 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.jbStat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 22px;
+  color: var(--pg-board-ink-soft);
+}
+.jbStat b {
+  font-size: 48px;
+  line-height: 1;
+  color: var(--pg-note);
+}
+.jbStat span {
+  font-size: 20px;
+}
+.jbSlots {
+  display: grid;
+  grid-template-columns: repeat(var(--slots, 5), minmax(0, 1fr));
+  gap: 14px 12px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.jbSlots[data-count="2"] {
+  --slots: 2;
+}
+.jbSlots li {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 6px;
+  min-height: 132px;
+  padding: 20px 8px 14px;
+  background: var(--pg-note-soft);
+  color: var(--pg-ink);
+  text-align: center;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.28);
+  transform: rotate(-1.2deg);
+}
+.jbSlots li:nth-child(even) {
+  transform: rotate(1deg);
+}
+/* 테이프 */
+.jbSlots li:not([data-none])::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  width: 46px;
+  height: 16px;
+  translate: -50% 0;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.jbSlots li[data-tone="body"] {
+  --slot-deep: var(--pg-domain-body-deep);
+  background: var(--pg-domain-body-mid);
+}
+.jbSlots li[data-tone="talk"] {
+  --slot-deep: var(--pg-domain-talk-deep);
+  background: var(--pg-domain-talk-mid);
+}
+.jbSlots li[data-tone="social"] {
+  --slot-deep: var(--pg-domain-social-deep);
+  background: var(--pg-domain-social-mid);
+}
+.jbSlots li[data-tone="art"] {
+  --slot-deep: var(--pg-domain-art-deep);
+  background: var(--pg-domain-art-mid);
+}
+.jbSlots li[data-tone="nature"] {
+  --slot-deep: var(--pg-domain-nature-deep);
+  background: var(--pg-domain-nature-mid);
+}
+/* 빈 영역 — 분필 점선만 그은 빈 쪽지 자리 */
+.jbSlots li[data-none] {
+  background: none;
+  border: 2px dashed color-mix(in srgb, var(--pg-board-ink) 55%, transparent);
+  border-radius: 4px;
+  box-shadow: none;
+  color: var(--pg-board-ink-soft);
+  transform: none;
+}
+.jbIcon {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--slot-deep, var(--pg-ink-soft));
+  color: var(--pg-paper);
+}
+.jbSlots li[data-none] .jbIcon {
+  background: none;
+  border: 1.5px dashed currentColor;
+  color: var(--pg-board-ink-soft);
+}
+.jbName {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  word-break: keep-all;
+}
+.jbCount {
+  font-family: var(--font-display), sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+.jbCount b {
+  font-size: 40px;
+  color: var(--pg-ink); /* 영역 진한 색은 쪽지 위에서 3.8:1 이라 숫자는 먹색(9:1 넘음) */
+}
+.jbSlots em {
+  margin-top: 6px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 18px;
+  font-style: normal;
+  font-weight: 700;
+}
+.jbFoot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+.jbFoot p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--pg-board-ink-soft);
+}
+.jbFoot svg {
+  display: block;
+  /* 칠판 위 포스티 — 팔다리는 분필, 얼굴은 쪽지 위 먹색 그대로(어두운 칠판에서 먹색 팔다리가 묻혔다). */
+  --pg-ink: var(--pg-board-ink);
+  --pg-face: var(--paper-ink);
+}
+/* 포스티가 「초안 만들기」를 가리킨다 — 넓으면 왼쪽 아래(왼 칸 맨 아래), 좁으면 오른쪽 위(바로 위 칸 끝). */
+.jbPostyWide {
+  flex: none;
+  scale: -1 1;
+}
+.jbPostyNarrow {
+  display: none;
+  flex: none;
+}
+@media (max-width: 1100px) {
+  .jbPostyWide {
+    display: none;
+  }
+  .jbPostyNarrow {
+    display: block;
+    order: 2;
+  }
+}
+@container (max-width: 520px) {
+  .jbSlots:not([data-count="2"]) {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .jbSlots:not([data-count="2"]) li {
+    grid-column: span 2;
+  }
+  .jbSlots:not([data-count="2"]) li:nth-child(4) {
+    grid-column: 2 / span 2;
+  }
+  .jbSlots li {
+    min-height: 118px;
+  }
+  /* 칸 폭 100px 안팎 — 「아직 없어요」가 두 줄로 갈라지지 않게 */
+  .jbSlots em {
+    font-size: 15px;
+    white-space: nowrap;
+  }
+}
+@media (max-width: 600px) {
+  .jbBoard {
+    padding: 22px 16px 28px;
+  }
+  .jbBoard h2 {
+    font-size: 28px;
   }
 }

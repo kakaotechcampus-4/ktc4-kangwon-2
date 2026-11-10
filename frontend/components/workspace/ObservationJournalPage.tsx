@@ -9,7 +9,7 @@ import { createDocument, listDocuments, type DocumentSummary } from "@/lib/api/d
 import { classServerId } from "@/lib/api/onboarding";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
-import { markFor, weekStart } from "@/lib/workspace/child-mark";
+import { calledName, markFor, weekStart } from "@/lib/workspace/child-mark";
 import { ChildNote } from "@/components/app/ChildPicker";
 import { Posty } from "@/components/app/Posty";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
@@ -19,8 +19,10 @@ import { useServerDocument } from "./use-server-document";
 import { openPicker } from "./RecordsPage";
 import ObservationClassDrafts from "./ObservationClassDrafts";
 import oj from "./ObservationJournal.module.css";
+import { DOMAIN_LOOK } from "@/lib/workspace/domain-look";
+import { Icon } from "@/components/app/icons";
 
-const NO_ENTRY = { classId: "", childId: "", recordId: "" };
+const NO_ENTRY = { classId: "", childId: "", recordId: "", docId: "" };
 
 function messageFor(error: unknown) {
   return error instanceof Error ? error.message : "요청을 처리하지 못했어요.";
@@ -59,6 +61,7 @@ export default function ObservationJournalPage() {
       classId: q.get("class") ?? "",
       childId: q.get("child") ?? "",
       recordId: q.get("record") ?? "",
+      docId: q.get("doc") ?? "",
     };
   }, NO_ENTRY);
   // 관찰 기록 화면이 반을 주소로 넘긴다. 없으면 주 반을 연다 — 관찰 기록 화면과 같다.
@@ -84,6 +87,16 @@ export default function ObservationJournalPage() {
   // 만드는 동안 고르기를 잠근다 — 늦게 온 응답이 바뀐 선택을 덮지 않게 (하민 교차 검토 F4).
   const locked = busy || classBusy;
   const [openId, setOpenId] = useState("");
+  const domains = useObservationDomains();
+  // 펴 둔 일지를 주소에 적어 둔다. 다른 화면에 갔다가 뒤로 오면 그 일지가 다시 펴진다(덕철 점검).
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if ((q.get("doc") ?? "") === openId) return;
+    if (openId) q.set("doc", openId);
+    else q.delete("doc");
+    const rest = q.toString();
+    window.history.replaceState?.(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
+  }, [openId]);
 
   useEffect(() => {
     if (!classId) return;
@@ -118,9 +131,11 @@ export default function ObservationJournalPage() {
   }, [serverClass, reload]);
 
   // 기록 카드의 「이 기록으로 일지 만들기」는 그 기록 하루로, 주소에 아이만 있으면 그 아이로 연다.
+  // 주소에 일지(`doc`)가 있으면 그 일지를 편다.
   const [entryUsed, setEntryUsed] = useState(false);
   if (records && !entryUsed) {
     setEntryUsed(true);
+    if (entry.docId) setOpenId(entry.docId);
     const record = records.find((r) => r.id === entry.recordId);
     if (record) {
       setChildId(record.childId);
@@ -256,7 +271,7 @@ export default function ObservationJournalPage() {
                           <button
                             key={c.id}
                             type="button"
-                            className={`${ws.recordKid} ${none ? oj.kidNone : ""}`}
+                            className={`${ws.recordKid} ${none ? oj.kidNone : ""} tap44`}
                             aria-pressed={c.id === childId}
                             disabled={locked}
                             onClick={() => {
@@ -265,7 +280,12 @@ export default function ObservationJournalPage() {
                               setOpenId("");
                             }}
                           >
-                            <ChildNote name={c.name} mark={markFor(c.id)} size={24} />
+                            <ChildNote
+                              name={c.name}
+                              mark={markFor(c.id)}
+                              size={24}
+                              classNames={classroom.children.map((k) => k.name)}
+                            />
                             {c.name}
                             {none && <small>기록 없음</small>}
                           </button>
@@ -351,8 +371,22 @@ export default function ObservationJournalPage() {
                                 }
                               />
                               <span>
+                                {/* 영역은 관찰 기록 카드 칩과 같은 그림 · 색 */}
                                 <small>
-                                  {shortDate(r.date)} · {r.domain}
+                                  {shortDate(r.date)}
+                                  <span
+                                    className={ws.recordDomain}
+                                    data-tone={DOMAIN_LOOK[r.domain]?.tone}
+                                  >
+                                    {DOMAIN_LOOK[r.domain] && (
+                                      <Icon
+                                        name={DOMAIN_LOOK[r.domain].icon}
+                                        width={13}
+                                        height={13}
+                                      />
+                                    )}
+                                    {r.domain}
+                                  </span>
                                 </small>
                                 {r.fact}
                               </span>
@@ -379,7 +413,15 @@ export default function ObservationJournalPage() {
           </div>
 
           <div className={ws.stack}>
-            {!child && classroom?.children.length ? (
+            {child && !mine.length ? (
+              // 초안 전 — 고른 기록이 어느 영역에 몰렸는지, 빈 영역은 어디인지 칠판에 먼저 보여 준다.
+              <SourceBoard
+                name={child.name}
+                sources={sources}
+                domains={domains}
+                period={periodWord(start, end)}
+              />
+            ) : !child && classroom?.children.length ? (
               // 아이를 고르지 않았으면 반 전체 — 한 번 눌러 기록 있는 아이 전부 (ADR-083).
               <ObservationClassDrafts
                 kids={classroom.children}
@@ -471,6 +513,91 @@ function JournalEditor({
         onChanged();
       }}
     />
+  );
+}
+
+/** 기간 칩과 같은 기간이면 그 이름(「이번 주」), 아니면 날짜로. */
+function periodWord(start: string, end: string) {
+  const chip = PERIODS.find((p) => {
+    const [s, e] = p.range(today());
+    return s === start && e === end;
+  });
+  return chip ? chip.label : `${shortDate(start)} ~ ${shortDate(end)}`;
+}
+
+/**
+ * 초안 만들기 전 오른쪽 칠판 — 「가람이의 이번 주」.
+ *
+ * 다섯 영역(두 축 원은 두 칸)을 늘 같은 크기로 세운다. 고른 기록이 있는 영역은 그 영역 색 쪽지에
+ * 건수를 크게, 없는 영역은 점선 빈 쪽지에 「아직 없어요」. 영역 색 · 그림은 관찰 기록 카드와 같다.
+ * 숫자와 영역 이름은 그림이 아니라 글자라 화면 낭독기가 그대로 읽는다.
+ */
+function SourceBoard({
+  name,
+  sources,
+  domains,
+  period,
+}: {
+  name: string;
+  sources: ServerObservation[];
+  domains: readonly string[];
+  period: string;
+}) {
+  const count = (d: string) => sources.filter((r) => r.domain === d).length;
+  const first = sources[0]?.date;
+  const last = sources[sources.length - 1]?.date;
+  const missing = domains.filter((d) => !count(d)).length;
+  return (
+    <section className={`chalkboard ${ws.jbBoard}`} aria-labelledby="jb-title">
+      <h2 id="jb-title">
+        {calledName(name)}의 {period}
+      </h2>
+      {sources.length ? (
+        <p className={ws.jbStat}>
+          <b>{sources.length}</b>건 골랐어요
+          <span>
+            {first === last ? shortDate(first) : `${shortDate(first)} ~ ${shortDate(last)}`}
+          </span>
+        </p>
+      ) : (
+        <p className={ws.jbStat}>아직 고른 기록이 없어요</p>
+      )}
+      <ul className={ws.jbSlots} data-count={domains.length} aria-label="영역별로 고른 기록">
+        {domains.map((d) => {
+          const n = count(d);
+          const look = DOMAIN_LOOK[d];
+          return (
+            <li key={d} data-tone={n ? look?.tone : undefined} data-none={!n || undefined}>
+              {look && (
+                <span className={ws.jbIcon} aria-hidden="true">
+                  <Icon name={look.icon} width={14} height={14} />
+                </span>
+              )}
+              <span className={ws.jbName}>{d}</span>
+              {n ? (
+                <span className={ws.jbCount}>
+                  <b>{n}</b>건
+                </span>
+              ) : (
+                <em>아직 없어요</em>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <div className={ws.jbFoot}>
+        <span className={ws.jbPostyWide}>
+          <Posty pose="hand" face="base" tone="note" size={46} label={null} />
+        </span>
+        <span className={ws.jbPostyNarrow}>
+          <Posty pose="point" face="base" tone="note" size={46} label={null} />
+        </span>
+        <p>
+          「초안 만들기」를 누르면 이 칠판에 바로 초안이 열려요.
+          {missing > 0 && " 빈 영역은 초안에 「이 영역 관찰이 없어요」로 남아요."}
+        </p>
+      </div>
+    </section>
   );
 }
 
