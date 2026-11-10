@@ -90,6 +90,7 @@ def fill_grid(
     rows: Sequence[Sequence[str]],
     footer: Sequence[Sequence[str]],
     header: Mapping[tuple[int, int], str] | None = None,
+    lines: Mapping[str, str] | None = None,
 ) -> bytes:
     """양식 표의 본문 한 줄을 `rows` 만큼 복제해 채운다. 줄 수가 날마다 다른 일지용이다.
 
@@ -99,6 +100,9 @@ def fill_grid(
     `header` 는 머리행 안에서 채울 칸만 「(행, 열) → 글자」로 받는다. 월간 놀이계획안처럼
     머리행에 놀이 주제 · 예상 기간 같은 빈 칸이 있는 양식용이다. 주소는 한글이 칸마다 적어둔
     `hp:cellAddr` 기준이라 병합된 칸은 왼쪽 위 주소 하나로 센다.
+
+    `lines` 는 표 밖 문단의 자리 글자 → 채울 글자다. 「제목」과 같은 방식으로 바꾼다 —
+    일일 보육일지 머리의 날짜 · 날씨 줄이 이것이다.
 
     한글은 칸마다 적힌 (행, 열) 주소와 표의 `rowCnt` 로 표를 그린다. 줄을 끼워 넣으면 그 아래
     칸의 주소와 `rowCnt` 를 같이 밀어야 한다 — 하나라도 어긋나면 한글이 파일을 안 연다.
@@ -161,10 +165,15 @@ def fill_grid(
             for tc, text in zip(tcs, texts, strict=True):
                 _set_text(tc, text)
 
-    return _rewrite(template, title, fill)
+    return _rewrite(template, title, fill, lines)
 
 
-def _rewrite(template: bytes, title: str, fill: Callable[[etree._Element], None]) -> bytes:
+def _rewrite(
+    template: bytes,
+    title: str,
+    fill: Callable[[etree._Element], None],
+    lines: Mapping[str, str] | None = None,
+) -> bytes:
     """양식을 풀어 첫 번째 표를 `fill` 로 채우고, 제목 · 문서 정보 · 미리보기를 맞춰 다시 묶는다."""
     with zipfile.ZipFile(io.BytesIO(template)) as src:
         infos = src.infolist()
@@ -176,6 +185,8 @@ def _rewrite(template: bytes, title: str, fill: Callable[[etree._Element], None]
         raise TemplateMismatch("양식에 표가 없습니다.")
     fill(table)
     _set_title(section, title)
+    for placeholder, text in (lines or {}).items():
+        _set_outside(section, placeholder, text)
 
     parts[SECTION] = _dump(section)
     parts[PACKAGE] = _package(parts[PACKAGE], title)
@@ -261,13 +272,18 @@ def _cells(table: etree._Element) -> dict[tuple[int, int], etree._Element]:
 
 
 def _set_title(section: etree._Element, title: str) -> None:
+    _set_outside(section, TITLE_PLACEHOLDER, title)
+
+
+def _set_outside(section: etree._Element, placeholder: str, text: str) -> None:
+    """표 밖에서 글자가 `placeholder` 인 첫 자리를 `text` 로 바꾼다."""
     for t in section.iter(f"{{{HP}}}t"):
         in_table = any(True for _ in t.iterancestors(f"{{{HP}}}tbl"))
-        if t.text == TITLE_PLACEHOLDER and not in_table:
-            t.text = _clean(title)
+        if t.text == placeholder and not in_table:
+            t.text = _clean(text)
             _drop_layout(next(t.iterancestors(f"{{{HP}}}p")))
             return
-    raise TemplateMismatch(f"양식에 「{TITLE_PLACEHOLDER}」 자리가 없습니다.")
+    raise TemplateMismatch(f"양식에 「{placeholder}」 자리가 없습니다.")
 
 
 def _set_text(tc: etree._Element, text: str) -> None:

@@ -29,7 +29,7 @@ import { listPlayMonthly } from "@/lib/api/playMonthly";
 import { listWeeklyPlans } from "@/lib/api/weekly";
 import type { AnnualPlanSummary, PlayMonthlySummary, WeeklyPlanSummary } from "@/lib/api/types";
 import { ageSelectionLabel, selectedAgesFor, type ClassroomEntry } from "@/lib/onboarding/types";
-import type { RecordKind } from "@/lib/api/documents";
+import type { GeneratedKind } from "@/lib/api/documents";
 import { Message, ws } from "./WorkspaceUI";
 import {
   AnnualCover,
@@ -190,7 +190,7 @@ export default function DocumentArchiveView({
   preview: ReactNode;
   onOpen: (id: string) => void;
   onCloseDetail: () => void;
-  onCreate: (kind: RecordKind, options: { date: string; childId?: string }) => void;
+  onCreate: (kind: GeneratedKind, options: { date: string; childId?: string }) => void;
   detail: ReactNode;
   /** 페이지 제목 · 설명 · 기존 생성 액션. **오른쪽 본문 안에만** 그린다. */
   header: ReactNode;

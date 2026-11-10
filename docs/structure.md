@@ -24,7 +24,7 @@ tree -a --dirsfirst -I '.git|node_modules|.next|.ruff_cache'
 | `docker-compose.yml` | db · backend · frontend 3개 서비스 |
 | `.env.example` | 환경변수 예시. 실제 `.env` 는 커밋하지 않는다 |
 | `.gitignore` | 무시 목록. 비밀값 패턴이 들어 있어 함부로 지우지 않는다 |
-| `README.md` | 실행 방법과 문서 링크 |
+| `README.md` | 서비스 소개, 구조와 폴더, 실행, 테스트, 알려진 제한, 자주 찾는 문서 |
 | `CLAUDE.md` | AI 도구용 프로젝트 규칙 요약 |
 
 새 최상위 디렉터리는 팀 합의 후에 만든다.

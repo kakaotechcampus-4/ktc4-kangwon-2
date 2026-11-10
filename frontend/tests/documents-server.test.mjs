@@ -1412,9 +1412,10 @@ const evaluate = (code, modules) => {
   return compiledModule.exports;
 };
 
-function editorHarness(selection) {
+function editorHarness(selection, onEditStateChange) {
   const slots = [];
   let cursor = 0;
+  const effects = [];
   const state = (initial) => {
     const slot = cursor++;
     if (!(slot in slots)) slots[slot] = typeof initial === "function" ? initial() : initial;
@@ -1430,12 +1431,12 @@ function editorHarness(selection) {
     react: {
       useState: state,
       useRef: (initial) => state(() => ({ current: initial }))[0],
-      useEffect: () => {},
+      useEffect: (effect) => effects.push(effect),
     },
     "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
     "next/link": { __esModule: true, default: "link" },
     "@/lib/workspace/model": workspaceModel,
-    "./WorkspaceUI": { ws: {}, Message: "message", AIHint: "ai-hint", useAIStatus: () => false },
+    "./WorkspaceUI": { ws: {}, Message: "message" },
     "./document-selection": { serverIssues },
     // 실제 invalidFields 를 쓴다 — 서버가 짚은 칸을 화면 이름으로 바꾸는 길이
     // 스텁이면 "어느 칸이 틀렸나" 를 검증하지 못한다.
@@ -1457,6 +1458,7 @@ function editorHarness(selection) {
     const current = selection.get();
     tree = Editor({
       initial: current.detail,
+      onEditStateChange,
       onSave: () => {
         throw new Error("Unexpected local save");
       },
@@ -1471,6 +1473,7 @@ function editorHarness(selection) {
         reload: selection.reload,
       },
     });
+    effects.splice(0).forEach((effect) => effect());
   }
   const all = (node) => {
     if (!node || typeof node !== "object") return [];
@@ -1494,6 +1497,44 @@ function editorHarness(selection) {
     text: () => content(tree),
   };
 }
+
+test("일지 편집 상태는 저장 실패 뒤에도 미저장으로 남고 성공 뒤에만 해제된다", async () => {
+  let failing = true;
+  const saving = deferred();
+  const selection = createSelection(
+    {
+      get: async () => doc(1),
+      update: async (_id, input) => {
+        if (failing) {
+          await saving.promise;
+          throw new Error("저장 실패");
+        }
+        return doc(1, { ...input, updatedAt: "t1" });
+      },
+    },
+    describe,
+  );
+  selection.select("document:1", 1);
+  await tick();
+  const states = [];
+  const editor = editorHarness(selection, (state) => states.push(state));
+  assert.deepEqual(states.at(-1), { dirty: false, pending: false });
+  editor.textarea().props.onChange({ target: { value: "보존할 해석" } });
+  editor.render();
+  assert.deepEqual(states.at(-1), { dirty: true, pending: false });
+  const request = editor.button("초안 저장").props.onClick();
+  editor.render();
+  assert.deepEqual(states.at(-1), { dirty: true, pending: true });
+  saving.resolve();
+  await request;
+  editor.render();
+  assert.deepEqual(states.at(-1), { dirty: true, pending: false });
+  assert.equal(editor.textarea().props.value, "보존할 해석");
+  failing = false;
+  await editor.button("초안 저장").props.onClick();
+  editor.render();
+  assert.deepEqual(states.at(-1), { dirty: false, pending: false });
+});
 
 test("실제 편집기는 STALE_WRITE와 reload 실패 때 입력을 보존하고 명시적 성공 뒤 최신 문서로 복구한다", async () => {
   let gets = 0;
@@ -2118,4 +2159,19 @@ test("AI 검토 결과는 한 문장에 한 줄, 어긋난 기록 원문을 같�
   assert.match(lines[0], /^\[해석\] 「아이가 퍼즐만 했다\.」 — /);
   assert.match(lines[0], /기록에는 「아이가 블록을 쌓았다\.」로 적혀 있어요\./);
   assert.match(lines[0], / \/ 단정하는 표현이 있어요\./);
+});
+
+test("영유아 평가는 만들지 않고 올린 것만 받는다 (ADR-091)", () => {
+  // 보관함 · 증빙 등록은 네 종류를 다 다루고, 초안 만들기는 셋만 고를 수 있다.
+  assert.ok(documents.RECORD_KINDS.includes("assessment"));
+  assert.deepEqual([...documents.GENERATED_KINDS], ["dailyLog", "weeklyLog", "observation"]);
+  assert.equal(documents.isGeneratedKind("assessment"), false);
+  // 평가 점검 4-2 가 막다른 생성 화면으로 보내지 않는다.
+  for (const file of ["EvaluationAuto.tsx", "EvaluationSheet.tsx", "DocumentsPage.tsx"]) {
+    const source = readFileSync(
+      new URL(`../components/workspace/${file}`, import.meta.url),
+      "utf8",
+    );
+    assert.doesNotMatch(source, /kind=assessment|영유아 평가 쓰기/, file);
+  }
 });

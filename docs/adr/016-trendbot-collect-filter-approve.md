@@ -3,6 +3,7 @@
 - 2026-09-23
 - 상태 — 채택
 - 관련 — ADR-003(P0b 정의 일부 수정) · ADR-014(생성은 RAG, 규칙은 검사)
+- (2026-11-10 덧붙임) 아래 결정 중 지금 코드와 다른 곳은 맨 끝 「지금 코드와 다른 곳」에 모았다. 생성에 넣는 규칙은 ADR-072, 검열 3단은 ADR-070 이 이어받았다.
 
 ## 맥락
 
@@ -310,3 +311,24 @@ YouTube Data API v3 의 `search.list` 는 호출당 100 units, `playlistItems.li
 
 ③에서 LLM Judge 와 승인 절차가 같이 들어간다. 판정만 먼저 넣으면 AI 가 최종
 결정자가 되는 기간이 생긴다.
+
+## 지금 코드와 다른 곳 (2026-11-10 덧붙임)
+
+결정 문장은 그대로 두고, develop(5d247ea4) 코드와 다른 곳만 적는다. 정해지지 않은 것(정보나루 · 데이터랩 소스)은 PM 결정으로 남겼다.
+
+| 결정 | 지금 코드 | 근거 |
+|---|---|---|
+| 2. 낱말이 아니라 놀이(이름 · 어떻게 · 필요한 것 · 인원 · 공간)를 뽑는다 | 수집 자료는 제목 · 설명 원자료 그대로 둔다. 놀이로 정리하는 단계는 아직 없다(ADR-072 열린 결정) | `backend/app/features/trends/item.py` |
+| 승인 채널 20~30개의 최근 업로드를 긁는다 | 승인 채널은 15곳이다 | `backend/resources/trends/approved-sources.yaml` |
+| 검색은 새 채널 발굴용으로 한 달에 한 번 | 검색 API 는 쓰지 않는다. 새 채널은 사람이 고르고 `resolve_channels.py` 로 채널 id 를 채운다 | `scripts/resolve_channels.py` |
+| 위험 낱말 목록은 낱말마다 출처가 붙어 있다 | 파일 머리에 출처 두 곳, 무리마다 위험한 까닭 한 줄 | `backend/resources/trends/risk-words.yaml` |
+| 월요일 새벽 Actions 가 수집 · 검열 · 놀이 서술 정리 | Actions 가 수집하고 2단 위험 표시 · 3단 판정을 PR 본문에 적는다. 놀이 서술 정리는 없다 | `.github/workflows/trends-collect.yml` |
+| 계획안에 트렌드 사용 여부를 값으로 저장한다 | 따로 저장하지 않는다. 칸의 TREND 근거와 `rule_version` 의 `+trend-v1` 로 보인다. 칸 재생성은 트렌드 없이 쓴다(ADR-072) | `generate_play_monthly_plan.py` · `planner/weekly.py` |
+| [트렌드 빼기]는 생성 후에 둔다 · 트렌드에서 온 칸만 골라 다시 만든다 | 빼기 단추는 없다. 반영한 후보에 ✦ 표시만 달고, 교사가 고르지 않으면 들어가지 않는다. 주간 칸을 다시 만들면 트렌드 없이 쓴다. 놀이 중심 월간은 후보 칸 재생성이 없다 | `frontend/components/plan-ui/PlayPickBoard.tsx` · `domain/trend.py` |
+| 연간에서 트렌드 칸을 빼려면 그 달을 PUT 으로 고친다 | 연간에는 트렌드가 들어가지 않는다(ADR-072 결정 1) | `plans/weekly_router.py` · `play_monthly_router.py` |
+| 8. 캐릭터 이름은 그대로 쓴다 | 계획안 글에 채널 · 캐릭터 이름을 쓰지 않는다. 출처는 근거란에만 남는다(ADR-072 결정 11) | `planner/trend.py` · `planner/weekly.py` |
+| 4단 승인 소스인가 (2026-11-10 PM 결정) | 생성(`planning.py`)과 트렌드 화면 목록(`GET /api/trends`) 둘 다 **지금** 승인 목록과 대조한다. 머지 뒤에 목록에서 뺀 채널 · 언론사의 지난 주 자료는 화면에도 생성에도 나오지 않는다 | `backend/app/features/trends/approved.py` `is_approved` · `router.py` |
+| 5. 개별 항목을 사람이 매번 보지 않는다 · 소스 단위로만 승인한다 | **승인은 두 겹이고 둘 다 지금 쓰는 방식이다**(2026-11-10 PM 결정). ① 출처 단위 — `approved-sources.yaml` 을 고치는 PR 이 채널 · 언론사 승인이고, 목록 밖은 긁지 않는다(1단) · 화면과 생성에서도 다시 대조한다(4단). ② 줄 단위 — 주간 수집 PR 에서 사람이 2단 위험 표시 · 3단 판정이 붙은 줄을 읽고 이상한 줄을 지운 뒤 머지한다. 「매번 보지 않는다」는 ①로 대부분을 거르니 ②가 훑어보기로 끝난다는 뜻이다 | `approved-sources.yaml` · `.github/workflows/trends-collect.yml`(PR 제목 「읽고 이상한 줄을 지워주세요」) |
+| 9. API 없는 공신력 자료(KOCCA 순위 등)를 `backend/resources/trends/reference/` 에 분기마다 손으로 넣는다 | **하지 않기로 함**(2026-11-10 PM 결정). 폴더도 읽는 코드도 없다. 이유: ① 넣어도 쓰일 곳이 없다 — 생성은 승인 채널 영상만 넘기고(ADR-072 결정 2) 근거란은 그 영상의 TREND 근거다. 공신력 자료를 근거에 붙이는 칸 · 규칙이 없다. ② 분기마다 사람이 옮겨 적는 일은 맡을 사람 · 검수 절차가 없어 한 번 넣고 낡는다. 낡은 순위가 근거에 붙으면 없는 것보다 나쁘다. 다시 하려면 근거에 붙이는 규칙부터 정한다 | — |
+| 8. 노래는 동요 · 율동 채널로 한정한다 · 채널 화이트리스트에서 자동으로 걸러진다 | 승인 채널 여러 곳이 동요도 올려 화이트리스트만으로는 걸러지지 않았다. 생성에 넘길 때 승인 파일의 채널 종류가 `동요` 인 채널 것만 노래로 넘기고, 후보 글의 가사 꼴은 결정적 검사로 고쳐 쓰게 한다(2026-11-10 PM 결정, ADR-072 결정 12) | `backend/app/features/trends/planning.py` · `planner/trend.py` |
+| API 계정 — 네이버 개발자센터(검색) | 네이버 뉴스 검색은 네이버 클라우드 플랫폼 API HUB 로 옮겼다 | `backend/app/features/trends/sources.py` |

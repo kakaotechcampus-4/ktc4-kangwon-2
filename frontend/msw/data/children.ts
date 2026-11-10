@@ -3,16 +3,27 @@ import { read, commit } from "./store";
 const codes = ["가람", "보람", "다솔", "나봄", "여름", "새봄"];
 export const listChildren = (id: number) => read().children.filter((c) => c.class_id === id);
 export const hasChild = (id: number) => read().children.some((c) => c.id === id);
-export const addChild = (id: number, name: string) =>
+// 외자 판별은 서버가 한다(backend/app/shared/childCode/names.py). 목업은 흔한 성 몇 개만 본다.
+const needsCallName = (name: string) =>
+  name.length === 2 && "김이박최정강조장임한".includes(name[0]);
+export const addChild = (id: number, name: string, callName: string | null = null) =>
   commit((db) => {
     const child = {
       id: db.next++,
       class_id: id,
       name,
       code: codes[db.children.length % codes.length],
+      call_name: callName,
+      needs_call_name: needsCallName(name),
       created_at: new Date().toISOString(),
     };
     db.children.push(child);
+    return child;
+  });
+export const setCallName = (id: number, callName: string | null) =>
+  commit((db) => {
+    const child = db.children.find((c) => c.id === id)!;
+    child.call_name = callName;
     return child;
   });
 export const removeChild = (id: number) =>

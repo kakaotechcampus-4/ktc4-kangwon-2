@@ -38,13 +38,13 @@ def name_table(session: Session, class_id: int, text: str) -> NameTable | None:
     """
     center_id = select(Class.center_id).where(Class.id == class_id).scalar_subquery()
     rows = session.execute(
-        select(Child.class_id, Child.name, Child.code)
+        select(Child.class_id, Child.name, Child.code, Child.call_name)
         .join(Class, Class.id == Child.class_id)
         .where(Class.center_id == center_id)
         .order_by(Child.id)
     ).all()
-    own = [(name, code) for owner, name, code in rows if owner == class_id]
-    others = [(name, code) for owner, name, code in rows if owner != class_id]
+    own = [(name, code, call) for owner, name, code, call in rows if owner == class_id]
+    others = [(name, code, call) for owner, name, code, call in rows if owner != class_id]
     return table_for_text(load_pool(), own, others, text)
 
 
@@ -64,13 +64,20 @@ def verify_sections(
     if is_mock():
         return [], "mock"
     bodies = {s.heading: s.body for s in sections if s.heading in ("해석", "지원")}
-    whole = "\n".join([*(src.text for src in sources), *bodies.values()])
+    # 상황도 jev 로 나간다. 표를 만드는 글에 빠지면 상황에만 적은 이름이 그대로 나간다.
+    whole = "\n".join(
+        [*(src.text for src in sources), *(src.context or "" for src in sources), *bodies.values()]
+    )
     table = name_table(session, doc.class_id, whole)
 
-    def hide(text: str) -> str:
-        return text if table is None else mask(text, table)
+    def hide(text: str | None) -> str | None:
+        return text if table is None or not text else mask(text, table)
 
-    masked_sources = [Source(src.source_id, src.date, hide(src.text)) for src in sources]
+    # 초안 모델이 받은 사본 칸 그대로 — 사실 · 날짜 · 영역 · 상황 (ADR-088).
+    masked_sources = [
+        Source(src.source_id, src.date, hide(src.text), src.domain, hide(src.context))
+        for src in sources
+    ]
     masked_bodies = {h: hide(b) for h, b in bodies.items()}
     issues = judge(doc.kind, KIND_LABELS[doc.kind], masked_bodies, masked_sources, decide)
     # 문장은 가명으로 판정했다. 화면에는 교사가 쓴 이름 그대로 돌려준다 — 성을 뺀 「가명이」처럼

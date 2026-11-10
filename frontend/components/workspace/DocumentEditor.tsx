@@ -9,7 +9,7 @@ import {
   type Section,
   type Source,
 } from "@/lib/workspace/model";
-import { AIHint, Message, useAIStatus, ws } from "./WorkspaceUI";
+import { Message, ws } from "./WorkspaceUI";
 import { serverIssues } from "./document-selection";
 import { Icon } from "@/components/app/icons";
 import { invalidFields } from "@/lib/api/client";
@@ -110,10 +110,12 @@ export default function DocumentEditor({
   initial,
   onSave,
   server,
+  onEditStateChange,
 }: {
   initial: SavedDocument;
   onSave: (doc: SavedDocument, expected: SavedDocument) => boolean;
   server?: ServerDocumentActions;
+  onEditStateChange?: (state: { dirty: boolean; pending: boolean }) => void;
 }) {
   const [baseline, setBaseline] = useState(initial);
   const [doc, setDoc] = useState(initial);
@@ -131,7 +133,6 @@ export default function DocumentEditor({
   const [staleWrite, setStaleWrite] = useState(false);
   /** 사라진 근거 복구 화면이 떠 있나. 떠 있으면 초안용 「변경된 근거 반영하기」를 숨긴다. */
   const [recovering, setRecovering] = useState(false);
-  const available = useAIStatus();
   const annual = useRef<AnnualPlan | null>(null);
   const [annualError, setAnnualError] = useState(false);
   useEffect(() => {
@@ -192,6 +193,14 @@ export default function DocumentEditor({
     (!!server && !imported && ["observation", "dailyLog", "weeklyLog"].includes(doc.kind));
   // 서버 요청 중에는 입력·저장·확정·삭제가 서로 끼어들지 못한다.
   const working = busy || hwpx.exporting || !!server?.pending;
+  const dirty =
+    editable &&
+    (JSON.stringify(doc.sections) !== JSON.stringify(baseline.sections) ||
+      doc.classNote !== baseline.classNote ||
+      doc.reviewNote !== baseline.reviewNote);
+  useEffect(() => {
+    onEditStateChange?.({ dirty, pending: working });
+  }, [dirty, working, onEditStateChange]);
   function change(index: number, body: string) {
     setDoc((prev) => ({
       ...prev,
@@ -317,7 +326,7 @@ export default function DocumentEditor({
       reviewNote: confirm
         ? imported
           ? "기존 증빙 원문·대상·기간 검토 완료 (공식 평가 판정 별도)"
-          : `${available && verified ? "AI 검증 + " : ""}교사 사실·해석·지원 검토 완료`
+          : `${verified ? "AI 검증 + " : ""}교사 사실·해석·지원 검토 완료`
         : "교사 검토 전",
     });
     if (onSave(next, baseline)) {
@@ -633,7 +642,7 @@ export default function DocumentEditor({
               AI 검토는 아이 이름을 가명으로 바꾼 뒤 문장마다 기록과 대조해요. 확정은 선생님이 해요.
             </p>
           ) : (
-            <AIHint available={available} />
+            <p className={ws.hint}>이 문서는 AI 검토 대상이 아니에요. 기본 항목만 검사해요.</p>
           )}
           <button className={ws.secondary} disabled={working || stale} onClick={verify}>
             {busy

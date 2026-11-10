@@ -45,8 +45,8 @@ if crun --entrypoint sh certbot -c "test -f /etc/letsencrypt/renewal/$DOMAIN.con
   echo "이미 certbot 이 관리하는 인증서가 있다. 지우지 않고 덮어쓴다."
 fi
 
-# 1. 가짜 인증서 — nginx 를 띄우기 위한 자리끼다. 바로 덮어쓴다.
-if [ ! -f "$LIVE/fullchain.pem" ]; then
+# 1. 인증서는 호스트가 아니라 certbot 볼륨에 있다. 관리 중인 인증서는 임시본으로 덮지 않는다.
+if [ "$managed" = 0 ] && ! crun --entrypoint sh certbot -c "test -f $LIVE/fullchain.pem && test -f $LIVE/privkey.pem"; then
   echo "== 임시 인증서 =="
   crun --entrypoint sh certbot -c "
     mkdir -p $LIVE &&

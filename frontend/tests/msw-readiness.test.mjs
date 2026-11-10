@@ -274,18 +274,13 @@ test("핸들러가 없는 /api 요청만 진단 에러를 내고 나머지는 �
   };
 
   // 실제 Next Route Handler — mock 누락이 아니므로 통과시킨다.
-  assert.equal(count("http://localhost/api/assistant"), 0);
-  assert.equal(count("http://localhost/api/assistant/"), 0);
-  assert.equal(count("http://localhost/api/assistant/stream"), 0);
-  assert.equal(count("http://localhost/api/assistant/stream?type=plan"), 0);
   assert.equal(count("http://localhost/api/templates/extract"), 0);
   assert.equal(count("http://localhost/api/templates/extract/"), 0);
   assert.equal(count("http://localhost/api/templates/extract?id=1"), 0);
 
   // prefix만 닮은 주소는 실제 Route Handler가 아니므로 누락으로 잡는다.
-  assert.equal(count("http://localhost/api/assistant-wrong"), 1);
-  assert.equal(count("http://localhost/api/assistant123"), 1);
-  assert.equal(count("http://localhost/api/assistantXYZ"), 1);
+  // 지운 예전 AI 경로(/api/assistant)는 이제 mock 누락으로 잡힌다.
+  assert.equal(count("http://localhost/api/assistant"), 1);
   assert.equal(count("http://localhost/api/templates/extract-wrong"), 1);
   assert.equal(count("http://localhost/api/templates/extractABC"), 1);
 
