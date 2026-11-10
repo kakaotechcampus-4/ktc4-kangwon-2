@@ -89,3 +89,19 @@ def test_LOADTEST_환경이_없으면_거절한다():
         lc.check_env({}, False)
     lc.check_env({"LOADTEST": "1"}, False)
     lc.check_env({}, True)
+
+
+def test_요청_하나가_여러_번_불러도_첫_시작만_센다():
+    def call(run, end_s, ms):
+        ts = datetime(2026, 11, 10, 11, 0, end_s, tzinfo=UTC)
+        return {"ts": ts, "kv": {"run": run, "ms": str(ms)}}
+
+    # S2: run a 는 9초 호출 뒤에 또 9초 호출. S1(run=-)은 요청마다 하나라 전부 센다.
+    starts = lc.first_starts(
+        [call("a", 10, 9000), call("a", 19, 9000), call("-", 12, 9000), call("-", 12, 9000)]
+    )
+    assert sorted(starts) == [
+        datetime(2026, 11, 10, 11, 0, 1, tzinfo=UTC),
+        datetime(2026, 11, 10, 11, 0, 3, tzinfo=UTC),
+        datetime(2026, 11, 10, 11, 0, 3, tzinfo=UTC),
+    ]

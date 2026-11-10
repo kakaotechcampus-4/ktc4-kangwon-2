@@ -72,7 +72,7 @@ S1 의 H 는 LLM 1회, S2 의 H 는 LLM 2회 합이다. **LLM 호출이 몰릴 �
   끝나면 `gh workflow enable Deploy …` 로 켜고, 그 사이 머지된 것이 있으면 한 번 올린다. **못 막으면 미룬다** (develop 머지 = 운영 배포다).
 - [ ] **시간대**: 교사 사용이 없는 때, **백업 cron(03:15 KST = 18:15 UTC) 전에 정리까지** 끝낸다. 약 1시간 + 여유 → 02:00 KST 전에 시작.
 - [ ] **어젯밤 백업이 있다**: `ls -t ~/backup | head -2` · `aws s3 ls s3://ktc4-kangwon-2-backup/backup/ | tail -2`. 없으면 `sudo scripts/backup.sh` 를 손으로.
-- [ ] **메모리**: `free -m` 의 available 이 1.5GB 이상 (loadtest 상한 합 1.5GB). 아니면 미룬다. swap 사용량도 적어 둔다.
+- [ ] **메모리**: `free -m` 의 available 이 1.5GB 이상 (loadtest 상한 합 1.5GB + 일회용 부하기 컨테이너 수십 MB). 아니면 미룬다. swap 사용량도 적어 둔다.
 - [ ] **CPU 크레딧** (t3.medium): 콘솔 / CloudWatch `CPUCreditBalance` 를 적어 둔다. 바닥이면 미룬다. (unlimited 모드면 바닥이어도 안 느려지고 초과 요금이 붙는다 — 모드도 적어 둔다.)
 - [ ] **엘리스 이달 누적**: 콘솔(또는 담당자)에서 확인. 월 예산 ₩120,000 에 이번 상한 ₩30,000 을 더해도 넉넉한가.
   사용자가 「크레딧 넉넉」 확인으로 대신하면 그 사실을 아래 결과표에 적는다.
@@ -146,6 +146,7 @@ chk 'name: loadtest_pgdata'
 chk 'image: ssample-loadtest-backend:457'
 chk 'LOADTEST: "1"'
 chk "LLM_MODE: ${WANT_MODE:-real}"
+chk "IS_SERVER: \"${WANT_SERVER:-1}\""      # real 모드는 IS_SERVER=1 이 아니면 모든 요청이 실패한다
 chk "restart: 'no'"
 chk 'mem_limit: "?536870912'
 chk 'mem_limit: "?1073741824'
@@ -262,7 +263,9 @@ lt analyze --out /lt/out --backend-log /lt/out/$(ls -t out | grep '^backend-.*Z\
     「AI 응답이 약속한 형식이 아닙니다」(형식 위반) · 「초안이 문서 규격을 통과하지 못했습니다」(게이트 2단 반려)
   - 503 `LLM_BUDGET_EXCEEDED` → 엘리스가 401 · 403 · 429 를 냈다 (**셋을 가를 수 없다**)
   - `CLIENT_TIMEOUT`(180초) · `CONN_ERROR` → 별도 분류
-- **LLM 시작 시각 히스토그램**: `llm_call` 로그 시각 − `ms` = LLM 시작. burst 시작 t0 기준으로 **0초 · H초 · 2H초에 15개씩 몰리면 풀이 병목**이라는 직접 증거다.
+- **LLM 첫 시작 시각 히스토그램**: `llm_call` 로그 시각 − `ms` = LLM 시작. 요청 하나가 여러 번 부르면(S2 는 연달아 2번, 재시도) 처음 시작만 센다(`run=` 으로 묶는다).
+  burst 시작 t0 기준으로 **0초 · H초 · 2H초에 15개씩 몰리면 풀이 병목**이라는 직접 증거다.
+- **unexpected_error**: `경로 + 예외 클래스` 별 건수. `/api/auth/me` 쪽 풀 대기 초과(표본이 맞은 것)와 생성 경로의 것을 가른다.
 - **요청 − plan_timing 줄 수** (S2): 핸들러에 못 닿은 수. `plan_timing` 은 인증 질의(= 풀 대기) 뒤에 시작해 풀 대기를 못 본다.
 - **왕복 − total_ms** (S2): 스레드 대기 + 풀 대기 + 인증 질의 + 응답 직렬화.
 - **/auth/me**: LLM 을 안 부르는 인증 GET 의 지연 · 실패. 생성이 몰릴 때 다른 화면이 받는 피해.
@@ -318,7 +321,7 @@ free -m; df -h /
 
 - 작업 폴더를 저장소 밖에 만들고 `docker-compose.yml` · `backend/scripts/compose.loadtest.yml` · `backend/scripts/load_check.py` 를 복사한다. `out/` 도 만든다.
 - 로컬 이미지를 `docker build -t ssample-loadtest-backend:457 -f backend/Dockerfile .` 로 만든다 (서버에서는 `docker tag` 다).
-- `.env` 는 B 와 같되 `LLM_MODE=mock` · `IS_SERVER=0` 이고 엘리스 줄이 없다. 게이트는 `WANT_MODE=mock` 을 붙여 C 를 돈다.
+- `.env` 는 B 와 같되 `LLM_MODE=mock` · `IS_SERVER=0` 이고 엘리스 줄이 없다. 게이트는 `WANT_MODE=mock WANT_SERVER=0` 을 붙여 C 를 돈다.
 - 나머지(D · F · I)는 그대로 — `~/loadtest-457` 만 그 작업 폴더로 바꿔 읽는다. 망 대역 172.29.0.0/16 이 로컬 도커 망과 겹치지 않는지 A 의 `docker network inspect …` 로 먼저 본다.
 - **mock 에는 `llm_call` · `llm_usage` 줄이 없다** — LLM 시작 시각 · 원화 계산은 시험(`test_load_check.py`)과 합성 로그로만 확인했다. 실제 줄 모양은 서버 첫 단계(기준선)에서 처음 본다.
 

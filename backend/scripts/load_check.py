@@ -118,6 +118,24 @@ def llm_start_time(ts: datetime, ms: float) -> datetime:
     return ts - timedelta(milliseconds=ms)
 
 
+def first_starts(calls: list[dict]) -> list[datetime]:
+    """요청 하나가 LLM 을 여러 번 부르면(S2 는 연달아 2번, 재시도도) 처음 시작만 센다.
+
+    두 번째 호출의 시작은 풀 대기가 아니라 앞 호출이 끝난 때라서, 그대로 그리면 물결처럼 보인다.
+    `run=` 이 `-` 인 호출(S1 — 생성 실행 밖)은 요청 하나가 호출 하나라 모두 센다.
+    """
+    firsts: dict[str, datetime] = {}
+    loose = []
+    for e in calls:
+        start = llm_start_time(e["ts"], float(e["kv"].get("ms", 0)))
+        run = e["kv"].get("run", "-")
+        if run == "-":
+            loose.append(start)
+        elif run not in firsts or start < firsts[run]:
+            firsts[run] = start
+    return [*firsts.values(), *loose]
+
+
 _DOCKER_TS = re.compile(r"(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.(\d+))?Z")
 _ASCTIME = re.compile(r"(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d),(\d{3})")
 _EVENT = re.compile(r"\b(llm_call|llm_usage|plan_timing|unexpected_error)\s+\w+=")
@@ -563,9 +581,9 @@ def analyze_stage(label: str, rnds: list[dict], events: list[dict], a) -> None:
     calls = [e for e in mine if e["kind"] == "llm_call"]
     print(f"  서버 llm_call {len(calls)}건: {dict(Counter(e['kv'].get('outcome') for e in calls))}")
     errors = [e for e in mine if e["kind"] == "unexpected_error"]
-    print(
-        f"  unexpected_error {len(errors)}건: {dict(Counter(e['kv'].get('error') for e in errors))}"
-    )
+    # 경로까지 센다 — /auth/me 표본이 맞은 풀 대기 초과와 burst 요청이 맞은 것을 가른다.
+    by_path = Counter(f"{e['kv'].get('path')} {e['kv'].get('error')}" for e in errors)
+    print(f"  unexpected_error {len(errors)}건: {dict(by_path)}")
     timings = [e for e in mine if e["kind"] == "plan_timing"]
     if scenario == "s2":
         missing = len(reqs) - len(timings)
@@ -581,11 +599,12 @@ def analyze_stage(label: str, rnds: list[dict], events: list[dict], a) -> None:
         print(f"  왕복 − total_ms: {stats(gaps)}")
     else:
         print("  plan_timing: S1(일지)은 이 줄을 안 남긴다 — llm_call 시작 시각으로 본다")
-    offsets = [
-        (llm_start_time(e["ts"], float(e["kv"]["ms"])) - e["rnd"]["t0"]).total_seconds()
-        for e in calls
-    ]
-    print(f"  LLM 시작 시각 (burst t0 기준 {a.bin:g}초 칸 — 0 · H · 2H 에 몰리면 풀 병목)")
+    # 같은 회차의 t0 를 쓰려고 회차별로 나눠 처음 시작만 모은다.
+    offsets = []
+    for rnd in rnds:
+        mine_in_round = [e for e in calls if e["rnd"] is rnd]
+        offsets += [(t - rnd["t0"]).total_seconds() for t in first_starts(mine_in_round)]
+    print(f"  LLM 첫 시작 시각 (burst t0 기준 {a.bin:g}초 칸 — 0 · H · 2H 에 몰리면 풀 병목)")
     print("\n".join(histogram(offsets, a.bin)))
 
 
