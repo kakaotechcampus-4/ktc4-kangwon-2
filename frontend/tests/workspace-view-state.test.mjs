@@ -318,7 +318,10 @@ function documentsHarness({
     "next/link": { default: "link", __esModule: true },
     "@/lib/workspace/model": workspaceModel,
     // 보관함은 브라우저 저장소를 읽지 않는다. 옮기지 못한 예전 증빙 건수의 열쇠만 쓴다.
-    "@/lib/workspace/store": { DROPPED_IMPORTS: "saessak.legacyImportsDropped" },
+    "@/lib/workspace/store": {
+      DROPPED_IMPORTS: "saessak.legacyImportsDropped",
+      onLegacyImportsMoved: () => () => {},
+    },
     "@/lib/api/client": { isUnauthenticated: () => false, invalidFields },
     "@/lib/api/records": { listRecords: async () => [] },
     "@/lib/api/documents": {
@@ -694,6 +697,21 @@ test("계획안 첫 화면 「이어서 하기」는 확정 안 한 연간 · �
     null,
   );
   assert.equal(readyAnnual([]), null);
+  // 초안이든 확정이든 가장 최근 연간의 방식 — 다른 방식 「연간부터 시작하기」를 끈다.
+  const { annualFormat } = notebook.exports;
+  assert.equal(
+    annualFormat([
+      annualPlan,
+      {
+        ...annualPlan,
+        format: "PLAY_PROJECT",
+        status: "DRAFT",
+        created_at: "2026-09-12T00:00:00Z",
+      },
+    ]),
+    "PLAY_PROJECT",
+  );
+  assert.equal(annualFormat([]), null);
   // 같은 반 · 학년도에서 가장 최근에 확정한 월간이 [주간계획안 만들기] 가 여는 달이다.
   const { readyMonthly } = notebook.exports;
   const m = {

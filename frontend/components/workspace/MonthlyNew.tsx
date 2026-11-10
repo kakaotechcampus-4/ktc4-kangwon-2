@@ -39,6 +39,7 @@ import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { topicMemo } from "@/lib/api/trends";
 import { playSeason } from "@/components/plan-generator/playProjectPagination";
 import GenerationRing, { ringFinished, STOPPED_NOTE } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
@@ -438,7 +439,11 @@ export default function MonthlyNew({
   const router = useRouter();
   const [problem, setProblem] = useState("");
   const [stopped, setStopped] = useState(false);
-  const [memo, setMemo] = useState("");
+  // 트렌드 화면 [계획안에 활용하기] 가 `?topic` 으로 넘긴 글을 요청 사항 첫 값으로 둔다(ADR-072).
+  const [memo, setMemo] = useClientState(
+    () => topicMemo(typeof window === "undefined" ? "" : window.location.search),
+    "",
+  );
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
   const classes = useClasses(setProblem);
   const [chosen] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");

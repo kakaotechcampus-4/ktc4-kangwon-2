@@ -99,7 +99,7 @@ function madeInSsample(docId: string, autos: AutoIndicator[]): Made | null {
       done,
       some: item.document_ids.length > 0,
       need: children.total ? undefined : "반에 등록한 아이가 없어요",
-      go: { href: "/documents?kind=assessment", label: "영유아 평가 쓰기" },
+      // 쓰는 길은 없다 — 쌤플은 영유아 평가를 만들지 않고 올린 것만 센다(ADR-091).
       importKind: "assessment",
     };
   }
@@ -408,7 +408,7 @@ export function StampBoard({
   );
 }
 
-/** 줄 맨 앞 작은 동그라미 — 찍힌 서류는 도장판과 같은 보라 이중 원에 포스티, 빈 서류는 점선. */
+/** 줄 맨 앞 작은 동그라미 — 찍힌 서류는 도장판과 같은 빨간 이중 원에 포스티, 빈 서류는 점선. */
 function Mini({ state }: { state: "done" | "empty" | "opt" }) {
   return (
     <span className={styles.mini} data-state={state} aria-hidden="true">
@@ -637,43 +637,25 @@ function DocCard({
       ) : (
         <Sources row={row} inline={!todo} />
       )}
-      {made?.go && (
+      {made && (made.go || made.importKind) && (
         <div className={styles.docActs}>
-          {todo ? (
-            <>
-              <Link href={made.go.href} className={ws.primary}>
-                {made.go.label}
-              </Link>
-              {made.importKind && (
-                <button
-                  ref={importButton}
-                  type="button"
-                  className={ws.secondary}
-                  aria-haspopup="dialog"
-                  onClick={() => setOpen("import")}
-                >
-                  {IMPORT_LABEL[made.importKind]}
-                </button>
-              )}
-            </>
-          ) : (
-            // 찍힌 카드의 예전 서류 올리기는 쪽지 안에 숨어 있었다 — 쪽지 단추 이름이 「파일 이름 규칙」이 되며 링크 줄로 옮겼다(11-09).
-            <>
-              <Link href={made.go.href} className={styles.linkButton}>
-                {made.go.label}
-              </Link>
-              {made.importKind && (
-                <button
-                  ref={importButton}
-                  type="button"
-                  className={styles.linkButton}
-                  aria-haspopup="dialog"
-                  onClick={() => setOpen("import")}
-                >
-                  {IMPORT_LABEL[made.importKind]}
-                </button>
-              )}
-            </>
+          {made.go && (
+            <Link href={made.go.href} className={todo ? ws.primary : styles.linkButton}>
+              {made.go.label}
+            </Link>
+          )}
+          {/* 찍힌 카드의 예전 서류 올리기는 쪽지 안에 숨어 있었다 — 쪽지 단추 이름이 「파일 이름 규칙」이 되며 링크 줄로 옮겼다(11-09).
+              쓰는 길이 없는 서류(영유아 평가)는 올리기가 첫 단추다. */}
+          {made.importKind && (
+            <button
+              ref={importButton}
+              type="button"
+              className={!todo ? styles.linkButton : made.go ? ws.secondary : ws.primary}
+              aria-haspopup="dialog"
+              onClick={() => setOpen("import")}
+            >
+              {IMPORT_LABEL[made.importKind]}
+            </button>
           )}
         </div>
       )}

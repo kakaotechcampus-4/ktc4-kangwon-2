@@ -146,6 +146,8 @@ def repo(tmp_path, sh):
     """P0 → A0(리비전 a) → A1 → [side: S(리비전 b)] → M1(머지) → C. origin/develop = C.
 
     other 는 A1 에서 갈라진 다른 브랜치(X)다. 리비전 b 를 모른다.
+    main 은 develop 을 머지로만 받는다(develop→main PR).
+    P0 → N0(A0 머지, a 까지) → N1(M1 머지, b 를 들여온다). origin/main = N1.
     """
     path = tmp_path / "repo"
     path.mkdir()
@@ -188,8 +190,14 @@ def repo(tmp_path, sh):
     sha.c = commit("C", {"README.md": "z\n", "scripts/deploy.sh": F_DEPLOY_BROKEN})
     g("switch", "-q", "-c", "other", sha.a1)
     sha.x = commit("X", {"README.md": "other\n", "scripts/deploy.sh": L_DEPLOY_STUB_OLD})
+    g("switch", "-q", "-c", "main", sha.p0)
+    g("merge", "-q", "--no-ff", "-m", "N0", sha.a0)
+    sha.n0 = g("rev-parse", "HEAD")
+    g("merge", "-q", "--no-ff", "-m", "N1", sha.m1)
+    sha.n1 = g("rev-parse", "HEAD")
     g("switch", "-q", "develop")
     g("update-ref", "refs/remotes/origin/develop", sha.c)
+    g("update-ref", "refs/remotes/origin/main", sha.n1)
 
     def step(target: str, revs: str) -> str:
         proc = sh('migration_step "$1" "$2"', target, revs, cwd=path)
@@ -461,15 +469,22 @@ def test_리비전을_들여온_머지_직전_커밋으로는_건너뛴다(repo)
     assert repo.step(repo.a1, B) == f"skip {B} {repo.m1} {repo.a1}"
 
 
+def test_main_이력에서_리비전을_들여온_머지_직전_커밋으로는_건너뛴다(repo):
+    # main 배포를 되돌릴 때다(ADR-094).
+    # 직전 성공 배포 n0 은 b 를 들여온 develop→main 머지 n1 의 앞 커밋이다
+    assert repo.step(repo.n0, B) == f"skip {B} {repo.n1} {repo.n0}"
+
+
 @pytest.mark.parametrize("target", ["a0", "p0", "x"])
 def test_직전_커밋이_아니면_checkout_전에_거절한다(repo, target):
-    # 한 칸보다 멀리(a0 · p0) 또는 다른 갈래(x). CI 가 새 스키마에서 시험한 코드는 a1 하나뿐이다.
+    # 한 칸보다 멀리(a0 · p0) 또는 다른 갈래(x). CI 가 새 스키마에서 시험한 코드는 a1 · n0 뿐이다.
     out = repo.step(getattr(repo, target), B)
 
     assert out.startswith("reject ")
     assert "\n" not in out
-    # 어느 리비전이 · 어느 머지에서 · 어디로만 되는지 이유에 있다
+    # 어느 리비전이 · 어느 머지에서 · 어디로만 되는지 이유에 있다 — main 쪽과 develop 쪽 둘 다
     assert B in out and repo.m1[:8] in out and repo.a1[:8] in out
+    assert repo.n1[:8] in out and repo.n0[:8] in out
 
 
 @pytest.mark.parametrize(
@@ -494,11 +509,21 @@ def test_빈_줄이_섞여도_리비전이_하나면_읽는다(repo):
     assert repo.step(repo.c, f"\n{B}\n\n") == "upgrade"
 
 
-def test_develop_도_모르는_리비전이면_거절한다(repo):
+def test_main_도_develop_도_모르는_리비전이면_거절한다(repo):
     out = repo.step(repo.c, "cccccccccccc")
 
     assert out.startswith("reject ")
-    assert "origin/develop" in out
+    assert "origin/main" in out and "origin/develop" in out
+
+
+def test_origin_main_을_못_읽으면_develop_으로_넘어가지_않고_거절한다(sh, repo):
+    # main 쪽을 「모른다」로 뭉개면 develop 판정만으로 건너뛰게 된다. 읽지 못한 것은 멈춘다
+    git(sh.env, repo.path, "update-ref", "-d", "refs/remotes/origin/main")
+
+    out = repo.step(repo.a1, B)
+
+    assert out.startswith("reject ")
+    assert "origin/main 의 마이그레이션 폴더를 읽지 못했다" in out
 
 
 def test_올릴_커밋을_못_읽으면_거절한다(repo):
@@ -607,6 +632,17 @@ def test_main_건너뛰기면_upgrade_만_빼고_나머지는_한다(server, rep
     assert "docker compose up -d" in log
     assert not any("alembic" in line for line in log)
     assert proc.stdout.rstrip().endswith("배포 끝")
+
+
+def test_main_main_머지_직전_커밋으로_되감으면_upgrade_만_빼고_올린다(server, repo):
+    srv = server(repo.n1)
+
+    proc = srv.run(repo.n0, B)  # 서버가 fetch 한 origin/main 이력에서 n1 이 b 를 들여왔다
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert srv.head() == repo.n0
+    assert "마이그레이션을 건너뛴다" in proc.stdout
+    assert not any("alembic" in line for line in srv.log())
 
 
 @pytest.mark.parametrize("ref", ["c", "develop"])

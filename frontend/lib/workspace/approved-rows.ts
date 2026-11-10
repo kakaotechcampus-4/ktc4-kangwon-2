@@ -6,15 +6,15 @@
  * 남의 반이라 줄마다 보기와 확정본 내려받기뿐이다. 편집 화면 주소(`href`)는 늘 비운다.
  */
 
-import type { PlanPreviewTarget } from "../../components/workspace/DocumentArchivePreview";
-import type { ApiClass } from "../api/types";
-import { downloadDocumentHwpx, listDocuments } from "../api/documents";
-import { downloadAnnualHwpx, listAnnualPlans } from "../api/plans";
-import { downloadMonthlyHwpx, listMonthlyPlans } from "../api/monthly";
-import { downloadPlayMonthlyHwpx, listPlayMonthly } from "../api/playMonthly";
-import { downloadWeeklyHwpx, listWeeklyPlans } from "../api/weekly";
-import { monthLabel, weekIdLabel } from "./document-archive";
-import { DOCUMENT_KINDS } from "./model";
+import type { PlanPreviewTarget } from "@/components/workspace/DocumentArchivePreview";
+import type { ApiClass } from "@/lib/api/types";
+import { downloadDocumentHwpx, listDocuments } from "@/lib/api/documents";
+import { downloadAnnualHwpx, listAnnualPlans } from "@/lib/api/plans";
+import { downloadMonthlyHwpx, listMonthlyPlans } from "@/lib/api/monthly";
+import { downloadPlayMonthlyHwpx, listPlayMonthly } from "@/lib/api/playMonthly";
+import { downloadWeeklyHwpx, listWeeklyPlans } from "@/lib/api/weekly";
+import { monthLabel, weekIdLabel } from "@/lib/workspace/document-archive";
+import { DOCUMENT_KINDS } from "@/lib/workspace/model";
 
 export const PLAN_NAME = {
   annual: "연간 계획안",
@@ -61,12 +61,12 @@ export async function loadApprovedRows(
     ...(play ? { play: true } : {}),
   });
   // 승인된 반도 반을 짚어야 준다 — `class_id` 없는 목록은 내 반 것만이다 (§2-2).
-  const [docs, annual, monthly, playMonthly, weekly] = await Promise.allSettled([
+  const [docs, annual, monthly, weekly, playMonthly] = await Promise.allSettled([
     listDocuments({ class_id: room.id }),
     listAnnualPlans(room.id),
     listMonthlyPlans(room.id),
-    listPlayMonthly(room.id),
     listWeeklyPlans(room.id),
+    listPlayMonthly(room.id),
   ]);
   const rows: ApprovedRow[] = [];
   if (docs.status === "fulfilled")
@@ -132,7 +132,7 @@ export async function loadApprovedRows(
       });
     }
   rows.sort((a, b) => b.order.localeCompare(a.order));
-  const failed = [docs, annual, monthly, playMonthly, weekly]
+  const failed = [docs, annual, monthly, weekly, playMonthly]
     .filter((r) => r.status === "rejected")
     .map((r) => (r as PromiseRejectedResult).reason);
   return { rows, failed };

@@ -49,15 +49,22 @@ def collected(tmp_path, monkeypatch):
     return write
 
 
-def raw(source_id: str, title: str, published_at: str, description: str = "본문"):
+def raw(
+    source_id: str,
+    title: str,
+    published_at: str,
+    description: str = "본문",
+    origin: str = "꼬미쌤TV",
+    source: str = "youtube",
+):
     return {
-        "source": "youtube",
+        "source": source,
         "source_id": source_id,
         "title": title,
         "description": description,
         "url": f"https://youtu.be/{source_id}",
         "published_at": published_at,
-        "origin": "테스트채널",
+        "origin": origin,
         "facts": {},
     }
 
@@ -115,3 +122,24 @@ def test_수집이_아직_안_돌았으면_빈_목록(own_center, tmp_path, monk
 def test_원이_없으면_404(db_session, teacher, collected):
     collected("2026-W42", [raw("a", "놀이", "2026-10-16")])
     assert client.get("/api/trends").status_code == 404
+
+
+def test_승인_목록에_없는_출처는_보이지_않는다(own_center, collected):
+    """ADR-016 4단: 승인 목록에서 뺀 채널 · 언론사의 지난 자료가 화면에 남지 않는다.
+
+    생성 쪽과 같은 대조다.
+    """
+    collected(
+        "2026-W42",
+        [
+            raw("a", "승인 채널", "2026-10-16"),
+            raw("b", "빠진 채널", "2026-10-16", origin="승인 안 된 채널"),
+            raw("c", "승인 언론사", "2026-10-15", origin="ibabynews.com", source="naver_news"),
+            raw("d", "빠진 언론사", "2026-10-15", origin="example.com", source="naver_news"),
+            raw("e", "도메인을 채널로", "2026-10-15", origin="ibabynews.com"),
+            raw("f", "모르는 소스", "2026-10-15", source="instagram"),
+        ],
+    )
+    enable(own_center)
+    titles = [i["title"] for i in client.get("/api/trends").json()["items"]]
+    assert titles == ["승인 채널", "승인 언론사"]

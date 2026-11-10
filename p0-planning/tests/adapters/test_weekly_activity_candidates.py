@@ -499,6 +499,40 @@ def test_channel_or_character_name_in_a_candidate_is_repaired_once_unless_the_te
         provider.requests[1].user_content)["fix_sections"]
 
 
+LYRIC = "‘산토끼 토끼야 어디를 가느냐 깡충깡충 뛰면서 어디를 가느냐’ 노래를 부르며 "
+
+
+@pytest.mark.parametrize("fixed", [True, False])
+def test_lyrics_in_a_candidate_are_repaired_once_then_rejected(fixed):
+    """ADR-072 결정 12: 가사 꼴은 결정적 검사로 고쳐 쓰기 1회, 남으면 생성이 실패한다(저장하지 않는다)."""
+    from ssuksak.planning.planner.contracts import ProposalRejectedError, RawLlmResponse
+    from ssuksak.planning.planner.weekly import TREND_LYRICS_REPAIR
+
+    class Sung(RequestAwareWeeklyLlm):
+        def generate_weekly(self, request):
+            response = super().generate_weekly(request)
+            if request.repair_targets and fixed:
+                return response
+            answer = json.loads(response.content)
+            address = _untrended_candidate(self.requests[0])
+            section = next(s for s in answer["sections"] if s["section_key"] == address)
+            section["value"] = section["value"].replace(": ", ": " + LYRIC, 1)
+            return RawLlmResponse(json.dumps(answer, ensure_ascii=False), response.model)
+
+    provider = Sung()
+    if not fixed:
+        with pytest.raises(WeeklyApplicationError) as error:
+            _trend_generate(provider, _Trends(_trend_items()))
+        assert isinstance(error.value.__cause__, ProposalRejectedError) and len(provider.requests) == 2
+        assert "TREND_LYRICS_IN_TEXT" in error.value.__cause__.validation_codes
+        return
+    _trend_generate(provider, _Trends(_trend_items()))
+    assert len(provider.requests) == 2
+    address = _untrended_candidate(provider.requests[0])
+    assert {"section_key": address, "issue": "TREND_LYRICS_IN_TEXT", "reason": TREND_LYRICS_REPAIR} in json.loads(
+        provider.requests[1].user_content)["fix_sections"]
+
+
 @pytest.mark.parametrize("trends", [_Trends(fail=True), _Trends(())])
 def test_no_trend_or_failed_provider_sends_the_same_request(trends):
     from ssuksak.planning.planner.weekly import weekly_response_schema
