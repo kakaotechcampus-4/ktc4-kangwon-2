@@ -124,7 +124,10 @@ def rewrite_sentence(
 
     facts = [s.text for s in sources]
     try:
-        table = name_table(session, doc.class_id, "\n".join([*facts, *bodies.values()]))
+        # 이유는 화면이 다시 보내는 글이라 교사가 이름을 넣을 수 있다 — 같이 가린다.
+        table = name_table(
+            session, doc.class_id, "\n".join([*facts, *bodies.values(), body.reason])
+        )
 
         def hide(text: str) -> str:
             return text if table is None else mask(text, table)
@@ -135,7 +138,7 @@ def rewrite_sentence(
                 "칸": body.heading,
                 "문장": hide(body.sentence),
                 "방식": STYLES[body.style],
-                "이유": body.reason,
+                "이유": hide(body.reason),
                 "기록": [hide(f) for f in facts],
                 "칸 전체": hide(bodies[body.heading]),
             }

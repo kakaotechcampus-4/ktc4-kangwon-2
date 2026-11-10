@@ -771,7 +771,9 @@ def _create_document(
             session, body.class_id, "\n".join([*facts, *(c.context or "" for c in copies)])
         )
         examples = (
-            teacher_examples(session, user, body.child_id) if body.kind == "observation" else []
+            teacher_examples(session, user, body.class_id, body.child_id)
+            if body.kind == "observation"
+            else []
         )
         drafted = draft_sections(
             body.kind, copies, body.source_ids, table, sorted(domains), examples
