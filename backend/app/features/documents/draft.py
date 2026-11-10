@@ -44,6 +44,7 @@ def rule_version() -> str:
     return MOCK_RULE_VERSION if is_mock() else RULE_VERSION
 
 
+# 문서 제목에도 쓴다. `assessment` 는 초안을 만들지 않고(ADR-091) 올린 증빙 제목에만 쓴다.
 KIND_LABELS = {
     "dailyLog": "일일 보육일지",
     "weeklyLog": "주간 보육일지",

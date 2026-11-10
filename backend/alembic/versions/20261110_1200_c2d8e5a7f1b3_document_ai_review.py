@@ -7,7 +7,7 @@
 열을 더하기만 한다. 옛 코드는 새 열을 모르고 NULL 로 두므로 ADR-073 의 되감기를 지난다.
 
 Revision ID: c2d8e5a7f1b3
-Revises: b54babf0bf03
+Revises: 463ecc68c630
 Create Date: 2026-11-10 12:00:00.000000
 """
 
@@ -18,7 +18,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "c2d8e5a7f1b3"
-down_revision: str | Sequence[str] | None = "b54babf0bf03"
+down_revision: str | Sequence[str] | None = "463ecc68c630"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

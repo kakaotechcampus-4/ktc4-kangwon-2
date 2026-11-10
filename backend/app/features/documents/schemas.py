@@ -220,8 +220,11 @@ class DocumentCreateRequest(BaseModel):
     """`POST /api/documents`. 교사가 고른 근거로 초안을 만든다 (docs/api-spec.md §11).
 
     `source_ids` 는 `kind` 마다 가리키는 것이 다르다 — `dailyLog` 는 일과 기록 id,
-    `observation` · `assessment` 는 관찰 기록 id 다. 순서는 교사가 고른 순서 그대로
-    `사실` 에 이어 붙는다.
+    `observation` 은 관찰 기록 id 다. 순서는 교사가 고른 순서 그대로 `사실` 에 이어 붙는다.
+
+    **영유아 평가(`assessment`)는 만들지 않는다** (ADR-091). 우리 데이터(관찰 · 일과 기록)로는
+    발달 평가를 쓸 수 없고 실측도 없다. 원에서 쓴 평가는 `POST /api/documents/import` 로 올린다.
+    `kind: "assessment"` 를 보내면 422 `VALIDATION_FAILED` · `fields: ["kind"]` 다.
 
     `weeklyLog` 만 **두 가지**다. `source_kind` 로 고른다 —
 
@@ -235,7 +238,7 @@ class DocumentCreateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["dailyLog", "weeklyLog", "observation", "assessment"]
+    kind: Literal["dailyLog", "weeklyLog", "observation"]
     class_id: int
     child_id: int | None = None
     start: date

@@ -599,7 +599,14 @@ function recorder({ rows = [], fail = null } = {}) {
 function page(
   t,
   api,
-  { search = "", classes, rooms = [CLASS_A], primaryClassId = "class-abc", confirm = true } = {},
+  {
+    search = "",
+    classes,
+    rooms = [CLASS_A],
+    primaryClassId = "class-abc",
+    confirm = true,
+    journalState = {},
+  } = {},
 ) {
   const confirms = browser({ rooms, primaryClassId, search, confirm });
   const pushed = [];
@@ -669,12 +676,15 @@ function page(
       __esModule: true,
       default: "daily-journal",
       useDailyJournal: () => ({
+        leave: () => true,
+        pending: false,
         doc: null,
         busy: false,
         error: "",
         make: async (ids) => void journals.push(ids),
         off: true,
         leave: () => true,
+        ...journalState,
       }),
     },
     "@/lib/workspace/model": {
@@ -1943,6 +1953,7 @@ function quickRecordsPage(
     observations = [],
     routineRows = [],
     routineFail = false,
+    journalState = {},
   } = {},
 ) {
   const calls = [];
@@ -1971,13 +1982,15 @@ function quickRecordsPage(
       default: "weekly-journal-card",
       WeeklyJournalEditor: "weekly-journal-editor",
       useWeeklyJournal: () => ({
+        leave: () => true,
+        pending: false,
         doc: null,
         sources: [],
         blockedDailies: [],
         busy: false,
         off: false,
         make: () => {},
-        leave: () => true,
+        ...journalState,
       }),
     },
     "@/lib/api/records": {
@@ -2022,9 +2035,40 @@ function quickRecordsPage(
       find("button").find((node) =>
         all(node.props.children).some((part) => String(part) === String(day)),
       ),
+    weekButton: (label) => find("button").find((node) => node.props["aria-label"] === label),
     type: (node, value) => node.props.onChange({ target: { value } }),
   };
 }
+
+test("날짜·주 이동은 일지 편집기가 거절하면 유지하고 허용한 뒤에만 바뀐다", async (t) => {
+  let allowed = false;
+  const journalState = { leave: () => allowed, pending: false };
+  const daily = page(t, recorder().api, { journalState });
+  await daily.flush();
+  daily.dateInput().props.onChange({ target: { value: YESTERDAY } });
+  await daily.flush();
+  assert.equal(daily.dateInput().props.value, TODAY);
+  allowed = true;
+  daily.dateInput().props.onChange({ target: { value: YESTERDAY } });
+  await daily.flush();
+  assert.equal(daily.dateInput().props.value, YESTERDAY);
+
+  allowed = false;
+  const weekly = quickRecordsPage(t, { journalState });
+  await weekly.flush();
+  const before = weekly.calls.length;
+  weekly.weekButton("다음 주").props.onClick();
+  await weekly.flush();
+  assert.equal(weekly.calls.length, before);
+  allowed = true;
+  weekly.weekButton("다음 주").props.onClick();
+  await weekly.flush();
+  assert.equal(weekly.calls.at(-1).from, "2026-10-12");
+  journalState.pending = true;
+  weekly.render();
+  assert.equal(weekly.weekButton("지난 주").props.disabled, true);
+  assert.equal(weekly.weekButton("다음 주").props.disabled, true);
+});
 
 test("기록 모아보기는 고른 반 · 고른 날짜를 그대로 일과 기록으로 들고 간다", async (t) => {
   const view = quickRecordsPage(t);
@@ -2877,6 +2921,10 @@ function journalCard(
   const app = host();
   t.after(() => app.cleanup());
   const Card = compile("../components/workspace/WeeklyJournalCard.tsx", {
+    "./use-journal-editor": compile("../components/workspace/use-journal-editor.ts", {
+      react: app.react,
+      "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning() {} },
+    }),
     "react/jsx-runtime": runtime,
     react: app.react,
     "next/link": { default: "link" },
@@ -3125,7 +3173,10 @@ test("3차-4 저장 안 한 일지 글이 있으면 주를 옮기기 전에 묻�
   card.state().open(draftWeekly.id);
   await card.view.flush();
   assert.equal(card.state().leave(), true, "고친 것이 없으면 묻지 않는다");
-  editorOpen(card.view).props.onDirty(true);
+  // 옮겨도 되면 편집기가 닫힌다. 다시 펴고 고친다.
+  card.state().open(draftWeekly.id);
+  await card.view.flush();
+  editorOpen(card.view).props.onEditStateChange({ dirty: true, pending: false });
   await card.view.flush();
   const asked = [];
   globalThis.window = { confirm: (q) => (asked.push(q), false) };
@@ -3139,6 +3190,10 @@ function dailyCard(t, { dailies = [], day, create } = {}) {
   const app = host();
   t.after(() => app.cleanup());
   const Card = compile("../components/workspace/DailyJournalCard.tsx", {
+    "./use-journal-editor": compile("../components/workspace/use-journal-editor.ts", {
+      react: app.react,
+      "@/lib/hooks/use-unsaved-warning": { useUnsavedWarning() {} },
+    }),
     "react/jsx-runtime": runtime,
     react: app.react,
     "./WorkspaceUI": { Message: "message", ws: {} },
