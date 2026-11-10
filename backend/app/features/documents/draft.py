@@ -120,7 +120,14 @@ NAME_MASK_FAILED = "아동 이름을 가명으로 바꾸지 못해 AI 를 부르
 
 
 class DraftFailed(Exception):
-    """초안을 만들지 못했다. 부분 결과를 저장하지 않는다 (GENERATION_FAILED)."""
+    """초안을 만들지 못했다. 모델 글은 저장하지 않는다 — 라우터가 사실만 채운 초안을 준다 (ADR-093).
+
+    `reason` 은 그 초안에 남기는 까닭이다 (`generation.fallback.reason`).
+    """
+
+    def __init__(self, message: str, reason: str = "llm_failed") -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 @dataclass(frozen=True)
@@ -176,7 +183,7 @@ def draft_sections(
         # 예시는 아이가 안 나오는 문장만 왔지만(style.py), 사실과 같은 표로 한 번 더 가린다.
         examples = [hide(e) for e in examples]
     except SubstitutionError as exc:
-        raise DraftFailed(NAME_MASK_FAILED) from exc
+        raise DraftFailed(NAME_MASK_FAILED, "name_mask_failed") from exc
 
     # 가명을 되돌릴 때 교사가 적은 표기를 찾는 원문. 표를 만든 글처럼 사실 · 상황을 둘 다 넣는다.
     original = "\n".join([*(s.text for s in sources), *(s.context or "" for s in sources)])
@@ -242,8 +249,8 @@ def _generate(
         )
     except LlmUnavailable as exc:
         # 설정 문제는 교사가 고칠 수 없다. 원인을 감추지 않고 그대로 올린다.
-        # LlmBudgetExceeded 는 감싸지 않는다 — 라우터가 503 LLM_BUDGET_EXCEEDED 로 따로 낸다.
-        raise DraftFailed(str(exc)) from exc
+        # LlmBudgetExceeded 는 감싸지 않는다 — 라우터가 `budget_exceeded` 로 따로 남긴다.
+        raise DraftFailed(str(exc), "llm_unavailable") from exc
     except LlmFailed as exc:
         raise DraftFailed("AI 초안을 만들지 못했습니다. 다시 시도해주세요.") from exc
     return _parse(content)

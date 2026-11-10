@@ -1,5 +1,6 @@
 """문서(일지 계열) API. 계약은 docs/api-spec.md §11 이다."""
 
+import logging
 from datetime import UTC, date, datetime
 from typing import Annotated, Literal
 
@@ -16,6 +17,7 @@ from app.features.documents.draft import (
     KIND_LABELS,
     NAME_MASK_FAILED,
     DraftFailed,
+    DraftSection,
     draft_sections,
     rule_id,
     rule_version,
@@ -85,6 +87,7 @@ from app.shared.gates.sections import check_sections, input_extras, join_facts
 from app.shared.llm import LlmBudgetExceeded, LlmFailed, LlmUnavailable
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+logger = logging.getLogger(__name__)
 
 DbSession = Annotated[Session, Depends(get_session)]
 
@@ -221,6 +224,15 @@ def _period(start: date, end: date) -> str:
     return f"{start.month}/{start.day}~{end.month}/{end.day}"
 
 
+def _generation(doc: Document) -> DocumentGeneration:
+    return DocumentGeneration(
+        method=doc.generation_method,
+        rule_id=doc.generation_rule_id,
+        rule_version=doc.generation_rule_version,
+        fallback=doc.generation_fallback,
+    )
+
+
 def _build_detail_response(session: Session, doc: Document) -> DocumentDetailResponse:
     """단건 상세 응답을 조립한다. 단건 조회 · 생성 · 수정 · 확정이 같이 쓴다."""
     klass = session.get(Class, doc.class_id)
@@ -268,11 +280,7 @@ def _build_detail_response(session: Session, doc: Document) -> DocumentDetailRes
             )
             for s in sources
         ],
-        generation=DocumentGeneration(
-            method=doc.generation_method,
-            rule_id=doc.generation_rule_id,
-            rule_version=doc.generation_rule_version,
-        ),
+        generation=_generation(doc),
         review_note=doc.review_note,
         class_note=doc.class_note,
         ai_review=DocumentAiReview(
@@ -370,11 +378,7 @@ def list_documents(
             status=doc.status,
             origin=doc.origin,
             stale=doc.stale,
-            generation=DocumentGeneration(
-                method=doc.generation_method,
-                rule_id=doc.generation_rule_id,
-                rule_version=doc.generation_rule_version,
-            ),
+            generation=_generation(doc),
             sources_count=sources_count_value,
             ai_review_state=states.get(doc.id),
             created_at=doc.created_at,
@@ -568,7 +572,9 @@ def _create_document(
     """교사가 고른 근거로 초안을 만든다 (docs/api-spec.md §11).
 
     `사실` 은 서버가 근거 원문을 이어 붙인다 - LLM 이 만지지 않는다. 해석 · 지원만
-    `draft.py` 가 만든다. 검사(3단 게이트 1·2단)를 통과하지 못하면 아무것도 저장하지 않는다.
+    `draft.py` 가 만든다. 모델이 실패하거나 검사(3단 게이트 1·2단)를 통과하지 못하면
+    **모델 글은 버리고** 사실만 채운 초안을 준다 — 해석 · 지원은 빈 칸, `generation.fallback` 에
+    까닭을 남긴다 (fail-closed 폴백, ADR-093). 교사가 고칠 입력 오류(422)는 그대로 막는다.
     """
     fields: list[str] = []
     if body.kind in CHILD_SCOPED_KINDS and body.child_id is None:
@@ -766,6 +772,11 @@ def _create_document(
         raise _invalid(fields)
 
     facts = [c.text for c in copies]
+    # 초안을 못 만든 까닭(ADR-093). None 이면 정상 초안이다. `failure` 는 폴백을 쓸 수 없을 때
+    # (「넣어서 다시」 — 옛 초안이 남아 있다) 그대로 낼 예전 오류다.
+    fallback: str | None = None
+    failure: HTTPException | None = None
+    drafted: list[DraftSection] = []
     try:
         # 교사는 옆 반 아이 이름도 적는다. 검증 · 계획안 메모와 같게 원 전체 아이로 표를 만든다.
         # 상황(`context`)도 모델로 나간다 — 표를 만드는 글에 같이 넣는다(ADR-088).
@@ -785,43 +796,58 @@ def _create_document(
         raise _error(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "VALUE_INVALID", str(exc), ["source_ids"]
         ) from exc
-    except SubstitutionError as exc:
-        raise _error(
+    except SubstitutionError:
+        fallback = "name_mask_failed"
+        failure = _error(
             status.HTTP_500_INTERNAL_SERVER_ERROR, "GENERATION_FAILED", NAME_MASK_FAILED, []
-        ) from exc
-    except LlmBudgetExceeded as exc:
+        )
+    except LlmBudgetExceeded:
         # 예산을 넘기면 키가 지워진다. 다시 눌러도 안 되니 「다시 시도」로 뭉치지 않는다 (§공통).
-        raise _error(
+        fallback = "budget_exceeded"
+        failure = _error(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "LLM_BUDGET_EXCEEDED",
             "AI 사용 한도를 넘었습니다. 담당자에게 알려주세요.",
             [],
-        ) from exc
+        )
     except DraftFailed as exc:
-        raise _error(
-            status.HTTP_500_INTERNAL_SERVER_ERROR, "GENERATION_FAILED", str(exc), []
-        ) from exc
+        fallback = exc.reason
+        failure = _error(status.HTTP_500_INTERNAL_SERVER_ERROR, "GENERATION_FAILED", str(exc), [])
 
+    fact_section = DocumentSectionItem(
+        heading="사실", body=join_facts(facts), source_ids=body.source_ids
+    )
     sections = [
-        DocumentSectionItem(heading="사실", body=join_facts(facts), source_ids=body.source_ids),
+        fact_section,
         *(
             DocumentSectionItem(heading=d.heading, body=d.body, source_ids=d.source_ids)
             for d in drafted
         ),
     ]
-    if check_sections(
+    if fallback is None and check_sections(
         sections,
         facts,
         set(body.source_ids),
         stage="generate",
         extras=input_extras(copies, class_ages(session, body.class_id)),
     ):
-        raise _error(
+        fallback = "gate_rejected"
+        failure = _error(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "GENERATION_FAILED",
             "초안이 문서 규격을 통과하지 못했습니다. 다시 시도해주세요.",
             [],
         )
+    if fallback is not None:
+        # **걸린 글은 하나도 남기지 않는다.** 해석 · 지원은 빈 칸 — 교사가 쓴다. 근거 연결은
+        # 사실과 같게 둔다. 확정 검사가 빈 칸을 막으니 교사가 쓰기 전에는 확정되지 않는다.
+        sections = [
+            fact_section,
+            *(
+                DocumentSectionItem(heading=h, body="", source_ids=body.source_ids)
+                for h in ("해석", "지원")
+            ),
+        ]
 
     # 모델을 기다리는 동안 원본이 바뀌었을 수 있다. 저장 직전에 원본을 잠그고 다시 본다.
     # 그대로 저장하면 옛 사본이 stale=False 로 남는다 — 그 사이의 수정은 아직 사본 행이
@@ -853,9 +879,11 @@ def _create_document(
         if existing is not None and not body.replace_draft:
             response.status_code = status.HTTP_200_OK
             return _build_detail_response(session, existing)
+        if existing is not None and failure is not None:
+            # 「넣어서 다시」가 실패했다. 옛 초안이 남아 있으니 빈 초안으로 덮지 않는다.
+            raise failure
         if existing is not None:
             # 「넣어서 다시」 — 새 초안을 쓰는 같은 트랜잭션에서 지운다.
-            # 생성이 실패했으면 여기 안 온다.
             _remove_rows(session, existing)
 
     subject = child.name if child else classroom.name
@@ -874,6 +902,9 @@ def _create_document(
         generation_rule_version=rule_version(),
         review_note="",
         observation_axis=axis,
+        generation_fallback=(
+            {"reason": fallback, "at": datetime.now(UTC).isoformat()} if fallback else None
+        ),
     )
     session.add(doc)
     session.flush()
@@ -890,7 +921,12 @@ def _create_document(
             )
         )
     session.commit()
-    if body.kind == "observation":
+    if fallback is not None:
+        # 글은 찍지 않는다 — 까닭만 (ADR-004).
+        logger.warning(
+            "document_draft_fallback kind=%s document_id=%s reason=%s", body.kind, doc.id, fallback
+        )
+    elif body.kind == "observation":
         # 초안을 먼저 저장하고 검토를 붙인다 — 검토가 실패해도 초안은 남는다(ADR-083).
         doc.ai_review = review_draft(session, doc, sections, copies)
         session.commit()
@@ -1009,11 +1045,7 @@ def _list_item(row) -> DocumentListItem:
         status=doc.status,
         origin=doc.origin,
         stale=doc.stale,
-        generation=DocumentGeneration(
-            method=doc.generation_method,
-            rule_id=doc.generation_rule_id,
-            rule_version=doc.generation_rule_version,
-        ),
+        generation=_generation(doc),
         sources_count=sources_count_value,
         created_at=doc.created_at,
         updated_at=doc.updated_at,

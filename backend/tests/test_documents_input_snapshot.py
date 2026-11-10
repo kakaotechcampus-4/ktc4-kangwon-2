@@ -283,8 +283,10 @@ def test_근거에_없는_날짜는_여전히_숫자_게이트에_걸린다(sun,
 
     res = _create(sun, me, [obs], month=11)
 
-    assert res.status_code == 500
-    assert res.json()["error"]["code"] == "GENERATION_FAILED"
+    # 걸린 글은 버리고 사실만 채운 초안을 준다 (ADR-093).
+    assert res.status_code == 201, res.text
+    assert res.json()["generation"]["fallback"]["reason"] == "gate_rejected"
+    assert llm_seen["interpretation"] not in res.text
 
 
 def test_근거_날짜의_숫자는_날짜_표현에만_쓸_수_있다(sun, llm_seen):
@@ -295,8 +297,10 @@ def test_근거_날짜의_숫자는_날짜_표현에만_쓸_수_있다(sun, llm_
 
     res = _create(sun, me, [obs], month=11)
 
-    assert res.status_code == 500
-    assert res.json()["error"]["code"] == "GENERATION_FAILED"
+    # 걸린 글은 버리고 사실만 채운 초안을 준다 (ADR-093).
+    assert res.status_code == 201, res.text
+    assert res.json()["generation"]["fallback"]["reason"] == "gate_rejected"
+    assert llm_seen["interpretation"] not in res.text
 
 
 def test_상황의_숫자는_사실처럼_친다(sun, llm_seen):
