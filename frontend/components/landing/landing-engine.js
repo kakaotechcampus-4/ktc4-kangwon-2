@@ -12,7 +12,7 @@ export function startLanding() {
   document.querySelectorAll(".lp [data-pad]").forEach((pad) => {
     pad.querySelectorAll(".pad-top, .keys").forEach((el) => el.remove());
   });
-  ["kDots", "marks", "clock"].forEach((id) => {
+  ["kDots", "marks", "clock", "dayFlow"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.replaceChildren();
   });
@@ -70,13 +70,10 @@ export function startLanding() {
       '<div class="pad-top" aria-hidden="true"><b>Ssample<i>.</i></b><span class="pad-holes"><span></span><span></span><span></span></span></div><div class="keys"></div>',
     );
     const keys = pad.querySelector(".keys");
-    const decorative = pad.id === "miniPad";
     KEYS.forEach((k) => {
-      const b = document.createElement(decorative ? "div" : "button");
-      if (!decorative) {
-        b.type = "button";
-        b.setAttribute("aria-label", `${k.name} 설명으로 이동`);
-      }
+      const b = document.createElement("button");
+      b.type = "button";
+      b.setAttribute("aria-label", `${k.name} 설명으로 이동`);
       b.className = `key k-${k.id}${k.wide ? " wide" : ""}`;
       b.dataset.key = k.id;
       b.innerHTML = `<span class="k-head"><span><b>${k.name}</b><small>${k.sub}</small></span>${ICON[k.id]}</span><span class="k-peek">${k.peek}</span>`;
@@ -198,10 +195,8 @@ export function startLanding() {
     {
       t: "0850",
       ampm: "am",
-      scene: "등원 · 바깥놀이",
+      scene: "등원하고 바깥놀이",
       sub: "수요일 아침",
-      key: "obs",
-      cap: "누름 · 관찰 기록",
       title: "관찰 기록",
       quote: "도토리를 크기별로 줄 세우네. 잊기 전에 한 줄만 적어 두자.",
       bg: "#fffdf8",
@@ -210,10 +205,8 @@ export function startLanding() {
     {
       t: "1040",
       ampm: "am",
-      scene: "오전 간식 · 일과 정리",
+      scene: "간식 먹고 일과 정리",
       sub: "같은 날",
-      key: "routine",
-      cap: "누름 · 일과 기록",
       title: "일과 기록",
       quote: "오늘 일과는 어제랑 거의 같으니까, 기본 하루를 불러오면 되겠다.",
       bg: "#eef4ee",
@@ -224,8 +217,6 @@ export function startLanding() {
       ampm: "pm",
       scene: "낮잠 시간",
       sub: "40분의 틈",
-      key: "journal",
-      cap: "누름 · 보육일지",
       title: "보육일지 초안",
       quote: "낮잠 시간 40분. 오늘 일지 초안부터 열어 보자.",
       bg: "#f1ebf6",
@@ -236,8 +227,6 @@ export function startLanding() {
       ampm: "pm",
       scene: "오후 놀이 뒤",
       sub: "한 아이씩 돌아보기",
-      key: "journal",
-      cap: "누름 · 관찰일지",
       title: "관찰일지",
       quote: "이번 달 아이 A 기록이 세 건 모였네. 관찰일지로 묶어 보자.",
       bg: "#fbf3df",
@@ -248,9 +237,7 @@ export function startLanding() {
       ampm: "pm",
       scene: "하원 뒤",
       sub: "퇴근 전 30분",
-      key: "journal",
-      cap: "확정 · 한글 파일",
-      title: "보육일지 · 확정",
+      title: "보육일지 확정",
       quote: "사실 칸은 내가 적은 그대로네. 두 줄만 고치고 확정.",
       bg: "#3a3631",
       night: true,
@@ -260,8 +247,6 @@ export function startLanding() {
       ampm: "pm",
       scene: "금요일 오후",
       sub: "한 주 마무리",
-      key: "routine",
-      cap: "누름 · 주간 기록",
       title: "주간 기록",
       quote: "이번 주는 빈 날이 없네. 주간 일지도 바로 만들자.",
       bg: "#2b332e",
@@ -297,9 +282,7 @@ export function startLanding() {
     rest = document.getElementById("rest");
   const views = [...document.querySelectorAll(".view")];
   const winTitle = document.getElementById("winTitle"),
-    miniCap = document.getElementById("miniCap"),
     trackDot = document.getElementById("trackDot");
-  const miniKeys = [...document.querySelectorAll("#miniPad .key")];
   const obsLine = document.getElementById("obsLine");
   const OBS = "바깥놀이에서 도토리를 크기별로 줄 세웠다. 친구가 와서 같이 세웠다.";
   const slips = [...document.querySelectorAll("#chalk .slip")];
@@ -323,6 +306,7 @@ export function startLanding() {
     marksBox.appendChild(b);
   });
   const marks = [...marksBox.children];
+  const paintFlow = dayFlow(ICON);
   let sIdx = -1;
   function setScene(i) {
     if (i === sIdx) return;
@@ -338,9 +322,8 @@ export function startLanding() {
     trackDot.style.setProperty("--tp", `${(i / (SCENES.length - 1)) * 100}%`);
     views.forEach((v) => v.classList.toggle("on", Number(v.dataset.view) === i));
     winTitle.textContent = s.title;
-    miniCap.textContent = s.cap;
-    miniKeys.forEach((k) => k.classList.toggle("on", k.dataset.key === s.key));
-    dayLabel.textContent = `${i + 1} / ${SCENES.length} · 하루 예시 · 시간을 누르면 그 장면으로 가요`;
+    paintFlow(i);
+    dayLabel.textContent = `하루 예시 ${i + 1} / ${SCENES.length}. 시간을 누르면 그 장면으로 가요`;
     marks.forEach((m, j) => m.classList.toggle("on", j === i));
   }
   function sceneProgress(i, lp) {
@@ -365,7 +348,7 @@ export function startLanding() {
       weekDays.forEach((d, j) => {
         const on = a > j / weekDays.length;
         d.classList.toggle("fill", on);
-        d.querySelector("em").textContent = on ? `일과 6 · 관찰 ${[2, 2, 2, 1, 2][j]}` : "기록 전";
+        d.querySelector("em").textContent = on ? `일과 6, 관찰 ${[2, 2, 2, 1, 2][j]}` : "기록 전";
       });
   }
 
@@ -707,13 +690,63 @@ export function startLanding() {
       requestAnimationFrame(update);
     }
   };
+  // 창 폭이 바뀌면 칩 자리도 바뀐다 — 장면은 그대로여도 포스티를 다시 세운다.
+  const onResize = () => {
+    update();
+    paintFlow(Math.max(0, sIdx));
+  };
   addEventListener("scroll", onScroll, { passive: true });
-  addEventListener("resize", update);
+  addEventListener("resize", onResize);
   update();
   return () => {
     removeEventListener("scroll", onScroll);
-    removeEventListener("resize", update);
+    removeEventListener("resize", onResize);
     clearTimeout(kTimer);
     clearTimeout(pTimer);
+  };
+}
+
+/** 「오늘의 흐름」 화살표 그림 폭(44) 가운데 머리 끝(16)의 자리. InteractiveLanding 의 화살표 그림과 같이 바꾼다. */
+const FLOW_TIP = 16 / 44;
+
+/**
+ * 하루 장면 시계 아래 「오늘의 흐름」 — 여섯 단계를 3 + 3 두 줄로 두고, 지금 단계 칩 위로
+ * 포스티(빨간 화살표)를 옮긴다. 자리는 칩의 offset 으로 잰다 — 1440 기준 비례(zoom)를 따로 나누지 않아도 된다.
+ *
+ * @param {Record<string, string>} icon
+ * @returns {(i: number) => void} 장면 번호를 받아 칩 · 포스티를 맞춘다
+ */
+function dayFlow(icon) {
+  const list = document.getElementById("dayFlow");
+  const guide = document.getElementById("flowGuide");
+  if (!list || !guide) return () => {};
+  const STEPS = [
+    ["obs", "관찰 기록"],
+    ["routine", "일과"],
+    ["journal", "일지 초안"],
+    ["journal", "관찰일지"],
+    ["journal", "확정"],
+    ["routine", "주간 일지"],
+  ];
+  list.innerHTML = STEPS.map(([k, name]) => `<li><i>${icon[k]}</i>${name}</li>`).join("");
+  const items = [...list.children];
+  const sign = guide.querySelector(".flow-sign");
+  let at = 0;
+  const place = () => {
+    const chip = items[at];
+    // 화살표 머리 끝이 칩 가운데 위에 오게, 포스티 발은 칩 바로 위에 선다.
+    // 입체 화살표(viewBox 44)는 옆면이 오른쪽에 붙어 머리 끝이 x 16 에 있다.
+    const tip = sign.offsetLeft + sign.offsetWidth * FLOW_TIP;
+    guide.style.left = `${chip.offsetLeft + chip.offsetWidth / 2 - tip}px`;
+    guide.style.top = `${chip.offsetTop - guide.offsetHeight - 2}px`;
+  };
+  document.fonts?.ready.then(place);
+  return (i) => {
+    at = i;
+    items.forEach((li, j) => {
+      li.classList.toggle("on", j === i);
+      li.classList.toggle("done", j < i);
+    });
+    place();
   };
 }

@@ -51,7 +51,7 @@
 | 월간 수리 범위 | `p0-planning/tests/planner/test_monthly_planner.py` (`test_failed_repair_fails_closed_after_exactly_two_calls` · `test_a_repair_leaves_every_non_target_cell_byte_identical` · `test_a_patch_for_a_cell_no_finding_names_is_rejected_whole` · `test_an_unknown_reference_id_is_still_never_repaired`) | 호출 최대 2번 · 지적받지 않은 칸은 그대로 · 허락 밖 패치는 통째로 버림 · 모르는 id는 수리 안 함 |
 | 실패 시 저장 안 함 | `backend/tests/test_plans_error_mapping.py`(생성기 결과가 계약을 어기면 500 `GENERATION_FAILED` · 저장 안 됨) · `p0-planning/tests/application/test_weekly_generation.py::test_verifier_failure_saves_nothing` | 생성이 실패하면 DB에 아무것도 남지 않는다 |
 | 놀이 연간 재개 | `p0-planning/tests/application/test_play_project_generation.py` | 실패 구간만 한 번 · 겹친 후보만 한 번 · 같은 `row_key` · 요청 반영 후보는 안 바꿈 · 멈추면 저장 안 함 |
-| 겹침 검사기의 한계 | `p0-planning/tests/planner/test_play_dup_pairs.py` | 사람이 라벨한 같은 놀이 24짝 · 다른 놀이 18짝. 지금 선이 못 잡는 짝은 xfail로 남겨, 검사기를 바꾸면 바로 보이게 했다 |
+| 겹침 검사기 기준 짝 | `p0-planning/tests/planner/test_play_dup_pairs.py` | 사람이 라벨한 같은 놀이 24짝 · 다른 놀이 18짝. 지금 선 밖의 짝은 xfail로 기록해, 검사기를 바꾸면 바로 보이게 했다(뜻 기반 검사는 [improvement.md](improvement.md) §3) |
 | 주간 근거 뽑기 | `p0-planning/tests/retrieval/test_weekly_retrieval.py` | 앞 주 근거는 뒤로 · seed가 없으면 고정 상위 10 · 같은 seed는 같은 결과 · 정확 연령 기록을 따로 먼저 채우지 않음 · 혼합연령 반은 요청 연령마다 1건 (#469) |
 | 주간 API | `backend/tests/test_weekly_plans_api.py` | 앞 주차만 넘김 (#469) |
 | 호출 기록 | `test_llm_usage_log.py` | 호출마다 숫자만 남고 프롬프트 · 응답은 없다 |
@@ -66,9 +66,8 @@ CI가 PR마다 backend + planning core pytest · ruff · alembic · docker build
 | 11-10 (#469) | 12월 5주차 500 `ACTIVITY_CANDIDATE_INVALID` — 추출이 잘린 기록 2건(「…퍼즐 -」 · 「…키보」) | 섞어 뽑기 실측 → 그 주의 풀을 호출 없이 다시 계산 | 검토 목록에 2건 추가. 다시 돌려 5주 모두 201 |
 | 11-10 (#469) | seed 로그가 버려짐 — 그 주의 근거를 되살릴 수 없었음 | 위 실패를 재현하려다 발견 | logger 연결 (seed는 로그에만 둔다 — 본문 저장은 하지 않기로 함, 하민 11-10) |
 
-## 6. 아직 아닌 것
+## 6. 실제 모델로 확인한 것
 
-- 「실패 구간만 다시」 · 「겹친 후보만 다시」는 가짜 LLM으로만 확인했다. 실제 모델 30회에서 실패 · 겹침이 0건이라 그 경로를 탄 적이 없다.
 - LLM 재시도(ADR-076)는 실제 모델로 확인했다(11-10, 46원): 503 한 번 → 1.5초 뒤 재시도 → 201, 두 번 연속 → 폴백 없이 500. 시도 수는 `plan_timing llm_calls`로 남는다 — [runs/2026-11-10-retry](../evaluation/runs/2026-11-10-retry/README.md).
-- 한글 숫자(「네 개」)는 추출 대조 밖이다.
-- 근거에 없는 내용을 덧붙였는지는 검사(`UNSUPPORTED_FACT`)가 일부만 잡는다. 근거 대조 실측에서 ✗ 6개가 저장까지 갔다 — [evaluation.md](evaluation.md) §3
+- 「실패 구간만 다시」 · 「겹친 후보만 다시」는 가짜 LLM Golden으로 고정했고, 실제 모델 30회는 모두 첫 시도에 통과했다.
+- 다음 검증 고도화(재생성 실측 기록 · 한글 숫자 추출 대조 · 덧붙임 검사 범위)는 [improvement.md](improvement.md) §3에 있다.

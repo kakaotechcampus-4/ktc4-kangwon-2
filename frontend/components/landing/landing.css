@@ -152,8 +152,7 @@ html:has(.lp) {
   font-size: 14px;
 }
 @media (max-width: 900px) {
-  .lp .nav-links,
-  .lp .nav-login {
+  .lp .nav-links {
     display: none;
   }
 }
@@ -855,9 +854,10 @@ html:has(.lp) {
   gap: 7px;
   padding: 8px 13px;
   border-radius: 12px;
-  background: rgba(244, 241, 232, 0.08);
-  border: 1px solid rgba(244, 241, 232, 0.16);
-  color: var(--chalk-soft);
+  /* 덕철 점검 — 불이 안 켜진 쪽지 이름이 칠판에 묻혀 안 보였다. 켜진 것(.lit)과의 차이는 남긴다. */
+  background: rgba(244, 241, 232, 0.14);
+  border: 1px solid rgba(244, 241, 232, 0.32);
+  color: var(--chalk);
   font-size: 13.5px;
   font-weight: 500;
   white-space: nowrap;
@@ -881,7 +881,7 @@ html:has(.lp) {
   border-color: var(--chalk);
 }
 .lp .chip.dim {
-  opacity: 0.75;
+  opacity: 0.85;
 }
 @keyframes float {
   to {
@@ -1071,54 +1071,238 @@ html:has(.lp) {
   box-shadow: 0 0 0 5px rgba(112, 83, 160, 0.25);
   transition: left 0.8s var(--ease);
 }
-.lp .mini {
-  margin-top: 34px;
+/* 오늘의 흐름 — 3 + 3 두 줄. 칩 위 「길」(--lane)에 포스티가 서서 지금 칩을 가리킨다. */
+.lp .flow-box {
+  --guide: 52px;
+  --lane: calc(var(--guide) * 60 / 56 + 4px);
+  position: relative;
+  max-width: 440px;
+  margin-top: 26px;
+}
+.lp .flow-cap {
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.7;
+}
+.lp .flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--lane) 22px;
+  margin: 0;
+  padding: var(--lane) 0 0;
+  list-style: none;
+}
+.lp .flow li {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 16px;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0.55;
+  transition:
+    opacity 0.4s,
+    background-color 0.4s,
+    color 0.4s;
 }
-.lp .mini .pad {
-  --rx: 18deg;
-  --ry: -18deg;
-  width: 150px;
-  padding: 10px 10px 12px;
-  border-radius: 16px;
+/* 같은 줄 칩 사이는 → , 첫 줄 끝에서 둘째 줄로 꺾일 때는 ↴ 하나 */
+.lp .flow li:not(:nth-child(3n + 1))::before {
+  content: "→";
+  position: absolute;
+  left: -17px;
+  opacity: 0.6;
 }
-.lp .mini .pad-top {
-  margin: 0 2px 7px;
+.lp .flow li:nth-child(3)::after {
+  content: "↴";
+  position: absolute;
+  right: -18px;
+  top: 55%;
+  opacity: 0.6;
 }
-.lp .mini .pad-top b {
-  font-size: 8px;
+.lp .flow li i,
+.lp .flow li svg {
+  display: block;
+  flex: none;
+  width: 16px;
+  height: 16px;
 }
-.lp .mini .keys {
-  gap: 6px;
-}
-.lp .mini .key {
-  padding: 6px;
-  border-radius: 3px 3px 8px 3px;
-  pointer-events: none;
-}
-.lp .mini .key svg,
-.lp .mini .key small,
-.lp .mini .k-peek {
-  display: none;
-}
-.lp .mini .key {
-  min-height: 40px;
-}
-.lp .mini .key b {
-  font-size: 8.5px;
-}
-.lp .mini .key.wide {
-  min-height: 34px;
-}
-.lp .mini .key.on {
-  transform: translateZ(10px) translateY(-2px) scale(1.06);
-  outline-width: 2px;
-}
-.lp .mini-cap {
-  font-size: 13.5px;
+.lp .flow li.done {
   opacity: 0.8;
+}
+.lp .flow li.on {
+  opacity: 1;
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+.lp .flow-guide {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--guide) * 1.8);
+  height: calc(var(--guide) * 60 / 56);
+  pointer-events: none;
+  transition:
+    left 0.7s var(--ease),
+    top 0.7s var(--ease);
+}
+/* 「영차」 — 포스티가 화살표 쪽으로 몸을 기울여 두 손으로 몸통을 쥔다. 손이 화살표 위로 오게 앞에 둔다. */
+.lp .flow-heave {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 1;
+  width: var(--guide);
+  transform: rotate(9deg);
+  transform-origin: 40% 100%;
+  animation: flowHeave 1.6s ease-in-out infinite;
+}
+.lp .flow-heave svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+/* 밤 장면(어두운 바탕)에서는 팔다리 먹선이 안 보인다 — 분필색으로. 얼굴은 쪽지 위라 먹색 그대로. */
+.lp .day.night .flow-guide {
+  --pg-ink: var(--chalk);
+  --pg-face: var(--pg-board-deep, #2b332e);
+}
+/* 빨간 입체 블록 화살표(PM 지정 색). 앞면은 위가 밝은 광택, 윗면은 더 밝게, 오른 옆면은 어둡게.
+   먹테두리 없이 면마다 같은 색 둥근 선을 둘러 모서리만 살짝 굴린다. 머리 끝이 칩 바로 위에 닿는다. */
+.lp .flow-sign {
+  position: absolute;
+  left: calc(var(--guide) * 0.78);
+  bottom: 0;
+  width: calc(var(--guide) * 1.02);
+  animation: flowPush 1.6s ease-in-out infinite;
+}
+.lp .flow-sign svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.lp .flow-sign path {
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+.lp .flow-sign-top path {
+  fill: #f0766b;
+  stroke: #f0766b;
+}
+.lp .flow-sign-side path {
+  fill: #a82420;
+  stroke: #a82420;
+}
+.lp .flow-sign .flow-sign-face {
+  fill: url(#flowSignGloss);
+  stroke: #e0403b;
+}
+.lp .flow-sign .flow-sign-shine {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  opacity: 0.5;
+}
+/* 땀 한 방울 · 힘줄 · 손글씨 「영차!」 — 포스티 머리 뒤(왼쪽 위)에 뜬다 */
+.lp .flow-sweat {
+  position: absolute;
+  left: calc(var(--guide) * -0.12);
+  top: calc(var(--guide) * -0.1);
+  width: calc(var(--guide) * 0.34);
+  overflow: visible;
+}
+.lp .flow-sweat .drop {
+  fill: var(--pg-sky);
+  stroke: var(--pg-sky-ink);
+  stroke-width: 1.1;
+}
+.lp .flow-sweat .tick {
+  fill: none;
+  stroke: var(--pg-ink);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+.lp .flow-yeongcha {
+  position: absolute;
+  right: calc(100% + 2px);
+  top: calc(var(--guide) * 0.12);
+  font-family: var(--hand);
+  font-size: calc(var(--guide) * 0.36);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--pg-ink);
+  transform: rotate(-10deg);
+}
+@keyframes flowHeave {
+  0%,
+  100% {
+    transform: rotate(9deg);
+  }
+  50% {
+    transform: rotate(12deg) translateY(1px);
+  }
+}
+@keyframes flowPush {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(2px);
+  }
+}
+/* 휴대폰 — 같은 두 줄. 칩 글자와 포스티를 줄여 가로로 넘치지 않게 한다. */
+@media (max-width: 900px) {
+  /* 장면 칸이 칩 줄 때문에 화면 밖까지 넓어지지 않게 */
+  .lp .day-stage > div {
+    min-width: 0;
+  }
+  .lp .flow-box {
+    --guide: 30px;
+    margin-top: 6px;
+  }
+  /* 칩 두 줄만큼 장면 묶음이 화면보다 길어진다. 가운데 맞춤이면 시계가 위 메뉴 밑으로 잘려,
+     위부터 채우고 넘치는 몫은 창 아래 빈 자리에서 잘리게 한다. */
+  .lp .day .day-stage {
+    align-content: start;
+    padding-bottom: 8px;
+  }
+  /* 칩 두 줄이 들어간 만큼 장면 묶음을 줄여 시계가 위 메뉴 밑으로 잘리지 않게 */
+  .lp .day .clock {
+    font-size: 52px;
+  }
+  .lp .flow-cap {
+    display: none;
+  }
+  .lp .flow {
+    column-gap: 16px;
+  }
+  .lp .flow li {
+    gap: 3px;
+    padding: 3px 4px;
+    font-size: 11.5px;
+  }
+  .lp .flow li:not(:nth-child(3n + 1))::before {
+    left: -13px;
+    font-size: 11px;
+  }
+  .lp .flow li:nth-child(3)::after {
+    right: -14px;
+  }
+  .lp .flow li i,
+  .lp .flow li svg {
+    width: 12px;
+    height: 12px;
+  }
 }
 .lp .quote {
   min-height: 3.2em;
@@ -1550,9 +1734,6 @@ html:has(.lp) {
     padding-top: 70px;
     align-content: center;
   }
-  .lp .mini {
-    display: none;
-  }
   /* 좁은 화면은 장면 글이 줄을 더 바꿔 길어진다(425 폭 346px) */
   .lp .win-body {
     height: 380px;
@@ -1753,13 +1934,6 @@ html:has(.lp) {
 .lp .t-month .slot.filled {
   color: #111;
   background: #fff8e3;
-}
-.lp .t-month .slot:empty::before {
-  content: "비어 있어요";
-  color: #8a3327;
-}
-.lp .t-month .slot.filled::before {
-  content: none;
 }
 .lp .inherit {
   opacity: 0;
