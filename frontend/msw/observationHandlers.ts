@@ -50,6 +50,8 @@ export const observationHandlers = [
     const items = records
       .filter((r) => !classId || r.class_id === classId)
       .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+    // 이 화면에서 적은 것이 없으면 다음 목업(관찰일지 · 보육일지 시연 자료)으로 넘긴다 (browser.ts).
+    if (!items.length) return;
     return HttpResponse.json({ items });
   }),
   http.post("*/api/observations/domain-suggest", async ({ request }) => {

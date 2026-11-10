@@ -357,6 +357,8 @@ function documentsHarness({
     "./DocumentArchiveArt": { ArchiveNoteArt: "archive-note-art" },
     "./ChildTrackingArt": { FlowerMeadow: "flower-meadow" },
     "./DocumentCreation.module.css": { default: {}, __esModule: true },
+    "./DocumentArchive.module.css": { default: {}, __esModule: true },
+    "@/lib/workspace/document-archive": archiveNavigation,
     "./DocumentArchivePreview": { default: "preview", __esModule: true },
     "./DocumentEditor": { default: "editor", __esModule: true },
     "./use-server-document": {
@@ -442,6 +444,7 @@ function documentsHarness({
     },
     pickClass: (id) => pickClass(id),
     links: () => nodes(tree).filter((node) => node.type === "link"),
+    nodes: () => nodes(tree),
     selection: () => selection,
     editor: () => nodes(tree).find((node) => node.type === "editor"),
     text: () => content(tree),
@@ -804,4 +807,21 @@ test("계획안을 먼저 받으면 일지가 오는 중이어도 계획안부�
   assert.ok(page.text().includes("2026학년도 연간 보육계획안"));
   assert.ok(page.text().includes(serverDocument.title));
   assert.equal(page.text().includes("일지를 불러오고 있어요"), false);
+});
+
+test("FR-701 제목 찾기는 받은 일지 · 계획안에서 거르고, 상태를 고르면 계획안도 거른다", async () => {
+  const page = documentsHarness({ items: [serverDocument], plans: [annualPlan] });
+  await page.mount();
+  const control = (label) => page.nodes().find((n) => n.props?.["aria-label"] === label);
+  control("제목 찾기").props.onChange({ target: { value: "연간" } });
+  page.render();
+  assert.equal(page.text().includes(serverDocument.title), false);
+  assert.ok(page.text().includes("2026학년도 연간 보육계획안"));
+  control("제목 찾기").props.onChange({ target: { value: "" } });
+  page.render();
+  control("상태").props.onChange({ target: { value: "DRAFT" } });
+  page.render();
+  // 확정한 계획안은 빠진다. 일지는 서버가 거른 목록을 따로 받는다(받기 전에는 비어 있다).
+  assert.equal(page.text().includes("2026학년도 연간 보육계획안"), false);
+  assert.equal(page.text().includes(serverDocument.title), false);
 });

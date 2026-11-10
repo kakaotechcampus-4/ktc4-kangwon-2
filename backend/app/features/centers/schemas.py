@@ -254,6 +254,9 @@ class GreetingItem(BaseModel):
 
 # 고를 수 있는 축. 목록을 다시 적지 않는다 — observations/models.py 의 AXES 가 출처다.
 ObservationAxis = Literal[tuple(AXES)]  # type: ignore[valid-type]
+# 실물 일지 표기 — A원 「(반영)」, 울산센터 매뉴얼 「(놀이반영)」, 대부분은 표기 없이 잇는다
+# (journal-form-resurvey.md 주장 7). 빈 문자열이 「붙이지 않음」이다.
+ReflectMark = Literal["(반영)", "(놀이반영)", ""]
 
 
 class CenterSettings(BaseModel):
@@ -268,6 +271,8 @@ class CenterSettings(BaseModel):
     weekly_saturday_enabled: Annotated[bool, Field(strict=True)]
     # 관찰 기록의 영역 축. 화면이 영역 고르는 칸을 이 값으로 그린다 (observations AXES).
     observation_axis: ObservationAxis
+    # 어제 지원을 반영한 일과 줄에 종이가 붙이는 글자 (ADR-086).
+    reflect_mark: ReflectMark
 
 
 class CenterSettingsUpdate(BaseModel):
@@ -284,6 +289,7 @@ class CenterSettingsUpdate(BaseModel):
     # **이미 쌓인 기록은 그대로 둔다.** 축을 바꿔도 전에 쓴 영역 이름은 살아 있다 —
     # 지우면 교사가 쓴 사실이 사라진다. 새 기록부터 새 축을 쓴다.
     observation_axis: ObservationAxis | None = None
+    reflect_mark: ReflectMark | None = None
 
     @field_validator("trends_enabled", "weekly_saturday_enabled")
     @classmethod
