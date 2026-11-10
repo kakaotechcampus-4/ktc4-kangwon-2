@@ -21,10 +21,10 @@ import { Posty } from "@/components/app/Posty";
 const input =
   "mt-0.5 block h-11 w-full rounded-none font-body font-normal tracking-normal text-ink border-0 border-b-[1.5px] border-[color:var(--pg-field-line)] bg-transparent px-0.5 text-base outline-none " +
   "placeholder:text-ink-hint hover:border-ink-soft focus:border-b-2 focus:border-primary";
-// 공책에 붙인 견출지처럼 둥근 단추
+// 쪽지 판 화면 안의 둥근 단추. 그림자는 없다 — 판이 이미 떠 있다
 export const button =
   "flex h-[50px] w-full items-center justify-center gap-2 rounded-full border border-primary-line " +
-  "bg-primary px-5 text-[15px] font-bold text-white shadow-pg-card transition-transform hover:-translate-x-px hover:-translate-y-px hover:bg-primary-hover active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:cursor-progress disabled:opacity-80";
+  "bg-primary px-5 text-[15px] font-bold text-white transition-transform hover:-translate-x-px hover:-translate-y-px hover:bg-primary-hover active:translate-x-0.5 active:translate-y-0.5 disabled:cursor-progress disabled:opacity-80";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // 제목은 손글씨, 입력 칸 이름은 작은 크기에서도 읽기 쉬운 본문 글꼴을 쓴다.
 const label = "block font-body text-sm font-semibold text-ink-soft focus-within:text-primary-ink";
@@ -94,7 +94,7 @@ export default function AccountForm({ signup = false }: { signup?: boolean }) {
   const submitLabel = busy ? `${actionLabel} 중…` : actionLabel;
   return (
     <AuthFrame>
-      <h2 className="font-display text-[36px] font-bold leading-[1.2]">
+      <h2 className="font-display text-[34px] font-bold leading-[1.2]">
         {signup ? "쌤플과 함께 시작해요" : "반가워요, 선생님"}
       </h2>
       <p className="mt-1.5 text-sm leading-relaxed text-ink-soft [word-break:keep-all]">
@@ -231,7 +231,7 @@ function SignupDone() {
       <h2
         ref={heading}
         tabIndex={-1}
-        className="font-display text-[36px] font-bold leading-[1.2] outline-none"
+        className="font-display text-[34px] font-bold leading-[1.2] outline-none"
       >
         가입을 완료했어요
       </h2>
