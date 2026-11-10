@@ -4,6 +4,7 @@
 main.py 가 `/api` 만 붙인다.
 """
 
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -112,7 +113,7 @@ def create_child(
     # 선행 등록의 커밋을 보므로 code 중복과 양방향 이름 충돌을 함께 막는다.
     classroom = session.get(Class, class_id, with_for_update=True, populate_existing=True)
     # 잠근 행으로 본다 — 동의 끄기(PATCH /api/classes/{id})와 겹쳐도 어긋나지 않는다.
-    if classroom.consent_confirmed_at is None:
+    if classroom.consent_confirmed_at is None:  # type: ignore[union-attr]
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             detail={
@@ -173,7 +174,7 @@ def track_children(class_id: int, session: DbSession, user: CurrentUser) -> Chil
         .group_by(Observation.child_id, Observation.domain)
     ).all()
     counts: dict[int, dict[str, int]] = {}
-    last: dict[int, object] = {}
+    last: dict[int, date] = {}
     for child_id, domain, count, latest in rows:
         counts.setdefault(child_id, {})[domain] = count
         last[child_id] = max(latest, last.get(child_id, latest))

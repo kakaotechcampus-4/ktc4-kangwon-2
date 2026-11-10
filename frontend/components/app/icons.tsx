@@ -33,6 +33,7 @@ export type IconName =
   | "pause"
   | "play"
   | "refresh"
+  | "trash"
   | "logout";
 
 const PATHS: Record<IconName, React.ReactNode> = {
@@ -111,8 +112,9 @@ const PATHS: Record<IconName, React.ReactNode> = {
   ),
   bell: (
     <>
-      <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" />
-      <path d="M10 20a2 2 0 0 0 4 0" />
+      <circle cx="12" cy="3.4" r="1.3" />
+      <path d="M12 4.7c-3.2 0-5.5 2.5-5.5 6V14c0 1.5-1.2 2.6-1.9 3.2-.5.5-.2 1.3.5 1.3h13.8c.7 0 1-.8.5-1.3-.7-.6-1.9-1.7-1.9-3.2v-3.3c0-3.5-2.3-6-5.5-6z" />
+      <path d="M10.5 18.5a1.5 1.5 0 0 0 3 0" />
     </>
   ),
   chevron: <path d="m9 6 6 6-6 6" />,
@@ -126,6 +128,8 @@ const PATHS: Record<IconName, React.ReactNode> = {
     </>
   ),
   check: <path d="m4 12.5 5.5 5.5L20 7" />,
+  // 휴지통 — 지우기 단추. 글자와 같이 쓴다.
+  trash: <path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />,
   mic: (
     <>
       <rect x="9" y="3" width="6" height="11" rx="3" />

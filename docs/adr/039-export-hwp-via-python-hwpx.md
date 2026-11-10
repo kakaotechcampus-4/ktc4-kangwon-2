@@ -70,6 +70,7 @@ ADR-021 의 결정 1(hwpx 로 내보냄) · 2(표를 새로 그리지 않음) ·
 
 - 교사는 확정한 연간계획안 · 관찰일지 · 일일 보육일지를 `.hwp` 로도 받을 수 있다.
   화면 버튼은 아직 없다 — 화면은 요청 끝에 `?format=hwp` 를 붙이면 된다.
+  (2026-11-10 덧붙임) 관찰일지 화면에는 hwpx · hwp · pdf 단추가 있다(`ObservationJournalEditor.tsx`). 일일 · 주간 보육일지 편집기는 hwpx 만 받는다(`DocumentEditor.tsx`).
 - **backend 의 lxml 이 7 미만으로 묶인다.** python-hwpx 6.8.0 이 `lxml>=4.9,<7` 을 요구한다.
   지금 lxml 정식판이 6.1.3 이라 당장은 바뀌는 것이 없다. lxml 7 이 나와도 python-hwpx 를 올리기 전까지 6.x 다.
 - **python-hwpx 를 올리거나 양식을 바꾸면 세 양식을 `.hwp` 로도 바꿔 한글에서 연다.**

@@ -12,6 +12,7 @@
 `revision` 이다(결정 문서 12.4 D-3). 비교와 409 는 편집 API 가 한다.
 """
 
+import uuid
 from datetime import datetime
 
 from sqlalchemy import (
@@ -19,8 +20,10 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     UniqueConstraint,
+    Uuid,
     func,
     text,
 )
@@ -147,4 +150,68 @@ class Plan(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class GenerationRun(Base):
+    """생성 요청 한 번의 기록 — 어디까지 갔고 어떻게 끝났는지. **숫자와 이름만 든다** (ADR-096).
+
+    프롬프트 · 응답 본문 · 반 이름 · 아이 정보 · 요청 사항 원문 · 예외 문장 · 트렌드 상태는 없다.
+    작업 큐가 아니다 — 생성은 요청 스레드가 처음부터 끝까지 하고, 이 표는 그 자취를 적을 뿐이다.
+    `class_id` · `center_id` 에 FK 가 없는 것은 진짜 commit 하는 테스트가 반 · 원을 지우기 때문이다.
+    """
+
+    __tablename__ = "generation_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('annual_theme','annual_play','monthly_theme','monthly_play','weekly')",
+            name="kind",
+        ),
+        CheckConstraint("status IN ('RUNNING','SUCCEEDED','FAILED','STOPPED')", name="status"),
+        CheckConstraint("mode IN ('mock','real')", name="mode"),
+        CheckConstraint("(status = 'RUNNING') = (finished_at IS NULL)", name="finished_when_done"),
+        Index("ix_generation_runs_class_id_started_at", "class_id", "started_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, comment="화면이 X-Generation-Run-Id 로 준 값. 없으면 서버가 만든다"
+    )
+    kind: Mapped[str] = mapped_column(
+        String(20), comment="annual_theme | annual_play | monthly_theme | monthly_play | weekly"
+    )
+    center_id: Mapped[int] = mapped_column(
+        Integer, comment="원 격리용. 단건 조회가 먼저 이 값으로 거른다. FK 없음"
+    )
+    class_id: Mapped[int] = mapped_column(Integer, comment="classes.id. FK 없음")
+    plan_id: Mapped[int | None] = mapped_column(
+        ForeignKey("plans.id", ondelete="SET NULL"),
+        index=True,
+        comment="만들어진 계획안. 계획안을 지워도 기록은 남는다",
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), comment="RUNNING | SUCCEEDED | FAILED | STOPPED. UNKNOWN 은 읽을 때 만든다"
+    )
+    stage: Mapped[str] = mapped_column(
+        String(20), comment="종류별 단계 키. 앞으로만 간다. 실패하면 실패한 단계가 남는다"
+    )
+    error_code: Mapped[str | None] = mapped_column(
+        String(50), comment="계약 오류 코드. 문장은 저장하지 않는다"
+    )
+    mode: Mapped[str] = mapped_column(String(10), comment="mock | real. 첫 줄을 쓸 때의 LLM_MODE")
+    model: Mapped[str | None] = mapped_column(
+        String(100), comment="LLM 을 한 번이라도 불렀으면 그 모델. 끝날 때만 채운다"
+    )
+    prompt_versions: Mapped[list | None] = mapped_column(
+        JSONB(none_as_null=True),
+        comment="이 실행이 만든 LLM 요청의 프롬프트 판 이름들. 처음 쓴 순서, 중복 없이",
+    )
+    llm_calls: Mapped[int | None] = mapped_column(
+        Integer, comment="LLM 시도 수(재시도 포함). 끝날 때 채운다"
+    )
+    phase_ms: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), comment="구간 이름 -> 걸린 ms. 끝날 때 채운다"
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), comment="끝난 시각. RUNNING 이면 NULL"
     )

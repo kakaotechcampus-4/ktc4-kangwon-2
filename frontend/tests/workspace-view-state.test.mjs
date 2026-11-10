@@ -259,12 +259,11 @@ const serverDocument = {
   sections: [],
   reviewNote: "기존 검토 메모",
 };
-const localDocuments = [
-  { ...serverDocument, id: "import-uuid", title: "로컬 증빙", origin: "import" },
-  { ...serverDocument, id: "plan-uuid", title: "로컬 계획안", kind: "annual", origin: "template" },
-];
 const LIST_FAILURE = "문서 목록을 다시 불러오지 못했어요.";
 const PLAN_FAILURE = "계획안 서버 오류";
+// 보관함 위 알림 띠는 서버 문구 대신 무엇이 실패했는지만 한 줄로 말한다.
+const LIST_NOTICE = "문서 목록을 불러오지 못했어요";
+const PLAN_NOTICE = "계획안 목록을 불러오지 못했어요";
 const annualPlan = {
   id: 5,
   class_id: 3,
@@ -278,12 +277,12 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 function documentsHarness({
   items = [],
-  local = [],
   fail = false,
   plans = [],
   planFail = false,
   planPending = false,
   listPending = false,
+  unauth = false,
 } = {}) {
   // listPending 이면 일지 목록 응답을 releaseList() 를 부를 때까지 붙잡아 둔다.
   let releaseList;
@@ -322,18 +321,12 @@ function documentsHarness({
     "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
     "next/link": { default: "link", __esModule: true },
     "@/lib/workspace/model": workspaceModel,
+    // 보관함은 브라우저 저장소를 읽지 않는다. 옮기지 못한 예전 증빙 건수의 열쇠만 쓴다.
     "@/lib/workspace/store": {
-      useWorkspace: () => ({
-        data: {
-          documents: local,
-          observations: [],
-          templates: [],
-          criteria: [],
-        },
-        error: "",
-      }),
+      DROPPED_IMPORTS: "saessak.legacyImportsDropped",
+      onLegacyImportsMoved: () => () => {},
     },
-    "@/lib/api/client": { isUnauthenticated: () => false, invalidFields },
+    "@/lib/api/client": { isUnauthenticated: () => unauth, invalidFields },
     "@/lib/api/records": { listRecords: async () => [] },
     "@/lib/api/documents": {
       ...documentApi,
@@ -368,6 +361,8 @@ function documentsHarness({
     "./DocumentArchiveArt": { ArchiveNoteArt: "archive-note-art" },
     "./ChildTrackingArt": { FlowerMeadow: "flower-meadow" },
     "./DocumentCreation.module.css": { default: {}, __esModule: true },
+    "./DocumentArchive.module.css": { default: {}, __esModule: true },
+    "@/lib/workspace/document-archive": archiveNavigation,
     "./DocumentArchivePreview": { default: "preview", __esModule: true },
     "./DocumentEditor": { default: "editor", __esModule: true },
     "./use-server-document": {
@@ -453,6 +448,7 @@ function documentsHarness({
     },
     pickClass: (id) => pickClass(id),
     links: () => nodes(tree).filter((node) => node.type === "link"),
+    nodes: () => nodes(tree),
     selection: () => selection,
     editor: () => nodes(tree).find((node) => node.type === "editor"),
     text: () => content(tree),
@@ -462,11 +458,9 @@ function documentsHarness({
   };
 }
 
-test("문서 목록 재조회 실패는 기존 목록·선택 문서·로컬 문서를 유지하고 재시도할 수 있다", async () => {
-  const page = documentsHarness({ items: [serverDocument], local: localDocuments });
-  // 로컬 증빙은 바로 있으니 일지를 기다리지 않고 먼저 그린다.
-  assert.match(page.text(), /일지를 불러오고 있어요/);
-  assert.ok(page.text().includes(localDocuments[0].title));
+test("문서 목록 재조회 실패는 기존 목록·선택 문서를 유지하고 재시도할 수 있다", async () => {
+  const page = documentsHarness({ items: [serverDocument] });
+  assert.match(page.text(), /문서 목록을 불러오고 있어요/);
   await page.mount();
   page.button(serverDocument.title).props.onClick();
   await settle();
@@ -477,31 +471,16 @@ test("문서 목록 재조회 실패는 기존 목록·선택 문서·로컬 문
   await before.props.server.save([], "기존 검토 메모");
   await settle();
   page.render();
-  for (const doc of [serverDocument, localDocuments[0]]) assert.ok(page.text().includes(doc.title));
+  assert.ok(page.text().includes(serverDocument.title));
   assert.equal(page.editor().key, before.key);
   assert.strictEqual(page.editor().props.initial, before.props.initial);
   assert.equal(page.selection().get().active, serverDocument.id);
   assert.equal(page.errors().length, 1);
-  assert.match(page.text(), new RegExp(LIST_FAILURE));
+  assert.ok(page.text().includes(LIST_NOTICE));
   page.fail(false);
   await page.button("다시 시도").props.onClick();
   page.render();
   assert.equal(page.errors().length, 0);
-  assert.equal(page.editor().key, before.key);
-});
-
-test("서버 목록이 없어도 로컬 증빙은 오류와 함께 표시하고 선택할 수 있다", async () => {
-  const page = documentsHarness({ local: localDocuments, fail: true });
-  await page.mount();
-  assert.ok(page.text().includes(localDocuments[0].title));
-  // 브라우저에 남은 옛 계획안은 읽지 않는다 — 계획안은 서버 목록에서 온다.
-  assert.equal(page.text().includes(localDocuments[1].title), false);
-  page.button(localDocuments[0].title).props.onClick();
-  page.render();
-  const before = page.editor();
-  assert.strictEqual(before.props.initial, localDocuments[0]);
-  await page.button("다시 시도").props.onClick();
-  page.render();
   assert.equal(page.editor().key, before.key);
 });
 
@@ -767,27 +746,62 @@ test("일지와 연간계획안을 각자 보관함 뷰로 넘긴다", async () 
   assert.equal(link.props.href, "/plans/annual/5");
   // 지워진 전체 목록(필터 · 검색)을 다시 띄우지 않는다.
   assert.equal(page.text().includes("전체 문서 목록"), false);
-  assert.equal(page.button("확정"), undefined);
+  // 「확정」 거르개 칩(aria-pressed)은 빼고 본다 — 확정하는 단추가 없어야 한다.
+  assert.equal(
+    page
+      .nodes()
+      .some(
+        (node) =>
+          node.type === "button" &&
+          !("aria-pressed" in node.props) &&
+          texts(node).join("").includes("확정"),
+      ),
+    false,
+  );
 });
 
 test("계획안 목록만 실패하면 일지는 그대로 보이고 계획안만 다시 시도한다", async () => {
   const page = documentsHarness({ items: [serverDocument], planFail: true });
   await page.mount();
   assert.ok(page.text().includes(serverDocument.title));
-  assert.match(page.text(), new RegExp(PLAN_FAILURE));
-  assert.ok(page.button("계획안 다시 시도"));
+  assert.ok(page.text().includes(PLAN_NOTICE));
+  assert.ok(page.button("다시 시도"));
   page.planFail(false);
-  await page.button("계획안 다시 시도").props.onClick();
+  await page.button("다시 시도").props.onClick();
   page.render();
-  assert.equal(page.button("계획안 다시 시도"), undefined);
+  assert.equal(page.button("다시 시도"), undefined);
 });
 
 test("일지 목록만 실패해도 받은 계획안은 그린다", async () => {
   const page = documentsHarness({ fail: true, plans: [annualPlan] });
   await page.mount();
   assert.ok(page.text().includes("2026학년도 연간 보육계획안"));
-  assert.match(page.text(), new RegExp(LIST_FAILURE));
+  assert.ok(page.text().includes(LIST_NOTICE));
   assert.ok(page.button("다시 시도"));
+});
+
+test("일지 · 계획안이 같이 실패하면 띠 한 줄 · 단추 하나로 둘 다 다시 부른다", async () => {
+  const page = documentsHarness({ fail: true, planFail: true });
+  await page.mount();
+  assert.equal(page.errors().length, 1);
+  assert.ok(page.text().includes("문서 목록 · 계획안 목록을 불러오지 못했어요"));
+  page.fail(false);
+  page.planFail(false);
+  await page.button("다시 시도").props.onClick();
+  await settle();
+  page.render();
+  assert.equal(page.errors().length, 0);
+  assert.equal(page.button("다시 시도"), undefined);
+});
+
+test("로그인이 끊기면 다른 실패는 숨기고 「다시 로그인」만 띄운다", async () => {
+  const page = documentsHarness({ fail: true, planFail: true, unauth: true });
+  await page.mount();
+  assert.equal(page.errors().length, 1);
+  assert.ok(page.text().includes("로그인이 끊겼어요"));
+  assert.equal(page.text().includes("불러오지 못했어요"), false);
+  assert.equal(page.button("다시 시도"), undefined);
+  assert.ok(page.links().some((node) => node.props.href === "/login"));
 });
 
 test("보관함에는 상단 문서 만들기 단추를 두지 않는다", async () => {
@@ -804,7 +818,7 @@ test("보관함에는 상단 문서 만들기 단추를 두지 않는다", async
 test("계획안 목록만 실패하고 일지가 없으면 「문서가 없다」고 하지 않는다", async () => {
   const page = documentsHarness({ planFail: true });
   await page.mount();
-  assert.match(page.text(), new RegExp(PLAN_FAILURE));
+  assert.ok(page.text().includes(PLAN_NOTICE));
   assert.equal(page.text().includes("보관된 문서가 없어요"), false);
 });
 
@@ -832,4 +846,29 @@ test("계획안을 먼저 받으면 일지가 오는 중이어도 계획안부�
   assert.ok(page.text().includes("2026학년도 연간 보육계획안"));
   assert.ok(page.text().includes(serverDocument.title));
   assert.equal(page.text().includes("일지를 불러오고 있어요"), false);
+});
+
+test("FR-701 제목 찾기는 받은 일지 · 계획안에서 거르고, 상태를 고르면 계획안도 거른다", async () => {
+  const page = documentsHarness({ items: [serverDocument], plans: [annualPlan] });
+  await page.mount();
+  const control = (label) => page.nodes().find((n) => n.props?.["aria-label"] === label);
+  control("제목 찾기").props.onChange({ target: { value: "연간" } });
+  page.render();
+  assert.equal(page.text().includes(serverDocument.title), false);
+  assert.ok(page.text().includes("2026학년도 연간 보육계획안"));
+  control("제목 찾기").props.onChange({ target: { value: "" } });
+  page.render();
+  page.button("초안").props.onClick();
+  page.render();
+  // 확정한 계획안은 빠진다. 일지는 서버가 거른 목록을 따로 받는다(받기 전에는 비어 있다).
+  assert.equal(page.text().includes("2026학년도 연간 보육계획안"), false);
+  assert.equal(page.text().includes(serverDocument.title), false);
+  page.button("전체").props.onClick();
+  page.render();
+  assert.ok(page.text().includes("2026학년도 연간 보육계획안"));
+  // 「원본 바뀜」 토글 칩 — 켜면 눌린 상태가 되고, stale 이 없는 계획안은 빠진다.
+  page.button("원본 바뀜").props.onClick();
+  page.render();
+  assert.equal(page.button("원본 바뀜").props["aria-pressed"], true);
+  assert.equal(page.text().includes("2026학년도 연간 보육계획안"), false);
 });

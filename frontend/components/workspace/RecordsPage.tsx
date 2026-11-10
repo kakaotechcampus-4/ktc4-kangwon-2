@@ -5,7 +5,27 @@ import { today, validDate } from "@/lib/workspace/model";
 import { useObservationDomains } from "@/lib/hooks/use-observation-domains";
 import { DOMAIN_LOOK } from "@/lib/workspace/domain-look";
 import { isUnauthenticated, invalidFields } from "@/lib/api/client";
-import { listRecords, addRecord, editRecord, removeRecord } from "@/lib/api/records";
+import {
+  listRecords,
+  addRecord,
+  editRecord,
+  removeRecord,
+  suggestRecordDomain,
+  missingInRecord,
+  dayRoutines,
+  type ReviewImpact,
+} from "@/lib/api/records";
+import {
+  CONTEXT_MAX,
+  PLACES,
+  contextFor,
+  isIndoorPlay,
+  nowTime,
+  pickedSlot,
+  slotAt,
+  type DaySlot,
+} from "@/lib/workspace/record-context";
+import { documentLocalId } from "@/lib/api/documents";
 import type { ServerObservation } from "@/lib/api/observations";
 import { useClientState } from "@/lib/hooks/use-client-state";
 import { useUnsavedWarning } from "@/lib/hooks/use-unsaved-warning";
@@ -13,7 +33,9 @@ import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { Posty } from "@/components/app/Posty";
 import { Icon } from "@/components/app/icons";
 import { ChildNote } from "@/components/app/ChildPicker";
-import { markFor } from "@/lib/workspace/child-mark";
+import { calledName, markFor } from "@/lib/workspace/child-mark";
+import { stackByChild } from "@/lib/workspace/record-stack";
+import { CircleMark } from "./CircleMark";
 import { WorkspacePage, Empty, Message, useClasses, ws } from "./WorkspaceUI";
 import {
   WorkspaceViewState,
@@ -22,12 +44,21 @@ import {
   type ViewStatus,
 } from "./WorkspaceViewState";
 
-const ENTRY_NONE = { classId: "", childId: "" };
-
-// 서버 observations.context 컬럼이 50자다. 더 받으면 저장할 때 422 다.
-const CONTEXT_MAX = 50;
+const ENTRY_NONE = { classId: "", childId: "", recordId: "" };
 
 export type RecordsStatus = ViewStatus;
+
+/** 적다가 이만큼 멈추면 AI 에게 영역을 묻는다. 치는 동안 매번 부르지 않는다. */
+const SUGGEST_PAUSE_MS = 900;
+/** 이보다 짧은 글로는 묻지 않는다 — 몇 글자로는 영역이 안 보인다. */
+const SUGGEST_MIN = 6;
+
+/** 저장 뒤 빠진 것 쪽지(ADR-082). 서버가 준 순서의 첫 하나만 띄운다. */
+const GAP_TEXT: Record<string, string> = {
+  상황: "어디서 무엇을 하던 중인지 안 보여요. 한 줄 더 쓸까요?",
+  행동: "아이가 한 행동이나 말이 안 보여요. 한 줄 더 쓸까요?",
+  반응: "아이 반응이 안 보여요. 한 줄 더 쓸까요?",
+};
 
 /** 서버가 짚는 칸 이름 → 화면 입력 (docs/api-spec.md §10 의 POST·PUT body). */
 const FIELD_INPUT: Record<string, string> = {
@@ -46,14 +77,21 @@ function messageFor(error: unknown) {
 
 export default function RecordsPage() {
   const [records, setRecords] = useState<ServerObservation[]>([]);
+  /** `records` 가 어느 반 목록인가. 반을 바꾼 뒤 옛 반 목록으로 주소의 기록을 찾지 않게. */
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [status, setStatus] = useState<RecordsStatus>("loading");
   const [listError, setListError] = useState("");
   const [pending, setPending] = useState(false);
   // 우리 반 홈의 「이 아이 기록 보기」가 반·아이를 주소로 넘긴다. 없으면 주 반을 연다.
+  // 관찰일지의 쪽지 「고치기」는 그 기록(`record`)까지 넘긴다 — 목록을 받으면 그 기록을 고치는 칸에 연다.
   const [entry] = useClientState(() => {
-    if (typeof window === "undefined") return { classId: "", childId: "" };
+    if (typeof window === "undefined") return ENTRY_NONE;
     const q = new URLSearchParams(window.location.search);
-    return { classId: q.get("class") ?? "", childId: q.get("child") ?? "" };
+    return {
+      classId: q.get("class") ?? "",
+      childId: q.get("child") ?? "",
+      recordId: q.get("record") ?? "",
+    };
   }, ENTRY_NONE);
   const [pickedClass, setClassId] = useState<string | null>(null);
   const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
@@ -85,9 +123,23 @@ export default function RecordsPage() {
   // 원이 축을 바꾸기 전에 쓴 기록이면 지금 목록에 없는 이름일 수 있다.
   const domains = useObservationDomains();
   // **고른 영역 하나만 둔다.** 칸에 띄운 값과 보내는 값이 달라지면 안 된다.
+  // 기본값이 없다 — 첫 영역이 눌린 채 저장돼 블록 놀이가 신체 줄에 들어갔다(ADR-082).
   const [picked, setDomain] = useState("");
-  const domain = picked || domains[0];
-  const [context, setContext] = useState("");
+  const domain = picked;
+  /** AI 가 제안한 영역과 그것을 물은 입력(반 · 사실 · 상황). 칩에 점선만 친다 — 고르는 것은 교사다. */
+  const [suggested, setSuggested] = useState<{ key: string; domain: string | null } | null>(null);
+  const asking = useRef(0);
+  /** 방금 저장한 기록에서 빠진 것 하나 — 쪽지 한 줄로 띄운다. */
+  const [gap, setGap] = useState<{ record: ServerObservation; part: string } | null>(null);
+  /*
+    상황 칸. `auto` 는 화면이 미리 눌러 둔 값이다 — 「오늘 기록 + 지금이 그 일과 시간 안」일 때만
+    그 일과 이름이 들어간다. 교사가 손대지 않은 그 값은 적던 글로 치지 않는다.
+  */
+  const [contextBox, setContextBox] = useState({ text: "", auto: "" });
+  const context = contextBox.text;
+  const setContext = (text: string) => setContextBox({ text, auto: "" });
+  /** 그날 일과 — 상황 칸 위 시간표. `key` 는 「반|날짜」다. 늦게 온 다른 날 일과를 그리지 않는다. */
+  const [slots, setSlots] = useState<{ key: string; rows: DaySlot[] }>({ key: "", rows: [] });
   /** 아이 이름 칩을 펼쳤나. 아이를 고르면 접히고, 문장 속 이름을 누르면 다시 펼친다. */
   const [kidsOpen, setKidsOpen] = useState(false);
   const [fact, setFact] = useState("");
@@ -101,9 +153,18 @@ export default function RecordsPage() {
     invalid: string[];
   } | null>(null);
   /** 적던 글이 있어 묻는 중인 일 — 고칠 기록이거나, 관찰일지로 나가기. */
-  const [ask, setAsk] = useState<ServerObservation | "leave" | null>(null);
+  const [ask, setAsk] = useState<ServerObservation | null>(null);
   const askDialog = useRef<HTMLDialogElement>(null);
+  /** 떠나려다 붙잡힌 링크 · 단추. 쪽지를 띄운 동안만 있다. */
+  const [held, setHeld] = useState<HTMLElement | null>(null);
+  const leaveNote = useRef<HTMLDialogElement>(null);
+  /** 머리줄 「저장됨」. 다시 적기 시작하면 내린다. */
+  const [savedMark, setSavedMark] = useState(false);
+  /** 저장한 뒤 「관찰일지 만들기」를 한 번 가리킨다. 저절로 사라지고, 닫거나 다시 적으면 내린다. */
+  const [nudge, setNudge] = useState(false);
   const [message, setMessage] = useState("");
+  /** 방금 고치거나 지운 기록을 쓴 확정 일지 — 「N건 다시 검토」 안내 (§10). */
+  const [review, setReview] = useState<ReviewImpact | null>(null);
   const [invalid, setInvalid] = useState<string[]>([]);
   const [classError, setClassError] = useState("");
   const classes = useClasses(setClassError);
@@ -129,7 +190,7 @@ export default function RecordsPage() {
   /** 저장하지 않은 글이 있나. 고치는 중이면 그 기록과 달라졌는지 본다. */
   const unsaved = edited
     ? fact !== edited.fact || context !== edited.context
-    : !!(fact.trim() || context.trim());
+    : !!(fact.trim() || (context.trim() && context !== contextBox.auto));
   useUnsavedWarning(unsaved);
   const journalHref = child
     ? `/records/journal?child=${encodeURIComponent(child.id)}&class=${encodeURIComponent(classId)}`
@@ -137,12 +198,53 @@ export default function RecordsPage() {
   // 늦게 온 옛 조회가 최신 목록을 덮지 않게 조회마다 번호를 매긴다.
   const latest = useRef(0);
 
+  /*
+    적고 멈추면 AI 에게 영역을 묻는다(ADR-082). 이미 골랐거나 고치는 중이면 묻지 않는다.
+    늦게 온 옛 답은 버린다 — 고친 글과 다른 글에 대한 제안이다.
+  */
+  const askedFor = JSON.stringify([classId, fact.trim(), context.trim()]);
+  useEffect(() => {
+    // 입력이 바뀌면 진행 중인 물음도 버린다 — 짧게 줄여 다시 묻지 않는 글에도 옛 답이 오면 안 된다.
+    const mine = ++asking.current;
+    if (picked || editId || !classId || fact.trim().length < SUGGEST_MIN) return;
+    const key = askedFor;
+    const timer = setTimeout(() => {
+      void suggestRecordDomain(classId, fact.trim(), context.trim()).then((found) => {
+        if (mine === asking.current) setSuggested({ key, domain: found });
+      });
+    }, SUGGEST_PAUSE_MS);
+    return () => clearTimeout(timer);
+  }, [askedFor, fact, context, picked, editId, classId]);
+  // 제안은 그것을 물은 글에만 보인다. 글을 바꾸거나 저장해 비우면 옛 제안은 사라진다.
+  const suggestion = !picked && !editId && suggested?.key === askedFor ? suggested.domain : null;
+
+  /** 지금 이 날 · 이 시각에 미리 눌러 둘 상황. 오늘이 아니거나 일과 밖이면 비운다. */
+  const autoContext = (rows: DaySlot[], on: string) =>
+    on === today() ? (slotAt(rows, nowTime())?.name ?? "") : "";
+  useEffect(() => {
+    if (!classId || !validDate(date)) return;
+    let live = true;
+    void dayRoutines(classId, date).then((rows) => {
+      if (!live) return;
+      setSlots({ key: `${classId}|${date}`, rows });
+      if (editId) return;
+      const auto = autoContext(rows, date);
+      // 교사가 적거나 고른 상황은 덮지 않는다. 미리 눌러 둔 값만 날짜를 따라 바뀐다.
+      setContextBox((prev) => (prev.text && prev.text !== prev.auto ? prev : { text: auto, auto }));
+    });
+    return () => {
+      live = false;
+    };
+  }, [classId, date, editId]);
+  const daySlots = slots.key === `${classId}|${date}` ? slots.rows : [];
+
   useEffect(() => {
     const mine = ++latest.current;
     listRecords(classId)
       .then((items) => {
         if (mine !== latest.current) return;
         setRecords(items);
+        setLoadedFor(classId);
         setListError("");
         setStatus("ready");
       })
@@ -155,6 +257,20 @@ export default function RecordsPage() {
       latest.current += 1;
     };
   }, [classId]);
+  // 주소로 받은 기록을 한 번만 연다. 그 반 목록이 온 뒤에 찾는다 — 없으면 지웠거나 남의 기록이다.
+  // entry 처럼 렌더 안에서 한 번만 채운다(효과 안 setState 를 피한다).
+  const [recordOpened, setRecordOpened] = useState(false);
+  if (
+    entry.recordId &&
+    !recordOpened &&
+    status === "ready" &&
+    (!entry.classId || loadedFor === entry.classId)
+  ) {
+    setRecordOpened(true);
+    const target = records.find((r) => r.id === entry.recordId);
+    if (target) fillEdit(target);
+    else setMessage("그 관찰 기록을 찾지 못했어요. 지워졌을 수 있어요.");
+  }
   // 저장·삭제 뒤 서버를 다시 읽는다. 첫 렌더가 이미 loading 이라 상태를 새로 세우지 않는다.
   async function reload() {
     const mine = ++latest.current;
@@ -162,6 +278,7 @@ export default function RecordsPage() {
       const items = await listRecords(classId);
       if (mine !== latest.current) return;
       setRecords(items);
+      setLoadedFor(classId);
       setListError("");
       setStatus("ready");
     } catch (e) {
@@ -207,7 +324,7 @@ export default function RecordsPage() {
   const clearInvalid = (name: string) =>
     setInvalid((prev) => (prev.includes(name) ? prev.filter((f) => f !== name) : prev));
 
-  function askFirst(next: ServerObservation | "leave") {
+  function askFirst(next: ServerObservation) {
     setAsk(next);
     askDialog.current?.showModal();
   }
@@ -222,6 +339,11 @@ export default function RecordsPage() {
   }
   function beginEdit(record: ServerObservation) {
     closeAsk();
+    fillEdit(record);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  /** 고치는 칸에 그 기록을 채운다. state 만 바꾼다 — 주소로 연 기록은 렌더 안에서 이것만 부른다. */
+  function fillEdit(record: ServerObservation) {
     // 고치던 기록을 두고 다른 기록을 고칠 때는 처음 것을 그대로 둔다.
     if (!editId) setBeforeEdit({ classId: pickedClass, childId, date, domain: picked, invalid });
     setEditId(record.id);
@@ -233,7 +355,6 @@ export default function RecordsPage() {
     setFact(record.fact);
     setMessage("");
     setInvalid([]);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
   function cancelEdit() {
     setEditId("");
@@ -250,42 +371,111 @@ export default function RecordsPage() {
   }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    await save();
+  }
+  /** 저장한다. 떠날 때도 이 길을 탄다. 저장했으면 true — 실패하면 적던 글이 그대로 남는다. */
+  async function save(): Promise<boolean> {
     if (!classroom || !child || !validDate(date) || !fact.trim() || date > today()) {
-      setMessage("반·아동·관찰 날짜와 실제 관찰 내용을 확인해주세요.");
-      return;
+      setMessage("반, 아동, 관찰 날짜와 실제 관찰 내용을 확인해 주세요.");
+      return false;
+    }
+    if (!domain) {
+      setMessage("영역을 골라 주세요.");
+      setInvalid((prev) => [...prev.filter((f) => f !== "domain"), "domain"]);
+      return false;
     }
     const body = { date, domain, context: context.trim(), fact: fact.trim() };
     setPending(true);
     setMessage("");
+    setReview(null);
+    setGap(null);
     try {
       // 실패하면 입력값을 그대로 둔다 — 다시 적게 하지 않는다.
-      if (editId) await editRecord(editId, body);
-      else await addRecord({ ...body, classId, childId });
+      let saved: ServerObservation;
+      if (editId) {
+        const done = await editRecord(editId, body);
+        saved = done.record;
+        setReview(done.impact);
+      } else saved = await addRecord({ ...body, classId, childId });
+      lookForGap(saved);
       await reload();
       setFact("");
-      setContext("");
+      const auto = autoContext(daySlots, date);
+      setContextBox({ text: auto, auto });
       setEditId("");
+      setDomain("");
       setInvalid([]);
       // 다른 아이 기록만 보고 있는 채로 새 기록을 저장하면 저장한 것이 목록에 안 보인다.
       // 「저장했어요」만 뜨고 아무것도 안 늘어나면 저장이 안 된 것으로 읽힌다.
       if (!editId && onlyChildId && onlyChildId !== childId) setOnlyChild("");
       setMessage(editId ? "수정했어요." : "관찰 기록을 저장했어요.");
+      setSavedMark(true);
+      setNudge(true);
+      return true;
     } catch (e) {
       setMessage(messageFor(e));
       setInvalid(invalidFields(e, FIELD_INPUT));
+      return false;
     } finally {
       setPending(false);
     }
   }
+
+  /*
+    떠날 때(딸깍 시안 「떠날 때」). 계획안처럼 **저장하고 이동한다.** 저장할 수 없을 때 —
+    아이나 영역을 안 골랐을 때 — 만 쪽지로 묻는다. 사이드바 링크도 같은 길이다.
+    새로고침 · 탭 닫기는 브라우저 창이 묻는다(`useUnsavedWarning`).
+  */
+  const lacking = !child ? "child" : !domain ? "domain" : null;
+  // 저장하는 동안에도 붙잡는다. 놓으면 두 번째 링크가 저장이 끝나기 전에 화면을 닫고,
+  // 저장이 실패했을 때 적던 글을 돌려줄 화면이 없다. 저장 중 누른 이동은 무시한다.
+  const leavingSave = useRef(false);
+  const pass = useLeaveCatch(unsaved && !!fact.trim(), (target) => {
+    if (pending || leavingSave.current) return;
+    if (lacking) {
+      setHeld(target);
+      leaveNote.current?.showModal();
+      return;
+    }
+    leavingSave.current = true;
+    void save().then((done) => {
+      leavingSave.current = false;
+      if (done) pass(target);
+    });
+  });
+  function closeNote() {
+    leaveNote.current?.close();
+    setHeld(null);
+  }
+  /** 쪽지의 주 버튼 — 빠진 것을 고르러 돌아간다. */
+  function pickMissing() {
+    closeNote();
+    if (lacking === "child") {
+      setKidsOpen(true);
+      setInvalid((prev) => [...prev.filter((f) => f !== "childId"), "childId"]);
+    } else setInvalid((prev) => [...prev.filter((f) => f !== "domain"), "domain"]);
+  }
+  function discardAndGo() {
+    const target = held;
+    closeNote();
+    if (target) pass(target);
+  }
+  /** 저장한 기록에 빠진 것이 있나 AI 에게 묻는다. 기다리지 않는다 — 저장은 이미 끝났다. */
+  function lookForGap(saved: ServerObservation) {
+    void missingInRecord(saved.id).then((parts) => {
+      if (parts[0] && GAP_TEXT[parts[0]]) setGap({ record: saved, part: parts[0] });
+    });
+  }
   async function remove(record: ServerObservation) {
-    if (!window.confirm("이 관찰 기록을 지울까요? 되돌릴 수 없어요.")) return;
+    if (!window.confirm("이 관찰 기록을 삭제할까요? 되돌릴 수 없어요.")) return;
     setPending(true);
     setMessage("");
+    setReview(null);
     try {
-      await removeRecord(record.id);
+      setReview(await removeRecord(record.id));
       if (editId === record.id) cancelEdit();
       await reload();
-      setMessage("기록을 지웠어요.");
+      setMessage("기록을 삭제했어요.");
     } catch (e) {
       setMessage(messageFor(e));
     } finally {
@@ -324,7 +514,16 @@ export default function RecordsPage() {
       {/* 머리말 그림판(「있는 그대로 기록하면…」)을 걷었다. 화면에서 제일 크고 노랗던
           자리인데 하는 말이 없었고, 거기 달린 단추는 다른 화면으로 나가는 길이었다.
           보러 온 교사 눈에 제일 먼저 들어오는 것이 「나가기」였다. */}
-      <Message>{message}</Message>
+      <Message onClose={() => setMessage("")}>{message}</Message>
+      <ReviewNotice impact={review} />
+      {gap && (
+        <p className={ws.recordGap} role="status">
+          {GAP_TEXT[gap.part]}{" "}
+          <button type="button" className={ws.link} onClick={() => startEdit(gap.record)}>
+            이어 쓰기
+          </button>
+        </p>
+      )}
       {/* 왼쪽에 적고 오른쪽에 쌓인다 — 일과 기록 · 계획안과 같은 짜임이다.
           폼을 화면 너비로 펴면 「본 대로 적기」 한 줄이 1,800px 로 늘어나 읽히지 않았고,
           쌓인 기록은 폼 밑으로 밀려 스크롤해야 보였다. 폼은 따라 내려와 있어
@@ -334,20 +533,27 @@ export default function RecordsPage() {
           {/* 왼쪽 · 오른쪽 머리를 같은 줄에 세운다 — 카드 안에 있던 제목이 오른쪽 「쌓인 기록」보다
               한 칸 내려앉아 두 칸 높이가 어긋나 보였다. */}
           <div className={ws.recordListHead}>
-            <h2 className={ws.recordListTitle}>{editId ? "기록 고치기" : "오늘 본 것 적기"}</h2>
+            <h2 className={ws.recordListTitle}>
+              {editId ? "기록 수정" : "오늘 본 것 적기"}
+              {/* 저장하면 도장을 꾹 찍는다 — 작은 초록 글자로는 저장이 됐는지 눈에 안 들어왔다(PM 11-10). */}
+              {savedMark && (
+                <span className={`${ws.recordSaved} inkStamp`} role="status">
+                  저장됨
+                </span>
+              )}
+            </h2>
             {/* 기록하러 온 교사가 다음에 하려는 일이 관찰일지다. 목록 머리 작은 단추로는 눈에 안
                 띄었다. 적는 칸 바로 위, 화면을 열자마자 보이는 자리에 둔다. */}
-            <Link
-              className={ws.recordJournalLink}
-              href={journalHref}
-              onClick={(e) => {
-                if (!unsaved) return;
-                e.preventDefault();
-                askFirst("leave");
-              }}
-            >
-              관찰일지 만들기 →
-            </Link>
+            <span className={ws.recordJournalWrap}>
+              <Link
+                className={`${ws.recordJournalLink} tap44`}
+                data-nudge={nudge || undefined}
+                href={journalHref}
+              >
+                관찰일지 만들기 →
+              </Link>
+              {nudge && <JournalNudge onDone={() => setNudge(false)} />}
+            </span>
           </div>
           <section className={`${ws.card} ${ws.recordForm}`} data-tour="records-form">
             {!classes.some((c) => c.children.length) ? (
@@ -364,6 +570,16 @@ export default function RecordsPage() {
                 >
                   {/* 이름표와 회색 네모가 다섯 개 늘어선 칸이 가입 양식처럼 보였다.
                       「오늘, 쌓기 영역에서 하늘이가 …」 로 읽히는 문장 속 빈칸으로 바꿨다. */}
+                  {daySlots.length > 0 && (
+                    <DayStrip
+                      slots={daySlots}
+                      context={context}
+                      onPick={(text) => {
+                        setContext(text);
+                        clearInvalid("context");
+                      }}
+                    />
+                  )}
                   <p className={ws.recordSentence}>
                     <span className={ws.recordDateBlank}>
                       <span className={ws.recordBlank} aria-hidden="true">
@@ -388,7 +604,7 @@ export default function RecordsPage() {
                     <span className={ws.recordNowrap}>
                       <input
                         name="context"
-                        aria-label="어디서 · 무슨 놀이"
+                        aria-label="어디서, 무슨 놀이"
                         className={ws.recordBlank}
                         maxLength={CONTEXT_MAX}
                         value={context}
@@ -397,13 +613,13 @@ export default function RecordsPage() {
                           setContext(e.target.value);
                           clearInvalid("context");
                         }}
-                        placeholder="자유놀이 · 쌓기 영역"
+                        placeholder="실내놀이, 쌓기"
                       />
                       에서
                     </span>{" "}
                     <button
                       type="button"
-                      className={ws.recordBlank}
+                      className={`${ws.recordBlank} tap44`}
                       data-empty={!child || undefined}
                       disabled={!!editId}
                       aria-expanded={kidsShown}
@@ -421,7 +637,7 @@ export default function RecordsPage() {
                         <button
                           key={c.id}
                           type="button"
-                          className={ws.recordKid}
+                          className={`${ws.recordKid} tap44`}
                           aria-pressed={c.id === childId}
                           {...fieldErrorProps("childId", invalid)}
                           onClick={() => {
@@ -430,7 +646,12 @@ export default function RecordsPage() {
                             clearInvalid("childId");
                           }}
                         >
-                          <ChildNote name={c.name} mark={markFor(c.id)} size={24} />
+                          <ChildNote
+                            name={c.name}
+                            mark={markFor(c.id)}
+                            size={24}
+                            classNames={classroom.children.map((k) => k.name)}
+                          />
                           {c.name}
                         </button>
                       ))}
@@ -447,6 +668,8 @@ export default function RecordsPage() {
                     {...fieldErrorProps("fact", invalid)}
                     onChange={(e) => {
                       setFact(e.target.value);
+                      setSavedMark(false);
+                      setNudge(false);
                       clearInvalid("fact");
                     }}
                     placeholder={"블록 세 개를 쌓은 뒤 “더 높이 만들래”라고 말했다."}
@@ -464,35 +687,45 @@ export default function RecordsPage() {
                     <span className={ws.recordAreaLabel} id="record-area-label">
                       영역
                     </span>
-                    {/* 평소에는 그림만, 마우스를 올리거나 고르면 옆으로 펼쳐져 이름이 보인다.
-                        이름은 늘 버튼 안에 있어 화면 낭독기는 그대로 읽는다. */}
+                    {/* 그림 옆에 늘 이름을 둔다 — 그림만으로는 무슨 영역인지 몰랐다(수민 점검).
+                        「신체운동·건강」은 칸에 「신체운동」까지만 쓰고, 화면 낭독기는 온 이름을 읽는다. */}
                     <div
                       className={ws.recordAreas}
                       role="group"
                       aria-labelledby="record-area-label"
                       {...fieldErrorProps("domain", invalid)}
                     >
-                      {(domains.includes(domain) ? domains : [domain, ...domains]).map((d) => (
-                        <button
-                          key={d}
-                          type="button"
-                          className={ws.recordArea}
-                          data-tone={DOMAIN_LOOK[d]?.tone}
-                          data-plain={!DOMAIN_LOOK[d] || undefined}
-                          aria-pressed={d === domain}
-                          onClick={() => {
-                            setDomain(d);
-                            clearInvalid("domain");
-                          }}
-                        >
-                          {DOMAIN_LOOK[d] && (
-                            <Icon name={DOMAIN_LOOK[d].icon} width={17} height={17} />
-                          )}
-                          <span>{d}</span>
-                        </button>
-                      ))}
+                      {(!domain || domains.includes(domain) ? domains : [domain, ...domains]).map(
+                        (d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            className={`${ws.recordArea} tap44`}
+                            data-tone={DOMAIN_LOOK[d]?.tone}
+                            data-plain={!DOMAIN_LOOK[d] || undefined}
+                            data-suggested={d === suggestion || undefined}
+                            aria-describedby={d === suggestion ? "record-area-hint" : undefined}
+                            aria-pressed={d === domain}
+                            aria-label={shortDomain(d) === d ? undefined : d}
+                            onClick={() => {
+                              setDomain(d);
+                              clearInvalid("domain");
+                            }}
+                          >
+                            {DOMAIN_LOOK[d] && (
+                              <Icon name={DOMAIN_LOOK[d].icon} width={17} height={17} />
+                            )}
+                            <span>{shortDomain(d)}</span>
+                          </button>
+                        ),
+                      )}
                     </div>
                   </div>
+                  {suggestion && (
+                    <small id="record-area-hint" className={ws.recordAreaHint}>
+                      점선은 AI 제안이에요. 맞으면 눌러 주세요.
+                    </small>
+                  )}
                   <FieldError name="domain" invalid={invalid} />
                   <div className={ws.recordSubmit}>
                     {editId && (
@@ -510,7 +743,7 @@ export default function RecordsPage() {
         <section className={ws.stack} data-tour="records-list">
           <div className={ws.recordListHead}>
             <h2 className={ws.recordListTitle}>쌓인 기록</h2>
-            <Link href="/records/children" className={ws.recordWay}>
+            <Link href="/records/children" className={`${ws.recordWay} tap44`}>
               아이별 기록
             </Link>
           </div>
@@ -563,7 +796,7 @@ export default function RecordsPage() {
                 key={name || "all"}
                 type="button"
                 aria-pressed={area === name}
-                className={ws.recordFilter}
+                className={`${ws.recordFilter} tap44`}
                 data-tone={DOMAIN_LOOK[name]?.tone}
                 onClick={() => setArea(name)}
               >
@@ -577,6 +810,7 @@ export default function RecordsPage() {
             status={status}
             error={listError}
             records={shown}
+            classNames={classroom?.children.map((c) => c.name)}
             pending={pending}
             canEdit={canEdit}
             onEdit={startEdit}
@@ -592,24 +826,184 @@ export default function RecordsPage() {
       >
         <Posty pose="hand" face="oh" tone="note" size={78} label={null} />
         <h3 id="record-ask-title">잠깐만요!</h3>
-        <p>{ask === "leave" ? "적던 글이 사라져요." : "적던 글을 버리고 이 기록을 고칠까요?"}</p>
+        <p>적던 글을 버리고 이 기록을 수정할까요?</p>
         <div>
           <button type="button" className={ws.secondary} autoFocus onClick={closeAsk}>
             계속 쓰기
           </button>
-          {ask === "leave" && (
-            <Link className={ws.link} href={journalHref}>
-              버리고 나가기
-            </Link>
-          )}
-          {ask && ask !== "leave" && (
+          {ask && (
             <button type="button" className={ws.link} onClick={() => beginEdit(ask)}>
-              버리고 고치기
+              버리고 수정
             </button>
           )}
         </div>
       </dialog>
+      {/* 떠날 때 저장할 수 없으면 붙는 포스트잇. 테이프에 매달려 처음 한 번 흔들린다. */}
+      <dialog
+        ref={leaveNote}
+        className={ws.recordLeave}
+        aria-labelledby="record-leave-title"
+        aria-describedby="record-leave-why"
+        onClose={() => setHeld(null)}
+      >
+        {held && (
+          <>
+            <h3 id="record-leave-title">잠깐만요!</h3>
+            <p id="record-leave-why">
+              {lacking === "domain" ? "영역을 골라야 저장돼요." : "누구 기록인지 골라야 저장돼요."}
+            </p>
+            <div>
+              <button type="button" className={ws.primary} autoFocus onClick={pickMissing}>
+                {lacking === "domain" ? "영역 고르기" : "아이 고르기"}
+              </button>
+              <button type="button" className={ws.recordDiscard} onClick={discardAndGo}>
+                버리고 이동
+              </button>
+            </div>
+          </>
+        )}
+      </dialog>
     </WorkspacePage>
+  );
+}
+
+/**
+ * 이 화면을 떠나는 누르기(앱 안 링크 · `data-leave` 단추)를 누르기 전에 붙잡는다(캡처 단계).
+ * Next 앱 라우터에는 이동을 멈추는 훅이 없다. 돌려주는 함수로 붙잡은 것을 다시 누르면 그대로 떠난다.
+ * 관찰일지 편집기(`ObservationJournalEditor` 의 `useLeaveGuard`)와 같은 방식이다.
+ *
+ * ponytail: 브라우저 뒤로 가기는 붙잡지 않는다. 편집기처럼 history 칸을 끼워 넣으면 되지만
+ * 저장하고 이동하는 길과 겹쳐 따로 맞춰야 한다.
+ */
+function useLeaveCatch(on: boolean, onLeave: (target: HTMLElement) => void) {
+  const passing = useRef(false);
+  const latest = useRef(onLeave);
+  useEffect(() => {
+    latest.current = onLeave;
+  });
+  useEffect(() => {
+    if (!on) return;
+    const catchLeave = (event: MouseEvent) => {
+      if (passing.current || event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = (event.target as Element | null)?.closest<HTMLElement>(
+        'a[href]:not([target="_blank"]):not([download]), [data-leave]',
+      );
+      if (!target || target.closest("dialog")) return;
+      if (target.getAttribute("href")?.startsWith("#")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      latest.current(target);
+    };
+    document.addEventListener("click", catchLeave, true);
+    return () => document.removeEventListener("click", catchLeave, true);
+  }, [on]);
+  return (target: HTMLElement) => {
+    passing.current = true;
+    target.click();
+    passing.current = false;
+  };
+}
+
+/**
+ * 그날 일과 시간표 한 줄 — 보육일지와 같은 모양(손글씨 시각 + 일과 이름). 누르면 상황 칸에 들어가고,
+ * 실내 놀이 시간이면 그 아래 「어디서」 흥미 영역을 고른다. 고른 것은 상황 칸 글에서 읽는다.
+ */
+function DayStrip({
+  slots,
+  context,
+  onPick,
+}: {
+  slots: DaySlot[];
+  context: string;
+  onPick: (text: string) => void;
+}) {
+  const picked = pickedSlot(slots, context);
+  return (
+    <div className={ws.recordSlots}>
+      <p className={ws.recordSlotHint}>
+        <b>그날 일과</b>
+        일과를 누르면 상황 칸에 들어가요
+      </p>
+      <div className={ws.recordSlotRow} role="group" aria-label="그날 일과">
+        {slots.map((slot, i) => (
+          <button
+            key={i}
+            type="button"
+            data-slot
+            className={ws.recordSlot}
+            aria-pressed={picked?.slot === slot}
+            onClick={() => onPick(contextFor(slot.name))}
+          >
+            <span className={ws.recordSlotTime}>{slot.start}</span>
+            <span className={ws.recordSlotName}>{slot.name}</span>
+          </button>
+        ))}
+      </div>
+      {picked && isIndoorPlay(picked.slot.name) && (
+        <div className={ws.recordPlaces} role="group" aria-labelledby="record-places-label">
+          <span id="record-places-label">어디서</span>
+          {PLACES.map((place) => (
+            <button
+              key={place}
+              type="button"
+              aria-pressed={picked.place === place}
+              onClick={() => onPick(contextFor(picked.slot.name, place))}
+            >
+              {place}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 저장한 뒤 한 번 — 포스티가 「관찰일지 만들기」를 가리킨다. 몇 초 뒤 저절로 흐려지며 사라지고(`onAnimationEnd`),
+ * 닫기를 누르거나 다시 적기 시작해도 내린다. 타이머를 쓰지 않는다 — 사라지는 때는 CSS 가 정한다.
+ */
+function JournalNudge({ onDone }: { onDone: () => void }) {
+  return (
+    <p
+      className={ws.recordNudge}
+      role="status"
+      onAnimationEnd={(e) => {
+        if (e.target === e.currentTarget) onDone();
+      }}
+    >
+      <Posty pose="point" face="base" tone="note" size={34} label={null} />
+      <span>적은 기록으로 관찰일지를 만들어 보세요</span>
+      <button type="button" className="tap44" aria-label="일지 안내 닫기" onClick={onDone}>
+        ×
+      </button>
+    </p>
+  );
+}
+
+/**
+ * 고치거나 지운 기록을 쓴 확정 일지 수와 그 일지로 가는 길. 일과 기록 화면과 같은 문구다.
+ * 하나면 그 일지를 바로 열고, 여럿이면 보관함으로 보낸다.
+ */
+function ReviewNotice({ impact }: { impact: ReviewImpact | null }) {
+  if (!impact?.affected.length) return null;
+  const fresh = impact.newlyStale.length;
+  const already = impact.affected.length - fresh;
+  const only = impact.affected.length === 1;
+  return (
+    <Message>
+      {fresh > 0 && `이 기록을 쓴 일지 ${fresh}건이 다시 검토 대상이 되었어요. `}
+      {already > 0 && `이미 재검토 대상인 일지 ${already}건도 이 변경의 영향을 받았어요. `}
+      <Link
+        href={
+          only
+            ? `/documents?id=${encodeURIComponent(documentLocalId(impact.affected[0]))}`
+            : "/documents"
+        }
+      >
+        {only ? "일지 보기 →" : "문서 보관함에서 보기 →"}
+      </Link>
+    </Message>
   );
 }
 
@@ -618,6 +1012,7 @@ export function RecordList({
   status,
   error,
   records,
+  classNames,
   pending,
   canEdit,
   onEdit,
@@ -626,11 +1021,33 @@ export function RecordList({
   status: RecordsStatus;
   error: string;
   records: ServerObservation[];
+  /** 지금 반 아이 이름. 아이 표식 글자가 겹치면 두 글자로 쓴다. */
+  classNames?: readonly string[];
   pending: boolean;
   canEdit: (record: ServerObservation) => boolean;
   onEdit: (record: ServerObservation) => void;
   onDelete: (record: ServerObservation) => void;
 }) {
+  // 펼친 카드는 하나만 — 단추 셋이 눌렀던 카드마다 남아 어느 카드 단추인지 헷갈렸다(덕철 점검).
+  const [openId, setOpenId] = useState("");
+  /** 한 벌을 넘기면 그 벌에서 펴 둔 장은 접는다 — 할 일 단추가 다른 장의 것으로 읽히지 않게. */
+  const fold = (pile: ServerObservation[]) => {
+    if (pile.some((r) => r.id === openId)) setOpenId("");
+  };
+  const card = (r: ServerObservation, deck?: DeckTurn) => (
+    <RecordItem
+      key={r.id}
+      record={r}
+      open={openId === r.id}
+      onToggle={() => setOpenId(openId === r.id ? "" : r.id)}
+      deck={deck}
+      classNames={classNames}
+      pending={pending}
+      editable={canEdit(r)}
+      onEdit={onEdit}
+      onDelete={onDelete}
+    />
+  );
   return (
     <WorkspaceViewState
       status={status}
@@ -642,7 +1059,7 @@ export function RecordList({
             title="아직 남긴 기록이 없어요"
             art={<Posty pose="sitWave" face="empty" tone="shell" size={92} label={null} />}
           >
-            위 칸에 오늘 본 것을 한 줄 적어 보세요.
+            오늘 본 것을 한 줄 적어 보세요.
           </Empty>
         )
       }
@@ -654,18 +1071,21 @@ export function RecordList({
               {longDate(date)}
               <span>{day.length}건</span>
             </h3>
-            {/* 한 줄이 화면 끝까지 가면 긴 기록은 읽히지 않는다. 폭이 정해진 카드로 나눈다. */}
+            {/* 한 줄이 화면 끝까지 가면 긴 기록은 읽히지 않는다. 폭이 정해진 카드로 나눈다.
+                같은 날 같은 아이 기록은 한 벌로 겹친다 — 그 아이 가장 최근 기록 자리에. */}
             <div className={ws.recordCards}>
-              {day.map((r) => (
-                <RecordItem
-                  key={r.id}
-                  record={r}
-                  pending={pending}
-                  editable={canEdit(r)}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                />
-              ))}
+              {stackByChild(day).map((pile) =>
+                pile.length > 1 ? (
+                  <RecordDeck
+                    key={`${date}:${pile[0].childId}`}
+                    pile={pile}
+                    render={card}
+                    onTurn={() => fold(pile)}
+                  />
+                ) : (
+                  card(pile[0])
+                ),
+              )}
             </div>
           </section>
         ))}
@@ -674,37 +1094,65 @@ export function RecordList({
   );
 }
 
+/** 한 벌의 맨 위 장일 때. 넘기기는 「+n」 단추 · ← → 키 · 옆으로 밀기가 맡는다. */
+type DeckTurn = {
+  /** 넘겨서 올라온 장이면 쪽지 넘김(`.pageTurn`)으로 올라온다. 처음 그릴 때는 가만히 있다. */
+  turned: boolean;
+  /** 「박서아 기록 3건 중 2번째」를 읽어 주는 칸의 id. */
+  positionId: string;
+};
+
 /**
  * 기록 한 줄. 평소에는 글만 보이고, 줄을 누르면 그 줄에서만 할 일이 나온다.
  *
  * 전에는 줄마다 단추가 셋이라 기록 열세 건이면 화면에 단추가 서른아홉 개였다.
  * 교사가 보러 온 것은 아이가 한 말이지 단추가 아니다.
+ *
+ * 한 벌의 맨 위 장(`deck`)도 누르면 펴진다(PM 11-10). 다음 장으로는 「+n」 단추가 넘긴다.
  */
 function RecordItem({
   record,
+  open,
+  onToggle,
+  deck,
+  classNames,
   pending,
   editable,
   onEdit,
   onDelete,
 }: {
   record: ServerObservation;
+  open: boolean;
+  onToggle: () => void;
+  deck?: DeckTurn;
+  classNames?: readonly string[];
   pending: boolean;
   editable: boolean;
   onEdit: (record: ServerObservation) => void;
   onDelete: (record: ServerObservation) => void;
 }) {
-  const [open, setOpen] = useState(false);
   return (
-    <article className={ws.recordCard} data-open={open || undefined}>
+    // 카드 바탕은 그 영역 색(시안 「A 진하게 2」). 그림이 없는 영역(2축 원)은 흰 카드 그대로.
+    <article
+      className={`${ws.recordCard} ${deck?.turned ? "pageTurn" : ""}`}
+      data-open={open || undefined}
+      data-tone={DOMAIN_LOOK[record.domain]?.tone}
+    >
       <button
         type="button"
         aria-expanded={open}
-        onClick={() => setOpen((on) => !on)}
+        aria-describedby={deck?.positionId}
+        onClick={onToggle}
         className={ws.recordRow}
       >
         <span className={ws.recordWho}>
           {/* 아이 표식. 이름 글자를 읽기 전에 누구 기록인지 눈에 먼저 들어온다. */}
-          <ChildNote name={record.childName} mark={markFor(record.childId)} size={28} />
+          <ChildNote
+            name={record.childName}
+            mark={markFor(record.childId)}
+            size={28}
+            classNames={classNames}
+          />
           <b>{record.childName}</b>
           {/* 영역 이름은 위 거르기 칩이 읽어 준다. 카드에는 그림과 색만 남겨 아이가 한 말이 먼저 보이게 한다. */}
           {DOMAIN_LOOK[record.domain] ? (
@@ -727,27 +1175,112 @@ function RecordItem({
         <div className={ws.recordActions}>
           {editable ? (
             <Link
-              className={ws.secondary}
+              className={`${ws.secondary} tap44`}
               href={`/records/journal?record=${encodeURIComponent(record.id)}&class=${encodeURIComponent(record.classId)}`}
             >
               이 기록으로 일지 만들기
             </Link>
           ) : (
-            <small>반·아이 정보를 확인할 수 없어 고칠 수 없어요.</small>
+            <small>반이나 아이 정보를 확인할 수 없어 고칠 수 없어요.</small>
           )}
           <button
-            className={ws.secondary}
+            className={`${ws.secondary} tap44`}
             disabled={pending || !editable}
             onClick={() => onEdit(record)}
           >
-            고치기
+            수정
           </button>
-          <button className={ws.secondary} disabled={pending} onClick={() => onDelete(record)}>
-            지우기
+          <button
+            className={`${ws.secondary} ${ws.danger} tap44`}
+            disabled={pending}
+            onClick={() => onDelete(record)}
+          >
+            삭제
           </button>
         </div>
       )}
     </article>
+  );
+}
+
+/**
+ * 같은 날 같은 아이 기록 한 벌. 맨 위 한 장만 보이고 뒤 장은 그 영역 색 종이로 비켜 선다.
+ * 「+n」 단추 · ← → 키 · 옆으로 밀기로 장을 넘긴다(카드 누르기는 펴기). 몇 번째 장인지 화면 낭독기에 알린다.
+ */
+function RecordDeck({
+  pile,
+  render,
+  onTurn,
+}: {
+  pile: ServerObservation[];
+  render: (r: ServerObservation, deck: DeckTurn) => React.ReactNode;
+  /** 넘길 때마다 — 펴 둔 장을 접는다. */
+  onTurn: () => void;
+}) {
+  const [at, setAt] = useState(0);
+  /** 한 번이라도 넘겼나. 처음 그릴 때는 쪽지 넘김을 하지 않는다. */
+  const [turned, setTurned] = useState(false);
+  const startX = useRef<number | null>(null);
+  const swiped = useRef(false);
+  // 거르기로 장 수가 줄면 넘긴 자리를 그 안으로 되돌린다.
+  const top = at % pile.length;
+  const turn = (step: number) => {
+    setAt((top + step + pile.length) % pile.length);
+    setTurned(true);
+    onTurn();
+  };
+  const who = pile[0].childName;
+  const position = `${who} 기록 ${pile.length}건 중 ${top + 1}번째`;
+  const positionId = `deck-${pile[0].id}`;
+  const behind = [1, 2]
+    .map((k) => pile[(top + k) % pile.length])
+    .slice(0, pile.length - 1)
+    .map((r) => DOMAIN_LOOK[r.domain]?.tone);
+
+  function onKey(e: React.KeyboardEvent) {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    e.preventDefault();
+    turn(e.key === "ArrowRight" ? 1 : -1);
+  }
+  function onPointerUp(e: React.PointerEvent) {
+    const dx = startX.current === null ? 0 : e.clientX - startX.current;
+    startX.current = null;
+    if (Math.abs(dx) < 40) return;
+    swiped.current = true;
+    turn(dx < 0 ? 1 : -1);
+  }
+  return (
+    <div
+      role="group"
+      aria-label={`${who} 기록 ${pile.length}건 묶음`}
+      className={ws.deck}
+      data-depth={behind.length}
+      data-under={behind[0]}
+      data-under2={behind[1]}
+      onKeyDown={onKey}
+      onPointerDown={(e) => (startX.current = e.clientX)}
+      onPointerUp={onPointerUp}
+      onClickCapture={(e) => {
+        // 밀고 난 손을 떼며 생기는 누르기는 카드를 펴지 않는다.
+        if (!swiped.current) return;
+        swiped.current = false;
+        e.stopPropagation();
+      }}
+    >
+      {render(pile[top], { turned, positionId })}
+      {/* 뒤에 몇 장 더 있나 — 손글씨 숫자에 손으로 친 동그라미. */}
+      <button
+        type="button"
+        className={`${ws.deckCount} tap44`}
+        aria-label={`${who} 다음 기록 보기, ${pile.length}건 중 ${((top + 1) % pile.length) + 1}번째`}
+        onClick={() => turn(1)}
+      >
+        <CircleMark className={ws.deckCountRing} />+{pile.length - 1}
+      </button>
+      <span id={positionId} className="sr-only" aria-live="polite">
+        {position}
+      </span>
+    </div>
   );
 }
 
@@ -782,6 +1315,9 @@ function SearchMark() {
 
 const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 
+/** 영역 단추에 쓰는 짧은 이름. 「신체운동·건강」 → 「신체운동」, 나머지는 그대로. */
+const shortDomain = (domain: string) => domain.split("·")[0];
+
 /** 날짜 빈칸 글자. 오늘이면 「오늘(11월 5일)」, 아니면 「11월 3일(화)」. */
 function dateLabel(date: string) {
   const at = new Date(`${date}T00:00:00Z`);
@@ -792,11 +1328,7 @@ function dateLabel(date: string) {
 
 /** 「김하늘」 → 「하늘이가」, 「박서아」 → 「서아가」. 문장 속 「누가」 자리에 들어간다. */
 export function subjectOf(name: string) {
-  const chars = Array.from(name.trim());
-  const given = chars.length >= 3 ? chars.slice(1).join("") : chars.join("");
-  const last = given.charCodeAt(given.length - 1) - 0xac00;
-  const closed = last >= 0 && last < 11172 && last % 28 !== 0;
-  return `${given}${closed ? "이가" : "가"}`;
+  return `${calledName(name)}가`;
 }
 
 /** 날짜 칸을 누르면 달력을 연다. 못 여는 브라우저는 그대로 둔다 — 칸은 키보드로도 고칠 수 있다. */

@@ -64,22 +64,24 @@ export function useServerDocument(
     return next;
   };
 
+  // 지금 연 문서에 묶인 작업. 저장과 반영 사이 다른 문서를 열어도 뒤 작업이 새 문서로 가지 않는다.
+  const pinned = selection.pin();
   const server: ServerDocumentActions | undefined = doc
     ? {
         stale: doc.stale,
         pending: chosen.pending !== "",
-        reload: selection.reload,
-        reconfirm: (input: ReconfirmInput) => then(selection.reconfirm(input)),
+        reload: pinned.reload,
+        reconfirm: (input: ReconfirmInput) => then(pinned.reconfirm(input)),
         save: (sections: Section[], reviewNote: string, classNote?: string) =>
-          then(selection.save(sections, reviewNote, classNote)),
+          then(pinned.save(sections, reviewNote, classNote)),
         saveAndConfirm: (sections: Section[], reviewNote: string, classNote?: string) =>
-          then(selection.saveAndConfirm(sections, reviewNote, classNote)),
-        unconfirm: () => then(selection.unconfirm()),
-        refresh: (resolutions?: SourceResolution[]) => then(selection.refresh(resolutions)),
+          then(pinned.saveAndConfirm(sections, reviewNote, classNote)),
+        unconfirm: () => then(pinned.unconfirm()),
+        refresh: (resolutions?: SourceResolution[]) => then(pinned.refresh(resolutions)),
         // 판정만 한다 — 저장 · 확정과 겹쳐도 문서를 바꾸지 않아 selection 의 순서 잠금을 타지 않는다.
         verify: (sections: Section[]) => verifyDocument(localId, doc.kind, sections),
         remove: async () => {
-          await then(selection.remove());
+          await then(pinned.remove());
           onRemoved?.();
         },
       }

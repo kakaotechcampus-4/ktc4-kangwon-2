@@ -45,7 +45,11 @@ if crun --entrypoint sh certbot -c "test -f /etc/letsencrypt/renewal/$DOMAIN.con
   echo "이미 certbot 이 관리하는 인증서가 있다. 지우지 않고 덮어쓴다."
 fi
 
-# 1. 인증서는 호스트가 아니라 certbot 볼륨에 있다. 관리 중인 인증서는 임시본으로 덮지 않는다.
+# 1. 가짜 인증서 — nginx 를 띄우기 위한 자리끼다. 바로 덮어쓴다.
+#
+# **있는지는 컨테이너 안에서 본다.** 인증서는 도커 볼륨(certbot-etc)에만 있어 호스트의 $LIVE 는
+# 늘 없다. 호스트에서 보면 진짜 인증서 위에 1일짜리를 써서(live/ 는 archive/ 를 가리키는 링크다)
+# 진짜를 덮고, 3번 재발급이 실패하면 하루 안에 사이트가 죽는다. certbot 이 관리 중인 인증서도 덮지 않는다.
 if [ "$managed" = 0 ] && ! crun --entrypoint sh certbot -c "test -f $LIVE/fullchain.pem && test -f $LIVE/privkey.pem"; then
   echo "== 임시 인증서 =="
   crun --entrypoint sh certbot -c "

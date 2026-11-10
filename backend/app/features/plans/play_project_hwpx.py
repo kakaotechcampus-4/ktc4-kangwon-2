@@ -85,7 +85,7 @@ def fill_play_project(template: bytes, title: str, periods: Sequence[PlayPeriodR
 
 def _fill_table(table: etree._Element, periods: Sequence[PlayPeriodRows]) -> None:
     cells = _cells(table)
-    if int(table.get("rowCnt")) != 1 + PERIODS_PER_TABLE * ROWS_PER_PERIOD:
+    if int(table.get("rowCnt")) != 1 + PERIODS_PER_TABLE * ROWS_PER_PERIOD:  # type: ignore[arg-type]
         raise TemplateMismatch(f"양식 표가 {table.get('rowCnt')}줄이다.")
     for p, period in enumerate(periods):
         if len(period.rows) != ROWS_PER_PERIOD:
@@ -110,12 +110,12 @@ def _set_learning(tc: etree._Element, learning: Sequence[tuple[str, str, str]]) 
     if not learning:
         raise ValueError("배움이 비었다.")
     sub_list = tc.find("hp:subList", NS)
-    paragraphs = sub_list.findall("hp:p", NS)
+    paragraphs = sub_list.findall("hp:p", NS)  # type: ignore[union-attr]
     prototype = paragraphs[0]
     if len(prototype.findall("hp:run", NS)) != 2:
         raise TemplateMismatch("배움 칸 원형 문단은 run 두 개(굵게 · 보통)여야 한다.")
     for p in paragraphs:
-        sub_list.remove(p)
+        sub_list.remove(p)  # type: ignore[union-attr]
     for domain, category, content in learning:
         p = copy.deepcopy(prototype)
         for run, text in zip(
@@ -125,7 +125,7 @@ def _set_learning(tc: etree._Element, learning: Sequence[tuple[str, str, str]]) 
                 run.remove(child)
             etree.SubElement(run, f"{{{HP}}}t").text = _clean(text)
         _drop_layout(p)
-        sub_list.append(p)
+        sub_list.append(p)  # type: ignore[union-attr]
 
 
 def _set_titles(section: etree._Element, title: str, expected: int) -> None:

@@ -107,13 +107,13 @@ class Styles:
     def _variant(self, kind: str, source: str, change) -> str:
         if (kind, source) not in self.made:
             group = self.header.find(f".//hh:{kind}Properties", HH)
-            items = group.findall(f"hh:{kind}Pr", HH)
+            items = group.findall(f"hh:{kind}Pr", HH)  # type: ignore[union-attr]
             new = copy.deepcopy(next(e for e in items if e.get("id") == source))
-            new.set("id", str(max(int(e.get("id")) for e in items) + 1))
+            new.set("id", str(max(int(e.get("id")) for e in items) + 1))  # type: ignore[arg-type]
             change(new)
-            group.append(new)
-            group.set("itemCnt", str(len(items) + 1))
-            self.made[(kind, source)] = new.get("id")
+            group.append(new)  # type: ignore[union-attr]
+            group.set("itemCnt", str(len(items) + 1))  # type: ignore[union-attr]
+            self.made[(kind, source)] = new.get("id")  # type: ignore[assignment]
         return self.made[(kind, source)]
 
     def bold_tags(self, tc: etree._Element) -> None:
@@ -121,20 +121,20 @@ class Styles:
             t = run.find("hp:t", NS)
             if t is None or not _TAG.search(t.text or ""):
                 continue
-            bold = self._variant("char", run.get("charPrIDRef"), _add_bold)
+            bold = self._variant("char", run.get("charPrIDRef"), _add_bold)  # type: ignore[arg-type]
             p = run.getparent()
-            at = p.index(run)
-            p.remove(run)
-            for i, piece in enumerate(s for s in _TAG.split(t.text) if s):
+            at = p.index(run)  # type: ignore[union-attr]
+            p.remove(run)  # type: ignore[union-attr]
+            for i, piece in enumerate(s for s in _TAG.split(t.text) if s):  # type: ignore[arg-type]
                 new = copy.deepcopy(run)
-                new.find("hp:t", NS).text = piece
+                new.find("hp:t", NS).text = piece  # type: ignore[union-attr]
                 if _TAG.fullmatch(piece):
                     new.set("charPrIDRef", bold)
-                p.insert(at + i, new)
+                p.insert(at + i, new)  # type: ignore[union-attr]
 
     def center(self, tc: etree._Element) -> None:
         for p in tc.iterfind("hp:subList/hp:p", NS):
-            p.set("paraPrIDRef", self._variant("para", p.get("paraPrIDRef"), _centered))
+            p.set("paraPrIDRef", self._variant("para", p.get("paraPrIDRef"), _centered))  # type: ignore[arg-type]
 
 
 def _add_bold(char_pr: etree._Element) -> None:
@@ -149,7 +149,7 @@ def _add_bold(char_pr: etree._Element) -> None:
 
 
 def _centered(para_pr: etree._Element) -> None:
-    para_pr.find("hh:align", HH).set("horizontal", "CENTER")
+    para_pr.find("hh:align", HH).set("horizontal", "CENTER")  # type: ignore[union-attr]
 
 
 def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument) -> bytes:
@@ -162,7 +162,7 @@ def fill_play_monthly(template: bytes, doc: PlayMonthlyDocument) -> bytes:
     if len(tables) != 1:
         raise TemplateMismatch(f"양식 표가 {len(tables)}개다.")
     table = tables[0]
-    table.find("hp:pos", NS).set("treatAsChar", "0")
+    table.find("hp:pos", NS).set("treatAsChar", "0")  # type: ignore[union-attr]
     _drop_layout(next(table.iterancestors(f"{{{NS['hp']}}}p")))  # 표를 담은 문단의 1쪽 높이 캐시
     cells = _cells(table)
     for address, label in LABELS.items():
@@ -238,7 +238,7 @@ def _set_weeks(table: etree._Element, rows: dict[int, list[str]]) -> None:
     tcs = table.findall("hp:tr/hp:tc", NS)
     lines = _grid_lines(table, tcs)
     span = {tc: (lines[_col(tc)], lines[_col(tc)] + _width(tc)) for tc in tcs}
-    left, right = lines[WEEK_FIRST_COLUMN], lines[int(table.get("colCnt"))]
+    left, right = lines[WEEK_FIRST_COLUMN], lines[int(table.get("colCnt"))]  # type: ignore[arg-type]
 
     for row, texts in rows.items():
         tr = table.findall("hp:tr", NS)[row]
@@ -253,7 +253,7 @@ def _set_weeks(table: etree._Element, rows: dict[int, list[str]]) -> None:
         edges = [left + (right - left) * i // n for i in range(n)] + [right]
         for i, text in enumerate(texts):
             tc = copy.deepcopy(olds[i])
-            tc.find("hp:cellSz", NS).set("width", str(edges[i + 1] - edges[i]))
+            tc.find("hp:cellSz", NS).set("width", str(edges[i + 1] - edges[i]))  # type: ignore[union-attr]
             _set_text(tc, text)
             tr.insert(at + i, tc)
             span[tc] = (edges[i], edges[i + 1])
@@ -296,7 +296,7 @@ def set_split_rows(
     tcs = table.findall("hp:tr/hp:tc", NS)
     lines = _grid_lines(table, tcs)
     span = {tc: (lines[_col(tc)], lines[_col(tc)] + _width(tc)) for tc in tcs}
-    left, right = lines[first_col], lines[int(table.get("colCnt"))]
+    left, right = lines[first_col], lines[int(table.get("colCnt"))]  # type: ignore[arg-type]
     header = [] if header_row is None else trs[header_row].findall("hp:tc", NS)
     if len(header) not in (0, len(days)):
         raise TemplateMismatch(f"양식 {header_row}행 머리 칸이 {len(header)}개다.")
@@ -317,33 +317,33 @@ def set_split_rows(
         for i in range(len(days) + 1)
     ]
     for tc, (x0, x1) in zip(header, pairwise(edges), strict=bool(header)):
-        tc.find("hp:cellSz", NS).set("width", str(x1 - x0))
+        tc.find("hp:cellSz", NS).set("width", str(x1 - x0))  # type: ignore[union-attr]
         span[tc] = (x0, x1)
 
     # 경계는 분수로 펼친 뒤 정수로 옮긴다. 정수 나눗셈은 작은 쪽을 거듭 나누면 서로 다른 경계를
     # 한 점(폭 · 높이 · 병합 수 0, 같은 주소 두 칸)으로 합친다(Codex HWTT-01).
     height = round(height_mm * HWPUNIT_PER_MM)
-    leaves = []
+    rough = []
     for day, (x0, x1) in zip(days, pairwise(edges), strict=True):
         parts = _layout(day, Fraction(0), Fraction(1), Fraction(0), Fraction(1))
         xs = _grid([x for _, a, b, *_ in parts for x in (a, b)], x0, x1)
-        leaves += [(text, xs[a], xs[b], y0, y1) for text, a, b, y0, y1 in parts]
-    ys = _grid([y for *_, y0, y1 in leaves for y in (y0, y1)], 0, height)
-    leaves = [(text, x0, x1, ys[y0], ys[y1]) for text, x0, x1, y0, y1 in leaves]
-    ys = sorted(ys.values())
+        rough += [(text, xs[a], xs[b], y0, y1) for text, a, b, y0, y1 in parts]
+    grid = _grid([y for *_, y0, y1 in rough for y in (y0, y1)], 0, height)
+    leaves = [(text, x0, x1, grid[y0], grid[y1]) for text, x0, x1, y0, y1 in rough]
+    ys = sorted(grid.values())
     row = {y: i for i, y in enumerate(ys)}
     new_rows = [etree.Element(body[0].tag, body[0].attrib) for _ in ys[1:]]
     for text, x0, x1, y0, y1 in sorted(leaves, key=lambda leaf: (leaf[3], leaf[1])):
         tc = copy.deepcopy(model)
-        tc.find("hp:cellSz", NS).set("width", str(x1 - x0))
-        tc.find("hp:cellSz", NS).set("height", str(y1 - y0))
-        tc.find("hp:cellSpan", NS).set("rowSpan", str(row[y1] - row[y0]))
+        tc.find("hp:cellSz", NS).set("width", str(x1 - x0))  # type: ignore[union-attr]
+        tc.find("hp:cellSz", NS).set("height", str(y1 - y0))  # type: ignore[union-attr]
+        tc.find("hp:cellSpan", NS).set("rowSpan", str(row[y1] - row[y0]))  # type: ignore[union-attr]
         _set_text(tc, text)
         new_rows[row[y0]].append(tc)
         span[tc] = (x0, x1)
     for tc in reversed(names):
-        tc.find("hp:cellSz", NS).set("height", str(height))
-        tc.find("hp:cellSpan", NS).set("rowSpan", str(len(new_rows)))
+        tc.find("hp:cellSz", NS).set("height", str(height))  # type: ignore[union-attr]
+        tc.find("hp:cellSpan", NS).set("rowSpan", str(len(new_rows)))  # type: ignore[union-attr]
         new_rows[0].insert(0, tc)
     for i, tr in enumerate(new_rows):
         table.insert(at + i, tr)
@@ -351,7 +351,7 @@ def set_split_rows(
     trs = table.findall("hp:tr", NS)
     for r, tr in enumerate(trs):
         for tc in tr.findall("hp:tc", NS):
-            tc.find("hp:cellAddr", NS).set("rowAddr", str(r))
+            tc.find("hp:cellAddr", NS).set("rowAddr", str(r))  # type: ignore[union-attr]
     table.set("rowCnt", str(len(trs)))
     _renumber_columns(table, span)
 
@@ -369,9 +369,9 @@ def _layout(
         return [(part.text, x0, x1, y0, y1)]
     first, second = part.parts
     if part.axis is SplitAxis.VERTICAL:
-        y = y0 + (y1 - y0) * Fraction(part.ratio, 100)
+        y = y0 + (y1 - y0) * Fraction(part.ratio, 100)  # type: ignore[arg-type]
         return _layout(first, x0, x1, y0, y) + _layout(second, x0, x1, y, y1)
-    x = x0 + (x1 - x0) * Fraction(part.ratio, 100)
+    x = x0 + (x1 - x0) * Fraction(part.ratio, 100)  # type: ignore[arg-type]
     return _layout(first, x0, x, y0, y1) + _layout(second, x, x1, y0, y1)
 
 
@@ -396,8 +396,8 @@ def _renumber_columns(table: etree._Element, span: dict[etree._Element, tuple[in
     """칸마다의 x 구간으로 표 격자 열 번호 · 병합 수를 다시 매긴다."""
     index = {x: i for i, x in enumerate(sorted({x for pair in span.values() for x in pair}))}
     for tc, (x0, x1) in span.items():
-        tc.find("hp:cellAddr", NS).set("colAddr", str(index[x0]))
-        tc.find("hp:cellSpan", NS).set("colSpan", str(index[x1] - index[x0]))
+        tc.find("hp:cellAddr", NS).set("colAddr", str(index[x0]))  # type: ignore[union-attr]
+        tc.find("hp:cellSpan", NS).set("colSpan", str(index[x1] - index[x0]))  # type: ignore[union-attr]
     table.set("colCnt", str(len(index) - 1))
 
 
@@ -412,23 +412,23 @@ def _grid_lines(table: etree._Element, tcs: list[etree._Element]) -> dict[int, i
     while grew:
         grew = False
         for tc in tcs:
-            start, end = _col(tc), _col(tc) + int(tc.find("hp:cellSpan", NS).get("colSpan"))
+            start, end = _col(tc), _col(tc) + int(tc.find("hp:cellSpan", NS).get("colSpan"))  # type: ignore[arg-type, union-attr]
             if start in lines and end not in lines:
                 lines[end] = lines[start] + _width(tc)
                 grew = True
     # 월간 v1 4주 양식처럼 어느 칸 모서리도 아닌 격자 번호는 필요 없다(번호는 다시 매긴다).
-    edges = {_col(tc) + int(tc.find("hp:cellSpan", NS).get("colSpan")) for tc in tcs}
-    if not edges | {_col(tc) for tc in tcs} | {int(table.get("colCnt"))} <= lines.keys():
+    edges = {_col(tc) + int(tc.find("hp:cellSpan", NS).get("colSpan")) for tc in tcs}  # type: ignore[arg-type, union-attr]
+    if not edges | {_col(tc) for tc in tcs} | {int(table.get("colCnt"))} <= lines.keys():  # type: ignore[arg-type]
         raise TemplateMismatch("양식 표의 세로선을 모두 찾지 못했다.")
     return lines
 
 
 def _col(tc: etree._Element) -> int:
-    return int(tc.find("hp:cellAddr", NS).get("colAddr"))
+    return int(tc.find("hp:cellAddr", NS).get("colAddr"))  # type: ignore[arg-type, union-attr]
 
 
 def _width(tc: etree._Element) -> int:
-    return int(tc.find("hp:cellSz", NS).get("width"))
+    return int(tc.find("hp:cellSz", NS).get("width"))  # type: ignore[arg-type, union-attr]
 
 
 def _text(tc: etree._Element) -> str:
@@ -441,7 +441,7 @@ def _set_paragraph(p: etree._Element, text: str) -> None:
     제목 칸은 문단마다 정렬 · 글자 모양이 달라 `_set_text`(첫 문단 서식으로 통일)를 못 쓴다.
     """
     run = p.find("hp:run", NS)
-    for child in list(run):
-        run.remove(child)
-    etree.SubElement(run, f"{{{NS['hp']}}}t").text = _clean(text)
+    for child in list(run):  # type: ignore[arg-type]
+        run.remove(child)  # type: ignore[union-attr]
+    etree.SubElement(run, f"{{{NS['hp']}}}t").text = _clean(text)  # type: ignore[type-var, union-attr]
     _drop_layout(p)

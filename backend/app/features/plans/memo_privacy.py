@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from dataclasses import replace
+from typing import Any, cast
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -82,7 +83,7 @@ def memo_name_table(
         return center_name_table(session, class_id, memo)
     except CallNameNeeded as error:
         # 고치는 방법(부르는 이름 · 낱말 바꾸기)을 그대로 보여준다.
-        detail = {**failure.detail, "message": str(error)}
+        detail = {**cast(dict[str, Any], failure.detail), "message": str(error)}
         raise HTTPException(failure.status_code, detail=detail) from error
     except SubstitutionError as error:
         raise failure from error

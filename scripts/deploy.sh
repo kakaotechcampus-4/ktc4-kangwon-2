@@ -169,6 +169,18 @@ wait_ready() {
   return 1
 }
 
+# 떠 있는 nginx 에 새 설정을 읽힌다. up -d 가 방금 다시 만들었으면 아직 준비 전일 수 있어 몇 번 더 해 본다.
+# 실패해도 떠 있는 nginx 는 멈추지 않는다 — 거절된 reload 는 옛 설정으로 계속 돈다.
+reload_nginx() {
+  local i
+  for ((i = 1; i <= 5; i++)); do
+    sudo docker compose exec -T nginx nginx -s reload && return 0
+    echo "nginx reload ${i}/5 실패"
+    sleep "$READY_INTERVAL"
+  done
+  return 1
+}
+
 # 서버를 안 바꿨을 때만 덧붙이는 글. 컨테이너를 바꾼 뒤에는 이 말이 거짓이다.
 unless_swapped() { [ "$swapped" = 1 ] || printf '%s' "$1"; }
 
@@ -329,12 +341,20 @@ deploy_one() {
   swapped=1
   sudo docker compose up -d || swap_failed "up -d 가 실패했다"
 
-  # nginx 는 nginx/ 폴더를 통째로 본다(docker-compose.yml). 컨테이너를 다시 만들지 않으면
-  # 새 설정을 안 읽으므로 reload 로 읽힌다. 접속은 안 끊기고, 진행 중인 요청은 끝까지 간다.
-  # reload 가 안 되면 다시 시작한다 — up -d 가 방금 다시 만들어 아직 준비 전이거나, 재시작을 반복하는
-  # 중일 때다(up -d 는 재시작 반복 중인 컨테이너를 건드리지 않는다). 그때 nginx 는 어차피 응답을 못 하고 있다.
-  sudo docker compose exec -T nginx nginx -s reload || sudo docker compose restart nginx \
-    || swap_failed "nginx reload 와 restart 가 둘 다 실패했다"
+  # nginx 는 nginx/ 폴더를 통째로 본다(docker-compose.yml). 배포 때 reload 로 새 설정을 읽힌다.
+  # 접속은 안 끊기고, 진행 중인 요청은 끝까지 간다.
+  # **떠 있는 nginx 는 다시 시작하지 않는다.** reload 가 거절돼도 옛 설정으로 계속 돈다. 다시 시작하면
+  # 같은 이유(예: frontend 가 재시작을 반복해 upstream 이름을 못 찾음)로 못 떠서 /api 까지 죽고, 진행 중인 요청도 끊긴다.
+  # 그래서 reload 가 끝내 안 되면 되돌린다(#502 리뷰 4번). 떠 있지 않은 nginx(재시작 반복 · 멈춤)만 다시 시작한다 —
+  # up -d 는 재시작을 반복하는 컨테이너를 건드리지 않는다. 상태를 못 읽으면 어느 쪽인지 모르니 되돌린다.
+  # 되돌릴 때 L 의 deploy.sh 가 이 변경 전 것이면, 그 스크립트는 여전히 reload 실패에 restart 한다.
+  nginx_running=$(sudo docker compose ps -q --status running nginx) \
+    || swap_failed "nginx 상태를 읽지 못했다"
+  if [ -n "$nginx_running" ]; then
+    reload_nginx || swap_failed "떠 있는 nginx 가 reload 를 끝내 받지 않았다 — 다시 시작하지 않고 그대로 둔다"
+  else
+    sudo docker compose restart nginx || swap_failed "떠 있지 않던 nginx 를 다시 시작하지 못했다"
+  fi
 
   # 교체가 끝났다. 서버 안에서 살아났는지 본다.
   wait_ready || swap_failed "서버 안 확인(health/ready · 화면)이 통과하지 못했다"

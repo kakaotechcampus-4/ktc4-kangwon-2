@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 
 const require = createRequire(import.meta.url);
 const axis = await import("../lib/workspace/observation-axis.ts");
+const journalDay = await import("../lib/workspace/journal-day.ts");
 const childMark = await import("../lib/workspace/child-mark.ts");
 const domainLook = await import("../lib/workspace/domain-look.ts");
 const TODAY = "2026-11-05";
@@ -196,6 +197,8 @@ function harness(
     "@/lib/workspace/model": { today: () => TODAY },
     "@/components/app/ChildPicker": { ChildNote: "child-note" },
     "@/components/app/icons": { Icon: "icon" },
+    "@/lib/workspace/journal-day": journalDay,
+    "@/components/app/Posty": { Posty: "posty" },
     "./DocumentArchiveArt": new Proxy({}, { get: () => "decoration" }),
     "./WorkspaceUI": { Message: "message" },
     "./ChildTracking.module.css": {

@@ -132,7 +132,8 @@ def generate_subthemes_with_memo(
         ],
     }
     if memo:
-        payload["teacher_memo"] = {"text": memo, "addresses": list(addresses)}
+        payload["teacher_memo"] = {"text": memo, "addresses": list(addresses)}  # type: ignore[arg-type]
+    timing.note_prompt(payload["prompt_version"])
     if is_mock():
         content = json.dumps(
             {
@@ -147,7 +148,7 @@ def generate_subthemes_with_memo(
                     for item in payload["months"]
                 ],
                 # mock 은 첫 달에 반영했다고 답한다.
-                **({"memo_applied": list(addresses[:1]), "memo_skipped": []} if memo else {}),
+                **({"memo_applied": list(addresses[:1]), "memo_skipped": []} if memo else {}),  # type: ignore[index]
             },
             ensure_ascii=False,
         )
@@ -187,6 +188,7 @@ def generate_subthemes_with_memo(
                 "applied": sorted(applied),
                 "skipped": [{"summary": n.summary, "reason": n.reason.value} for n in notices],
             }
+        timing.note_prompt(repair_payload["prompt_version"])
         repaired = parse_subthemes(
             complete_json(
                 SYSTEM_PROMPT

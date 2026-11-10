@@ -2,8 +2,9 @@ name: Deploy
 
 # main 에 머지되면 서버에 올린다(ADR-094). develop 머지는 운영에 나가지 않는다.
 #
-# CI 와 배포는 따로 돈다 — main push 의 검사가 빨간불이어도 나간다. 막는 자리는 develop 규칙의
-# 필수 검사다. main 에는 develop 을 머지하는 PR 로만 들어온다.
+# **push 배포는 같은 커밋의 CI(push)가 성공해야 나간다.** 「CI 기다리기」 job 이 그 CI 가 끝날 때까지 본다
+# (scripts/wait-ci.sh) — 실패면 안 올리고 알림, 더 새 push 가 CI 를 취소했으면 조용히 건너뛴다(뒤 run 이 올린다).
+# 손 배포(workflow_dispatch)는 기다리지 않는다 — 급히 옛 커밋으로 되돌릴 때 막히면 안 된다.
 #
 # 서버에 들어가는 방법은 SSH 가 아니라 SSM 이다 — 카테캠 OIDC 가이드 §7.
 # 인바운드 포트가 0개고, GitHub 에 저장하는 비밀키도 0개다.
@@ -32,15 +33,11 @@ on:
         type: boolean
         default: false
 
-# 같은 서버에 두 배포가 겹치면 컨테이너가 반쯤 바뀐 상태가 된다. 서버 안의 잠금(deploy.sh)이 손 배포와의 겹침을 한 번 더 막는다.
-concurrency:
-  group: deploy-production
-  cancel-in-progress: false
-
 # 이 블록을 쓰는 순간 명시하지 않은 권한은 전부 none 이 된다.
 permissions:
   id-token: write # 빠지면 OIDC 인증이 실패한다
   contents: read # checkout 용
+  actions: read # 「CI 기다리기」가 CI run 결과를 읽는다
 
 env:
   INSTANCE_ID: i-041ebb00937bd371f # ktc4-team-server
@@ -52,7 +49,46 @@ env:
   DEPLOY_REF: ${{ inputs.ref || github.sha }}
 
 jobs:
+  # push 배포만 돈다. 손 배포에서는 건너뛰고, 아래 deploy 는 그래도 돈다.
+  wait-ci:
+    name: CI 기다리기
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.wait.outputs.ok }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 같은 커밋의 CI 결과 기다림
+        id: wait
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/wait-ci.sh "$GITHUB_SHA"
+      - name: 실패 알림
+        if: ${{ !cancelled() && failure() }}
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          CI_URL: ${{ steps.wait.outputs.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          test -n "$WEBHOOK" || exit 0
+          nl=$'\n'
+          msg="🔴 CI 가 통과하지 않아 배포하지 않았다 — $GITHUB_SHA${nl}CI: ${CI_URL:-찾지 못했다(시간 초과)}${nl}${RUN_URL}"
+          curl -fsS -X POST "$WEBHOOK" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg c "$msg" '{content: $c}')" \
+            || echo "알림 전송 실패"
+
   deploy:
+    needs: wait-ci
+    # 손 배포는 wait-ci 가 건너뛰어져도 돈다. push 는 CI 가 성공했을 때(ok=true)만.
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.wait-ci.outputs.ok == 'true') }}
+    # 같은 서버에 두 배포가 겹치면 컨테이너가 반쯤 바뀐 상태가 된다. 서버 안의 잠금(deploy.sh)이 손 배포와의 겹침을 한 번 더 막는다.
+    # 잠금은 run 이 아니라 이 job 에 건다 — run 에 걸면 CI 를 기다리는 push run 이 최대 45분 잠금을 쥐어 급한 손 배포(되감기)가
+    # 그 뒤에 서고, 그 사이 push 가 또 오면 대기 중인 손 배포가 취소된다. 그래서 「CI 기다리기」는 잠금 밖에서 돈다.
+    # 손으로 되감은 뒤에도 CI 를 기다리던 push 배포가 이어서 나갈 수 있다 — 되감은 상태를 지키려면 그 run 을 취소한다.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -67,7 +103,18 @@ jobs:
           echo "올릴 커밋 $sha"
           echo "DEPLOY_SHA=$sha" >> "$GITHUB_ENV"
 
+      # 잠금을 얻은 뒤 다시 본다(scripts/still-tip.sh). 「CI 기다리기」는 잠금 밖이라, 그 사이 더 새 push 가 먼저
+      # 올라갔으면 이 옛 커밋이 그 위를 덮는다(하민 리뷰 #549). 그러면 서버를 건드리지 않고 끝낸다(stale=true).
+      # 끝을 못 읽으면 막는다. 손 배포는 일부러 옛 커밋을 올리는 것이라 보지 않는다.
+      - name: 아직 브랜치 끝인지
+        id: latest
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/still-tip.sh "$DEPLOY_SHA"
+
       - name: AWS 자격증명 설정
+        if: steps.latest.outputs.stale != 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
@@ -79,6 +126,7 @@ jobs:
       # output 으로도 남긴다. SSM 이 stdout 은 앞 24000자만 줘서(next build 출력에서 잘린다) 끝에 찍는 줄은 stderr 에 있다.
       - name: 배포
         id: deploy
+        if: steps.latest.outputs.stale != 'true'
         env:
           # 서버가 교체 뒤 실패를 되돌릴지('1' · '0'). push 배포는 늘 '1', 손 배포는 auto_rollback 입력대로.
           AUTO_ROLLBACK: ${{ (github.event_name == 'push' || inputs.auto_rollback) && '1' || '0' }}
@@ -123,7 +171,7 @@ jobs:
 
       # 되돌렸어도(3) 이번에 올리려던 배포는 실패다. run 이 초록이면 실패한 커밋이 나간 것처럼 보인다.
       - name: 배포 판정
-        if: ${{ !cancelled() && steps.deploy.outputs.code != '0' }}
+        if: ${{ !cancelled() && steps.latest.outputs.stale != 'true' && steps.deploy.outputs.code != '0' }}
         env:
           DEPLOY_CODE: ${{ steps.deploy.outputs.code }}
         run: |
@@ -140,10 +188,15 @@ jobs:
           DEPLOY_CODE: ${{ steps.deploy.outputs.code }}
           RESULT: ${{ steps.deploy.outputs.result }}
           HEALTH_OUTCOME: ${{ steps.health.outcome }}
+          LATEST_OUTCOME: ${{ steps.latest.outcome }}
         run: |
           test -n "$WEBHOOK" || exit 0
           f=${DEPLOY_SHA:-올릴 커밋을 못 정함}
           nl=$'\n'
+          # 「아직 브랜치 끝인지」가 실패했으면 서버를 건드리지 않았다(배포 스텝이 안 돌아 DEPLOY_CODE 가 비었다)
+          if [ "$LATEST_OUTCOME" = failure ]; then
+            msg="🔴 ${BRANCH} 끝을 읽지 못해 배포하지 않았다 — $f. 서버는 그대로다. run 을 다시 돌린다"
+          else
           case "$DEPLOY_CODE" in
             0)
               msg="🔴 서버 안은 정상인데 밖에서 안 닿는다 — $f. DNS · 인증서 · HEALTHCHECK_URL 을 본다"
@@ -174,6 +227,7 @@ jobs:
               msg="🔴 배포 실패 — $f. 서비스 상태를 확인한다"
               ;;
           esac
+          fi
           curl -fsS -X POST "$WEBHOOK" \
             -H 'Content-Type: application/json' \
             -d "$(jq -n --arg c "${msg}${nl}${RUN_URL}" '{content: $c}')" \

@@ -85,7 +85,7 @@ class _Header:
     def align(self, ref: str | None) -> int:
         p = self.paras.get(ref)
         a = p.find(".//hh:align", NS) if p is not None else None
-        return _ALIGN.get(a.get("horizontal") if a is not None else "", TA_LEFT)
+        return _ALIGN.get(a.get("horizontal") if a is not None else "", TA_LEFT)  # type: ignore[arg-type, return-value]
 
     def word_wrap(self, ref: str | None) -> str | None:
         """한글 줄 나눔. KEEP_WORD 면 어절 단위(긴 어절만 쪼갠다), BREAK_WORD 면 글자 단위."""
@@ -99,7 +99,8 @@ class _Header:
         b = self.fills.get(ref)
         if b is None:
             return []
-        (c0, r0, c1, r1), out = at, []
+        c0, r0, c1, r1 = at
+        out: list[tuple] = []
         for side, command in _SIDES.items():
             line = b.find(f"hh:{side}", NS)
             if line is None or line.get("type", "NONE") == "NONE":
@@ -160,7 +161,7 @@ def _widths(cells: list[tuple[int, int, int]], count: int) -> list[float]:
 
 
 def _table(tbl: etree._Element, header: _Header) -> Table:
-    rows, cols = int(tbl.get("rowCnt")), int(tbl.get("colCnt"))
+    rows, cols = int(tbl.get("rowCnt")), int(tbl.get("colCnt"))  # type: ignore[arg-type]
     grid: list[list] = [["" for _ in range(cols)] for _ in range(rows)]
     style: list = [("FONTNAME", (0, 0), (-1, -1), FONT)]
     spans: list[tuple[int, int, int]] = []
@@ -171,11 +172,11 @@ def _table(tbl: etree._Element, header: _Header) -> Table:
         r, c = _int(addr, "rowAddr"), _int(addr, "colAddr")
         rs, cs = _int(span, "rowSpan", 1), _int(span, "colSpan", 1)
         sub = tc.find("hp:subList", NS)
-        grid[r][c] = [_paragraph(p, header) for p in sub.findall("hp:p", NS)]
+        grid[r][c] = [_paragraph(p, header) for p in sub.findall("hp:p", NS)]  # type: ignore[union-attr]
         at = (c, r, c + cs - 1, r + rs - 1)
         if rs > 1 or cs > 1:
             style.append(("SPAN", at[:2], at[2:]))
-        valign = _VALIGN.get(sub.get("vertAlign", "CENTER"), "MIDDLE")
+        valign = _VALIGN.get(sub.get("vertAlign", "CENTER"), "MIDDLE")  # type: ignore[union-attr]
         style.append(("VALIGN", at[:2], at[2:], valign))
         for side, name in (("LEFT", "left"), ("RIGHT", "right")):
             style.append((f"{side}PADDING", at[:2], at[2:], _int(margin, name, 141) * PT))
@@ -210,9 +211,9 @@ def _table(tbl: etree._Element, header: _Header) -> Table:
 
 def _page(section: etree._Element) -> tuple[tuple[float, float], dict[str, float]]:
     page = section.find(".//hp:pagePr", NS)
-    margin = page.find("hp:margin", NS)
+    margin = page.find("hp:margin", NS)  # type: ignore[union-attr]
     size = (_int(page, "width") * PT, _int(page, "height") * PT)
-    if page.get("landscape") == "NARROWLY":  # 한글은 WIDELY 가 세로다
+    if page.get("landscape") == "NARROWLY":  # type: ignore[union-attr]  # 한글은 WIDELY 가 세로다
         size = size[::-1]
     m = {k: _int(margin, k) * PT for k in ("left", "right", "top", "bottom", "header", "footer")}
     return size, {

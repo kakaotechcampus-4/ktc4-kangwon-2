@@ -42,20 +42,10 @@ def check_evidence(
     """등록해도 되지만 교사가 알아야 하는 것들. 비어 있으면 아무 문제 없다는 뜻이다."""
     notices: list[dict[str, str]] = []
 
-    if kind == "assessment" and child_id is None:
-        notices.append(
-            {
-                "code": "ASSESSMENT_NEEDS_CHILD",
-                "message": (
-                    "영유아 평가는 아이마다 세어요. "
-                    "아동을 고르지 않으면 4-2 집계에 들어가지 않아요."
-                ),
-            }
-        )
-
+    # 아동을 안 고른 영유아 평가는 여기까지 오지 않는다 — 라우터가 422 로 먼저 막는다(§11).
     if kind == "assessment" and child_id is not None:
         rule = load_catalog().get("4-2").rule
-        period = judge.window_for(rule["window"], judge.today_kst(now))
+        period = judge.window_for(rule["window"], judge.today_kst(now))  # type: ignore[index]
         if not period.contains(end):
             notices.append(
                 {

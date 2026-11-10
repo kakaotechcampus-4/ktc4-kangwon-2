@@ -31,6 +31,7 @@ from ssuksak.planning.planner.play_project import (
     remaining_memo_notices,
 )
 
+from app.features.plans.generation_runs import PromptNoted
 from app.features.plans.memo_privacy import MemoMaskFailed, with_masked_memo
 from app.features.plans.models import Plan
 from app.features.plans.monthly_llm import monthly_llm_provider
@@ -134,7 +135,7 @@ def _final(error: BaseException, kinds: tuple[type, ...] = _FINAL) -> bool:
         if isinstance(error, kinds):
             return True
         seen.add(id(error))
-        error = error.__cause__ or error.__context__
+        error = error.__cause__ or error.__context__  # type: ignore[assignment]
     return False
 
 
@@ -171,7 +172,7 @@ def generate(
     use_case = GeneratePlayProjectPlan(
         curriculum_repository=curriculum_repository(),
         plan_repository=InMemoryPlanRepository(),
-        provider=with_masked_memo(provider(), memo, names),
+        provider=with_masked_memo(PromptNoted(provider()), memo, names),
         clock=SystemClock(),
         id_generator=FixedPlanIdGenerator(plan_id),
     )
@@ -214,13 +215,15 @@ def generate(
                     raise done[key]
         rows = {key: list(done[key][0].periods[0].candidates) for key in keys}
 
+        # 겹침 찾기 · 겹친 후보 다시 — 생성 기록의 「겹치는 놀이 살펴보기」 단계(ADR-096)
+        timing.phase("overlap")
         targets = overlapping_candidates(
             [
                 [(c.play_name.value, c.materials.value, _memo_applied(c)) for c in rows[k]]
                 for k in keys
             ]
         )
-        by_period = {}
+        by_period: dict[str, list[int]] = {}
         for j, i in targets:
             by_period.setdefault(keys[j], []).append(i)
         if by_period:
@@ -411,4 +414,4 @@ class EditItemIn(RevisionIn):
 class ConfirmIn(RevisionIn):
     # 월별 주제형은 본문을 안 읽으므로 `{}` 도 받아야 한다.
     # 놀이형의 「없음」은 라우터가 422 로 막고, 타입이 틀린 값은 여기서 먼저 422 다.
-    expected_revision: Annotated[int, Field(ge=1, strict=True)] | None = None
+    expected_revision: Annotated[int, Field(ge=1, strict=True)] | None = None  # type: ignore[assignment]

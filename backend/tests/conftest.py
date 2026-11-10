@@ -29,10 +29,23 @@ from sqlalchemy.orm import Session  # noqa: E402
 from app.db import engine, get_session  # noqa: E402
 from app.features.auth.models import User  # noqa: E402
 from app.features.forms import mapping  # noqa: E402
+from app.features.plans.generation_runs import RunRecorder, generation_run  # noqa: E402
 from app.main import app  # noqa: E402
 from app.shared.auth.dependency import current_user  # noqa: E402
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
+
+class _Unrecorded(RunRecorder):
+    """생성 기록을 쓰지 않는 기록기 — `begin` 만 아무것도 안 한다.
+
+    `db_session` 은 바깥 transaction 안에서 도는데, 기록은 따로 연결해서 쓴다. 그러면 바깥
+    transaction 안의 행은 다른 연결이 못 보고, 계획안 FK 는 commit 되지 않은 계획안을 기다리고,
+    쓴 줄은 롤백 밖에 남는다. 그래서 진짜 쓰기는 `test_generation_runs.py` 가 진짜 commit 으로 본다.
+    """
+
+    def begin(self, klass) -> None:
+        pass
 
 
 @pytest.fixture
@@ -76,6 +89,7 @@ def db_session(_schema):
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
 
     app.dependency_overrides[get_session] = lambda: session
+    app.dependency_overrides[generation_run] = lambda: _Unrecorded()
     try:
         yield session
     finally:
@@ -108,3 +122,17 @@ def teacher():
         yield user
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "real_db: 진짜 Postgres 를 쓰는 테스트. CI 가 따로 한 단계로 돌린다"
+    )
+
+
+def pytest_collection_modifyitems(items):
+    # `_schema` 는 마이그레이션을 올리는 세션 픽스처라 실 DB 를 쓰는 테스트는 모두 거친다.
+    # `db_session` 으로 가르면 안 된다 — 그걸 안 쓰고 `_schema` 만 받아 직접 연결하는 테스트가 있다.
+    for item in items:
+        if "_schema" in item.fixturenames:
+            item.add_marker(pytest.mark.real_db)

@@ -9,7 +9,7 @@ import Tour from "./Tour";
  *   AppLayout
  *   ├ AppSidebar      (데스크톱: 좌측 고정 / 모바일: 하단 네비)
  *   ├ WorkspaceTopBar (얇은 상단 띠 — 지금 어디인지와 오늘 날짜)
- *   ├ Content         (각 페이지가 AppHeader + PageContainer 로 구성)
+ *   ├ Content         (각 페이지가 PageContainer 로 구성)
  *   └ Tour            (처음 온 선생님 안내 — 홈 · 관찰 · 일과 · 주간 기록)
  *
  * 사이드바가 lg 에서 fixed 라서 본문에 같은 폭만큼 왼쪽 여백을 준다.
@@ -39,8 +39,9 @@ export function PageContainer({
   className?: string;
 }) {
   return (
-    <div className={`px-4 pt-[18px] pb-8 lg:px-10 lg:pt-[26px] lg:pb-12 min-w-0 ${className}`}>
+    // 본문 자리 표시(점검 H-E3). 다른 화면은 WorkspacePage 가 <main> 을 둔다.
+    <main className={`px-4 pt-[18px] pb-8 lg:px-10 lg:pt-[26px] lg:pb-12 min-w-0 ${className}`}>
       {children}
-    </div>
+    </main>
   );
 }

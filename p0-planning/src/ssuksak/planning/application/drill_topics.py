@@ -41,10 +41,13 @@ def select_drill_topics(
         raise DrillTopicError("DRILL_CURRICULUM_MISMATCH")
     if any(catalog.get(topic.content_id) is None for topic in drills.topics):
         raise DrillTopicError("DRILL_UNKNOWN_CONTENT_ID")
-    # Month-limited topics (e.g. 폭설 in winter) first, then catalog order.
-    # ponytail: fixed order, so a month without a seasonal topic always gets the same five;
-    # add rotation only if teachers ask for variety.
-    topics = sorted(drills.for_month(month), key=lambda t: len(t.applicable_months) == 12)
-    if len(topics) < count:
+    # Month-limited topics (e.g. 폭설 in winter) first, then the year-round topics in catalog order
+    # starting one step further each school month (March = 0), so neighbouring months differ
+    # (Human Decision 2026-11-11 하민, 「대피 후보 달마다 돌리기」).
+    available = drills.for_month(month)
+    if len(available) < count:
         raise DrillTopicError("DRILL_TOPICS_INSUFFICIENT")
-    return tuple(topics[:count])
+    seasonal = [t for t in available if len(t.applicable_months) < 12]
+    year_round = [t for t in available if len(t.applicable_months) == 12]
+    start = (month - 3) % 12 % len(year_round) if year_round else 0
+    return tuple((seasonal + year_round[start:] + year_round[:start])[:count])

@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -21,7 +22,7 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.features.centers.models import Center
 from app.features.trends.approved import is_approved
-from app.features.trends.item import COLLECTED_DIR, RawItem, load
+from app.features.trends.item import COLLECTED_DIR, load
 from app.features.trends.schemas import TrendItem, TrendsResponse
 from app.shared.auth.dependency import CurrentUser
 
@@ -33,7 +34,7 @@ router = APIRouter(prefix="/trends", tags=["trends"])
 LIMIT = 20
 
 
-def latest_week() -> RawItem | None:
+def latest_week() -> Path | None:
     """가장 최근 주 파일. 없으면 None."""
     files = sorted(COLLECTED_DIR.glob("*.json"))
     return files[-1] if files else None

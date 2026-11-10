@@ -29,15 +29,7 @@ const { isPlayAnnual } = load("../lib/monthly/play-entry.ts", {});
 const MONTH_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
 const stub = () => null;
 const monthlyLabels = load("../lib/monthly/section-labels.ts", {});
-const {
-  MonthlyNewView,
-  firstOpenMonth,
-  inheritOf,
-  pickTemplate,
-  firstExtras,
-  sameColumns,
-  profileInput,
-} = load("../components/workspace/MonthlyNew.tsx", {
+const MONTHLY_NEW = {
   react: React,
   "next/link": {
     __esModule: true,
@@ -50,8 +42,10 @@ const {
   "@/lib/api/playMonthly": {},
   "@/lib/api/plans": {},
   "@/lib/api/trends": {},
+  "@/lib/api/generationRuns": { newRunId: () => "run-1" },
   "@/lib/api/onboarding": {},
   "@/lib/api/templateProfiles": {},
+  "@/lib/api/centers": {},
   "@/lib/monthly/section-labels": monthlyLabels,
   "@/lib/onboarding/settings": {},
   "@/lib/onboarding/types": { MONTH_ORDER, ageSelectionLabel: stub, selectedAgesFor: stub },
@@ -66,7 +60,16 @@ const {
   "@/components/app/compact-shell": { useCompactShell: stub },
   "@/components/plan-generator/AnnualFrame": { BACK_BUTTON: "back", BACK_ICON: null },
   "./WorkspaceUI": { useClasses: stub, Tape: () => null },
-});
+};
+const {
+  MonthlyNewView,
+  firstOpenMonth,
+  inheritOf,
+  pickTemplate,
+  firstExtras,
+  sameColumns,
+  profileInput,
+} = load("../components/workspace/MonthlyNew.tsx", MONTHLY_NEW);
 
 test("놀이형 판별: 놀이형만 참, 목록 실패(null) · 월별 주제형 · 빈 목록은 기존 화면", () => {
   assert.equal(isPlayAnnual({ items: [{ format: "PLAY_PROJECT" }] }), true);
@@ -241,3 +244,118 @@ test("409 뒤 다시 읽기: 그 달 id, 없거나 목록 실패면 null, 기다
   release();
   assert.equal(await late, null);
 });
+
+/** 화면 함수를 hook 칸 · 의존 값이 바뀌면 다시 도는 effect 로 그린다. 함수 컴포넌트는 펼치지 않는다. */
+function fakeReact() {
+  const slots = [];
+  const effects = [];
+  let cursor = 0;
+  const state = (initial) => {
+    const i = cursor++;
+    slots[i] ??= [
+      typeof initial === "function" ? initial() : initial,
+      (next) => (slots[i][0] = typeof next === "function" ? next(slots[i][0]) : next),
+    ];
+    return [slots[i][0], slots[i][1]];
+  };
+  const useEffect = (fn, deps) => {
+    const i = cursor++;
+    const prev = effects[i];
+    if (prev && deps.every((d, k) => Object.is(d, prev.deps[k]))) return;
+    prev?.cleanup?.();
+    effects[i] = { deps, cleanup: fn() };
+  };
+  const jsx = (type, props, key) => ({ type, props, key });
+  return {
+    react: { useState: state, useRef: (v) => state(() => ({ current: v }))[0], useEffect },
+    runtime: { jsx, jsxs: jsx, Fragment: "fragment" },
+    render: (fn) => ((cursor = 0), fn()),
+    cleanup: () => effects.forEach((e) => e?.cleanup?.()),
+  };
+}
+const nodes = (n) =>
+  Array.isArray(n)
+    ? n.flatMap(nodes)
+    : n && typeof n === "object"
+      ? [n, ...nodes(n.props?.children)]
+      : [];
+const drain = async () => {
+  for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+};
+
+for (const [format, url] of [
+  ["MONTHLY_THEME", "/api/plans/monthly"],
+  ["PLAY_PROJECT", "/api/plans/monthly/play"],
+])
+  test(`만들기(${format}): 생성 POST 의 X-Generation-Run-Id 와 링의 runId 가 같은 값이다`, async (t) => {
+    const fake = fakeReact();
+    const sent = [];
+    const apiRequest = (path, init) => {
+      sent.push({ path, init });
+      return new Promise(() => {}); // 만드는 중에 멈춰 둔다 — 링이 떠 있다
+    };
+    const runs = load("../lib/api/generationRuns.ts", { "./client": { apiRequest } });
+    const api = (path) =>
+      load(path, { "./client": { apiRequest }, "./export": {}, "./generationRuns": runs });
+    const annual = {
+      id: 9,
+      format,
+      status: "CONFIRMED",
+      school_year: 2026,
+      months: [],
+      periods: [],
+    };
+    const template = {
+      template_ref: { template_id: "a", template_version: "v1" },
+      approved: true,
+      sections: [{ section_key: "theme", label: null, selection: "REQUIRED" }],
+      focus_variants: [],
+    };
+    const classes = [{ id: "c1", className: "햇살반" }];
+    const { default: MonthlyNew } = load("../components/workspace/MonthlyNew.tsx", {
+      ...MONTHLY_NEW,
+      react: fake.react,
+      "react/jsx-runtime": fake.runtime,
+      "@/lib/api/generationRuns": { ...runs, newRunId: () => "run-1" },
+      "@/lib/api/monthly": {
+        ...api("../lib/api/monthly.ts"),
+        listMonthlyPlans: async () => ({ items: [] }),
+      },
+      "@/lib/api/playMonthly": {
+        ...api("../lib/api/playMonthly.ts"),
+        listPlayMonthly: async () => ({ items: [] }),
+      },
+      "@/lib/api/plans": {
+        listAnnualPlans: async () => ({ items: [{ id: 9 }] }),
+        getAnnualPlan: async () => annual,
+      },
+      "@/lib/api/onboarding": { syncClass: async () => 31, syncCenter: async () => 7 },
+      // 월별 주제형은 불러올 때 원 설정을 읽어 원 기본 양식을 바꿀 수 있는지 본다(ADR-087).
+      "@/lib/api/centers": { getCenterSettings: async () => ({ can_edit: true }) },
+      "@/lib/api/templateProfiles": {
+        listMonthlyTemplates: async () => ({ items: [template] }),
+        listReadyTemplateProfiles: async () => ({ items: [] }),
+        getClassTemplateProfile: async () => ({ profile_ref: null }),
+        getCenterDefaultProfile: async () => ({ profile_ref: null }),
+        createTemplateProfile: async () => ({
+          profile_ref: { profile_id: "p", profile_version: 1 },
+        }),
+        putCenterDefaultProfile: async () => ({}),
+      },
+      "@/lib/api/trends": { topicMemo: () => "" },
+      "@/lib/onboarding/settings": { loadClassSettings: () => ({}), chosenClassFor: () => null },
+      "@/lib/hooks/use-client-state": { useClientState: (_read, fallback) => [fallback, stub] },
+      "@/components/plan-ui/GenerationRing": { __esModule: true, default: "generation-ring" },
+      "./WorkspaceUI": { Tape: stub, useClasses: () => classes },
+    });
+    t.after(fake.cleanup);
+    const render = () => fake.render(() => MonthlyNew({ onOpen: stub }));
+    render();
+    await drain(); // 연간 · 월간 목록 · 양식
+    render().props.onCreate();
+    await drain();
+
+    const post = sent.find((s) => s.path === url && s.init.method === "POST");
+    assert.equal(new Headers(post.init.headers).get("X-Generation-Run-Id"), "run-1");
+    assert.equal(nodes(render()).find((n) => n.type === "generation-ring").props.runId, "run-1");
+  });

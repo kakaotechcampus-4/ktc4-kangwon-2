@@ -1,5 +1,6 @@
 import { apiRequest } from "./client";
 import { downloadHwpx, type ExportFormat } from "./export";
+import { runHeaders } from "./generationRuns";
 import type { WeeklyAuditEvent, WeeklyPlan, WeeklyPlanSummary } from "./types";
 
 /**
@@ -30,7 +31,12 @@ export const createWeeklyPlan = (
     memo?: string;
   },
   signal?: AbortSignal,
-) => apiRequest<WeeklyPlan>("/api/plans/weekly", json("POST", data, signal));
+  runId?: string,
+) =>
+  apiRequest<WeeklyPlan>("/api/plans/weekly", {
+    ...json("POST", data, signal),
+    headers: { "Content-Type": "application/json", ...runHeaders(runId) },
+  });
 export const getWeeklyPlan = (id: number, signal?: AbortSignal) =>
   apiRequest<WeeklyPlan>("/api/plans/weekly/" + id, { signal });
 /**

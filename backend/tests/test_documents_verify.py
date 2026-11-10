@@ -1,7 +1,7 @@
 """POST /api/documents/{id}/verify — 3단 게이트 3단(ADR-071). 실제 DB, jev 는 가짜로 바꾼다."""
 
 import json
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -197,6 +197,26 @@ def test_unsaved_sections_are_judged_but_not_saved(db_session, real):
     assert "높이를 세어 보았다" in real[0]
     stored = db_session.query(DocumentSection).filter_by(document_id=doc.id, heading="해석").one()
     assert stored.body == INTERPRETATION
+
+
+def test_verify_keeps_the_editors_write_token(db_session):
+    """검토 기록만 붙이면 `updated_at` 은 그대로다 — 편집기가 들고 있던 값으로 이어서 저장된다.
+
+    바뀌면 「AI 검증하기」 뒤 저장 · 확정이 매번 409 STALE_WRITE 로 막힌다(e2e routines A~J).
+    테스트는 한 트랜잭션이라 now() 가 같으므로, 옛 시각을 박아 두어야 바뀐 것이 보인다.
+    """
+    doc = _document(db_session)
+    doc.updated_at = datetime(2026, 11, 3, 9, tzinfo=UTC)
+    db_session.flush()
+    known = client.get(f"/api/documents/{doc.id}").json()["updated_at"]
+
+    assert client.post(f"/api/documents/{doc.id}/verify").status_code == 200
+    res = client.put(
+        f"/api/documents/{doc.id}", json={"sections": _sections(), "updated_at": known}
+    )
+
+    assert res.status_code == 200, res.text
+    assert res.json()["ai_review"]["state"] == "mock"
 
 
 def test_class_age_in_interpretation_passes_gate_two(db_session, real):

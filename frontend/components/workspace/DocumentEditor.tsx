@@ -14,6 +14,7 @@ import { serverIssues } from "./document-selection";
 import { Icon } from "@/components/app/icons";
 import { invalidFields } from "@/lib/api/client";
 import {
+  FALLBACK_DRAFT,
   downloadDocumentHwpx,
   isStaleWrite,
   verifyLines,
@@ -25,6 +26,8 @@ import { useHwpxDownload } from "@/lib/hooks/use-hwpx-download";
 import SourceReview from "./SourceReview";
 import { withoutChildMetadata } from "@/lib/privacy/browser-storage";
 import { routinesPath } from "@/lib/workspace/routines-route";
+import { FactTimeline, WeekTitle, factRows } from "./DocumentArchivePreview";
+import ed from "./DocumentEditor.module.css";
 
 import { API_STORAGE_CONTEXT } from "@/lib/api/storage-context";
 import {
@@ -44,28 +47,37 @@ const FACT_SOURCE: Partial<Record<DocumentKind, string>> = {
   assessment: "/records",
 };
 /**
- * 근거 하나가 원래 있던 곳. 일과 기록이면 그날 일과, 주간 일지면 그 일일 일지, 관찰이면 관찰 기록.
+ * 근거 하나가 원래 있던 곳. 일과 기록이면 그 반 · 그날 일과, 일일 문서면 그 문서, 관찰이면 관찰 기록.
  *
  * 「근거 1 · 2」가 누를 수 있을 것처럼 생겼는데 눌러도 아무 일이 없었다(멘토 12주차 리뷰).
  * 진짜로 그 근거로 데려간다. 일지를 쓰던 중이라 **새 탭**으로 연다.
+ *
+ * **문서 종류가 아니라 근거 종류로 가른다.** 주간 일지는 일과 기록에서 바로 만들 수도 있어,
+ * 문서 종류로 가르면 일과 31 이 문서 31 을 열었다.
  */
 function sourceHref(kind: DocumentKind, classId: string, source: Source): string | null {
-  if (kind === "dailyLog") return routinesPath(classId, source.date);
-  if (kind === "weeklyLog") return `/documents?id=${encodeURIComponent(source.id)}`;
+  if (source.kind === "routine") return routinesPath(source.classId || classId, source.date);
+  if (source.kind === "document") return `/documents?id=${encodeURIComponent(source.id)}`;
   return FACT_SOURCE[kind] ?? null;
 }
 
 const LAYER_HINTS: Record<string, string> = {
-  사실: "교사가 입력한 원문 · 읽기 전용",
   해석: "위 사실에서 읽을 수 있는 의미만 적어주세요.",
   지원: "다음 놀이에서 교사가 할 구체적인 지원을 적어주세요.",
 };
-/** 세 칸의 이름표 색. 사실은 잠긴 칸, 해석·지원은 교사가 고치는 칸이다. */
-const LAYER_LABEL: Record<string, string> = {
-  사실: ws.layerFact,
-  해석: ws.layerInterpretation,
-  지원: ws.layerSupport,
-};
+
+/** 사실 칸 — 보관함 미리보기와 같은 시간 줄. 일과 이름이 없는 글은 그대로 둔다.
+ *  `sources` 를 주면(주간 보육일지) 날짜별로 나눈다. */
+function RecordFacts({ body, sources }: { body: string; sources?: Source[] }) {
+  if (!body) return <p className={ed.empty}>아직 작성하지 않았어요.</p>;
+  const rows = factRows(body);
+  if (!rows) return <p className={ed.factPlain}>{body}</p>;
+  return (
+    <div className={ed.factLine}>
+      <FactTimeline rows={rows} sources={sources} />
+    </div>
+  );
+}
 
 /** `server` 가 있으면 §11 서버 문서다 — 저장·확정·삭제를 서버가 맡는다. */
 export interface ServerDocumentActions {
@@ -106,16 +118,23 @@ const SECTION_LABELS: Record<string, string> = {
   "sections.지원": "지원",
 };
 
+/** 근거를 반영하기 전, 저장 안 한 글을 어떻게 할지. */
+type RefreshChoice = "save" | "discard" | "cancel";
+
 export default function DocumentEditor({
   initial,
   onSave,
   server,
   onEditStateChange,
+  noteChips = [],
 }: {
   initial: SavedDocument;
   onSave: (doc: SavedDocument, expected: SavedDocument) => boolean;
   server?: ServerDocumentActions;
+  /** 서버 문서에 저장 안 한 글 · 요청 중을 알린다. 날짜 · 주를 옮기는 화면이 먼저 묻고 잠근다. */
   onEditStateChange?: (state: { dirty: boolean; pending: boolean }) => void;
+  /** 반 운영 특이사항 아래 띄울 칩. 누르면 그 글이 칸에 들어간다 — 그날 날씨 대체놀이 (ADR-089 화면). */
+  noteChips?: string[];
 }) {
   const [baseline, setBaseline] = useState(initial);
   const [doc, setDoc] = useState(initial);
@@ -186,6 +205,7 @@ export default function DocumentEditor({
       ? routinesPath(doc.classId, doc.start)
       : FACT_SOURCE[doc.kind]
     : undefined;
+  const sourcesBox = useRef<HTMLDetailsElement>(null);
   const hwpx = useHwpxDownload(setMessage);
   const supportsHwpx =
     !!annualPlanId ||
@@ -193,10 +213,12 @@ export default function DocumentEditor({
     (!!server && !imported && ["observation", "dailyLog", "weeklyLog"].includes(doc.kind));
   // 서버 요청 중에는 입력·저장·확정·삭제가 서로 끼어들지 못한다.
   const working = busy || hwpx.exporting || !!server?.pending;
+  /** 서버에 아직 안 보낸 해석 · 지원 · 반 특이사항이 있나. */
   const dirty =
+    !!server &&
     editable &&
     (JSON.stringify(doc.sections) !== JSON.stringify(baseline.sections) ||
-      doc.classNote !== baseline.classNote ||
+      (doc.classNote ?? "") !== (baseline.classNote ?? "") ||
       doc.reviewNote !== baseline.reviewNote);
   useEffect(() => {
     onEditStateChange?.({ dirty, pending: working });
@@ -237,8 +259,9 @@ export default function DocumentEditor({
       setBusy(false);
     }
   }
-  async function persist(confirm: boolean) {
-    if (stale || working) return;
+  /** 서버 문서는 저장에 성공했으면 true 다. 근거 반영 앞의 「저장하고 반영」이 본다. */
+  async function persist(confirm: boolean): Promise<boolean> {
+    if (stale || working) return false;
     if (server) {
       // AI 검증은 서버 확정 조건이 아니다 (§11) — 교사 확인 3개와 서버 게이트가 기준이다.
       // 올린 원문에는 해석 · 지원이 없다. 20자 규칙을 걸면 확정을 취소한 뒤 다시 확정할 수 없다.
@@ -246,11 +269,11 @@ export default function DocumentEditor({
       if (confirm && (blocking.length || !checks.every(Boolean))) {
         setIssues(blocking);
         setMessage("원본 대조와 교사 검토를 마쳐주세요.");
-        return;
+        return false;
       }
       if (confirm && server.stale) {
         setMessage("근거 기록이 바뀌었어요. 다시 검토한 뒤 확정해주세요.");
-        return;
+        return false;
       }
       setBusy(true);
       setMessage("");
@@ -264,6 +287,7 @@ export default function DocumentEditor({
         setChecks([false, false, false]);
         setStaleWrite(false);
         setMessage(confirm ? "검토한 문서를 확정했어요." : "작성 중인 초안을 저장했어요.");
+        return true;
       } catch (e) {
         // 실패하면 편집 내용을 그대로 둔다.
         if (isStaleWrite(e)) {
@@ -285,18 +309,18 @@ export default function DocumentEditor({
       } finally {
         setBusy(false);
       }
-      return;
+      return false;
     }
     const local = validateDocument(doc);
     if (confirm && (local.length || !checks.every(Boolean))) {
       setIssues(local);
       setMessage("원본 대조와 교사 검토를 마쳐주세요.");
-      return;
+      return false;
     }
     if (annualPlanId) {
       if (annualError || !annual.current) {
         setMessage("서버 계획안을 불러온 뒤 저장해주세요.");
-        return;
+        return false;
       }
       setBusy(true);
       try {
@@ -315,7 +339,7 @@ export default function DocumentEditor({
       } catch (e) {
         setMessage(e instanceof Error ? e.message : "서버 저장 실패");
         setBusy(false);
-        return;
+        return false;
       }
       setBusy(false);
     }
@@ -329,11 +353,11 @@ export default function DocumentEditor({
           : `${verified ? "AI 검증 + " : ""}교사 사실·해석·지원 검토 완료`
         : "교사 검토 전",
     });
-    if (onSave(next, baseline)) {
-      setBaseline(next);
-      setDoc(next);
-      setMessage(confirm ? "검토한 문서를 확정했어요." : "작성 중인 초안을 저장했어요.");
-    }
+    if (!onSave(next, baseline)) return false;
+    setBaseline(next);
+    setDoc(next);
+    setMessage(confirm ? "검토한 문서를 확정했어요." : "작성 중인 초안을 저장했어요.");
+    return true;
   }
 
   /** 서버가 준 문서로 편집기를 바꾼다. 사실이 달라졌을 수 있어 교사 확인은 다시 받는다. */
@@ -400,13 +424,42 @@ export default function DocumentEditor({
    * 확정본은 위쪽 「변경된 근거 검토」(비교 · 원자적 재확정)를 쓴다. 버튼도 초안에만
    * 보이지만, 목록과 상세가 어긋난 순간에도 잘못 나가지 않게 여기서 한 번 더 막는다.
    */
-  const refreshSources = () => {
+  /**
+   * 근거를 반영하면 서버 글로 바뀐다. 저장 안 한 글이 있으면 저장 · 버리기 · 취소를 묻는다
+   * (관찰일지 편집기와 같다). 계속해도 되면 true.
+   */
+  const refreshAsk = useRef<HTMLDialogElement>(null);
+  const answer = useRef<((choice: RefreshChoice) => void) | null>(null);
+  async function settleEdits(): Promise<boolean> {
+    if (!dirty) return true;
+    const choice = await new Promise<RefreshChoice>((resolve) => {
+      answer.current = resolve;
+      refreshAsk.current?.showModal();
+    });
+    if (choice === "cancel") return false;
+    return choice === "discard" || (await persist(false));
+  }
+  function reply(choice: RefreshChoice) {
+    const resolve = answer.current;
+    answer.current = null;
+    if (refreshAsk.current?.open) refreshAsk.current.close();
+    resolve?.(choice);
+  }
+  /** 사라진 근거 복구(초안)도 같은 반영이다 — 같이 묻는다. */
+  async function refreshWithResolutions(resolutions?: SourceResolution[]) {
+    if (!server) throw new Error("서버 문서가 아니에요.");
+    if (!(await settleEdits())) throw new Error("반영을 그만뒀어요. 고친 글은 그대로 있어요.");
+    return server.refresh(resolutions);
+  }
+
+  const refreshSources = async () => {
     if (doc.status === "confirmed") {
       setMessage(
         "확정된 문서는 이 버튼으로 반영하지 않아요. 위쪽 「변경된 근거 검토」에서 확인한 뒤 재확정해주세요.",
       );
       return;
     }
+    if (!(await settleEdits())) return;
     // 호출부가 기다릴 수 있게 그대로 돌려준다.
     return run(
       (s) => s.refresh(),
@@ -414,15 +467,202 @@ export default function DocumentEditor({
       "최신 근거를 불러오지 못했어요.",
     );
   };
+  // 확정 문서는 지울 수 없다 — 서버가 409 ALREADY_CONFIRMED 로 거절한다.
+  // 눌러도 실패할 버튼을 보여 주면 교사는 고장으로 읽는다. 확정 취소가 먼저다.
+  const removable = !!server && editable;
+  async function removeDoc() {
+    if (working || !server) return;
+    if (!window.confirm("문서를 삭제할까요? 되돌릴 수 없습니다.")) return;
+    setMessage("");
+    try {
+      await server.remove();
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "삭제하지 못했어요.");
+    }
+  }
+  const origin =
+    doc.origin === "import"
+      ? "등록 증빙"
+      : doc.origin === "ai"
+        ? "AI 초안"
+        : doc.origin === "template"
+          ? "양식 기반"
+          : "교사 작성";
+  /** 칸마다 근거가 같으면(일일 일지는 늘 같다) 날짜 줄을 되풀이하지 않고 머리에 「근거 n건」 하나만 둔다. */
+  const oneSource =
+    recordDocument &&
+    new Set(doc.sections.filter((s) => s.sourceIds.length).map((s) => s.sourceIds.join())).size <=
+      1;
+  /** 머리의 「근거 n건」 — 아래 원본 근거를 펴고 그리로 옮긴다. */
+  function openSources() {
+    const box = sourcesBox.current;
+    if (!box) return;
+    box.open = true;
+    box.scrollIntoView({ block: "nearest" });
+    box.querySelector("summary")?.focus();
+  }
+  /** 칸마다 붙는 근거 날짜 줄. 누르면 그 근거를 새 탭으로 연다. */
+  function sourceLine(section: Section) {
+    if (!section.sourceIds.length) return null;
+    return (
+      <small className={ws.source}>
+        근거:{" "}
+        {section.sourceIds.map((id, i) => {
+          const source = doc.sources.find((s) => s.id === id);
+          const href = source && sourceHref(doc.kind, doc.classId, source);
+          return (
+            <span key={id}>
+              {i > 0 && " · "}
+              {href ? (
+                <a href={href} target="_blank" rel="noopener" className={ws.link}>
+                  {source.date}
+                </a>
+              ) : (
+                source?.date || "원본 없음"
+              )}
+            </span>
+          );
+        })}
+      </small>
+    );
+  }
+
+  /** 기록 문서의 칸 하나 — 종이 위 손글씨 제목과 왼쪽 여백 색 탭. */
+  function recordSection(section: Section, index: number) {
+    const fact = section.heading === "사실";
+    return (
+      <section
+        className={ed.layer}
+        data-layer={section.heading}
+        key={`${section.heading}-${index}`}
+      >
+        <h3 className={ed.layerName}>
+          {fact && <Icon name="lock" />}
+          {section.heading}
+          {fact && (
+            <span aria-hidden="true" className={ed.readOnly}>
+              읽기 전용
+            </span>
+          )}
+        </h3>
+        {fact ? (
+          <RecordFacts
+            body={section.body}
+            sources={doc.kind === "weeklyLog" ? doc.sources : undefined}
+          />
+        ) : editable ? (
+          <label className={ed.field}>
+            <span className={ed.quiet}>{LAYER_HINTS[section.heading]}</span>
+            <textarea
+              aria-label={`${section.heading} 내용`}
+              maxLength={15000}
+              disabled={working || stale}
+              value={section.body}
+              onChange={(e) => change(index, e.target.value)}
+            />
+          </label>
+        ) : (
+          <p className={ed.done}>{section.body || "아직 작성하지 않았어요."}</p>
+        )}
+        {fact && (
+          <p className={ed.quiet}>
+            교사가 적은 원문이라 여기서는 못 고쳐요.{" "}
+            {factSource && (
+              <Link className={ws.link} href={factSource}>
+                {doc.kind === "dailyLog" ? "일과 기록에서 고치기 →" : "관찰 기록에서 고치기 →"}
+              </Link>
+            )}
+          </p>
+        )}
+        {!oneSource && <div className={ed.quiet}>{sourceLine(section)}</div>}
+      </section>
+    );
+  }
+
+  const header = recordDocument ? (
+    <header className={ed.head}>
+      <div className={ed.marks}>
+        <span className={ed.status} data-done={doc.status === "confirmed"}>
+          {doc.status === "confirmed" ? "교사 확정" : "검토 중인 초안"}
+        </span>
+        {/* 근거가 바뀐 문서는 제목 줄에서 바로 보여야 한다. 아래쪽 안내문만으로는
+            문서를 열고 스크롤해야 알 수 있었다 (수린 점검). */}
+        {server?.stale && <span className={ed.alertTag}>다시 검토</span>}
+        <span className={ed.origin}>{origin}</span>
+        {oneSource && doc.sources.length > 0 && (
+          <button type="button" className={`${ed.count} tap44`} onClick={openSources}>
+            근거 {doc.sources.length}건
+          </button>
+        )}
+      </div>
+      {/* 반 · 날짜 · 종류는 제목이 이미 말한다 — 밑줄을 따로 두지 않는다(PM 11-10). */}
+      {doc.kind === "weeklyLog" ? (
+        <WeekTitle title={doc.title} start={doc.start} end={doc.end} />
+      ) : (
+        <h2>{doc.title}</h2>
+      )}
+      {/* mock LLM 초안이다. **본문에 섞지 않고** 제목 밑 작은 글로만 알린다 — 제출 문서는
+          깨끗하게 두면서도 테스트 초안을 실제 AI 결과로 보이게 하지 않는다. */}
+      {doc.fallbackDraft && editable && <Message>{FALLBACK_DRAFT}</Message>}
+      {doc.mockDraft && (
+        <p className={ed.quiet}>
+          테스트 모드(mock)로 만든 초안이에요. 실제 AI 결과가 아니니 그대로 쓰지 말고 다시 써
+          주세요.
+        </p>
+      )}
+    </header>
+  ) : (
+    <header>
+      <div className={ws.between}>
+        <span className={ws.badge}>
+          {doc.status === "confirmed" ? "교사 확정" : "검토 중인 초안"}
+        </span>
+        {server?.stale && <span className={ws.badge}>다시 검토</span>}
+        <span className={ws.muted}>{origin}</span>
+      </div>
+      <h2>{doc.title}</h2>
+      <p className={ws.muted}>
+        {doc.className || "반 미지정"}
+        {doc.childName && ` · ${doc.childName}`} · {doc.start} ~ {doc.end}
+      </p>
+      <p className={ws.muted}>{DOCUMENT_KINDS[doc.kind]}</p>
+    </header>
+  );
+  /** 계획안 · 올린 서류의 칸 — 사실 · 해석 · 지원 짜임이 없는 문서. */
+  function plainSection(section: Section, index: number) {
+    return (
+      <section key={`${section.heading}-${index}`}>
+        <h3>{section.heading}</h3>
+        {editable ? (
+          <label className={ws.field}>
+            <span className={ws.muted}>우리 반의 기록에 맞게 다듬어주세요</span>
+            <textarea
+              aria-label={`${section.heading} 내용`}
+              maxLength={15000}
+              disabled={working || stale}
+              value={section.body}
+              onChange={(e) => change(index, e.target.value)}
+            />
+          </label>
+        ) : (
+          <p className={section.heading === "사실" ? ws.quote : undefined}>
+            {section.body || "아직 작성하지 않았어요."}
+          </p>
+        )}
+        {sourceLine(section)}
+      </section>
+    );
+  }
+
   return (
-    <section className={`${ws.card} ${ws.document}`}>
+    <section className={`${ws.card} ${ws.document}${recordDocument ? ` ${ed.paper}` : ""}`}>
       {server?.stale && doc.kind === "dailyLog" && server.reconfirm && (
         <SourceReview
           key={`${doc.id}:${doc.updatedAt}`}
           doc={doc}
           pending={working}
           reconfirm={server.reconfirm}
-          refresh={server.refresh}
+          refresh={refreshWithResolutions}
           onRecovery={setRecovering}
           onReload={reloadLatest}
           onComplete={adopt}
@@ -462,121 +702,8 @@ export default function DocumentEditor({
           </button>
         </>
       )}
-      <header>
-        <div className={ws.between}>
-          <span className={ws.badge}>
-            {doc.status === "confirmed" ? "교사 확정" : "검토 중인 초안"}
-          </span>
-          {/* 근거가 바뀐 문서는 제목 줄에서 바로 보여야 한다. 아래쪽 안내문만으로는
-              문서를 열고 스크롤해야 알 수 있었다 (수린 점검). */}
-          {server?.stale && <span className={ws.badge}>다시 검토</span>}
-          <span className={ws.muted}>
-            {doc.origin === "import"
-              ? "등록 증빙"
-              : doc.origin === "ai"
-                ? "AI 초안"
-                : doc.origin === "template"
-                  ? "양식 기반"
-                  : "교사 작성"}
-          </span>
-        </div>
-        <h2>{doc.title}</h2>
-        <p className={ws.muted}>
-          {doc.className || "반 미지정"}
-          {doc.childName && ` · ${doc.childName}`} · {doc.start} ~ {doc.end}
-        </p>
-        <p className={ws.muted}>{DOCUMENT_KINDS[doc.kind]}</p>
-        {supportsHwpx && recordDocument && (
-          <p className={ws.hint}>
-            {editable
-              ? "사실을 확인하고 해석·지원을 다듬은 뒤 문서를 확정하면 한글 파일(hwpx)로 내려받을 수 있어요."
-              : "아래에서 확정한 문서를 한글 파일(hwpx)로 내려받을 수 있어요."}
-          </p>
-        )}
-        {/* mock LLM 초안이다. **본문에 섞지 않고** 여기서만 알린다 — 제출 문서는 깨끗하게
-            두면서도 테스트 초안을 실제 AI 결과로 보이게 하지 않는다. */}
-        {doc.mockDraft && (
-          <p className={ws.muted}>
-            테스트 모드(mock)로 만든 초안이에요. 실제 AI 생성 결과가 아니니 내용을 그대로 쓰지 말고
-            교사가 다시 작성해주세요.
-          </p>
-        )}
-      </header>
-      {doc.sections.map((section, index) => (
-        <section
-          className={recordDocument ? ws.documentLayer : undefined}
-          key={`${section.heading}-${index}`}
-        >
-          <h3
-            className={
-              recordDocument && LAYER_LABEL[section.heading]
-                ? `${ws.layerName} ${LAYER_LABEL[section.heading]}`
-                : undefined
-            }
-          >
-            {recordDocument && section.heading === "사실" && <Icon name="lock" />}
-            {section.heading}
-            {/* 자물쇠 그림만으로는 「여기는 못 고친다」가 읽히지 않았다. 글자로도 말해 준다. */}
-            {recordDocument && section.heading === "사실" && (
-              // 제목 이름에 섞이지 않게 숨긴다. 읽어 주는 도구에는 바로 아래 안내가
-              // 「교사가 입력한 원문 · 읽기 전용」이라고 이미 말한다.
-              <span aria-hidden="true" className={ws.readOnlyTag}>
-                읽기 전용
-              </span>
-            )}
-          </h3>
-          {recordDocument && LAYER_HINTS[section.heading] && (
-            <p className={ws.hint}>{LAYER_HINTS[section.heading]}</p>
-          )}
-          {editable && !(recordDocument && section.heading === "사실") ? (
-            <label className={ws.field}>
-              <span className={ws.muted}>우리 반의 기록에 맞게 다듬어주세요</span>
-              <textarea
-                aria-label={`${section.heading} 내용`}
-                maxLength={15000}
-                disabled={working || stale}
-                value={section.body}
-                onChange={(e) => change(index, e.target.value)}
-              />
-            </label>
-          ) : (
-            <p className={section.heading === "사실" ? ws.quote : undefined}>
-              {section.body || "아직 작성하지 않았어요."}
-            </p>
-          )}
-          {factSource && section.heading === "사실" && (
-            <p className={ws.hint}>
-              교사가 적은 원문입니다. 고치려면{" "}
-              <Link className={ws.link} href={factSource}>
-                {doc.kind === "dailyLog"
-                  ? "일과 기록에서 고쳐 주세요 →"
-                  : "관찰 기록에서 고쳐 주세요 →"}
-              </Link>
-            </p>
-          )}
-          {section.sourceIds.length > 0 && (
-            <small className={ws.source}>
-              근거:{" "}
-              {section.sourceIds.map((id, i) => {
-                const source = doc.sources.find((s) => s.id === id);
-                const href = source && sourceHref(doc.kind, doc.classId, source);
-                return (
-                  <span key={id}>
-                    {i > 0 && " · "}
-                    {href ? (
-                      <a href={href} target="_blank" rel="noopener" className={ws.link}>
-                        {source.date}
-                      </a>
-                    ) : (
-                      source?.date || "원본 없음"
-                    )}
-                  </span>
-                );
-              })}
-            </small>
-          )}
-        </section>
-      ))}
+      {header}
+      {doc.sections.map(recordDocument ? recordSection : plainSection)}
       {server?.stale && (
         <Message error>
           {`이 문서의 근거로 사용된 ${doc.kind === "dailyLog" ? "일과 기록" : doc.kind === "weeklyLog" ? "일일 보육일지" : "관찰 기록"}이 변경되었습니다.\n` +
@@ -584,15 +711,19 @@ export default function DocumentEditor({
         </Message>
       )}
       {doc.sources.length > 0 && (
-        <details>
-          <summary className={ws.link}>원본 근거 {doc.sources.length}건 펼쳐보기</summary>
+        <details ref={sourcesBox} className={recordDocument ? ed.sources : undefined}>
+          <summary className={ws.link}>
+            {recordDocument
+              ? `원본 기록 ${doc.sources.length}건 보기`
+              : `원본 근거 ${doc.sources.length}건 펼쳐보기`}
+          </summary>
           {doc.sources.map((source) => (
-            <blockquote key={source.id} className={ws.quote}>
+            <blockquote key={source.id} className={recordDocument ? ed.sourceItem : ws.quote}>
               <small className={ws.muted}>
                 {source.date}
                 {sourceHref(doc.kind, doc.classId, source) && (
                   <>
-                    {" · "}
+                    {recordDocument ? " " : " · "}
                     <a
                       href={sourceHref(doc.kind, doc.classId, source)!}
                       target="_blank"
@@ -614,13 +745,13 @@ export default function DocumentEditor({
           놀이 기록이 아니라 그날 반에 있었던 일이라 근거에서 나오지 않는다 — 교사가 적는다.
           주간 보육일지는 날짜마다 그날 일일 일지의 이 칸을 끌어다 쓴다. */}
       {server && doc.kind === "dailyLog" && (
-        <section>
-          <h3>반 운영 특이사항</h3>
-          <p className={ws.hint}>
-            결석 · 부모면담 · 감염병 · 안전사고처럼 그날 반에 있었던 일이에요. 없으면 비워두세요.
+        <section className={ed.layer} data-layer="반 운영">
+          <h3 className={ed.layerName}>반 운영 특이사항</h3>
+          <p className={ed.quiet}>
+            결석, 부모면담, 감염병, 안전사고처럼 그날 반에 있었던 일이에요. 없으면 비워 두세요.
           </p>
           {editable ? (
-            <label className={ws.field}>
+            <label className={ed.field}>
               <textarea
                 aria-label="반 운영 특이사항"
                 maxLength={2000}
@@ -632,11 +763,35 @@ export default function DocumentEditor({
           ) : (
             <p>{doc.classNote || "적지 않았어요."}</p>
           )}
+          {editable && noteChips.length > 0 && (
+            <div className={ws.actions}>
+              {noteChips
+                .filter((chip) => !(doc.classNote ?? "").includes(chip))
+                .map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    className={ws.secondary}
+                    disabled={working || stale}
+                    onClick={() =>
+                      setDoc((prev) => ({
+                        ...prev,
+                        classNote: prev.classNote?.trim()
+                          ? `${prev.classNote.trimEnd()}\n${chip}`
+                          : chip,
+                      }))
+                    }
+                  >
+                    {chip}
+                  </button>
+                ))}
+            </div>
+          )}
         </section>
       )}
       {editable && (
-        <div className={ws.verify}>
-          <h3>사실 · 해석 · 지원 검증</h3>
+        <div className={recordDocument ? ed.verify : ws.verify}>
+          <h3>{recordDocument ? "사실, 해석, 지원 확인" : "사실 · 해석 · 지원 검증"}</h3>
           {aiReview ? (
             <p className={ws.hint}>
               AI 검토는 아이 이름을 가명으로 바꾼 뒤 문장마다 기록과 대조해요. 확정은 선생님이 해요.
@@ -653,6 +808,16 @@ export default function DocumentEditor({
                   ? "AI 검증하기"
                   : "기본 항목 검사"}
           </button>
+          {/* 검증 결과 도장(꾸밈). 글로 된 결과는 아래 알림이 그대로 읽어 준다. */}
+          {recordDocument && issues && issuesOpen && (
+            <span
+              aria-hidden="true"
+              className={`inkStamp ${ed.stamp}`}
+              data-ok={issues.length === 0}
+            >
+              {issues.length ? `고칠 곳 ${issues.length}` : verified ? "검증 끝" : "통과"}
+            </span>
+          )}
           {issues && issuesOpen && (
             <Message error={issues.length > 0}>
               {issues.length
@@ -666,14 +831,14 @@ export default function DocumentEditor({
               서버 계약의 `checks.fact · interpretation · support` 는 그대로 두고, 교사가 이
               하나를 체크했을 때만 셋을 함께 true 로 보낸다 (§11). */}
           {recordDocument ? (
-            <label className={ws.check}>
+            <label className={ed.check}>
               <input
                 type="checkbox"
                 checked={checks.every(Boolean)}
                 disabled={working || stale}
                 onChange={(e) => setChecks([e.target.checked, e.target.checked, e.target.checked])}
               />
-              원본 기록과 사실이 일치하고, 해석과 지원 내용이 적절한지 확인하셨나요?
+              원본 기록과 사실이 맞고, 해석과 지원이 알맞은지 확인했어요
             </label>
           ) : (
             [
@@ -707,7 +872,9 @@ export default function DocumentEditor({
         </div>
       )}
       <Message>{message}</Message>
-      <div className={ws.actions}>
+      {/* 휴대폰(1024px 아래)에서는 이 줄이 화면 아래에 붙어 따라온다 — 긴 글 끝까지 내려가지
+          않아도 저장 · 확정을 누른다. */}
+      <div className={`${ws.actions} ${ws.docBar}`}>
         {editable ? (
           <>
             <button
@@ -722,7 +889,7 @@ export default function DocumentEditor({
               disabled={working || stale || !checks.every(Boolean)}
               onClick={() => persist(true)}
             >
-              검토 완료 · 문서 확정
+              {recordDocument ? "확정" : "검토 완료 · 문서 확정"}
             </button>
             {server?.stale && !recovering && (
               <button className={ws.secondary} disabled={working} onClick={refreshSources}>
@@ -732,7 +899,7 @@ export default function DocumentEditor({
           </>
         ) : server ? (
           <button className={ws.secondary} disabled={working} onClick={unconfirm}>
-            확정 취소
+            다시 수정
           </button>
         ) : (
           !annualPlanId && (
@@ -765,27 +932,39 @@ export default function DocumentEditor({
             월간계획안 만들기 →
           </Link>
         )}
-        {/* 확정 문서는 지울 수 없다 — 서버가 409 ALREADY_CONFIRMED 로 거절한다.
-            눌러도 실패할 버튼을 보여 주면 교사는 고장으로 읽는다. 확정 취소가 먼저다. */}
-        {server && editable && (
+        {/* 지우기는 하나만 둔다. 휴지통 + 경고색이라 저장 · 확정과 헷갈리지 않는다(PM).
+            줄 오른쪽 끝으로 떼어 둔다 — 다른 단추는 왼쪽에 모인다(PM 11-10). */}
+        {removable && (
           <button
-            className={ws.secondary}
+            className={`${ws.secondary} ${ws.danger} ${ws.docBarEnd}`}
             disabled={working}
-            onClick={async () => {
-              if (working) return;
-              if (!window.confirm("문서를 삭제할까요? 되돌릴 수 없습니다.")) return;
-              setMessage("");
-              try {
-                await server.remove();
-              } catch (e) {
-                setMessage(e instanceof Error ? e.message : "삭제하지 못했어요.");
-              }
-            }}
+            onClick={removeDoc}
           >
-            문서 삭제
+            <Icon name="trash" width={17} height={17} />
+            <span className={ws.docBarEndLabel}>문서 삭제</span>
           </button>
         )}
       </div>
+      <dialog
+        ref={refreshAsk}
+        className={ws.ojLeave}
+        aria-labelledby="doc-refresh-title"
+        onClose={() => reply("cancel")}
+      >
+        <h3 id="doc-refresh-title">잠깐만요!</h3>
+        <p>바뀐 근거를 받으면 저장 안 한 글이 사라져요.</p>
+        <div>
+          <button type="button" className={ws.primary} onClick={() => reply("save")}>
+            저장하고 반영
+          </button>
+          <button type="button" className={ws.secondary} onClick={() => reply("discard")}>
+            편집 버리고 반영
+          </button>
+          <button type="button" className={ws.link} autoFocus onClick={() => reply("cancel")}>
+            취소
+          </button>
+        </div>
+      </dialog>
     </section>
   );
 }

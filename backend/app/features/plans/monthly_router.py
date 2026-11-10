@@ -101,6 +101,7 @@ from ssuksak.planning.rules.safety_placement import candidate_display_value  # �
 
 from app.db import get_session
 from app.features.plans.annual_content import subthemes_for_month
+from app.features.plans.generation_runs import PromptNoted, RunRecord
 from app.features.plans.memo_privacy import (
     REGEN_MASK_FAILED,
     memo_name_table,
@@ -314,14 +315,17 @@ def _lock_parent(session: Session, parent_id: int, message: str) -> None:
 
 @router.post("", response_model=MonthlyPlanOut, status_code=status.HTTP_201_CREATED)
 @timing.timed("monthly_theme", logging.getLogger("app.server.timing").info)
-def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: CurrentUser):
+def create_monthly_plan(
+    body: CreateMonthlyPlan, session: DbSession, user: CurrentUser, run: RunRecord
+):
     """한 달치를 만들어 DRAFT 로 저장한다. 실패하면 아무것도 남지 않는다."""
     # ── A. 짧은 읽기 ──────────────────────────────────────────────────────
     klass = require_own_class(session, user, body.class_id)
+    run.begin(klass)
     center_id, class_id = user.center_id, klass.id
     names = memo_name_table(session, class_id, body.memo)  # 못 바꾸면 LLM 전에 422(ADR-060)
     month = _target_month(klass.school_year, body.month)
-    if _existing(session, center_id, class_id, month) is not None:
+    if _existing(session, center_id, class_id, month) is not None:  # type: ignore[arg-type]
         raise _ALREADY_EXISTS
     parent_row = session.scalar(
         select(Plan).where(
@@ -340,16 +344,19 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
         )
     parent_id = parent_row.id
     parent = PostgresPlanRepository(
-        session, center_id=center_id, kind="annual", plan_type=YearlyPlan
+        session,
+        center_id=center_id,  # type: ignore[arg-type]
+        kind="annual",
+        plan_type=YearlyPlan,
     ).get(PlanId(parent_row.plan_ref))
-    if parent.status.value != "CONFIRMED":
+    if parent.status.value != "CONFIRMED":  # type: ignore[union-attr]
         raise _gate("연간계획안을 먼저 확정해주세요.")
     parent_subthemes = subthemes_for_month(parent_row.sub_themes, body.month)
     try:
         profile_ref = TemplateProfileRef(
             body.profile_ref.profile_id, body.profile_ref.profile_version
         )
-        profile = ready_profile_for_generation(session, center_id, profile_ref)
+        profile = ready_profile_for_generation(session, center_id, profile_ref)  # type: ignore[arg-type]
     except InvalidDomainValueError as error:
         # 공백뿐인 id 는 스키마(min_length)를 지나 Core 가 거절한다. Core 문구는 내보내지 않는다.
         raise _PROFILE_REF_INVALID from error
@@ -366,7 +373,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
 
     # ── B. Core 실행 — DB 없음 ────────────────────────────────────────────
     parents: InMemoryPlanRepository[YearlyPlan] = InMemoryPlanRepository()
-    parents.save(parent.plan_id, parent)
+    parents.save(parent.plan_id, parent)  # type: ignore[arg-type, union-attr]
     use_case = monthly_generation(
         parent_plan_repository=parents,
         # Core 의 plans.save 는 여기로 간다. 운영 저장은 C 에서 한다.
@@ -374,14 +381,14 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
         profile_repository=InMemoryTemplateProfileRepository((profile,)),
         # 생성 직전 검사와 같은 Template 저장소. 부를 때 읽는다 — 테스트가 바꿔 끼운다.
         template_repository=profile_service.TEMPLATES,
-        provider=with_masked_memo(provider, body.memo, names),
+        provider=with_masked_memo(PromptNoted(provider), body.memo, names),
         clock=SystemClock(),
         id_generator=UuidGenerator(),
     )
     try:
         plan = use_case.execute(
             GenerateMonthlyPlanCommand(
-                parent_yearly_plan_id=parent.plan_id,
+                parent_yearly_plan_id=parent.plan_id,  # type: ignore[union-attr]
                 target_month=month,
                 daycare_ref=str(center_id),
                 profile_ref=profile_ref,
@@ -402,10 +409,10 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
     # ── C. 짧은 쓰기 ──────────────────────────────────────────────────────
     timing.phase("save")
     _lock_parent(session, parent_id, "연간계획안을 먼저 만들어 확정해주세요.")
-    if _existing(session, center_id, class_id, month) is not None:
+    if _existing(session, center_id, class_id, month) is not None:  # type: ignore[arg-type]
         raise _ALREADY_EXISTS
     try:
-        _monthly_repo(session, center_id).save(plan.plan_id, plan)
+        _monthly_repo(session, center_id).save(plan.plan_id, plan)  # type: ignore[arg-type]
     except IntegrityError as error:
         session.rollback()
         if getattr(getattr(error.orig, "diag", None), "constraint_name", None) == MONTHLY_UNIQUE:
@@ -413,7 +420,7 @@ def create_monthly_plan(body: CreateMonthlyPlan, session: DbSession, user: Curre
         raise
     row = session.scalar(select(Plan).where(Plan.plan_ref == plan.plan_id.value))
     # **응답을 다 만든 뒤에 확정한다**(연간과 같다). 저장소가 flush 해 두어 commit 전에도 읽힌다.
-    detail = _detail(row, plan, parent_id)
+    detail = _detail(row, plan, parent_id)  # type: ignore[arg-type]
     session.commit()
     return detail
 
@@ -460,7 +467,7 @@ def _summary(row: Plan) -> MonthlyPlanSummary | None:
         id=row.id,
         class_id=class_id,
         school_year=row.school_year,
-        month=int(row.target_month[5:]),
+        month=int(row.target_month[5:]),  # type: ignore[index]
         target_month=row.target_month,
         status=row.status,
         revision=row.revision,
@@ -470,7 +477,7 @@ def _summary(row: Plan) -> MonthlyPlanSummary | None:
     )
 
 
-def _skip(row: Plan, reason: str) -> None:
+def _skip(row: Plan, reason: str) -> MonthlyPlanSummary | None:
     _log.warning("monthly plan list skipped row plan_id=%s reason=%s", row.id, reason)
     return None
 
@@ -528,20 +535,20 @@ def get_monthly_audit(
     건드리지 않는다.
     """
     row = _own_row(session, user, plan_id, read_only=True)
-    plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
-    cells = [(section, cell) for section in plan.sections for cell in section.cells]
+    plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))  # type: ignore[arg-type]
+    cells = [(section, cell) for section in plan.sections for cell in section.cells]  # type: ignore[union-attr]
     # 후보 칸은 Section 칸 다음에 잇는다. 후보 cell 은 Section 안에 없어서 안전교육으로 적는다.
-    safety = plan.section("safety_education")
-    cells += [(safety, candidate.cell) for candidate in plan.safety_candidates]
-    drill = plan.section("drill")
-    cells += [(drill, candidate.cell) for candidate in plan.drill_candidates]
+    safety = plan.section("safety_education")  # type: ignore[union-attr]
+    cells += [(safety, candidate.cell) for candidate in plan.safety_candidates]  # type: ignore[union-attr]
+    drill = plan.section("drill")  # type: ignore[union-attr]
+    cells += [(drill, candidate.cell) for candidate in plan.drill_candidates]  # type: ignore[union-attr]
     if item_id is not None:
         cells = [(s, c) for s, c in cells if c.item_id.value == item_id]
         if not cells:
             raise _CELL_NOT_FOUND
     keyed = [
         ((event.occurred_at, 0, 0, index), _audit_event(event, None))
-        for index, event in enumerate(plan.audit.events)
+        for index, event in enumerate(plan.audit.events)  # type: ignore[union-attr]
         if item_id is None or event.event_type.value in ("CONFIRMED", "UNCONFIRMED")
     ]
     for position, (section, cell) in enumerate(cells):
@@ -623,14 +630,14 @@ def _current(session: Session, user, plan_id: int) -> MonthlyPlanOut:
     row = _own_row(session, user, plan_id, read_only=True)
     plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     parent = session.scalar(
-        select(Plan).where(
-            Plan.plan_ref == plan.parent_lineage.parent_plan_id.value,
+        select(Plan).where(  # type: ignore[arg-type]
+            Plan.plan_ref == plan.parent_lineage.parent_plan_id.value,  # type: ignore[arg-type, union-attr]
             Plan.center_id == user.center_id,
             Plan.kind == "annual",
         )
     )
-    changed = _parent_changed(parent, plan.parent_lineage.confirmed_at)
-    return _detail(row, plan, None if parent is None else parent.id, parent_changed=changed)
+    changed = _parent_changed(parent, plan.parent_lineage.confirmed_at)  # type: ignore[union-attr]
+    return _detail(row, plan, None if parent is None else parent.id, parent_changed=changed)  # type: ignore[arg-type]
 
 
 def _parent_changed(parent: Plan | None, snapshot_confirmed_at) -> bool:
@@ -755,7 +762,7 @@ def _read_draft(session: Session, user, plan_id: int, expected_revision: int) ->
         raise _STALE_WRITE
     plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
     session.commit()
-    return plan
+    return plan  # type: ignore[return-value]
 
 
 def _drafts(plan: MonthlyPlan) -> InMemoryPlanRepository[MonthlyPlan]:
@@ -1073,11 +1080,11 @@ def confirm_monthly_plan(plan_id: int, body: RevisionIn, session: DbSession, use
         return _current(session, user, plan_id)
     if row.revision != body.expected_revision:
         raise _STALE_WRITE
-    plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
+    plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))  # type: ignore[arg-type]
     session.commit()
     try:
-        changed = monthly_confirmation(plan_repository=_drafts(plan), clock=SystemClock()).execute(
-            ConfirmMonthlyPlanCommand(plan.plan_id, _actor(user))
+        changed = monthly_confirmation(plan_repository=_drafts(plan), clock=SystemClock()).execute(  # type: ignore[arg-type]
+            ConfirmMonthlyPlanCommand(plan.plan_id, _actor(user))  # type: ignore[union-attr]
         )
     except MonthlyApplicationError as error:
         raise _lifecycle_error(error) from error
@@ -1096,12 +1103,12 @@ def unconfirm_monthly_plan(plan_id: int, body: RevisionIn, session: DbSession, u
         return _current(session, user, plan_id)
     if row.revision != body.expected_revision:
         raise _STALE_WRITE
-    plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))
+    plan = _monthly_repo(session, user.center_id).get(PlanId(row.plan_ref))  # type: ignore[arg-type]
     session.commit()
-    changed = UnconfirmMonthlyPlan(plan_repository=_drafts(plan), clock=SystemClock()).execute(
-        UnconfirmMonthlyPlanCommand(plan.plan_id, _actor(user))
+    changed = UnconfirmMonthlyPlan(plan_repository=_drafts(plan), clock=SystemClock()).execute(  # type: ignore[arg-type]
+        UnconfirmMonthlyPlanCommand(plan.plan_id, _actor(user))  # type: ignore[union-attr]
     )
-    written = _monthly_repo(session, user.center_id).update_if_revision(
+    written = _monthly_repo(session, user.center_id).update_if_revision(  # type: ignore[arg-type]
         changed.plan_id, changed, expected_revision=body.expected_revision, status="CONFIRMED"
     )
     if written is None:
@@ -1172,7 +1179,7 @@ def _detail(
                 semantic_variant=(
                     None
                     if shown[section.section_key].semantic_variant is None
-                    else shown[section.section_key].semantic_variant.value
+                    else shown[section.section_key].semantic_variant.value  # type: ignore[union-attr]
                 ),
                 cells=[_cell(cell) for cell in section.cells],
             )

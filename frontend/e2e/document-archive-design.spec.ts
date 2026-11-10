@@ -159,6 +159,8 @@ async function enter(page: Page, count = 2) {
       else if (/^\/api\/plans\/annual\/\d+$/.test(path))
         body = db.plans.find((plan) => plan.id === Number(path.split("/")[4]));
       else if (path === "/api/plans/monthly" || path === "/api/plans/weekly") body = { items: [] };
+      // 상단바 종이 모든 화면에서 부른다.
+      else if (path === "/api/me/notifications") body = { items: [] };
       else throw new Error("Unexpected preview API: " + path);
       return route.fulfill({ json: body });
     }
