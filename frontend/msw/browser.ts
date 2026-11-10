@@ -2,8 +2,24 @@ import { setupWorker } from "msw/browser";
 import type { UnhandledRequestCallback } from "msw";
 import { handlers } from "./handlers";
 import { annualImportHandlers } from "./annualImportHandlers";
+import { observationHandlers } from "./observationHandlers";
+import { journalHandlers as dayHandlers } from "./journal";
+import { journalHandlers } from "./journalHandlers";
 
-export const worker = setupWorker(...annualImportHandlers, ...handlers);
+/**
+ * 같은 주소를 여러 목업이 받는다. 먼저 놓인 것이 답하고, 아무것도 안 돌려주면 다음으로 넘어간다.
+ * - 관찰 기록(observationHandlers) — 이 화면에서 적은 기록이 있을 때만 답한다. `?mswRoutines=1` 일과도.
+ * - 보육일지 하루(journal.ts) — 일과 · 임시본. 관찰 · 일지 · 주간계획은 `msw.demo=journal` 일 때만.
+ * - 관찰일지(journalHandlers) — 그 밖의 관찰 · 일지 목록은 여기 심어 둔 자료로 답한다.
+ * journal.ts 는 handlers.ts 에도 들어 있다(테스트 서버용). 여기서 앞에 한 번 더 둔다.
+ */
+export const worker = setupWorker(
+  ...annualImportHandlers,
+  ...observationHandlers,
+  ...dayHandlers,
+  ...journalHandlers,
+  ...handlers,
+);
 const RELOADED_KEY = "saessak.msw.controllerReload";
 /** handlers.ts에 등록된 interception 판정 전용 probe 경로. */
 export const MSW_HEALTH_PATH = "/api/__msw_health";

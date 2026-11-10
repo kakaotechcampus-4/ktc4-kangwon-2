@@ -3,6 +3,7 @@
 import datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -14,6 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -56,6 +58,19 @@ class RoutineRecord(Base):
     plan: Mapped[str] = mapped_column(Text, server_default="", comment="활동계획")
     execution: Mapped[str] = mapped_column(
         Text, server_default="", comment="활동실행 — 사실 층이다. 교사가 쓰고 AI 가 쓰지 않는다"
+    )
+    # 아래 둘은 사실 칸이 아니다 — 근거 사본(`fact_text`)에 넣지 않고 종이에서만 쓴다 (ADR-086).
+    reflected: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        comment="어제 지원을 반영한 줄. 종이가 원 설정 표기(「(반영)」)를 활동실행 앞에 붙인다",
+    )
+    activities: Mapped[list[str]] = mapped_column(
+        JSONB,
+        default=list,
+        server_default="[]",
+        comment="주간계획안에서 교사가 맞다고 한 활동 이름. 주간 종이 「우리반 놀이」에 싣는다",
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -101,7 +116,7 @@ class RegionWeather(Base):
     기상청 · 에어코리아를 지역 · 날짜마다 한 번만 부르려고 둔다.
 
     받은 값만 남긴다. 둘 다 못 받았으면 행을 만들지 않는다 — 다음 조회 때 다시 부른다.
-    한쪽만 받았으면 받은 쪽만 채워 남기고, 그날은 다시 부르지 않는다.
+    한쪽만 받았으면 받은 쪽만 채워 남기고, 못 받은 쪽만 다음 조회 때 다시 부른다.
     """
 
     __tablename__ = "region_weather"
@@ -139,6 +154,61 @@ class RoutineWeather(Base):
     class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"))
     date: Mapped[datetime.date] = mapped_column(Date)
     sky: Mapped[str] = mapped_column(String(10))
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class RoutineDraft(Base):
+    """일과 기록 화면의 **임시본** — 반 × 날짜 하나 (ADR-084).
+
+    교사가 쓰는 대로 화면 줄 전체를 여기에 둔다. **일과 기록(`routine_records`)이 아니다** —
+    근거로 올리는 것은 화면을 떠날 때와 「오늘 일지 만들기」 때다. 쓰는 대로 일과 기록에 쓰면
+    글자 하나마다 그 기록을 쓴 확정 일지가 `stale` 이 되고, 열어 보기만 한 날에도 빈 줄이 쌓인다.
+
+    `revision` 은 하루치 한 덩어리의 판 번호다. 한 교사가 폰과 PC 를 같이 쓰면 옛 탭이 새 글을
+    덮을 수 있어, 저장할 때마다 맞춰 본다.
+    """
+
+    __tablename__ = "routine_drafts"
+    __table_args__ = (UniqueConstraint("class_id", "date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"))
+    date: Mapped[datetime.date] = mapped_column(Date)
+    revision: Mapped[int] = mapped_column(server_default="1", default=1)
+    # 화면 줄 그대로다. 줄 수 · 글자 수는 저장 요청 스키마가 막는다(schemas.DraftSave).
+    rows: Mapped[list[dict]] = mapped_column(JSONB, comment="화면 줄 전체 — 깔아 둔 줄 포함")
+    removed: Mapped[list[int]] = mapped_column(
+        JSONB, default=list, server_default="[]", comment="지우기로 표시한 일과 기록 id"
+    )
+    promoted: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        comment="지금 줄이 일과 기록에 올라갔나. 저장할 때마다 false 로 돌아간다",
+    )
+    promoted_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), comment="마지막으로 올린 때. 정리 작업이 30일을 센다"
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ClassRoutineTemplate(Base):
+    """반 기본 일과표 — 반마다 하나 (ADR-085).
+
+    새 날을 열면 이 표로 줄을 깐다. 고정 줄(`weekday` 없음)과, 그 요일에만 더하는 줄
+    (특별활동 — `weekday` 0=월 … 5=토)이 함께 들어 있다. 순서 · 시간 · 이름만 둔다.
+    """
+
+    __tablename__ = "class_routine_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), unique=True)
+    # 줄 수 · 글자 수는 저장 요청 스키마가 막는다(schemas.TemplateSave).
+    rows: Mapped[list[dict]] = mapped_column(JSONB, comment="[{name, start, end, weekday}]")
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

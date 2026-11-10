@@ -4,13 +4,18 @@ import {
   createObservation,
   updateObservation,
   deleteObservation,
+  suggestDomain,
+  checkMissing,
   observationServerId,
+  type ApiReviewImpact,
   type ServerObservation,
 } from "./observations";
 import { classServerId, childServerId } from "./onboarding";
 import { toLocalObservation } from "./observation-ids";
 import type { ObservationUpdate } from "./types";
 import { chosenClassFor, loadClassSettings } from "../onboarding/settings";
+import { listRoutinesOfDay, routineTime } from "./routines";
+import type { DaySlot } from "../workspace/record-context";
 
 /** 반·아동이 서버의 무엇인지 모르는 상태. 서버 id 를 지어내지 않고 여기서 멈춘다. */
 export const UNMAPPED =
@@ -47,18 +52,80 @@ export async function addRecord(
   );
 }
 
+/**
+ * 고치거나 지워서 「다시 검토」가 된 확정 문서의 **서버 id** (§10 「저장 뒤 재검토 안내」).
+ * `newlyStale` 은 이번에 처음 stale 이 된 것, `affected` 는 이미 stale 이던 것까지.
+ */
+export interface ReviewImpact {
+  affected: number[];
+  newlyStale: number[];
+}
+
+const impactOf = (raw?: ApiReviewImpact): ReviewImpact => ({
+  affected: raw?.affected_document_ids ?? [],
+  newlyStale: raw?.newly_stale_document_ids ?? [],
+});
+
 /** 반·아동은 바꾸지 못한다 — 대상이 바뀌면 다른 기록이다 (§10). */
 export async function editRecord(
   localId: string,
   record: ObservationUpdate,
-): Promise<ServerObservation> {
+): Promise<{ record: ServerObservation; impact: ReviewImpact }> {
   const id = observationServerId(localId);
   if (id === null) throw new Error(UNMAPPED);
-  return toLocalObservation(await updateObservation(id, record));
+  const saved = await updateObservation(id, record, { impact: true });
+  return { record: toLocalObservation(saved), impact: impactOf(saved.review_impact) };
 }
 
-export async function removeRecord(localId: string): Promise<void> {
+export async function removeRecord(localId: string): Promise<ReviewImpact> {
   const id = observationServerId(localId);
   if (id === null) throw new Error(UNMAPPED);
-  await deleteObservation(id);
+  const done = await deleteObservation(id, { impact: true });
+  return impactOf(done ? done.review_impact : undefined);
+}
+
+/**
+ * 적던 사실로 AI 가 제안하는 영역. 없거나 실패하면 `null` — 덤이라 화면을 멈추지 않는다 (ADR-082).
+ */
+export async function suggestRecordDomain(
+  classId: string,
+  fact: string,
+  context: string,
+): Promise<string | null> {
+  const class_id = classServerId(classId);
+  if (class_id === null) return null;
+  try {
+    return (await suggestDomain({ class_id, fact, context })).domain;
+  } catch {
+    return null;
+  }
+}
+
+/** 저장한 기록에서 빠진 것. 실패하면 빈 목록 — 쪽지를 안 띄울 뿐이다 (ADR-082). */
+export async function missingInRecord(localId: string): Promise<string[]> {
+  const id = observationServerId(localId);
+  if (id === null) return [];
+  try {
+    return (await checkMissing(id)).missing;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 그날 일과 — 상황 칸 위 시간표로만 쓴다. 못 읽으면 빈 줄이라 지금처럼 손으로 적는다.
+ * ponytail: 반 기본 일과표(묶음 C)가 생기면 그날 일과가 없을 때 그걸로 채운다.
+ */
+export async function dayRoutines(classId: string, date: string): Promise<DaySlot[]> {
+  const class_id = classServerId(classId);
+  if (class_id === null) return [];
+  try {
+    return (await listRoutinesOfDay(class_id, date)).map((row) => ({
+      name: row.name,
+      start: routineTime(row.start),
+      end: routineTime(row.end),
+    }));
+  } catch {
+    return [];
+  }
 }

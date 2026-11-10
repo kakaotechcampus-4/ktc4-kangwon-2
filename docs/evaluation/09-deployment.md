@@ -147,6 +147,8 @@ run 기록의 커밋과 서버 로그의 「배포 … <sha>」 줄을 맞춰 �
 
 ## 더 모을 근거
 
+- HTTPS 재설정 시 관리 중인 인증서를 임시본으로 덮지 않고, 복원 파이프도 선택한 Docker 권한 경로를 쓴다. 갱신 실패·볼륨 내 인증서 유무·sudo 환경을 실제 자원 대신 스텁으로 확인한다 — `scripts/https-setup.sh` · `scripts/restore-check.sh` · `backend/tests/test_ops_script_regressions.py`
+
 - [x] 이슈 #185 닫음(2026-11-01) — 문서 · 점검 스크립트는 #216
 - [x] 배포 1회 성공 로그 — 2026-10-31 18:26 KST `main` `43cb0fe` 자동 배포(run 41188715632), `health/ready 200 (1회째)`
 - [x] 롤백 1회 연습 — 2026-11-07 02:45 KST 운영 `8d4630a8` → `d59ceaf8` → `8d4630a8`(run 42264552753 · 42264741582), 둘 다 `health/ready 200 (1회째)`, 끊김 약 5초씩. 위 「운영에서 롤백을 한 번 해 봤다」

@@ -161,3 +161,37 @@ export function archivePlanEntry(search: string) {
   if (!Number.isInteger(month) || month < 1 || month > 12) return null;
   return { id, classId, month, weekId };
 }
+
+/**
+ * 보관함 거르개 — 상태 · 원본 바뀜 · 제목 찾기 (FR-701 · FR-406).
+ *
+ * 상태와 원본 바뀜은 서버가 거른다(`GET /api/documents?status=&stale=`, §11). 제목 찾기는 서버가
+ * 받지 않아 화면이 받은 목록에서 거른다.
+ */
+export interface ArchiveFilter {
+  status: "" | "DRAFT" | "CONFIRMED";
+  /** 원본 기록이 바뀐 문서만. */
+  stale: boolean;
+  title: string;
+}
+export const ARCHIVE_FILTER_NONE: ArchiveFilter = { status: "", stale: false, title: "" };
+
+/** 서버에 보낼 쿼리. 서버가 거를 것이 없으면 null — 그때는 전체 목록을 그대로 쓴다. */
+export function archiveQuery(filter: ArchiveFilter) {
+  if (!filter.status && !filter.stale) return null;
+  return {
+    ...(filter.status ? { status: filter.status } : {}),
+    ...(filter.stale ? { stale: true } : {}),
+  };
+}
+
+/** 계획안처럼 서버가 따로 주는 목록과 제목 찾기는 여기서 거른다. 계획안에는 stale 이 없다. */
+export function passesFilter(
+  doc: { title: string; status: "draft" | "confirmed"; stale?: boolean },
+  filter: ArchiveFilter,
+): boolean {
+  if (filter.status && doc.status !== (filter.status === "CONFIRMED" ? "confirmed" : "draft"))
+    return false;
+  if (filter.stale && !doc.stale) return false;
+  return doc.title.includes(filter.title.trim());
+}

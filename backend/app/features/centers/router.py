@@ -34,7 +34,11 @@ from app.features.centers.schemas import (
     GreetingsSettings,
 )
 from app.shared.auth.dependency import CurrentUser
-from app.shared.auth.ownership import require_own_center, require_own_class
+from app.shared.auth.ownership import (
+    require_center_creator,
+    require_own_center,
+    require_own_class,
+)
 from app.shared.school_year import school_year_of
 
 router = APIRouter(prefix="/centers", tags=["centers"])
@@ -211,6 +215,7 @@ def create_center(
         region_sido=picked.sido if picked else body.region_sido,
         region_sigungu=picked.sigungu if picked else body.region_sigungu,
         registry_key=picked.key if picked else None,
+        created_by=user.id,
     )
     session.add(center)
     try:
@@ -347,19 +352,35 @@ def list_classes(
     return ClassListResponse(items=[_class_response(c, user, requests) for c in classes])
 
 
+def _settings_out(center: Center, user: User) -> CenterSettings:
+    """`can_edit` 는 원을 만든 교사인지다 (ADR-087). 화면이 고르개를 잠글지 여기서 안다."""
+    return CenterSettings(
+        trends_enabled=center.trends_enabled,
+        weekly_saturday_enabled=center.weekly_saturday_enabled,
+        observation_axis=center.observation_axis,
+        reflect_mark=center.reflect_mark,
+        can_edit=center.created_by is not None and center.created_by == user.id,
+    )
+
+
 @router.get("/{center_id}/settings", response_model=CenterSettings)
-def get_center_settings(center_id: int, session: DbSession, user: CurrentUser) -> Center:
-    """설정한 적 없어도 기본값이 담긴 행을 준다 — 빈 객체를 주지 않는다 (§3-1)."""
+def get_center_settings(center_id: int, session: DbSession, user: CurrentUser) -> CenterSettings:
+    """설정한 적 없어도 기본값이 담긴 행을 준다 — 빈 객체를 주지 않는다 (§3-1).
+
+    같은 원 교사는 누구나 읽는다. 바꾸기는 원을 만든 교사만이다 (ADR-087).
+    """
     require_own_center(user, center_id)
-    return _center(session, center_id)
+    return _settings_out(_center(session, center_id), user)
 
 
 @router.put("/{center_id}/settings", response_model=CenterSettings)
 def put_center_settings(
     center_id: int, body: CenterSettingsUpdate, session: DbSession, user: CurrentUser
-) -> Center:
+) -> CenterSettings:
+    """원 모든 반의 계획안 · 관찰 기록에 걸린다 — 원을 만든 교사만 바꾼다 (ADR-087)."""
     require_own_center(user, center_id)
     center = _center(session, center_id, lock=True)
+    require_center_creator(session, user, center_id)
     # **보낸 칸만 바꾼다.** 안 보낸 칸은 건드리지 않는다 (§3-1).
     if body.trends_enabled is not None:
         center.trends_enabled = body.trends_enabled
@@ -367,9 +388,11 @@ def put_center_settings(
         center.weekly_saturday_enabled = body.weekly_saturday_enabled
     if body.observation_axis is not None:
         center.observation_axis = body.observation_axis
+    if body.reflect_mark is not None:
+        center.reflect_mark = body.reflect_mark
     session.commit()
     session.refresh(center)
-    return center
+    return _settings_out(center, user)
 
 
 def _center(session: Session, center_id: int, *, lock: bool = False) -> Center:
@@ -408,7 +431,9 @@ def put_greetings(
 ) -> GreetingsSettings:
     require_own_center(user, center_id)
     # 설정 행이 아직 없어도 같은 원의 동시 PUT을 직렬화한다.
+    # 원 모든 반 계획안에 찍히는 문구다 — 원을 만든 교사만 바꾼다 (ADR-087).
     _greetings_center(session, center_id, lock=True)
+    require_center_creator(session, user, center_id)
     row = session.get(Greetings, center_id)
     if row is None:
         row = Greetings(center_id=center_id, **default_greetings().model_dump())

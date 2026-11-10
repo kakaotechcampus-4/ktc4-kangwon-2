@@ -159,9 +159,18 @@ def test_원장_서류_체크는_원에_하나다(own_center, db_session, teache
     db_session.flush()
     app.dependency_overrides[current_user] = lambda: other
     try:
-        body = put(own_center, "director", {"checks": [{"item": "day-papers", "checked": False}]})
+        # 같은 원 다른 교사도 같은 체크를 본다. 바꾸기는 원을 만든 교사만이다(ADR-087).
+        seen = client.get(PATH.format(own_center)).json()
+        assert {d["item"] for d in seen["director"] if d["checked"]} == checked
+        denied = client.put(
+            PATH.format(own_center) + "/director",
+            json={"checks": [{"item": "day-papers", "checked": False}]},
+        )
+        assert denied.status_code == 403
+        assert denied.json()["error"]["code"] == "CENTER_CREATOR_ONLY"
     finally:
         app.dependency_overrides[current_user] = lambda: teacher
+    put(own_center, "director", {"checks": [{"item": "day-papers", "checked": False}]})
     body = client.get(PATH.format(own_center)).json()
     assert {d["item"] for d in body["director"] if d["checked"]} == {"annual-plan"}
 

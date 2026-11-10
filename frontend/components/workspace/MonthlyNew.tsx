@@ -19,6 +19,7 @@ import { createMonthlyPlan, listMonthlyPlans } from "@/lib/api/monthly";
 import { createPlayMonthly, listPlayMonthly } from "@/lib/api/playMonthly";
 import { getAnnualPlan, listAnnualPlans } from "@/lib/api/plans";
 import { syncCenter, syncClass } from "@/lib/api/onboarding";
+import { getCenterSettings } from "@/lib/api/centers";
 import {
   createTemplateProfile,
   getCenterDefaultProfile,
@@ -38,6 +39,7 @@ import { sectionName } from "@/lib/monthly/section-labels";
 import { chosenClassFor, loadClassSettings } from "@/lib/onboarding/settings";
 import { MONTH_ORDER } from "@/lib/onboarding/types";
 import { useClientState } from "@/lib/hooks/use-client-state";
+import { topicMemo } from "@/lib/api/trends";
 import { playSeason } from "@/components/plan-generator/playProjectPagination";
 import GenerationRing, { ringFinished, STOPPED_NOTE } from "@/components/plan-ui/GenerationRing";
 import { useCompactShell } from "@/components/app/compact-shell";
@@ -395,6 +397,8 @@ type Loaded = {
   plans: Plans;
   /** 월별 주제형만. 원 id · 칸을 고를 기반 양식 · 반이 지금 쓰는 양식 · 원 기본 포인터. */
   centerId: number | null;
+  /** 원 기본 양식을 바꿀 수 있는지 — 원을 처음 등록한 교사만이다(ADR-087). */
+  canSetDefault: boolean;
   template: MonthlyTemplate | null;
   current: ReadyProfile | null;
   pointer: ProfileRef | null;
@@ -409,11 +413,12 @@ async function loadColumns(
   classId: number,
 ) {
   const centerId = await syncCenter(settings);
-  const [templates, ready, resolved, pointer] = await Promise.all([
+  const [templates, ready, resolved, pointer, centerSettings] = await Promise.all([
     listMonthlyTemplates(),
     listReadyTemplateProfiles(centerId),
     getClassTemplateProfile(classId),
     getCenterDefaultProfile(centerId),
+    getCenterSettings(centerId).catch(() => null),
   ]);
   const current = ready.items.find((p) => sameRef(p.profile_ref, resolved.profile_ref)) ?? null;
   return {
@@ -421,6 +426,7 @@ async function loadColumns(
     template: pickTemplate(templates.items),
     current,
     pointer: pointer.profile_ref,
+    canSetDefault: centerSettings?.can_edit !== false,
   };
 }
 
@@ -433,7 +439,11 @@ export default function MonthlyNew({
   const router = useRouter();
   const [problem, setProblem] = useState("");
   const [stopped, setStopped] = useState(false);
-  const [memo, setMemo] = useState("");
+  // 트렌드 화면 [계획안에 활용하기] 가 `?topic` 으로 넘긴 글을 요청 사항 첫 값으로 둔다(ADR-072).
+  const [memo, setMemo] = useClientState(
+    () => topicMemo(typeof window === "undefined" ? "" : window.location.search),
+    "",
+  );
   const [memoProblem, setMemoProblem] = useState<string | null>(null);
   const classes = useClasses(setProblem);
   const [chosen] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
@@ -465,7 +475,13 @@ export default function MonthlyNew({
         const summary = (await listAnnualPlans(classId)).items[0];
         const annual = summary ? await getAnnualPlan(summary.id) : null;
         const play = annual?.format === "PLAY_PROJECT";
-        const none = { centerId: null, template: null, current: null, pointer: null };
+        const none = {
+          centerId: null,
+          template: null,
+          current: null,
+          pointer: null,
+          canSetDefault: false,
+        };
         const [list, columns] = await Promise.all([
           play ? listPlayMonthly(classId) : listMonthlyPlans(classId),
           play || !annual ? none : loadColumns(settings, classId),
@@ -497,7 +513,7 @@ export default function MonthlyNew({
       </p>
     );
 
-  const { classId, annual, plans, centerId, template, current, pointer } = data;
+  const { classId, annual, plans, centerId, template, current, pointer, canSetDefault } = data;
   const play = annual?.format === "PLAY_PROJECT";
   const inherit = inheritOf(annual, month);
   const open = (m: number) => {
@@ -559,10 +575,12 @@ export default function MonthlyNew({
           ref = made.profile_ref;
           setData((d) => d && { ...d, current: made, pointer: made.profile_ref });
           // 다음 달도 이 칸으로 시작하게 원 기본으로 건다. 못 걸어도 이번 달은 이 양식으로 만든다.
-          await putCenterDefaultProfile(centerId, {
-            profile_ref: ref,
-            expected_profile_ref: pointer,
-          }).catch(() => null);
+          // 원 기본은 원을 처음 등록한 교사만 바꾼다(ADR-087) — 다른 교사는 이번 달만 이 양식이다.
+          if (canSetDefault)
+            await putCenterDefaultProfile(centerId, {
+              profile_ref: ref,
+              expected_profile_ref: pointer,
+            }).catch(() => null);
         }
         const plan = await createMonthlyPlan(
           { class_id: classId, month, profile_ref: ref, ...note },

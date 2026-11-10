@@ -259,9 +259,30 @@ test("수정은 서버 id 로 네 칸만 보낸다", async () => {
     restore();
   }
 
-  assert.equal(calls[0].url, "/api/observations/12");
+  assert.equal(calls[0].url, "/api/observations/12?include_impact=true");
   assert.equal(calls[0].method, "PUT");
   assert.deepEqual(Object.keys(calls[0].body).sort(), ["context", "date", "domain", "fact"]);
+});
+
+test("수정 · 삭제는 「다시 검토」 영향을 같이 받아 온다 (§10)", async () => {
+  browser();
+  const impact = { affected_document_ids: [7, 9], newly_stale_document_ids: [7] };
+  const { calls, restore } = serve((n) =>
+    n === 1 ? json({ ...DTO, review_impact: impact }) : json({ review_impact: impact }),
+  );
+  let edited, removed;
+  try {
+    edited = await records.editRecord("observation:12", INPUT);
+    removed = await records.removeRecord("observation:12");
+  } finally {
+    restore();
+  }
+
+  assert.equal(edited.record.id, "observation:12");
+  assert.deepEqual(edited.impact, { affected: [7, 9], newlyStale: [7] });
+  assert.deepEqual(removed, { affected: [7, 9], newlyStale: [7] });
+  assert.equal(calls[1].url, "/api/observations/12?include_impact=true");
+  assert.equal(calls[1].method, "DELETE");
 });
 
 test("수정은 반·아동을 보내지 않는다", async () => {
@@ -300,17 +321,74 @@ test("서버에서 오지 않은 id 는 수정·삭제 요청을 보내지 않�
   assert.equal(calls.length, 0);
 });
 
+test("영역 추천 · 빠진 것은 서버 id 로 묻고, 실패하면 조용히 비운다 (ADR-082)", async () => {
+  browser();
+  const { calls, restore } = serve((n) =>
+    n === 1
+      ? json({ domain: "사회관계", confidence: 0.86 })
+      : n === 2
+        ? json({ missing: ["반응"] })
+        : fail("GENERATION_FAILED", 500),
+  );
+  try {
+    assert.equal(
+      await records.suggestRecordDomain("class-abc", "같이 하자고 했다.", ""),
+      "사회관계",
+    );
+    assert.deepEqual(await records.missingInRecord("observation:12"), ["반응"]);
+    assert.equal(await records.suggestRecordDomain("class-abc", "x", ""), null);
+    assert.equal(await records.suggestRecordDomain("class-없음", "x", ""), null);
+  } finally {
+    restore();
+  }
+
+  assert.equal(calls[0].url, "/api/observations/domain-suggest");
+  assert.equal(calls[0].method, "POST");
+  assert.deepEqual(calls[0].body, { class_id: 3, fact: "같이 하자고 했다.", context: "" });
+  assert.equal(calls[1].url, "/api/observations/12/missing");
+  assert.equal(calls[1].method, "POST");
+  assert.equal(calls.length, 3, "모르는 반은 묻지 않는다");
+});
+
+test("그날 일과는 상황 칸 시간표로만 읽고, 못 읽으면 빈 줄이다", async () => {
+  browser();
+  const row = (name, start, end) => ({ id: 1, class_id: 3, date: "2026-11-10", name, start, end });
+  const { calls, restore } = serve((n) =>
+    n === 1
+      ? json({ items: [row("실내놀이", "10:00:00", "11:30:00"), row("자유", null, null)] })
+      : fail("GENERATION_FAILED", 500),
+  );
+  let day, broken;
+  try {
+    day = await records.dayRoutines("class-abc", "2026-11-10");
+    broken = await records.dayRoutines("class-abc", "2026-11-10");
+  } finally {
+    restore();
+  }
+
+  assert.equal(calls[0].url, "/api/routines?class_id=3&from=2026-11-10&to=2026-11-10");
+  assert.deepEqual(day, [
+    { name: "실내놀이", start: "10:00", end: "11:30" },
+    { name: "자유", start: "", end: "" },
+  ]);
+  assert.deepEqual(broken, []);
+});
+
 test("삭제는 204 를 본문 없이 처리한다", async () => {
   const writes = browser();
   const { calls, restore } = serve(() => new Response(null, { status: 204 }));
   try {
-    assert.equal(await records.removeRecord("observation:12"), undefined);
+    // 옛 서버(204)면 영향이 없는 것으로 읽는다.
+    assert.deepEqual(await records.removeRecord("observation:12"), {
+      affected: [],
+      newlyStale: [],
+    });
   } finally {
     restore();
   }
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, "/api/observations/12");
+  assert.equal(calls[0].url, "/api/observations/12?include_impact=true");
   assert.equal(calls[0].method, "DELETE");
   assert.deepEqual(writes, []);
 });

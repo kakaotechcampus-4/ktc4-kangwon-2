@@ -33,6 +33,11 @@ COPY backend/resources ./resources
 
 RUN pip install .
 
+# 서버에서 손으로 · cron 으로 돌리는 스크립트다 — ADR-088 사본 재대조(`recheck_observation_snapshots.py`) 같은 것.
+# 문서가 `docker compose exec backend python scripts/…` 로 적어 두었는데 이 줄이 없으면 파일이 없다.
+# 100KB 남짓이라 폴더째 넣는다. pip 설치 뒤에 두어 스크립트만 바뀌면 설치 층을 다시 쓰지 않는다.
+COPY backend/scripts ./scripts
+
 # hwp5html(pyhwp)이 실행되는지, XSLT 처리에 필요한 lxml이 로드되는지,
 # PDF 내보내기가 한글 글꼴을 찾는지 확인
 RUN hwp5html --help >/dev/null && python -c "import lxml.etree"     && python -c "from app.shared.hwpx_pdf import _register_fonts; _register_fonts()"

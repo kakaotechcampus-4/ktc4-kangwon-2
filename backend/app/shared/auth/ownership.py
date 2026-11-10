@@ -17,7 +17,7 @@ from sqlalchemy import ColumnElement, Select, String, and_, cast, or_, select
 from sqlalchemy.orm import Session
 
 from app.features.auth.models import User
-from app.features.centers.models import Child, Class, ClassAccessRequest
+from app.features.centers.models import Center, Child, Class, ClassAccessRequest
 
 
 def _not_found(what: str, field: str) -> HTTPException:
@@ -38,6 +38,30 @@ def require_own_center(user: User, center_id: int) -> None:
     """이 교사의 원인가. 온보딩 전(center_id 가 None)이면 어떤 원도 자기 것이 아니다."""
     if user.center_id is None or user.center_id != center_id:
         raise _not_found("원", "center_id")
+
+
+def is_center_creator(session: Session, user: User, center_id: int) -> bool:
+    """원을 만든 교사인가 (ADR-087). 교사가 없는 원(NULL)은 아무도 아니다."""
+    created_by = session.scalar(select(Center.created_by).where(Center.id == center_id))
+    return created_by is not None and created_by == user.id
+
+
+def require_center_creator(session: Session, user: User, center_id: int) -> None:
+    """원 전체에 걸리는 것을 바꾸는 교사인가 — 원을 만든 교사만이다 (ADR-087).
+
+    합류 승인이 없어(ADR-068) 원 이름만 알면 누구나 그 원 교사가 된다. 같은 원 다른 교사는
+    읽기만 한다. 같은 원이라는 사실은 숨기지 않으므로 404 가 아니라 403 이다.
+    `require_own_center` 다음에 부른다 — 남의 원은 그쪽이 404 로 먼저 막는다.
+    """
+    if not is_center_creator(session, user, center_id):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "CENTER_CREATOR_ONLY",
+                "message": "원을 처음 등록한 선생님만 바꿀 수 있습니다.",
+                "fields": ["center_id"],
+            },
+        )
 
 
 def require_own_class(

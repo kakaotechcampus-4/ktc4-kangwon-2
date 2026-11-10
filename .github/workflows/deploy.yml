@@ -1,10 +1,9 @@
 name: Deploy
 
-# main 또는 develop 에 머지되면 서버에 올린다.
+# main 에 머지되면 서버에 올린다(ADR-094). develop 머지는 운영에 나가지 않는다.
 #
-# develop 을 넣은 것은 **빠르게 보기 위해서다**(PM, 2026-11-03). develop 에 머지된 것이
-# 곧바로 운영에 나간다 — CI 와 배포는 따로 돌기 때문에 검사가 빨간불이어도 나간다.
-# 천천히 가고 싶어지면 아래 `branches` 에서 develop 한 줄만 지우면 된다.
+# CI 와 배포는 따로 돈다 — main push 의 검사가 빨간불이어도 나간다. 막는 자리는 develop 규칙의
+# 필수 검사다. main 에는 develop 을 머지하는 PR 로만 들어온다.
 #
 # 서버에 들어가는 방법은 SSH 가 아니라 SSM 이다 — 카테캠 OIDC 가이드 §7.
 # 인바운드 포트가 0개고, GitHub 에 저장하는 비밀키도 0개다.
@@ -21,7 +20,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   workflow_dispatch:
     inputs:
       ref:

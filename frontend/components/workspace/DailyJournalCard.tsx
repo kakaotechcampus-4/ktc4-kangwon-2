@@ -1,13 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createDocument, listDocuments, type DocumentSummary } from "@/lib/api/documents";
+import {
+  createDocument,
+  getDocument,
+  listDocuments,
+  type DocumentSummary,
+} from "@/lib/api/documents";
+import type { DayWeather } from "@/lib/api/routines";
+import { indoorNote } from "@/lib/workspace/journal-day";
 import { classServerId } from "@/lib/api/onboarding";
 import { loadClassSettings } from "@/lib/onboarding/settings";
 import { Posty } from "@/components/app/Posty";
 import { Message, ws } from "./WorkspaceUI";
 import DocumentEditor from "./DocumentEditor";
 import { useServerDocument } from "./use-server-document";
+import { useJournalEditor } from "./use-journal-editor";
 
 const NO_CLASS = "반을 서버에서 찾지 못했어요. 페이지를 새로고침해주세요.";
 
@@ -25,38 +33,49 @@ export function useDailyJournal({ classId, date }: { classId: number | null; dat
    * 이 반 · 이 날짜. 조회 결과 · 펴 놓은 일지 · 오류를 모두 이 열쇠에 묶는다 — 날짜를
    * 옮기면 이전 날 일지가 새 날 제목을 달고 남아, 교사가 엉뚱한 날을 저장 · 확정했다.
    */
-  const at = `${classId}|${date}`;
-  const [loaded, setLoaded] = useState<{ at: string; doc: DocumentSummary | null } | null>(null);
+  const scope = `${classId}|${date}`;
+  const [loaded, setLoaded] = useState<{ scope: string; doc: DocumentSummary | null }>();
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<{ at: string; text: string } | null>(null);
+  const [failed, setFailed] = useState<{ scope: string; text: string } | null>(null);
   const [reload, setReload] = useState(0);
   // 펴 놓은 일지. 만들면 바로 펴고, 교사가 접으면 칠판만 남는다.
-  const [opened, setOpened] = useState<{ at: string; id: string } | null>(null);
-  // 펴 놓은 편집기에 저장 안 한 글이 있나. 편집기가 알려 준다.
-  const [dirty, setDirty] = useState(false);
+  const editor = useJournalEditor(scope, busy);
+  // 확정한 전날(지난 기록일) 일지의 지원. 반영할 줄을 고르는 쪽지에 쓴다 (ADR-086).
+  const [yesterday, setYesterday] = useState<{ key: string; support: string } | null>(null);
 
   useEffect(() => {
     if (classId === null || !date) return;
     let live = true;
-    const here = `${classId}|${date}`;
     listDocuments({ kind: "dailyLog", class_id: classId })
       .then((items) => {
         if (!live) return;
-        setLoaded({ at: here, doc: items.find((doc) => doc.start === date) ?? null });
+        setLoaded({ scope, doc: items.find((doc) => doc.start === date) ?? null });
         setFailed(null);
+        // 지난 기록일 일지가 **확정**이어야 그 지원을 잇는다. 초안 지원은 고쳐지거나 지워질 수 있다.
+        const before = items
+          .filter((doc) => doc.start < date)
+          .sort((a, b) => (a.start < b.start ? 1 : -1))[0];
+        if (before?.status !== "confirmed") return setYesterday(null);
+        return getDocument(before.id).then(
+          (doc) => {
+            const support = doc.sections.find((s) => s.heading === "지원")?.body.trim() ?? "";
+            if (live) setYesterday(support ? { key: scope, support } : null);
+          },
+          () => live && setYesterday(null),
+        );
       })
       .catch((e) => {
         if (!live) return;
-        setLoaded({ at: here, doc: null });
+        setLoaded({ scope, doc: null });
         setFailed({
-          at: here,
-          text: e instanceof Error ? e.message : "오늘 일지를 불러오지 못했습니다.",
+          scope,
+          text: e instanceof Error ? e.message : "일지를 불러오지 못했습니다.",
         });
       });
     return () => {
       live = false;
     };
-  }, [classId, date, reload]);
+  }, [classId, date, scope, reload]);
 
   /** 방금 저장한 일과를 근거로 초안을 만든다. `sourceIds` 는 `routine:31` 모양이다. */
   async function make(sourceIds: string[]) {
@@ -64,12 +83,12 @@ export function useDailyJournal({ classId, date }: { classId: number | null; dat
     // `createDocument` 는 화면 반 id 를 받는다. 이 화면이 든 것은 서버 번호라 되짚는다.
     const local = loadClassSettings()?.classes.find((c) => classServerId(c.id) === classId)?.id;
     if (!local) {
-      setFailed({ at, text: NO_CLASS });
+      setFailed({ scope, text: NO_CLASS });
       return;
     }
     setBusy(true);
     setFailed(null);
-    // 이 렌더의 `at`(만들기를 누른 날)에 묶는다. 응답이 늦게 와서 그 사이 날짜를 옮겼으면
+    // 이 렌더의 `scope`(만들기를 누른 날)에 묶는다. 응답이 늦게 와서 그 사이 날짜를 옮겼으면
     // 새 날에는 열지 않는다.
     try {
       const made = await createDocument({
@@ -80,10 +99,10 @@ export function useDailyJournal({ classId, date }: { classId: number | null; dat
         end: date,
         sourceIds,
       });
-      setOpened({ at, id: made.id });
+      editor.open(made.id);
       setReload((n) => n + 1);
     } catch (e) {
-      setFailed({ at, text: e instanceof Error ? e.message : "초안을 만들지 못했습니다." });
+      setFailed({ scope, text: e instanceof Error ? e.message : "초안을 만들지 못했습니다." });
     } finally {
       setBusy(false);
     }
@@ -91,24 +110,18 @@ export function useDailyJournal({ classId, date }: { classId: number | null; dat
 
   return {
     /** 그날 일지. `undefined` 는 아직 불러오는 중, `null` 은 없다. */
-    doc: loaded?.at === at ? loaded.doc : undefined,
+    doc: loaded?.scope === scope ? loaded.doc : undefined,
+    /** 확정한 전날 일지의 지원. 없으면 null — 반영 쪽지를 안 띄운다. */
+    yesterday: yesterday?.key === scope ? yesterday.support : null,
     busy,
-    error: failed?.at === at ? failed.text : "",
+    error: failed?.scope === scope ? failed.text : "",
     make,
-    openId: opened?.at === at ? opened.id : "",
-    open: (id: string) => setOpened({ at, id }),
-    close: () => setOpened(null),
+    // openId · open · close(=leave, 저장 안 한 글이면 묻는다) · pending · dismiss
+    ...editor,
     retry: () => setReload((n) => n + 1),
     off: classId === null || !date,
-    dirty,
-    setDirty,
-    /** 날짜를 옮기거나 접기 전에 부른다. 저장 안 한 일지 글이 있으면 묻고, 옮겨도 되면 true. */
-    leave: () => !dirty || window.confirm(LEAVE_JOURNAL),
   };
 }
-
-/** 펴 놓은 일지에 저장 안 한 글이 있을 때 날짜 · 주를 옮기거나 접기 전에 묻는 말. */
-export const LEAVE_JOURNAL = "저장하지 않은 일지 글이 사라져요. 옮길까요?";
 
 export type DailyJournal = ReturnType<typeof useDailyJournal>;
 
@@ -122,14 +135,23 @@ export function journalMood(journal: DocumentSummary | null | undefined) {
   return { pose: "hand", face: "base", tone: "lilac" } as const;
 }
 
-export default function DailyJournalCard({ state, day }: { state: DailyJournal; day: string }) {
+export default function DailyJournalCard({
+  state,
+  day,
+  makeLabel = "오늘 일지 만들기 →",
+}: {
+  state: DailyJournal;
+  day: string;
+  /** 머리줄 만들기 단추의 글자. 지난 날이면 「이날 일지 만들기 →」다. */
+  makeLabel?: string;
+}) {
   if (state.off) return null;
   const journal = state.doc;
   const open = !!state.openId;
   const mood = journalMood(journal);
   const say =
     journal === undefined
-      ? "오늘 일지를 찾고 있어요."
+      ? "일지를 찾고 있어요."
       : journal
         ? journal.stale
           ? "근거가 바뀌었어요. 다시 볼 것이 있어요."
@@ -156,7 +178,7 @@ export default function DailyJournalCard({ state, day }: { state: DailyJournal; 
         <div>
           <p className={ws.journalWord}>{say}</p>
           {!journal && journal !== undefined && (
-            <p className={ws.journalLead}>화면 맨 위 「오늘 일지 만들기 →」를 누르세요.</p>
+            <p className={ws.journalLead}>화면 맨 위 「{makeLabel}」를 누르세요.</p>
           )}
         </div>
       </div>
@@ -165,7 +187,7 @@ export default function DailyJournalCard({ state, day }: { state: DailyJournal; 
         <button
           type="button"
           className={ws.journalOpen}
-          onClick={() => (open ? state.leave() && state.close() : state.open(journal.id))}
+          onClick={() => (open ? state.close() : state.open(journal.id))}
         >
           {open ? "접기" : journal.status === "confirmed" ? "일지 보기" : "이어서 쓰기"}
         </button>
@@ -189,11 +211,20 @@ export default function DailyJournalCard({ state, day }: { state: DailyJournal; 
  * 요약 칸은 날짜와 같이 봐야 해서 달력 밑에 있지만, 그 칸은 좁다. 일지는 문단을 쓰는
  * 글이라 읽을 수 있는 너비가 필요하고, 방금 적은 일과가 바로 위에 있어야 한다.
  */
-export function DailyJournalEditor({ state, day }: { state: DailyJournal; day: string }) {
+export function DailyJournalEditor({
+  state,
+  day,
+  weather = null,
+}: {
+  state: DailyJournal;
+  day: string;
+  /** 비 · 눈 · 미세먼지 날이면 특이사항에 칩 하나를 띄운다. */
+  weather?: DayWeather | null;
+}) {
   const edit = useServerDocument(state.openId, {
     onChanged: state.retry,
     // 지운 문서를 편집기에 남겨 두면 저장할 수 없는 칸만 보인다.
-    onRemoved: state.close,
+    onRemoved: state.dismiss,
   });
   if (state.off || !state.openId) return null;
 
@@ -206,9 +237,10 @@ export function DailyJournalEditor({ state, day }: { state: DailyJournal; day: s
           key={edit.doc.id}
           initial={edit.doc}
           server={edit.server}
+          onEditStateChange={state.onEditStateChange}
           /* 서버 문서는 편집기가 서버에 바로 쓴다. 브라우저 저장소로 가는 길은 쓰지 않는다. */
           onSave={() => true}
-          onDirty={state.setDirty}
+          noteChips={[indoorNote(weather)].filter((v): v is string => !!v)}
         />
       )}
     </section>

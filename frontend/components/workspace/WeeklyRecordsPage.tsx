@@ -204,6 +204,7 @@ export default function WeeklyRecordsPage() {
                 type="button"
                 aria-label="지난 주"
                 className={ws.weekStep}
+                disabled={journal.pending}
                 onClick={() => pick(shift(selected, -7))}
               >
                 <Icon name="arrow" className="h-4 w-4 rotate-180" />
@@ -215,6 +216,7 @@ export default function WeeklyRecordsPage() {
                 type="button"
                 aria-label="다음 주"
                 className={ws.weekStep}
+                disabled={journal.pending}
                 onClick={() => pick(shift(selected, 7))}
               >
                 <Icon name="arrow" className="h-4 w-4" />

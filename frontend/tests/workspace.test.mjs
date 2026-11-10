@@ -18,8 +18,14 @@ registerHooks({
   },
 });
 const { templatePlan, planPeriod } = await import("../lib/workspace/plans.ts");
-const { parseWorkspace, updateWorkspace, readWorkspace, moveLegacyImports, DROPPED_IMPORTS } =
-  await import("../lib/workspace/store.ts");
+const {
+  parseWorkspace,
+  updateWorkspace,
+  readWorkspace,
+  moveLegacyImports,
+  DROPPED_IMPORTS,
+  LEGACY_IMPORTS_MOVED,
+} = await import("../lib/workspace/store.ts");
 const { API_STORAGE_CONTEXT } = await import("../lib/api/storage-context.ts");
 import {
   validateDocument,
@@ -540,6 +546,148 @@ test("망이 끊기거나 서버가 잠깐 못 받으면 예전 증빙을 지우
     assert.deepEqual(left(), ["a", "b"]);
     assert.equal(session.getItem(DROPPED_IMPORTS), null);
   }
+});
+
+test("옮기는 중 계정이 바뀌면 이전 계정의 증빙을 지우지도 다음 계정으로 보내지도 않는다 (#477 하민 점검)", async (t) => {
+  const keyOf = (email) => "saessak.workspace.v1:" + encodeURIComponent(email);
+  const linksOf = (email) =>
+    "saessak.apiLinks.v1:" + API_STORAGE_CONTEXT + ":" + encodeURIComponent(email);
+  const other = "other@example.com";
+  const legacy = (id) => ({
+    ...document(),
+    id,
+    title: id + ".hwp",
+    className: "햇살반",
+    childName: "",
+    origin: "import",
+    sources: [],
+    sections: [{ heading: "첨부 원문", body: "한별찬이 웃었다.", sourceIds: [] }],
+    createdAt: "2026-09-11T00:00:00.000Z",
+    updatedAt: "2026-09-11T00:00:00.000Z",
+    reviewNote: "",
+  });
+  const values = new Map([
+    [fixtureKey, fixtureAccount],
+    // A 의 햇살반은 서버 3번, B 의 같은 화면 id 는 서버 99번이다.
+    [
+      linksOf(fixtureEmail),
+      JSON.stringify({ classes: { c1: { id: 3 } }, children: { child1: 11 } }),
+    ],
+    [linksOf(other), JSON.stringify({ classes: { c1: { id: 99 } }, children: { child1: 77 } })],
+    [
+      keyOf(fixtureEmail),
+      JSON.stringify({
+        version: 1,
+        observations: [],
+        templates: [],
+        criteria: [],
+        documents: [legacy("a"), legacy("b")],
+      }),
+    ],
+  ]);
+  const session = fixtureSession();
+  const events = [];
+  globalThis.window = {
+    sessionStorage: session,
+    localStorage: {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+      removeItem: (key) => values.delete(key),
+    },
+    dispatchEvent: (e) => events.push(e.type),
+  };
+  globalThis.localStorage = window.localStorage;
+  const sent = [];
+  const fetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    sent.push(JSON.parse(options.body).class_id);
+    // A 의 첫 요청이 서버에 가 있는 동안 로그아웃하고 B 로 들어온다.
+    session.setItem("saessak.accountEmail", other);
+    return Response.json({ error: { code: "INTERNAL", message: "" } }, { status: 201 });
+  };
+  t.after(() => {
+    globalThis.fetch = fetch;
+    delete globalThis.window;
+    delete globalThis.localStorage;
+  });
+
+  await moveLegacyImports();
+
+  // 첫 요청은 A 의 반(3)으로만 나갔고, B 의 반(99)으로는 한 건도 나가지 않는다.
+  assert.deepEqual(sent, [3]);
+  // A 의 대기 증빙은 그대로다 — A 로 다시 들어오면 그때 옮긴다.
+  assert.deepEqual(
+    JSON.parse(values.get(keyOf(fixtureEmail))).documents.map((d) => d.id),
+    ["a", "b"],
+  );
+  assert.equal(values.has(keyOf(other)), false);
+  assert.equal(session.getItem(DROPPED_IMPORTS), null);
+  assert.deepEqual(events, []);
+});
+
+test("옮기기가 끝나면 보관함이 목록과 안내를 다시 읽는다 (#477 하민 점검)", async (t) => {
+  const workspaceKey = "saessak.workspace.v1:" + encodeURIComponent(fixtureEmail);
+  const linksKey =
+    "saessak.apiLinks.v1:" + API_STORAGE_CONTEXT + ":" + encodeURIComponent(fixtureEmail);
+  const values = new Map([
+    [fixtureKey, fixtureAccount],
+    [linksKey, JSON.stringify({ classes: { c1: { id: 3 } }, children: { child1: 11 } })],
+    [
+      workspaceKey,
+      JSON.stringify({
+        version: 1,
+        observations: [],
+        templates: [],
+        criteria: [],
+        documents: [
+          {
+            ...document(),
+            id: "lost",
+            classId: "c9",
+            title: "lost.hwp",
+            className: "햇살반",
+            childName: "",
+            origin: "import",
+            sources: [],
+            sections: [{ heading: "첨부 원문", body: "한별찬이 웃었다.", sourceIds: [] }],
+            createdAt: "2026-09-11T00:00:00.000Z",
+            updatedAt: "2026-09-11T00:00:00.000Z",
+            reviewNote: "",
+          },
+        ],
+      }),
+    ],
+  ]);
+  const session = fixtureSession();
+  const events = [];
+  globalThis.window = {
+    sessionStorage: session,
+    localStorage: {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+      removeItem: (key) => values.delete(key),
+    },
+    // 신호가 울리는 순간 건수가 이미 적혀 있어야 보관함이 읽는다.
+    dispatchEvent: (e) => events.push([e.type, session.getItem(DROPPED_IMPORTS)]),
+  };
+  globalThis.localStorage = window.localStorage;
+  t.after(() => {
+    delete globalThis.window;
+    delete globalThis.localStorage;
+  });
+  await moveLegacyImports();
+  assert.deepEqual(events, [[LEGACY_IMPORTS_MOVED, "1"]]);
+
+  const { readFile } = await import("node:fs/promises");
+  const page = await readFile(
+    new URL("../components/workspace/DocumentsPage.tsx", import.meta.url),
+    "utf8",
+  );
+  const start = page.indexOf("onLegacyImportsMoved(");
+  assert.ok(start > -1, "보관함이 옮기기 완료 신호를 듣는다");
+  const handler = page.slice(start, page.indexOf("}),", start));
+  assert.match(handler, /readDropped\(\)/);
+  assert.match(handler, /reloadList\(\)/);
 });
 
 test("이미 로그인한 교사도 서비스 화면에 들어오면 예전 증빙을 옮긴다", async () => {

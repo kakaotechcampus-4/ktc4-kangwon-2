@@ -89,7 +89,11 @@ export default function CenterFlow() {
   const [sheet, setSheet] = useState(false);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
-  const [found, setFound] = useState<{ key: string; items: Daycare[] } | null>(null);
+  // `failed` 는 목록을 못 받은 것이다 — 정상 응답이 빈 것(「없어요」)과 나눈다(#416).
+  const [found, setFound] = useState<{ key: string; items: Daycare[]; failed?: boolean } | null>(
+    null,
+  );
+  const [retry, setRetry] = useState(0);
   const [picked, setPicked] = useState<Daycare | null>(null);
   const saving = useRef(false);
   const searchKey = `${settings.regionProvince}|${settings.regionDistrict}|${query.trim()}`;
@@ -101,13 +105,13 @@ export default function CenterFlow() {
     const timer = window.setTimeout(() => {
       searchDaycares(settings.regionProvince, settings.regionDistrict, query.trim())
         .then((items) => live && setFound({ key: searchKey, items }))
-        .catch(() => live && setFound({ key: searchKey, items: [] }));
+        .catch(() => live && setFound({ key: searchKey, items: [], failed: true }));
     }, 250);
     return () => {
       live = false;
       window.clearTimeout(timer);
     };
-  }, [step, settings, query, searchKey]);
+  }, [step, settings, query, searchKey, retry]);
 
   async function run(job: () => Promise<void>, failure: string) {
     if (saving.current) return;
@@ -199,7 +203,8 @@ export default function CenterFlow() {
   const regionText = regionSet(settings)
     ? `${settings.regionProvince} ${settings.regionDistrict}`
     : "";
-  const results = found?.key === searchKey ? found.items : null;
+  const current = found?.key === searchKey ? found : null;
+  const results = current ? current.items : null;
   // 안내는 질문 제목 아래가 아니라 지금 칸 밑에 둔다(FieldHint).
   const hint = step === "find" ? `${regionText}에서 찾아요. 이름 일부만 쳐도 돼요.` : HINTS[step];
   const orgStep: Step = settings.registryKey ? "find" : "manual";
@@ -226,6 +231,12 @@ export default function CenterFlow() {
           query={query}
           onQuery={setQuery}
           results={results}
+          failed={!!current?.failed}
+          onRetry={() => {
+            // 지역 · 검색어는 그대로 두고 같은 검색을 다시 부른다.
+            setFound(null);
+            setRetry((n) => n + 1);
+          }}
           settings={settings}
           hint={hint}
           onPick={pick}
@@ -308,11 +319,15 @@ export default function CenterFlow() {
 /**
  * 찾기 칸 — 이름을 치는 밑줄 칸, 그 아래 점선 상자 안의 결과, 출처 줄.
  * 「직접 적기」는 목록을 다 훑은 눈이 닿는 출처 줄 오른쪽에 작게 두고, 못 찾았으면 상자 가운데 크게 둔다.
+ * **목록을 못 받았으면(`failed`) 「없어요 · 직접 적기」를 띄우지 않는다** — 목록에 정말 없는 줄 알고
+ * 직접 적으면 같은 어린이집이 원 둘로 갈린다. 실패와 「다시 찾기」만 띄운다(#416).
  */
-function FindField({
+export function FindField({
   query: q,
   onQuery,
   results: items,
+  failed = false,
+  onRetry,
   settings: s,
   hint,
   onPick,
@@ -321,12 +336,14 @@ function FindField({
   query: string;
   onQuery: (q: string) => void;
   results: Daycare[] | null;
+  failed?: boolean;
+  onRetry: () => void;
   settings: ClassSettings;
   hint?: string;
   onPick: (d: Daycare) => void;
   onManual: () => void;
 }) {
-  const empty = items !== null && items.length === 0;
+  const empty = !failed && items !== null && items.length === 0;
   // 칠판 높이(760px)를 다른 화면과 같게 두려고 이 칸만 여백을 줄인다 — 질문 쪽으로 8px 당기고(-mt-2),
   // 안내와 상자 사이 4px(-mt-6), 출처 줄을 상자에 바짝(mt-1). 결과 상자 270px 를 지키려는 것이다.
   return (
@@ -346,7 +363,9 @@ function FindField({
       <div
         className={`-mt-6 ${RESULT_BOX} squircle [--r:16px] border-2 border-dashed border-line p-1.5`}
       >
-        {empty ? (
+        {failed ? (
+          <SearchFailed onRetry={onRetry} />
+        ) : empty ? (
           <NoDaycare query={q} district={s.regionDistrict} onManual={onManual} />
         ) : (
           <DaycareResults items={items} settings={s} onPick={onPick} />
@@ -354,7 +373,7 @@ function FindField({
       </div>
       <div className="mt-1 flex flex-wrap items-center justify-between gap-x-4">
         <p className="text-[13px] text-board-ink-soft">어린이집 목록: 어린이집정보공개포털</p>
-        {!empty && <ManualLink onClick={onManual} />}
+        {!empty && !failed && <ManualLink onClick={onManual} />}
       </div>
     </div>
   );
@@ -395,6 +414,24 @@ function iGa(word: string) {
   const code = word.charCodeAt(word.length - 1);
   const batchim = code >= 0xac00 && code <= 0xd7a3 && (code - 0xac00) % 28 !== 0;
   return batchim ? "이" : "가";
+}
+
+/** 목록을 못 받았을 때 — 고른 지역 · 검색어는 그대로 두고 같은 검색을 다시 부른다. */
+function SearchFailed({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div
+      role="alert"
+      className="flex h-full flex-col items-center justify-center gap-2.5 px-4 text-center"
+    >
+      <b className="text-[17px] text-ink">어린이집 목록을 불러오지 못했어요</b>
+      <small className="text-[14px] leading-[1.55] text-ink-soft">
+        잠시 뒤 다시 찾아 주세요. 고른 지역과 이름은 그대로 있어요.
+      </small>
+      <CtaButton className="mt-2" onClick={onRetry}>
+        다시 찾기
+      </CtaButton>
+    </div>
+  );
 }
 
 /** 찾은 원이 없을 때 — 결과 상자 가운데에 「직접 적기」를 크게. */

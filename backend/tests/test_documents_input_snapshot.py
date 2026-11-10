@@ -30,8 +30,15 @@ def _logged_in(db_session, teacher):
 
 @pytest.fixture
 def sun(db_session, teacher):
+    # 축을 바꾸는 시험이 있다 — 원 설정은 원을 만든 교사만 바꾼다(ADR-087).
+    db_session.add(teacher)
+    db_session.flush()
     center = Center(
-        name="테스트어린이집", director_name="김원장", region_sido="강원", region_sigungu="춘천"
+        name="테스트어린이집",
+        director_name="김원장",
+        region_sido="강원",
+        region_sigungu="춘천",
+        created_by=teacher.id,
     )
     db_session.add(center)
     db_session.flush()
@@ -237,7 +244,7 @@ def test_G1_G2_LLM_에_사실마다_날짜_영역_상황이_가명으로_간다(
     res = _create(sun, me, [a, b])
 
     assert res.status_code == 201, res.text
-    assert res.json()["generation"]["rule_version"] == "v5"
+    assert res.json()["generation"]["rule_version"] == "v6"
     raw = llm_seen["payloads"][0]
     assert "이서윤" not in raw and "박하준" not in raw
     assert json.loads(raw)["facts"] == [
@@ -450,9 +457,10 @@ def test_되감은_동안_옛_코드가_놓친_영역_상황_변경을_stale_로
     """옛 코드는 사실 · 날짜만 비교한다. 그동안 바뀐 영역 · 상황은 사본과 다시 대조해야 잡힌다."""
     me = _child(sun)
     moved = _obs(sun, me, 5, "개미를 바라보았다.")
-    kept = _obs(sun, me, 6, "지렁이를 찾았다.")
+    # 같은 아이 · 같은 기간 초안은 하나라서(ADR-083) 남는 쪽은 다른 달에 둔다.
+    kept = _obs(sun, me, 6, "지렁이를 찾았다.", month=10)
     moved_doc = _create(sun, me, [moved]).json()["id"]
-    kept_doc = _create(sun, me, [kept]).json()["id"]
+    kept_doc = _create(sun, me, [kept], month=10).json()["id"]
     # 옛 코드가 고친 것처럼 stale 전파 없이 원본만 바꾼다.
     db_session.get(Observation, moved["id"]).domain = "의사소통"
     db_session.get(Observation, kept["id"]).fact = "지렁이를 찾았다."  # 그대로

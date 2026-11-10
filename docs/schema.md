@@ -40,7 +40,7 @@ op.alter_column("children", "code", server_default=None)
 
 | 테이블 | 무엇을 담는가 |
 |---|---|
-| `centers` | 원. 파일럿 원 개수가 미정이라 여러 곳으로 열어뒀다. `trends_enabled` 는 트렌드봇을 켰는지다 — **기본 `false` 고 그 기본값을 떼지 않는다**(아래 참고, docs/api-spec.md §3-1 · FR-808). `registry_key` 는 정부 어린이집 목록의 열쇠(시도|시군구|이름|주소) — 같은 열쇠를 고른 교사가 이 원으로 든다. `UNIQUE`, 직접 적은 원은 NULL (docs/api-spec.md §1 · ADR-068) |
+| `centers` | 원. 파일럿 원 개수가 미정이라 여러 곳으로 열어뒀다. `trends_enabled` 는 트렌드봇을 켰는지다 — **기본 `false` 고 그 기본값을 떼지 않는다**(아래 참고, docs/api-spec.md §3-1 · FR-808). `registry_key` 는 정부 어린이집 목록의 열쇠(시도|시군구|이름|주소) — 같은 열쇠를 고른 교사가 이 원으로 든다. `UNIQUE`, 직접 적은 원은 NULL (docs/api-spec.md §1 · ADR-068). `created_by` 는 원을 만든 계정(`users` 참조) — 원 설정 · 성품인사를 바꾸고 남의 양식을 지우는 유일한 교사다. 옛 원은 그 원 첫 교사로 채웠고 교사가 없는 원은 NULL (ADR-087) |
 | `classes` | 반. `centers` 를 참조한다. **학년도마다 새 행이다** — 2026 씨앗반과 2027 씨앗반은 다른 반이다. `UNIQUE(center_id, name, school_year)`. `consent_confirmed_at` 은 아동 정보 동의를 확인한 시각이다. `age_min` · `age_max` 범위로 혼합반(3~5세 한 반)에 대응하며 단일 연령반은 두 값이 같다 |
 | `children` | 아동. `classes` 를 참조한다. `name` 은 평문 실명이고 `code` 는 LLM 에 나가는 가명이다. `UNIQUE(class_id, code)` |
 | `activities` | 활동 풀. 규칙 엔진의 검사 층이 읽는다(ADR-014) |
@@ -52,7 +52,7 @@ op.alter_column("children", "code", server_default=None)
 | `document_sections` | 문서 본문. `사실`·`해석`·`지원` 셋뿐이다. `documents` 를 참조한다 |
 | `document_sources` | 생성 시점 원문 사본. `documents`·`classes`·`children` 을 참조한다. `source_kind`+`source_id` 로 `observations`(§10) · `routine_records`(§10-1) 또는 `documents` 자신을 다형 참조한다 — FK 는 없다 |
 | `routine_records` | 일과 기록 — 반 하루의 일과 한 줄(시간 · 일과 이름 · 활동계획 · 활동실행). 일일 보육일지의 사실 층이다. 행 수는 정해지지 않았다. `classes` 를 참조한다 (docs/api-spec.md §10-1 · ADR-025) |
-| `forms` | 원이 등록한 양식의 파싱 결과(`tables` · `labels` · `label_map` JSONB) · 원본(`content`) · 숨김 시각(`hidden_at`). `centers` 를 참조한다. 수정이 없어 `updated_at` 이 없다 — 삭제 후 재등록이다(docs/api-spec.md §8 · ADR-020 · ADR-026) |
+| `forms` | 원이 등록한 양식의 파싱 결과(`tables` · `labels` · `label_map` JSONB) · 원본(`content`) · 숨김 시각(`hidden_at`). `centers` 를 참조한다. 수정이 없어 `updated_at` 이 없다 — 삭제 후 재등록이다(docs/api-spec.md §8 · ADR-020 · ADR-026). `uploaded_by` 는 올린 계정(`users` 참조) — 이 교사와 원을 만든 교사만 지운다. 이 칸 전에 올린 양식은 NULL (ADR-087) |
 | `evaluation_checks` | 평가제 자기 점검 체크. `centers` 를 참조한다. 줄이 있으면 ☑, 풀면 그 줄을 지운다 — 다시 체크하면 새 줄 · 새 시각이다. 누가 체크했는지는 남기지 않는다. `UNIQUE(center_id, school_year, element)`. 지난 학년도 줄은 보존한다(docs/api-spec.md §12 · ADR-022) |
 
 ## 관계

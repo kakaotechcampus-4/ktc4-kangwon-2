@@ -40,6 +40,7 @@ THEME_REFERENCE      yr_theme_new_environment_friends   주제 참고자료 안�
 ACTIVITY_REFERENCE   act_outdoor_autumn_outing          활동 id
 CURRICULUM           curriculum.mohw.notice-2019-152    고시 문서 id
 PARENT_PLAN          상위 계획안의 plan id
+TREND                youtube:<videoId>                  수집 자료 id. source_version 은 수집 주   (2026-11-10 덧붙임)
 ```
 
 규칙 셋을 같이 정한다.

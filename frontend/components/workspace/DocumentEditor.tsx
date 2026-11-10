@@ -116,13 +116,16 @@ export default function DocumentEditor({
   initial,
   onSave,
   server,
-  onDirty,
+  onEditStateChange,
+  noteChips = [],
 }: {
   initial: SavedDocument;
   onSave: (doc: SavedDocument, expected: SavedDocument) => boolean;
   server?: ServerDocumentActions;
-  /** 서버 문서에 저장 안 한 글이 생기고 사라질 때 알린다. 날짜 · 주를 옮기는 화면이 먼저 묻는다. */
-  onDirty?: (dirty: boolean) => void;
+  /** 서버 문서에 저장 안 한 글 · 요청 중을 알린다. 날짜 · 주를 옮기는 화면이 먼저 묻고 잠근다. */
+  onEditStateChange?: (state: { dirty: boolean; pending: boolean }) => void;
+  /** 반 운영 특이사항 아래 띄울 칩. 누르면 그 글이 칸에 들어간다 — 그날 날씨 대체놀이 (ADR-089 화면). */
+  noteChips?: string[];
 }) {
   const [baseline, setBaseline] = useState(initial);
   const [doc, setDoc] = useState(initial);
@@ -205,11 +208,11 @@ export default function DocumentEditor({
     !!server &&
     editable &&
     (JSON.stringify(doc.sections) !== JSON.stringify(baseline.sections) ||
-      (doc.classNote ?? "") !== (baseline.classNote ?? ""));
+      (doc.classNote ?? "") !== (baseline.classNote ?? "") ||
+      doc.reviewNote !== baseline.reviewNote);
   useEffect(() => {
-    onDirty?.(dirty);
-    return () => onDirty?.(false);
-  }, [dirty, onDirty]);
+    onEditStateChange?.({ dirty, pending: working });
+  }, [dirty, working, onEditStateChange]);
   function change(index: number, body: string) {
     setDoc((prev) => ({
       ...prev,
@@ -671,6 +674,30 @@ export default function DocumentEditor({
             </label>
           ) : (
             <p>{doc.classNote || "적지 않았어요."}</p>
+          )}
+          {editable && noteChips.length > 0 && (
+            <div className={ws.actions}>
+              {noteChips
+                .filter((chip) => !(doc.classNote ?? "").includes(chip))
+                .map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    className={ws.secondary}
+                    disabled={working || stale}
+                    onClick={() =>
+                      setDoc((prev) => ({
+                        ...prev,
+                        classNote: prev.classNote?.trim()
+                          ? `${prev.classNote.trimEnd()}\n${chip}`
+                          : chip,
+                      }))
+                    }
+                  >
+                    {chip}
+                  </button>
+                ))}
+            </div>
           )}
         </section>
       )}
