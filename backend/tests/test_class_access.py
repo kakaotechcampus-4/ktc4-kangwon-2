@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from app.features.auth.models import User
 from app.features.centers.models import Center, Child, Class, ClassAccessRequest
 from app.features.documents.models import Document
+from app.features.observations.models import Observation
 from app.features.plans.models import Plan
 from app.main import app
 from app.shared.auth.dependency import current_user
@@ -59,7 +60,12 @@ def _extras(session, klass, tag):
     )
     session.add_all([child, document, plan])
     session.flush()
-    return {"class": klass, "child": child, "doc": document, "plan": plan}
+    record = Observation(
+        class_id=klass.id, child_id=child.id, date=date(2026, 9, 1), domain="의사소통", fact="말했다"
+    )
+    session.add(record)
+    session.flush()
+    return {"class": klass, "child": child, "doc": document, "plan": plan, "record": record}
 
 
 @pytest.fixture
@@ -123,6 +129,8 @@ READS = {
     "문서 목록": lambda w: client.get(f"/api/documents?class_id={w['class'].id}"),
     "아이 명단": lambda w: client.get(f"/api/classes/{w['class'].id}/children"),
     "관찰 목록": lambda w: client.get(f"/api/observations?class_id={w['class'].id}"),
+    # AI 를 부르는 길이라 같은 원 다른 반이 승인 없이 부르면 안 된다.
+    "관찰 빠진 것": lambda w: client.post(f"/api/observations/{w['record'].id}/missing"),
     "일과 목록": lambda w: client.get(f"/api/routines?class_id={w['class'].id}"),
     "계획안 목록": lambda w: client.get(f"/api/plans/annual?class_id={w['class'].id}"),
 }
