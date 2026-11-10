@@ -34,7 +34,7 @@ Discord 알림만 간다. 직전 버전으로 돌아가지 않는다 — 사람�
    서버에 옛 커밋이 checkout 된 상태에서 그 `deploy.sh` 를 손으로 돌리면 성공해도 기록되지 않는다.
 2. **서버 안 확인.** `deploy_one` 의 끝에서 `wait_ready` 가 서버 자신의 nginx 에 `http://127.0.0.1/health/ready`(backend · DB)와 `http://127.0.0.1/`(frontend 화면)를 묻는다.
    둘 다 200 이고 curl 도 종료 0 이어야 통과다. 2초 간격 30번(빠른 실패는 약 60초).
-3. **교체 뒤 실패의 범위.** `up -d` 를 부르기 직전에 `swapped=1` 이 된다. 그 뒤의 `up -d` 실패 · nginx reload 와 restart 둘 다 실패 · 서버 안 확인 실패는 모두 「되돌린다」 쪽으로 간다.
+3. **교체 뒤 실패의 범위.** `up -d` 를 부르기 직전에 `swapped=1` 이 된다. 그 뒤의 `up -d` 실패 · nginx 상태 조회 실패 · 떠 있는 nginx 의 reload 가 끝내 실패 · 떠 있지 않던 nginx 의 restart 실패 · 서버 안 확인 실패는 모두 「되돌린다」 쪽으로 간다.
    (`swap_failed` 는 `cmd || swap_failed "이유"` 로 부른다.) 그 앞의 실패(판정 거절 · checkout · nginx -t · build · alembic)는 컨테이너를 안 바꿨으므로 되돌리지 않는다.
 4. **종료 코드.** `0` 성공 · `3` 교체 뒤 실패했고 L 로 되돌렸다 · `4` 교체 뒤 실패했고 못 되돌렸다 · `1` 교체 전에 멈췄다.
    몇 번인지는 `swapped` 하나가 정한다 — 명시적 `exit` 는 모두 `die` 를, 예상 밖 실패는 ERR 트랩(`on_err`)을 지나 `exit $((swapped ? 4 : 1))` 이다.

@@ -246,6 +246,9 @@ case "$*" in
   *"compose up -d"*)
     [ -z "$FAKE_UP_NOEOL" ] || printf 'up-noeol' >&2
     cp "$FAKE_BUILT_FILE" "$FAKE_RUNNING_FILE" ;;
+  # nginx 가 떠 있나. 기본은 떠 있다(id 한 줄). FAKE_NGINX_DOWN 이면 빈 값(종료 0)이다
+  *"compose ps -q --status running nginx"*)
+    [ -n "$FAKE_NGINX_DOWN" ] || echo fake-nginx-id ;;
 esac
 """
 # 평소에는 이미 ubuntu 라서 runuser 로 내려가지 않는다. FAKE_ROOT 면 root 로 보이다가
@@ -911,7 +914,13 @@ def test_main_up_d_가_실패해도_L_의_deploy_sh_로_되돌린다(server, rep
     assert srv.log().count("docker compose up -d") == 1  # F 의 시도뿐
 
 
-def test_main_nginx_reload_와_restart_가_둘_다_실패해도_되돌린다(server, repo):
+NGINX_RELOAD = "docker compose exec -T nginx nginx -s reload"
+NGINX_RESTART = "docker compose restart nginx"
+
+
+def test_main_떠_있는_nginx_가_reload_를_끝내_안_받으면_다시_시작하지_않고_되돌린다(server, repo):
+    # reload 가 거절돼도 떠 있는 nginx 는 옛 설정으로 계속 돈다.
+    # restart 하면 같은 이유로 못 떠서 /api 까지 죽는다
     srv = server(repo.a1)
 
     proc = srv.run(
@@ -919,13 +928,124 @@ def test_main_nginx_reload_와_restart_가_둘_다_실패해도_되돌린다(ser
         A,
         auto="1",
         last_good=repo.a1,
-        env_extra={
-            "FAKE_FAIL_PATTERN": "nginx -s reload|restart nginx",
-            "FAKE_FAIL_TIMES": "2",  # F 의 reload · restart 둘
-        },
+        env_extra={"FAKE_FAIL_PATTERN": "nginx -s reload"},  # 횟수 제한 없이 계속 실패
     )
 
     assert proc.returncode == 3, proc.stdout + proc.stderr
+    log = srv.log()
+    assert log.count(NGINX_RELOAD) == 5
+    assert NGINX_RESTART not in log
+    assert "떠 있는 nginx 가 reload 를 끝내 받지 않았다" in proc.stdout
+    assert srv.head() == repo.a1
+    assert "ran-L-script" in srv.l_record()
+
+
+def test_main_떠_있는_nginx_가_reload_를_끝내_안_받아도_롤백이_꺼져_있으면_4다(server, repo):
+    srv = server(repo.a1)
+
+    proc = srv.run(
+        repo.c,
+        A,
+        auto="0",
+        last_good=repo.a1,
+        env_extra={"FAKE_FAIL_PATTERN": "nginx -s reload"},
+    )
+
+    assert proc.returncode == 4, proc.stdout + proc.stderr
+    log = srv.log()
+    assert log.count(NGINX_RELOAD) == 5
+    assert NGINX_RESTART not in log
+    assert "docker image prune -f" not in log
+    assert srv.head() == repo.c  # 되돌리지 않았다
+    assert srv.l_record() == []
+
+
+def test_main_떠_있는_nginx_의_reload_가_처음_몇_번만_실패하면_다시_해_보고_통과한다(server, repo):
+    # up -d 가 방금 다시 만든 nginx 는 아직 준비 전일 수 있다
+    srv = server(repo.a1)
+
+    proc = srv.run(
+        repo.c,
+        B,
+        env_extra={"FAKE_FAIL_PATTERN": "nginx -s reload", "FAKE_FAIL_TIMES": "2"},
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    log = srv.log()
+    assert log.count(NGINX_RELOAD) == 3  # 실패 둘 + 통과 하나
+    assert NGINX_RESTART not in log
+    assert "nginx reload 1/5 실패" in proc.stdout and "nginx reload 2/5 실패" in proc.stdout
+    assert "nginx reload 3/5 실패" not in proc.stdout
+    assert "배포 끝" in proc.stdout
+
+
+def test_main_nginx_가_떠_있지_않으면_reload_없이_다시_시작한다(server, repo):
+    # 재시작을 반복하는 nginx 는 exec 이 안 된다. up -d 는 그런 컨테이너를 건드리지 않는다
+    srv = server(repo.a1)
+
+    proc = srv.run(repo.c, B, env_extra={"FAKE_NGINX_DOWN": "1"})
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    log = srv.log()
+    assert NGINX_RELOAD not in log
+    ps = log.index("docker compose ps -q --status running nginx")
+    assert log.index("docker compose up -d") < ps < log.index(NGINX_RESTART)
+    assert log.index(NGINX_RESTART) < log.index("docker image prune -f")
+
+
+def test_main_떠_있지_않던_nginx_를_다시_시작하지_못하면_되돌린다(server, repo):
+    srv = server(repo.a1)
+
+    proc = srv.run(
+        repo.c,
+        A,
+        auto="1",
+        last_good=repo.a1,
+        env_extra={"FAKE_NGINX_DOWN": "1", "FAKE_FAIL_PATTERN": "restart nginx"},
+    )
+
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    log = srv.log()
+    assert NGINX_RELOAD not in log
+    assert log.count(NGINX_RESTART) == 1
+    assert "떠 있지 않던 nginx 를 다시 시작하지 못했다" in proc.stdout
+    assert srv.head() == repo.a1
+    assert "ran-L-script" in srv.l_record()
+
+
+def test_main_nginx_를_다시_시작했어도_서버_안이_안_살아나면_성공으로_안_끝난다(server, repo):
+    # restart 가 종료 0 이어도 nginx 가 못 뜰 수 있다 — 그건 서버 안 확인이 잡는다
+    srv = server(repo.a1)
+
+    proc = srv.run(repo.c, A, ready="503", last_good=repo.a1, env_extra={"FAKE_NGINX_DOWN": "1"})
+
+    assert proc.returncode == 4, proc.stdout + proc.stderr
+    log = srv.log()
+    assert NGINX_RESTART in log and NGINX_RELOAD not in log
+    assert "docker image prune -f" not in log
+    assert "배포 끝" not in proc.stdout
+    assert len(srv.curls()) == 3 * 2  # 서버 안 확인이 3번 다 돌았다
+    assert srv.last_good() == repo.a1  # 성공 기록을 안 바꿨다
+
+
+def test_main_nginx_상태를_못_읽으면_reload_도_restart_도_없이_되돌린다(server, repo):
+    # 떠 있는지 모르는 nginx 를 다시 시작하지 않는다. 조회 실패는 swap_failed 를 한 번만 부른다
+    srv = server(repo.a1)
+
+    proc = srv.run(
+        repo.c,
+        A,
+        auto="1",
+        last_good=repo.a1,
+        env_extra={"FAKE_FAIL_PATTERN": "compose ps -q --status running nginx"},
+    )
+
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    log = srv.log()
+    assert "docker compose ps -q --status running nginx" in log
+    assert NGINX_RELOAD not in log and NGINX_RESTART not in log
+    assert proc.stdout.count("교체한 서비스가 살아나지 않았다") == 1
+    assert "nginx 상태를 읽지 못했다" in proc.stdout
     assert srv.head() == repo.a1
     assert "ran-L-script" in srv.l_record()
 
