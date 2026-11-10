@@ -38,6 +38,17 @@ async function unfold(page: Page) {
     await expect(folded).toHaveCount(n - 1);
   }
 }
+/**
+ * 주간 보육일지 편집기 제목. 서버 제목 끝의 기간 「(9/28~10/2)」 · 「(10월)」은 떼고, 그 옆에 주를
+ * 손글씨로 따로 쓴다(DocumentArchivePreview `WeekTitle`). 제목 앞부분으로 찾는다.
+ */
+const weekHeading = (page: Page, title: string) =>
+  page.getByRole("heading", {
+    level: 2,
+    name: new RegExp(
+      `^${title.replace(/\s*\([^)]*\)$/, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} `,
+    ),
+  });
 const token = (page: Page) => page.evaluate(() => sessionStorage.getItem("saessak.authToken"));
 
 /**
@@ -1157,9 +1168,7 @@ for (const sourceKind of ["dailyLog", "routine"] as const) {
     });
     expect(generated.request().postDataJSON().source_ids).toHaveLength(sourceIds.length);
     const doc = await generated.json();
-    await expect(
-      page.getByRole("heading", { name: doc.title, exact: true, level: 2 }),
-    ).toBeVisible();
+    await expect(weekHeading(page, doc.title)).toBeVisible();
     const support = "다음 놀이에는 블록을 준비해 함께 길을 만들도록 지원한다.";
     await page.getByRole("textbox", { name: "지원 내용", exact: true }).fill(support);
     await page.getByRole("checkbox", { name: /원본 기록과 사실이/ }).check();
@@ -1187,9 +1196,7 @@ for (const sourceKind of ["dailyLog", "routine"] as const) {
       .getByRole("complementary", { name: "문서 미리보기" })
       .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
       .click();
-    await expect(
-      page.getByRole("heading", { name: doc.title, exact: true, level: 2 }),
-    ).toBeVisible();
+    await expect(weekHeading(page, doc.title)).toBeVisible();
     await expect(page.getByRole("button", { name: "다시 수정", exact: true })).toBeVisible();
   });
 }
@@ -1282,9 +1289,7 @@ test("보육일지 탐색 — 아동 없는 반에서도 일일·주간 조회, 
     .getByRole("complementary", { name: "문서 미리보기" })
     .getByRole("button", { name: /^(편집하기|문서 열기)$/ })
     .click();
-  await expect(
-    page.getByRole("heading", { name: weekly.title, exact: true, level: 2 }),
-  ).toBeVisible();
+  await expect(weekHeading(page, weekly.title)).toBeVisible();
   await page.getByRole("button", { name: "← 문서 목록으로 돌아가기", exact: true }).click();
   await page.getByRole("button", { name: "일일", exact: true }).click();
   await page.getByRole("complementary", { name: "반 선택" }).getByText("달님반").click();
