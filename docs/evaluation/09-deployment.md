@@ -30,12 +30,14 @@
 - `docker compose exec backend alembic ...` 을 금지했다 — 새 마이그레이션을 못 보고도 성공한 것처럼 끝난다
 - `Base.metadata.create_all()` 금지 — 이미 있는 테이블의 컬럼 추가가 반영되지 않는다
 - 교체 뒤 실패하면 서버 안의 `deploy.sh` 가 마지막 성공 커밋으로 되돌린다 — 서버 안 확인(`/health/ready` 와 화면)을 통과할 때마다 그 커밋을 서버가 기억하고(저장소 밖 파일),
-  `up -d` 실패 · nginx reload 와 restart 실패 · 서버 안 확인 실패는 같은 실행 안에서 그 커밋의 `deploy.sh` 를 꺼내 돌려 되돌린다(실패한 커밋의 스크립트에 맡기지 않는다). 종료 코드 0 성공 · 3 되돌림 · 4 못 되돌림 · 1 교체 전에 멈춤.
+  `up -d` 실패 · nginx 상태 조회 · reload · restart 실패 · 서버 안 확인 실패는 같은 실행 안에서 그 커밋의 `deploy.sh` 를 꺼내 돌려 되돌린다(실패한 커밋의 스크립트에 맡기지 않는다). 종료 코드 0 성공 · 3 되돌림 · 4 못 되돌림 · 1 교체 전에 멈춤.
   밖(도메인)에서 본 실패로는 되돌리지 않는다. 서버 잠금(`flock`)이 손 배포와 자동 배포의 겹침을 막는다 —
   `scripts/deploy.sh` · `scripts/ssm-deploy.sh` · `.github/workflows/deploy.yml` · ADR-078
 - 백업 스크립트와 그 테스트 — `scripts/` · `test_backup_script.py`
 - nginx 설정을 바꾼 배포는 `nginx -t` 로 먼저 검사하고 reload 로 반영한다. 전에는 파일 하나씩 연결해 둔 탓에 손으로 다시 만들 때까지
   옛 설정이 돌았다(놀이 연간 120초 504) — `scripts/deploy.sh` · `docker-compose.yml`
+- 떠 있는 nginx 는 reload 가 거절돼도 다시 시작하지 않고 되돌린다(이 스크립트에서. 직전 성공 커밋의 옛 deploy.sh 로 되돌릴 때는 그 스크립트가 restart 할 수 있다) —
+  upstream 이름을 못 찾을 때 restart 하면 /api 까지 죽었다(PR #502 리뷰) — `scripts/deploy.sh`
 
 ## 배포 사고 하나를 끝까지 추적했다
 
