@@ -6,7 +6,7 @@ from ssuksak.planning.application.ports import OptionalContextStatus
 from ssuksak.planning.domain.trend import TrendKind
 
 from app.features.trends.item import RawItem, save
-from app.features.trends.planning import TrendContextProvider, theme_words
+from app.features.trends.planning import TrendContextProvider, book_words_for, theme_words
 
 TODAY = date(2026, 11, 8)  # W45 — W44 파일이 4주 안이다
 
@@ -117,3 +117,24 @@ def test_books_need_words_and_never_break_generation(tmp_path):
     assert [i.trend_id for i in fetch(books_file=tmp_path / "none.json").value] == ["youtube:a"]
     path.write_text("{broken", encoding="utf-8")
     assert [i.trend_id for i in fetch().value] == ["youtube:a"]
+
+
+def test_related_word_groups_widen_book_words_only_when_approved(tmp_path):
+    """관련 낱말 묶음: APPROVED 일 때만, 묶음 이름(한 글자도) · 묶음 낱말이 주제에 있으면 넓힌다."""
+    import json
+
+    path = tmp_path / "related.json"
+    groups = [
+        {"name": "봄", "words": ["새싹", "나비", "꽃"]},
+        {"name": "가을", "words": ["가을", "낙엽", "열매"]},
+        {"name": "우주", "words": ["우주", "로켓"]},
+    ]
+    path.write_text(json.dumps({"status": "APPROVED", "groups": groups}), encoding="utf-8")
+    assert book_words_for("봄 열매", path) == ("열매", "새싹", "나비", "가을", "낙엽")
+    path.write_text(
+        json.dumps({"status": "PENDING_HUMAN_REVIEW", "groups": groups}), encoding="utf-8"
+    )
+    assert book_words_for("봄 열매", path) == ("열매",)
+    path.write_text("{broken", encoding="utf-8")
+    assert book_words_for("봄 열매", path) == ("열매",)
+    assert book_words_for("봄 열매", tmp_path / "none.json") == ("열매",)

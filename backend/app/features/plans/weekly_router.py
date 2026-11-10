@@ -122,7 +122,7 @@ from app.features.plans.weekly_schemas import (
     WeeklySectionOut,
     WeekPeriodOut,
 )
-from app.features.trends.planning import TrendContextProvider, theme_words
+from app.features.trends.planning import TrendContextProvider, book_words_for
 from app.shared.auth.dependency import CurrentUser
 from app.shared.auth.ownership import foreign_class_refs, require_own_class
 from app.shared.llm import LlmBudgetExceeded, LlmUnavailable, is_mock
@@ -302,7 +302,7 @@ def create_weekly_plan(body: CreateWeeklyPlan, session: DbSession, user: Current
     trends = TrendContextProvider(
         enabled=center.trends_enabled,
         today=today_kst(datetime.now(UTC)),
-        book_words=theme_words(week_theme),
+        book_words=book_words_for(week_theme),
     )
     try:
         provider = _weekly_provider()

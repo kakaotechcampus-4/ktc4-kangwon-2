@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import date
@@ -37,6 +38,8 @@ from app.features.trends.item import COLLECTED_DIR, RawItem, load, week_label
 logger = logging.getLogger(__name__)
 
 BOOKS_FILE = COLLECTED_DIR.parent / "books" / "picture_books.json"
+# 관련 낱말 묶음. 사람이 APPROVED 로 바꾼 뒤에만 쓴다(그 전에는 주제 낱말 그대로만 대조).
+RELATED_WORDS_FILE = COLLECTED_DIR.parent / "books" / "related_words.json"
 
 
 def _summary(description: str) -> str:
@@ -107,6 +110,30 @@ def theme_words(text: str) -> tuple[str, ...]:
     """주 주제 글의 낱말(조사 뗌) 중 2자 이상, 일반어 뺌. 그림책 제목과 대조하는 Rule 낱말."""
     words = (_strip_particle(w) for w in re.findall(r"[가-힣A-Za-z0-9]+", text))
     return tuple(dict.fromkeys(w for w in words if len(w) >= 2 and w not in _BOOK_STOPWORDS))
+
+
+def book_words_for(text: str, related_file: Path | None = None) -> tuple[str, ...]:
+    """그림책 제목과 대조할 낱말: 주 주제 낱말 + 승인된 관련 낱말 묶음.
+
+    묶음 이름이 주제 글에 있거나(「봄」처럼 한 글자도) 묶음 낱말이 주제 낱말과 같으면 그 묶음
+    낱말(2자 이상)을 더한다. 파일이 없거나 · 깨졌거나 · APPROVED 가 아니면 주제 낱말만.
+    """
+    words = theme_words(text)
+    path = related_file or RELATED_WORDS_FILE
+    try:
+        body = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        groups = body["groups"] if body.get("status") == "APPROVED" else []
+        extra = [
+            w
+            for group in groups
+            if group["name"] in text or any(w in words for w in group["words"])
+            for w in group["words"]
+            if len(w) >= 2
+        ]
+    except Exception:  # 깨진 묶음 파일은 넓히기만 뺀다.
+        logger.warning("book related words unreadable", exc_info=True)
+        extra = []
+    return tuple(dict.fromkeys((*words, *extra)))
 
 
 def book_items(raw: list[RawItem], words: tuple[str, ...], today: date) -> list[TrendItem]:
