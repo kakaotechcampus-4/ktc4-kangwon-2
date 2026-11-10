@@ -775,3 +775,23 @@ def test_메모의_낱말이_다른_반_아이_이름과_겹쳐도_답에_그_�
     response = provider.generate_weekly(_Request(payload))
 
     assert response.content == '{"v": "하늘 관찰 놀이"}'
+
+
+def test_칸_재생성_답은_칸_값에_적힌_표기로_돌아온다():
+    # 메모가 비어도 맥락으로 싣는 칸 값의 이름을 가리고, 답은 그 칸에 적힌 표기로 되돌린다.
+    table = NameTable({"이가명": "도담"})
+    cell = "가명이가 개미를 관찰한다"
+    sent = []
+
+    class Inner:
+        def generate_weekly(self, request):
+            sent.append(request.user_content)
+            return RawLlmResponse(content='{"v": "도담이와 개미 길 찾기"}', model="m")
+
+    provider = with_masked_memo(Inner(), None, table, [cell])
+    payload = json.dumps({"current_plan": {"outdoor_play": cell}}, ensure_ascii=False)
+
+    response = provider.generate_weekly(_Request(payload))
+
+    assert "가명" not in sent[0] and "도담이가 개미를" in sent[0]
+    assert response.content == '{"v": "가명이와 개미 길 찾기"}'

@@ -93,6 +93,15 @@ def test_부르는_이름은_가명에_같은_꼴을_붙여_가리고_그_꼴로
     assert unmask_from("가람이가 블록을 쌓았다.", table, original) == original
     # 모델이 새로 쓴 글도 원문에 적힌 부르는 이름 그대로 돌아온다.
     assert unmask_as_written("가람이가 탑을 올린다.", table, original) == "민이가 탑을 올린다."
+    # 모델이 조사를 바꿔 맨 가명을 쓰면 외자 글자로 — 가명이 그대로 남지 않는다.
+    assert unmask_as_written("가람과 블록", table, original) == "민과 블록"
+
+
+def test_부르는_이름_없이_외자_낱말로만_적어도_맨_가명을_외자_글자로_되돌린다():
+    original = "민은 블록을 쌓았다."
+    table = table_for_text(load_pool(), [("김민", "가람", None)], [], original)
+    code = next(c for c, real in table.restoring.items() if real == "김민")
+    assert unmask_as_written(f"{code}이가 탑을 올린다.", table, original) == "민이가 탑을 올린다."
 
 
 def test_부르는_이름은_외자_글자나_등록_이름으로_시작해야_한다():

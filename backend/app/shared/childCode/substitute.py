@@ -11,7 +11,7 @@
 import re
 from collections.abc import Iterable
 
-from .names import call_suffix, name_variants
+from .names import call_suffix, name_variants, one_syllable
 from .pool import SubstitutionError, has_final
 
 __all__ = ["NameTable", "SubstitutionError", "mask", "unmask", "unmask_as_written", "unmask_from"]
@@ -140,6 +140,11 @@ def unmask_as_written(text: str, table: NameTable, original: str) -> str:
     되돌린다(name_variants 는 긴 것부터). 원문에 그 아이의 표기가 하나도 없으면 가명을 그대로 둔다
     — 등록 실명을 새로 만들어 넣는 것이 바로 막으려는 일이다.
 
+    외자 아이(김민)를 원문에 부르는 이름 · 외자 낱말(「민이」 · 「민은」)로만 적었으면,
+    모델이 조사를 바꿔 쓴 맨 가명(「가람과」 · 「가람이가」)은 외자 글자(「민」)로 되돌린다
+    — 받침이 같아 조사가 맞다. 외자 글자는 성 뗀 두 글자 이름과 달리 낱말과 겹쳐 가려지지
+    않으므로(홀로 선 글자는 막는다) 「김하늘 ↔ 하늘」 같은 일이 이 갈래에서는 생기지 않는다.
+
     한계: 한 아이를 한 가지 표기로만 되돌린다. 「김하늘이 하늘을 보며」처럼 같은 아이가 원문에
     두 표기로 적혔으면 둘 다 「김하늘」이 된다. 글이 틀어질 뿐 새 이름이 생기지는 않는다.
     """
@@ -149,13 +154,25 @@ def unmask_as_written(text: str, table: NameTable, original: str) -> str:
     forms: dict[str, list[str]] = {}
     for variant, code in table.masking.items():
         forms.setdefault(code, []).append(variant)
-    as_written = {
-        code: next(
-            (v for v in sorted(forms.get(code, ()), key=len, reverse=True) if v in original), code
+    restoring = table.restoring
+
+    def written(code: str) -> str:
+        found = next(
+            (v for v in sorted(forms.get(code, ()), key=len, reverse=True) if v in original), None
         )
-        for code in table.restoring
-    }
-    return _replace(text, as_written)
+        if found is not None:
+            return found
+        # 맨 가명인데 그 아이가 부르는 꼴(가명 + 꼴로 가린 낱말)로만 원문에 나왔으면 외자 글자로.
+        syllable = one_syllable(restoring[code])
+        spoken = any(
+            v in original
+            for form, vs in forms.items()
+            if form != code and form.startswith(code)
+            for v in vs
+        )
+        return syllable if syllable and spoken else code
+
+    return _replace(text, {code: written(code) for code in restoring})
 
 
 def unmask_from(text: str, table: NameTable, original: str) -> str:

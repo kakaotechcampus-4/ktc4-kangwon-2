@@ -208,6 +208,40 @@ def test_칸_재생성에서_이름을_못_가리면_그_칸을_직접_고치라
     assert "이 칸은 직접 고쳐 주세요" in response.json()["error"]["message"]
 
 
+def test_메모가_비어도_칸_값의_이름을_못_가리면_칸_재생성을_막는다(db_session, teacher):
+    # 칸 값도 가리므로, 칸에 적은 이름이 누구인지 모르면 메모가 없어도 LLM 을 부르지 않는다.
+    seed = _seed(db_session, "가원", "a@example.com")
+    teacher.center_id = seed["center"]
+    _children(db_session, seed["class"])
+    annual = client.post(
+        "/api/plans/annual", json={"format": "MONTHLY_THEME", "class_id": seed["class"]}
+    )
+    assert client.post(f"/api/plans/annual/{annual.json()['id']}/confirm").status_code == 200
+    plan = client.post(
+        "/api/plans/monthly",
+        json={"class_id": seed["class"], "month": 9, "profile_ref": seed["profile"]},
+    ).json()
+    outdoor = next(s for s in plan["sections"] if s["section_key"] == "outdoor_play")["cells"][0]
+    edited = client.put(
+        f"/api/plans/monthly/{plan['id']}/cells/{outdoor['item_id']}",
+        json={"value": "가명이가 개미를 관찰한다", "expected_revision": plan["revision"]},
+    )
+    assert edited.status_code == 200, edited.json()
+    # 같은 반에 「가명」을 같이 쓰는 아이가 들어왔다 — 칸의 「가명이」가 누구인지 모른다.
+    db_session.add(Child(class_id=seed["class"], name="박가명", code="나래"))
+    db_session.flush()
+    focus = next(s for s in plan["sections"] if s["section_key"] == "focus")["cells"][0]
+
+    response = client.post(
+        f"/api/plans/monthly/{plan['id']}/cells/{focus['item_id']}/regenerate",
+        json={"expected_revision": edited.json()["revision"]},
+    )
+
+    assert response.status_code == 422, response.json()
+    assert response.json()["error"]["fields"] == ["memo"]
+    assert "요청 사항이나 계획안 칸에" in response.json()["error"]["message"]
+
+
 def test_주간_칸을_다시_만들어도_요청_사항의_아이_이름은_가명으로_나간다(
     db_session, teacher, monkeypatch
 ):
