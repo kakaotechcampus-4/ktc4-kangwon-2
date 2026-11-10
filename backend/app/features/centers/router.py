@@ -114,7 +114,7 @@ def _teachers(session: Session, center_ids: list[int]) -> dict[int, int]:
         .where(User.center_id.in_(center_ids))
         .group_by(User.center_id)
     )
-    return dict(rows.all())
+    return dict(rows.all())  # type: ignore[arg-type]
 
 
 def _center_out(session: Session, center: Center) -> dict:
@@ -223,8 +223,8 @@ def create_center(
     except IntegrityError:
         # 두 교사가 같은 원을 동시에 처음 골랐다. UNIQUE 가 한 줄만 남겼다 — 늦은 쪽은 그리로.
         session.rollback()
-        existing = session.scalar(select(Center).where(Center.registry_key == picked.key))
-        return _join(session, session.merge(user), existing, response)
+        existing = session.scalar(select(Center).where(Center.registry_key == picked.key))  # type: ignore[arg-type, union-attr]
+        return _join(session, session.merge(user), existing, response)  # type: ignore[arg-type]
     # 같은 트랜잭션에서 주인을 붙인다. 나눠 커밋하면 원은 생겼는데 주인이 없는 행이 남는다.
     user.center_id = center.id
     session.commit()
@@ -239,7 +239,7 @@ def get_center(center_id: int, session: DbSession, user: CurrentUser) -> dict:
     남의 원과 없는 원은 같은 404 다 (shared/auth/ownership.py).
     """
     require_own_center(user, center_id)
-    return _center_out(session, session.get(Center, center_id))
+    return _center_out(session, session.get(Center, center_id))  # type: ignore[arg-type]
 
 
 @router.post(
@@ -304,20 +304,20 @@ def patch_class(
                 },
             )
     if body.name is not None:
-        classroom.name = body.name
+        classroom.name = body.name  # type: ignore[union-attr]
     if body.age_min is not None:  # 스키마가 두 칸을 함께 받는다
-        classroom.age_min = body.age_min
-        classroom.age_max = body.age_max
+        classroom.age_min = body.age_min  # type: ignore[union-attr]
+        classroom.age_max = body.age_max  # type: ignore[union-attr]
     if body.teacher_name is not None:
-        classroom.teacher_name = body.teacher_name
+        classroom.teacher_name = body.teacher_name  # type: ignore[union-attr]
     if body.consent_confirmed is False:
-        classroom.consent_confirmed_at = None
-    elif body.consent_confirmed and classroom.consent_confirmed_at is None:
+        classroom.consent_confirmed_at = None  # type: ignore[union-attr]
+    elif body.consent_confirmed and classroom.consent_confirmed_at is None:  # type: ignore[union-attr]
         # 이미 있으면 처음 시각을 둔다 — 이 칸은 체크박스 복원용이다.
-        classroom.consent_confirmed_at = datetime.now(UTC)
+        classroom.consent_confirmed_at = datetime.now(UTC)  # type: ignore[union-attr]
     _commit_class(session)
     session.refresh(classroom)
-    return _class_response(classroom, user)
+    return _class_response(classroom, user)  # type: ignore[arg-type]
 
 
 @router.get("/{center_id}/classes", response_model=ClassListResponse)

@@ -116,14 +116,14 @@ def import_annual_plan(body: ImportAnnualPlan, session: DbSession, user: Current
             raise _ALREADY_EXISTS from error
         raise
     row = session.scalar(select(Plan).where(Plan.plan_ref == plan.plan_id.value))
-    row.sub_themes = {str(month.month): month.sub_themes for month in body.months}
-    row.body = {
-        **row.body,
+    row.sub_themes = {str(month.month): month.sub_themes for month in body.months}  # type: ignore[union-attr]
+    row.body = {  # type: ignore[union-attr]
+        **row.body,  # type: ignore[union-attr]
         "import_source": {
             "source": body.source,
             "file": None if body.file is None else body.file.model_dump(),
         },
     }
-    detail = _detail(row, plan)
+    detail = _detail(row, plan)  # type: ignore[arg-type]
     session.commit()
     return detail

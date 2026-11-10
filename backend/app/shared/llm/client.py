@@ -182,7 +182,7 @@ def decide(state: Mapping[str, object], questions: Mapping[str, object], *, tran
     return dict(answers)
 
 
-def _log_usage(result: object, model: object) -> None:
+def _log_usage(result: object, model: object) -> tuple[str | int, str | int]:
     """성공한 호출에 쓴 토큰을 한 줄 남긴다.
 
     **숫자 네 개만 적는다.** 프롬프트에는 아동 이름이 들어갈 수 있어서 내용은 한 글자도
@@ -196,7 +196,7 @@ def _log_usage(result: object, model: object) -> None:
     if not isinstance(usage, Mapping):
         # 모델이 usage 를 안 줄 수도 있다. 그것 때문에 생성을 실패시키지 않는다.
         return "-", "-"
-    values = []
+    values: list[str | int] = []
     invalid = False
     for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
         if key not in usage:
@@ -243,8 +243,8 @@ def _llm_call(model: object):
         # 막힌 순간의 쓴 수(used)는 상한과 같다 — 줄을 읽는 쪽이 한눈에 보도록 둘 다 적는다.
         timing_logger.warning(
             "llm_cap_hit run=%s kind=%s used=%d limit=%d",
-            run.id,
-            run.kind,
+            run.id,  # type: ignore[union-attr]
+            run.kind,  # type: ignore[union-attr]
             MAX_LLM_CALLS_PER_RUN,
             MAX_LLM_CALLS_PER_RUN,
         )
@@ -356,7 +356,7 @@ def _post_stream(url, *, headers, payload, timeout, fold, deadline, call):
         path += f"?{parsed.query}"
     connection = None
     watchdog = None
-    lines = []
+    lines: list[str] = []
     expired = threading.Event()
     try:
         connection = http.client.HTTPSConnection(
