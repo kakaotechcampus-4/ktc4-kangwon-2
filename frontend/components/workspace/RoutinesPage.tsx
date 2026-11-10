@@ -190,6 +190,11 @@ interface SaveState {
 
 /** 멈춘 뒤 이만큼 지나면 임시본을 보낸다. 글자마다 보내지 않는다. */
 const AUTOSAVE_MS = 800;
+/** 맞다고 한 활동 — 서버가 받는 이름 길이 · 한 줄 개수 (routines/schemas.py `activities`). */
+const ACTIVITY_MAX = 50;
+const ACTIVITIES_PER_ROW = 10;
+const ACTIVITIES_FULL = `맞다고 한 활동은 한 줄에 ${ACTIVITIES_PER_ROW}개까지 남아요. 더 했으면 「실제로 한 것」에 직접 적어 주세요.`;
+const activityName = (activity: string) => activity.trim().slice(0, ACTIVITY_MAX);
 const WEEKDAY_NAMES = ["월", "화", "수", "목", "금", "토"];
 
 // 화면 안에서만 쓰는 줄 번호. 같은 렌더 안에서 겹치지만 않으면 된다.
@@ -632,15 +637,26 @@ export default function RoutinesPage() {
     return was ? !sameAsSaved(row, was) : filled(row);
   };
 
-  /** 계획에서 고른 활동 — 실제로 한 것에 넣고, 맞다고 한 활동으로 남긴다 (ADR-086). */
-  const pickActivity = (rowKey: string, activity: string) =>
-    changeRow(rowKey, (row) => ({
-      ...row,
-      execution: appendLine(row.execution, activity),
-      activities: row.activities.includes(activity)
-        ? row.activities
-        : [...row.activities, activity],
+  /**
+   * 계획에서 고른 활동 — 실제로 한 것에 넣고, 맞다고 한 활동으로 남긴다 (ADR-086).
+   *
+   * 서버는 활동 이름 50자 · 한 줄 10개까지 받는다(routines/schemas.py). 넘기면 하루 저장이 통째로
+   * 422 라 적던 글까지 못 둔다. 이름은 50자로 자르고, 11번째는 넣지 않고 그 줄에 알린다.
+   */
+  const pickActivity = (rowKey: string, activity: string) => {
+    const name = activityName(activity);
+    const row = now?.rows.find((r) => r.key === rowKey);
+    if (!row || !name) return;
+    if (!row.activities.includes(name) && row.activities.length >= ACTIVITIES_PER_ROW) {
+      setErrors((prev) => ({ ...prev, [rowKey]: ACTIVITIES_FULL }));
+      return;
+    }
+    changeRow(rowKey, (r) => ({
+      ...r,
+      execution: appendLine(r.execution, activity.trim()),
+      activities: r.activities.includes(name) ? r.activities : [...r.activities, name],
     }));
+  };
 
   /** 관찰 한 줄을 붙여 넣는다. 넣은 뒤의 글은 교사가 고친 일과 기록이다 (ADR-024 덧붙임). */
   const insertObservation = (rowKey: string, text: string) =>
@@ -737,6 +753,10 @@ export default function RoutinesPage() {
     const at = key;
     const snapshot = now;
     if (classId === null || !snapshot || snapshot.edits === snapshot.savedEdits) return;
+    // 이 글은 「오늘 일지 만들기」가 이미 근거로 올렸다(올리는 중일 수도 있다). 여기서 또 보내면
+    // 새 줄 번호가 빈 옛 줄로 임시본을 덮고, 다음에 떠날 때 같은 일과를 한 번 더 만든다.
+    // 떠나기(`leave`)와 같은 막음이다.
+    if (uploaded.current.get(at) === snapshot.edits) return;
     try {
       await send({ classId, date, scope }, snapshot, false);
       patch(at, (d) => ({ ...d, savedEdits: Math.max(d.savedEdits, snapshot.edits) }));
@@ -1053,7 +1073,7 @@ export default function RoutinesPage() {
                   >
                     <RoutineRowExtras
                       candidates={planCandidates(row.name, extras.plan).filter(
-                        (name) => !row.activities.includes(name),
+                        (name) => !row.activities.includes(activityName(name)),
                       )}
                       plan={
                         extras.plan && !planCandidates(row.name, extras.plan).length
