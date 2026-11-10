@@ -6,7 +6,6 @@ import {
   today,
   validPeriod,
   validDate,
-  type DocumentKind,
   type SavedDocument,
   type Section,
 } from "@/lib/workspace/model";
@@ -27,11 +26,10 @@ import {
   refreshDocument,
   deleteDocument,
   documentServerId,
-  isRecordKind,
-  RECORD_KINDS,
+  GENERATED_KINDS,
   verifyDocument,
   type DocumentSummary,
-  type RecordKind,
+  type GeneratedKind,
 } from "@/lib/api/documents";
 import { listDayRoutines, type RoutineLine } from "@/lib/api/routines";
 import { listAnnualPlans } from "@/lib/api/plans";
@@ -84,7 +82,6 @@ export default function DocumentsPage() {
         date: "",
         classId: null,
         daily: false,
-        assessment: false,
         weekly: null,
         docId: "",
       };
@@ -98,8 +95,6 @@ export default function DocumentsPage() {
       return {
         ...routinesScope(window.location.search),
         daily: kind === "dailyLog",
-        // 평가 준비 4-2 「영유아 평가 작성하기」가 여는 길.
-        assessment: kind === "assessment",
         // 주간 기록 화면의 「주간 일지 만들기」가 여는 길. 보고 있던 주를 그대로 받는다.
         weekly: kind === "weeklyLog" ? { start: day("start"), end: day("end") } : null,
         // 다른 화면에서 문서 하나를 바로 열 때. 모르는 id 면 보관함을 연다.
@@ -110,7 +105,6 @@ export default function DocumentsPage() {
       date: "",
       classId: null as number | null,
       daily: false,
-      assessment: false,
       weekly: null as { start: string; end: string } | null,
       docId: "",
     },
@@ -130,7 +124,7 @@ export default function DocumentsPage() {
   }, []);
   const [mode, setMode] = useState<"library" | "create">("library");
   const [editingId, setEditingId] = useState("");
-  const [kind, setKind] = useState<DocumentKind>("observation");
+  const [kind, setKind] = useState<GeneratedKind>("observation");
   const [pickedClass, setClassId] = useState<string | null>(null);
   const [primaryClass] = useClientState(() => chosenClassFor(loadClassSettings())?.id ?? "", "");
   const [childId, setChildId] = useState("");
@@ -177,12 +171,6 @@ export default function DocumentsPage() {
     if (entry.weekly.start) setStart(entry.weekly.start);
     if (entry.weekly.end) setEnd(entry.weekly.end);
     setSelected([]);
-  }
-  const [assessmentPrefilled, setAssessmentPrefilled] = useState(false);
-  if (entry.assessment && !assessmentPrefilled) {
-    setAssessmentPrefilled(true);
-    setMode("create");
-    setKind("assessment");
   }
   // 일일 보육일지의 근거(일과 기록). 반 · 날짜를 key 로 둬서 「불러오는 중」을 따로 저장하지 않는다.
   const [routineData, setRoutineData] = useState<{
@@ -412,7 +400,7 @@ export default function DocumentsPage() {
   ];
 
   /** 보관함에서 「작성」을 누르면 **기존 생성 화면**으로 넘어간다 — 가짜 생성을 만들지 않는다. */
-  function startCreate(next: RecordKind, options: { date: string; childId?: string }) {
+  function startCreate(next: GeneratedKind, options: { date: string; childId?: string }) {
     selection.leaveCreation();
     setMode("create");
     setKind(next);
@@ -436,7 +424,7 @@ export default function DocumentsPage() {
     setInvalid((prev) => (prev.includes(name) ? prev.filter((f) => f !== name) : prev));
 
   /** 일일 보육일지는 반 단위 · 하루짜리다 — 아이를 비우고 종료일을 시작일에 맞춘다. */
-  function changeKind(next: DocumentKind) {
+  function changeKind(next: GeneratedKind) {
     setKind(next);
     setSelected([]);
     clearInvalid("kind");
@@ -470,8 +458,7 @@ export default function DocumentsPage() {
       !classroom ||
       !validPeriod(start, end) ||
       !sources.length ||
-      !isRecordKind(kind) ||
-      ((kind === "observation" || kind === "assessment") && !child) ||
+      (kind === "observation" && !child) ||
       (kind === "dailyLog" && start !== end)
     ) {
       setMessage(
@@ -485,7 +472,7 @@ export default function DocumentsPage() {
     try {
       // 사실·해석·지원은 서버가 만든다 — 화면이 초안을 짓지 않는다 (§11).
       const created = await createDocument({
-        kind: kind as RecordKind,
+        kind,
         classId,
         childId,
         start,
@@ -525,7 +512,7 @@ export default function DocumentsPage() {
       ? ""
       : !classroom
         ? "반을 먼저 골라주세요."
-        : (kind === "observation" || kind === "assessment") && !child
+        : kind === "observation" && !child
           ? "이 문서는 아동을 한 명 골라야 만들 수 있어요."
           : kind === "dailyLog" && start !== end
             ? "일일 보육일지는 시작일과 종료일이 같아야 해요."
@@ -775,9 +762,9 @@ export default function DocumentsPage() {
                 disabled={busy}
                 value={kind}
                 {...fieldErrorProps("kind", invalid)}
-                onChange={(e) => changeKind(e.target.value as DocumentKind)}
+                onChange={(e) => changeKind(e.target.value as GeneratedKind)}
               >
-                {RECORD_KINDS.map((k) => (
+                {GENERATED_KINDS.map((k) => (
                   <option key={k} value={k}>
                     {DOCUMENT_KINDS[k]}
                   </option>
@@ -898,9 +885,7 @@ export default function DocumentsPage() {
                   ? weeklyFrom === "routine"
                     ? "일일 보육일지를 쓰지 않는 원이면 그 주 일과 기록을 바로 근거로 써요. 날짜별 해석·지원 칸은 비워서 내보내고, 주간 총평 하나만 적어요."
                     : "시작일과 종료일은 같은 주로 골라주세요. 그 주에 확정한 일일 보육일지가 아래에 뜹니다."
-                  : kind === "assessment"
-                    ? "한 아동의 누적 관찰을 선택해주세요. 기록에 드러난 변화만 다루며 발달을 진단하지 않아요."
-                    : "관찰일지는 아동을 선택하고, 일일 보육일지는 시작·종료일을 같은 날짜로 지정해주세요."}
+                  : "관찰일지는 아동을 선택하고, 일일 보육일지는 시작·종료일을 같은 날짜로 지정해주세요."}
             </p>
             <button
               className={`${ws.primary} ${creation.generate}`}

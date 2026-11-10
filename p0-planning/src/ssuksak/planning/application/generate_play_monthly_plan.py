@@ -79,6 +79,7 @@ from ..planner.play_monthly import (
     parse_play_monthly_proposal,
     repair_scope_issues,
     section_of,
+    trend_lyric_issues,
     trend_name_issues,
     validate_play_monthly,
 )
@@ -340,6 +341,7 @@ class GeneratePlayMonthlyPlan:
         )
         # ADR-072 결정 11: a passed trend's channel or character name in a candidate goes to the same repair.
         issues += trend_name_issues(proposal, request, command.teacher_memo)
+        issues += trend_lyric_issues(proposal, request)  # ADR-072 결정 12: lyrics go to the same repair
         changed: frozenset[str] = frozenset()
         if issues:
             timing.phase("repair")
@@ -355,6 +357,7 @@ class GeneratePlayMonthlyPlan:
                 if not {address, f"{address}.description"} & changed
             )
             remaining += trend_name_issues(repaired, request, command.teacher_memo)
+            remaining += trend_lyric_issues(repaired, request)
             if remaining:
                 raise _rejected(remaining)
             proposal = repaired

@@ -44,17 +44,23 @@ def klass(db_session, teacher, monkeypatch):
     return sun
 
 
-def apis(monkeypatch, *, pty="0", sky="1", stations=None, status=200):
-    """가짜 기상청 · 에어코리아. 부른 경로를 돌려준다 — 몇 번 불렀는지 센다."""
+KMA, AIR = "getVilageFcst", "getCtprvnRltmMesureDnsty"
+
+
+def apis(monkeypatch, *, pty="0", sky="1", stations=None, status=200, failing=(KMA, AIR)):
+    """가짜 기상청 · 에어코리아. 부른 경로를 돌려준다 — 몇 번 불렀는지 센다.
+
+    `status` 가 200 이 아니면 `failing` 에 든 API 만 그 상태로 실패한다.
+    """
     calls = []
     stations = stations or [{"stationName": "석사동", "pm10Value": "40", "pm25Value": "20"}]
 
     def handle(request: httpx.Request) -> httpx.Response:
         calls.append(request.url.path.rsplit("/", 1)[-1])
-        if status != 200:
+        if status != 200 and calls[-1] in failing:
             return httpx.Response(status)
         ok = {"resultCode": "00", "resultMsg": "NORMAL_SERVICE"}
-        if calls[-1] == "getVilageFcst":
+        if calls[-1] == KMA:
             assert request.url.params["nx"] == "73" and request.url.params["ny"] == "134"
             assert request.url.params["base_time"] == "0200"
             day = request.url.params["base_date"]
@@ -238,7 +244,92 @@ def test_어제는_하늘만_받는다(db_session, klass, monkeypatch):
     calls = apis(monkeypatch)
     weather_of_yesterday = _day(klass, "2026-11-08")
     assert weather_of_yesterday["sky"] == "맑음" and weather_of_yesterday["dust"] is None
-    assert calls == ["getVilageFcst"]
+    # 어제 미세먼지는 원래 없는 값이다 — 다시 부르지 않는다.
+    _day(klass, "2026-11-08")
+    assert calls == [KMA]
+
+
+@pytest.mark.parametrize("broken", [AIR, KMA])
+def test_한쪽만_받은_날은_못_받은_쪽만_다시_부른다(db_session, klass, monkeypatch, broken):
+    apis(monkeypatch, status=500, failing=(broken,))
+    first = _day(klass)
+    assert (first["sky"] is None, first["dust"] is None) == (broken == KMA, broken == AIR)
+    assert db_session.scalar(select(func.count()).select_from(RegionWeather)) == 1
+
+    # 고쳐진 뒤 — 못 받은 쪽만 부른다. 받은 쪽은 그날 다시 부르지 않는다.
+    calls = apis(monkeypatch)
+    assert _day(klass) == {
+        "date": TODAY,
+        "sky": "맑음",
+        "dust": "보통",
+        "source": "auto",
+        "indoor_hint": None,
+    }
+    _day(klass)
+    assert calls == [broken]
+    saved = db_session.execute(select(RegionWeather.sky, RegionWeather.dust)).one()
+    assert tuple(saved) == ("맑음", "보통")
+
+
+def test_날씨를_남겨도_부르는_쪽_세션을_커밋하지_않는다(db_session, klass, monkeypatch):
+    # 내보내기 · 일과 조회가 하던 일을 날씨가 대신 커밋하면 안 된다.
+    apis(monkeypatch)
+    monkeypatch.setattr(db_session, "commit", lambda: pytest.fail("날씨가 부르는 쪽을 커밋했다"))
+
+    got = weather.day_weather(db_session, klass.id, NOW.date())
+
+    assert (got.sky, got.dust) == ("맑음", "보통")
+    assert db_session.scalar(select(func.count()).select_from(RegionWeather)) == 1
+
+
+@pytest.mark.parametrize("key", ["ab+c/d==", "ab%2Bc%2Fd%3D%3D"])
+def test_Encoding_키와_Decoding_키_어느_쪽도_한_번만_인코딩해_보낸다(
+    db_session, klass, monkeypatch, key
+):
+    sent = []
+    monkeypatch.setattr(settings, "weather_mode", "real")
+    monkeypatch.setattr(settings, "is_server", True)
+    monkeypatch.setattr(settings, "data_go_kr_service_key", key)
+    apis(monkeypatch)
+    inner = weather.transport
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        sent.append(request.url.query.decode().split("&")[0])
+        return inner.handle_request(request)
+
+    monkeypatch.setattr(weather, "transport", httpx.MockTransport(handle))
+
+    assert _day(klass)["sky"] == "맑음"
+    # 두 번 인코딩하면 「%252B」가 되고 포털이 SERVICE_KEY_IS_NOT_REGISTERED_ERROR 를 준다.
+    assert sent == ["serviceKey=ab%2Bc%2Fd%3D%3D"] * 2
+
+
+def test_포털이_키를_거절하면_까닭_부호만_남기고_키는_남기지_않는다(db_session, klass, monkeypatch):
+    lines = []
+    monkeypatch.setattr(weather.logger, "warning", lambda fmt, *args: lines.append(fmt % args))
+    monkeypatch.setattr(settings, "weather_mode", "real")
+    monkeypatch.setattr(settings, "is_server", True)
+    monkeypatch.setattr(settings, "data_go_kr_service_key", "secret-key")
+    # [실측 2026-11-10] 등록 안 된 키에 포털이 준 응답 모양이다.
+    refused = {
+        "OpenAPI_ServiceResponse": {
+            "cmmMsgHeader": {
+                "errMsg": "SERVICE_KEY_IS_NOT_REGISTERED_ERROR",
+                "returnAuthMsg": "등록되지 않은 서비스키",
+                "returnReasonCode": "30",
+            }
+        }
+    }
+    monkeypatch.setattr(
+        weather, "transport", httpx.MockTransport(lambda r: httpx.Response(403, json=refused))
+    )
+
+    assert _day(klass)["source"] == "none"
+    assert lines == [
+        f"weather_fetch_failed api={api} error=Refused reason=SERVICE_KEY_IS_NOT_REGISTERED_ERROR"
+        for api in ("kma", "air")
+    ]
+    assert not any("secret-key" in line for line in lines)
 
 
 def test_하루치가_아니면_날씨를_붙이지_않는다(db_session, klass, monkeypatch):

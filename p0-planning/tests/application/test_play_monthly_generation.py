@@ -1248,6 +1248,39 @@ def test_without_usable_trends_the_request_is_the_one_before_trends(context):
     assert request.trend_addresses is None and "trends" not in json.loads(request.user_content)
 
 
+def test_lyrics_in_a_candidate_go_to_the_one_repair_and_fail_if_kept():
+    """ADR-072 결정 12: 가사 꼴은 결정적 검사로 고쳐 쓰기 1회, 남으면 저장하지 않는다."""
+    from ssuksak.planning.planner.play_monthly import TREND_LYRICS_REPAIR_INSTRUCTION
+
+    sung = _set(
+        ("together", 2, "description"),
+        "‘산토끼 토끼야 어디를 가느냐 깡충깡충 뛰면서 어디를 가느냐’ 노래를 부르며 뛴다.",
+    )
+
+    def opening(data):
+        sung(data)
+        data["trend_applied"] = []
+
+    use_case, command, plans, provider, _ = _run(opening, None, optional_context=_Context(value=_trends()))
+    assert use_case.execute(command)
+    _, repair = provider.requests
+    assert TREND_LYRICS_REPAIR_INSTRUCTION in repair.system_prompt
+    assert json.loads(repair.user_content)["issues"] == [
+        {"location": "together[2]", "code": "TREND_LYRICS_IN_TEXT"},
+        {"location": "together[2].description", "code": "TREND_LYRICS_IN_TEXT"},
+    ]
+
+    use_case, command, plans, provider, _ = _run(opening, sung, optional_context=_Context(value=_trends()))
+    with pytest.raises(ProposalRejectedError) as error:
+        use_case.execute(command)
+    assert error.value.validation_codes == ("TREND_LYRICS_IN_TEXT",)
+    assert plans.save_count == 0
+
+    # Without trends nothing is checked — the request and result are the ones before ADR-072.
+    use_case, command, plans, provider, _ = _run(sung)
+    assert use_case.execute(command) and len(provider.requests) == 1
+
+
 def test_a_trend_name_in_a_candidate_goes_to_the_one_repair_unless_the_memo_asked_for_it():
     from ssuksak.planning.planner.play_monthly import TREND_NAME_REPAIR_INSTRUCTION
 

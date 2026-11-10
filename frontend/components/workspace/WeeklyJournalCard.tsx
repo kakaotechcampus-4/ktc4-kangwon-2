@@ -8,9 +8,10 @@ import { classServerId } from "@/lib/api/onboarding";
 import { routinesPath } from "@/lib/workspace/routines-route";
 import { Posty } from "@/components/app/Posty";
 import { Message, ws } from "./WorkspaceUI";
-import { LEAVE_JOURNAL, journalMood } from "./DailyJournalCard";
+import { journalMood } from "./DailyJournalCard";
 import DocumentEditor from "./DocumentEditor";
 import { useServerDocument } from "./use-server-document";
+import { useJournalEditor } from "./use-journal-editor";
 
 type From = "dailyLog" | "routine";
 
@@ -64,28 +65,25 @@ export function useWeeklyJournal({
   routines: ApiRoutine[];
 }) {
   /** 이 반 · 이 주. 조회 결과 · 펴 놓은 일지 · 오류를 모두 여기에 묶는다 (일일 칸과 같다). */
-  const at = `${classId}|${weekStart}|${weekEnd}`;
+  const scope = `${classId}|${weekStart}|${weekEnd}`;
   const [loaded, setLoaded] = useState<{
-    at: string;
-    journal: DocumentSummary | null;
+    scope: string;
+    doc: DocumentSummary | null;
     /** 그 주 일일 보육일지 전부. 근거로 못 쓰는 것도 보여 줘야 무엇을 고칠지 안다. */
     dailies: DocumentSummary[];
-  } | null>(null);
+  }>();
   const [from, setFrom] = useState<From>("dailyLog");
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<{ at: string; text: string } | null>(null);
+  const [failed, setFailed] = useState<{ scope: string; text: string } | null>(null);
   const [reload, setReload] = useState(0);
   // 펴 놓은 일지. 만들면 바로 펴고, 교사가 접으면 주간 띠가 다시 올라온다.
-  const [opened, setOpened] = useState<{ at: string; id: string } | null>(null);
-  // 펴 놓은 편집기에 저장 안 한 글이 있나. 편집기가 알려 준다.
-  const [dirty, setDirty] = useState(false);
+  const editor = useJournalEditor(scope, busy);
 
   const serverClass = classServerId(classId);
 
   useEffect(() => {
     if (!weekStart || serverClass === null) return;
     let live = true;
-    const here = `${classId}|${weekStart}|${weekEnd}`;
     Promise.all([
       listDocuments({ kind: "weeklyLog", class_id: serverClass }),
       listDocuments({ kind: "dailyLog", class_id: serverClass }),
@@ -93,8 +91,8 @@ export function useWeeklyJournal({
       .then(([weeklies, dailies]) => {
         if (!live) return;
         setLoaded({
-          at: here,
-          journal: weeklies.find((d) => inWeek(d, weekStart, weekEnd)) ?? null,
+          scope,
+          doc: weeklies.find((d) => inWeek(d, weekStart, weekEnd)) ?? null,
           dailies: dailies
             .filter((d) => inWeek(d, weekStart, weekEnd))
             .sort((a, b) => a.start.localeCompare(b.start)),
@@ -103,18 +101,18 @@ export function useWeeklyJournal({
       })
       .catch((e) => {
         if (!live) return;
-        setLoaded({ at: here, journal: null, dailies: [] });
+        setLoaded({ scope, doc: null, dailies: [] });
         setFailed({
-          at: here,
+          scope,
           text: e instanceof Error ? e.message : "주간 일지를 불러오지 못했습니다.",
         });
       });
     return () => {
       live = false;
     };
-  }, [classId, serverClass, weekStart, weekEnd, reload]);
+  }, [serverClass, weekStart, weekEnd, scope, reload]);
 
-  const week = loaded?.at === at ? loaded : null;
+  const week = loaded?.scope === scope ? loaded : null;
   const weekDailies = week?.dailies ?? [];
   const dailyLogs = weekDailies.filter((d) => !dailyBlock(d));
   /** 근거로 못 쓰는 일일 일지. 줄마다 까닭과 고치러 가는 길을 준다(멘토 12주차 리뷰). */
@@ -127,7 +125,7 @@ export function useWeeklyJournal({
     if (busy || !sources.length) return;
     setBusy(true);
     setFailed(null);
-    // 이 렌더의 `at`(만들기를 누른 주)에 묶는다. 늦게 온 응답은 다른 주에 열지 않는다.
+    // 이 렌더의 `scope`(만들기를 누른 주)에 묶는다. 늦게 온 응답은 다른 주에 열지 않는다.
     try {
       const made = await createDocument({
         kind: "weeklyLog",
@@ -138,18 +136,18 @@ export function useWeeklyJournal({
         sourceIds: sources,
         sourceKind: from,
       });
-      setOpened({ at, id: made.id });
+      editor.open(made.id);
       setReload((n) => n + 1);
       setBusy(false);
     } catch (e) {
-      setFailed({ at, text: e instanceof Error ? e.message : "초안을 만들지 못했습니다." });
+      setFailed({ scope, text: e instanceof Error ? e.message : "초안을 만들지 못했습니다." });
       setBusy(false);
     }
   }
 
   return {
     /** 그 주 일지. `undefined` 는 아직 불러오는 중, `null` 은 없다. */
-    doc: week ? week.journal : undefined,
+    doc: week ? week.doc : undefined,
     from,
     setFrom,
     dailyLogs,
@@ -159,16 +157,11 @@ export function useWeeklyJournal({
     routineSources,
     sources,
     busy,
-    error: failed?.at === at ? failed.text : "",
+    error: failed?.scope === scope ? failed.text : "",
     make,
-    openId: opened?.at === at ? opened.id : "",
-    open: (id: string) => setOpened({ at, id }),
-    close: () => setOpened(null),
+    // openId · open · close(=leave, 저장 안 한 글이면 묻는다) · pending · dismiss
+    ...editor,
     retry: () => setReload((n) => n + 1),
-    dirty,
-    setDirty,
-    /** 주를 옮기거나 접기 전에 부른다. 저장 안 한 일지 글이 있으면 묻고, 옮겨도 되면 true. */
-    leave: () => !dirty || window.confirm(LEAVE_JOURNAL),
     /** 반을 서버에서 못 찾으면 이 화면에서 할 수 있는 일이 없다. */
     off: serverClass === null || !weekStart,
   };
@@ -294,7 +287,7 @@ export default function WeeklyJournalCard({
         <button
           type="button"
           className={ws.journalOpen}
-          onClick={() => (open ? state.leave() && state.close() : state.open(journal.id))}
+          onClick={() => (open ? state.close() : state.open(journal.id))}
         >
           {open ? "접기" : journal.status === "confirmed" ? "일지 보기" : "이어서 쓰기"}
         </button>
@@ -318,7 +311,7 @@ export function WeeklyJournalEditor({ state }: { state: WeeklyJournal }) {
   const edit = useServerDocument(state.openId, {
     onChanged: state.retry,
     // 지운 문서를 편집기에 남겨 두면 저장할 수 없는 칸만 보인다.
-    onRemoved: state.close,
+    onRemoved: state.dismiss,
   });
   if (state.off || !state.openId) return null;
 
@@ -331,9 +324,9 @@ export function WeeklyJournalEditor({ state }: { state: WeeklyJournal }) {
           key={edit.doc.id}
           initial={edit.doc}
           server={edit.server}
+          onEditStateChange={state.onEditStateChange}
           /* 서버 문서는 편집기가 서버에 바로 쓴다. 브라우저 저장소로 가는 길은 쓰지 않는다. */
           onSave={() => true}
-          onDirty={state.setDirty}
         />
       )}
     </section>
