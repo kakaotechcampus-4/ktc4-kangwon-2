@@ -154,7 +154,7 @@ def list_routines(
     )
     items = [_response(row) for row in session.execute(query)]
     # 보육일지 화면은 반 하나 · 하루 하나로 부른다. 그때만 그날 날씨 · 임시본을 붙인다
-    # (ADR-081 · ADR-084).
+    # (ADR-089 · ADR-084).
     one_day = class_id is not None and date_from is not None and date_from == date_to
     if not one_day:
         return RoutineListResponse(items=items)

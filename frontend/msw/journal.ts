@@ -1,5 +1,5 @@
 /**
- * 보육일지 하루 화면 목업 — 일과 기록 · 날씨 · 임시본 · 반 기본 일과표 (api-spec §10-1, ADR-081 · 084 · 085).
+ * 보육일지 하루 화면 목업 — 일과 기록 · 날씨 · 임시본 · 반 기본 일과표 (api-spec §10-1, ADR-089 · 084 · 085).
  *
  * 줄 · 임시본은 이 탭이 열려 있는 동안만 남는다.
  *
@@ -37,7 +37,7 @@ const demo = () =>
 /** `journal-noweekly` — 주간 일지를 아직 안 만든 주를 보여 준다. */
 const noWeekly = () => sessionStorage.getItem("msw.demo") === "journal-noweekly";
 
-// 그날 날씨 목업 (ADR-081). 자동 값은 비 · 보통 — 대체놀이 칩이 뜨는 쪽을 보여 준다.
+// 그날 날씨 목업 (ADR-089). 자동 값은 비 · 보통 — 대체놀이 칩이 뜨는 쪽을 보여 준다.
 function mockWeather(date: string, chosen?: string): DayWeather {
   const sky = (chosen ?? "비") as Sky;
   return {

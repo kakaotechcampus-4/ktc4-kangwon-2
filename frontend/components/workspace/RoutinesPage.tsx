@@ -858,7 +858,7 @@ export default function RoutinesPage() {
     void autosave();
   };
 
-  /** 날씨를 고른다 (ADR-081). 실패하면 알리고 그대로 둔다. */
+  /** 날씨를 고른다 (ADR-089). 실패하면 알리고 그대로 둔다. */
   async function chooseWeather(sky: Sky | null) {
     const at = key;
     if (classId === null) return;
