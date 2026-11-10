@@ -90,7 +90,7 @@ def change_password(
     저장해 둔 비밀번호가 다른 주소의 입력 칸에 들어가면 그것을 피싱 신호로 보고 구글에
     알린다. 바꿀 자리가 없으면 그 교사는 계정을 새로 만드는 수밖에 없다.
 
-    **바꾸기 전에 나간 토큰은 모두 끊는다(ADR-091).** 비밀번호가 샌 것 같아 바꾸는데 그 비밀번호로
+    **바꾸기 전에 나간 토큰은 모두 끊는다(ADR-092).** 비밀번호가 샌 것 같아 바꾸는데 그 비밀번호로
     들어와 있던 사람이 12시간 더 머물면 바꾼 뜻이 없다. 바꾼 본인은 응답의 새 토큰으로 이어 간다.
     """
     if not verify_password(body.current_password, user.password_hash, user.password_salt):
@@ -158,7 +158,7 @@ def kakao_login(body: KakaoLoginRequest, session: DbSession) -> TokenResponse:
 
     **이메일이 없으면 받지 않는다.** 화면의 계정 기록 · 반 설정이 모두 이메일을 열쇠로 쓴다.
 
-    **이을 때 기존 비밀번호를 버린다(ADR-091).** 이메일 가입은 메일 주인인지 확인하지 않는다.
+    **이을 때 기존 비밀번호를 버린다(ADR-092).** 이메일 가입은 메일 주인인지 확인하지 않는다.
     남의 이메일로 먼저 가입해 둔 사람이 있으면, 카카오가 확인한 진짜 주인이 들어온 뒤에도 그
     비밀번호와 이미 받은 토큰으로 계속 들어온다. 어느 쪽이 먼저 가입한 사람인지 서버는 모르므로
     확인된 쪽(카카오)만 남긴다. 이은 뒤에는 카카오로만 들어온다.
@@ -215,7 +215,7 @@ def kakao_login(body: KakaoLoginRequest, session: DbSession) -> TokenResponse:
             )
             session.add(user)
         else:
-            # 이메일로 먼저 가입한 계정이다. 그 비밀번호를 누가 만들었는지 모른다(ADR-091).
+            # 이메일로 먼저 가입한 계정이다. 그 비밀번호를 누가 만들었는지 모른다(ADR-092).
             user.password_hash, user.password_salt = hash_password(secrets.token_urlsafe(32))
             user.token_version += 1
         user.kakao_id = profile.kakao_id

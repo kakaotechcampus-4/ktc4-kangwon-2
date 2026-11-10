@@ -44,7 +44,7 @@ def current_user(
         # 토큰은 멀쩡한데 계정이 지워진 경우다. 서명이 맞아도 통과시키지 않는다.
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=_UNAUTHENTICATED)
     if version != user.token_version:
-        # 비밀번호를 바꾸거나 카카오를 잇기 전에 나간 토큰이다(ADR-091). 서명이 맞아도 막는다.
+        # 비밀번호를 바꾸거나 카카오를 잇기 전에 나간 토큰이다(ADR-092). 서명이 맞아도 막는다.
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=_UNAUTHENTICATED)
     return user
 

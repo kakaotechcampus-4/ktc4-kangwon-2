@@ -37,7 +37,7 @@ class User(Base):
         server_default="0",
         comment=(
             "토큰의 ver 와 같아야 통과. 비밀번호 변경 · 카카오 잇기 때 올려 그 전 토큰을 끊는다"
-            " (ADR-091)"
+            " (ADR-092)"
         ),
     )
     center_id: Mapped[int | None] = mapped_column(

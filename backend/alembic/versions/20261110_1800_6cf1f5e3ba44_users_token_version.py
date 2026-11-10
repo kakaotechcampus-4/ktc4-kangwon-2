@@ -1,4 +1,4 @@
-"""users.token_version — 비밀번호 변경 · 카카오 잇기 때 그 전 토큰을 끊는다 (ADR-091)
+"""users.token_version — 비밀번호 변경 · 카카오 잇기 때 그 전 토큰을 끊는다 (ADR-092)
 
 Revision ID: 6cf1f5e3ba44
 Revises: b7d2e9a4c1f3
@@ -29,7 +29,7 @@ def upgrade() -> None:
             nullable=False,
             comment=(
                 "토큰의 ver 와 같아야 통과. 비밀번호 변경 · 카카오 잇기 때 올려 그 전 토큰을 끊는다"
-                " (ADR-091)"
+                " (ADR-092)"
             ),
         ),
     )
