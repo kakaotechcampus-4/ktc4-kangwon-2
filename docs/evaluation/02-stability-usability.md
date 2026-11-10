@@ -12,7 +12,7 @@
   배포 판정은 `ready` 쪽이다 — [CLAUDE.md](../../CLAUDE.md) §명령어 · `.github/workflows/deploy.yml` Health check
 - **부가 기능이 죽어도 본 기능은 돈다.** 트렌드봇 · 외부 API 를 필수 의존으로 넣지 않았다 — [CLAUDE.md](../../CLAUDE.md) §생성
 - 선택 입력(트렌드 · 날씨)이 실패해 기본 자료로 만들었으면 생성 기록에 남는다 — 같은 곳
-- 일지 날씨는 키가 없거나 기상청 · 에어코리아가 실패해도 「값 없음」으로 200 이고, 종이 날씨 칸은 빈칸으로 나간다 — ADR-081 · `backend/tests/test_routines_weather.py`
+- 일지 날씨는 키가 없거나 기상청 · 에어코리아가 실패해도 「값 없음」으로 200 이고, 종이 날씨 칸은 빈칸으로 나간다 — ADR-089 · `backend/tests/test_routines_weather.py`
 - 두 사람이 같은 문서를 동시에 고칠 때 — ADR-035 `035-concurrent-writes-and-confirm-retry.md`
 - 확정이 중간에 끊기지 않게 — ADR-040 `040-atomic-document-reconfirmation.md`
 - 생성이 길어질 때 구간마다 120초 감시 타이머 · nginx 510초 — PR #229

@@ -86,7 +86,7 @@ class RoutineRecord(Base):
         return ""
 
 
-# 날씨 · 미세먼지 값. 화면 · 종이 · DB CHECK 가 같은 글자를 쓴다 (ADR-081).
+# 날씨 · 미세먼지 값. 화면 · 종이 · DB CHECK 가 같은 글자를 쓴다 (ADR-089).
 SKIES = ("맑음", "구름많음", "흐림", "비", "눈", "비나 눈")
 DUSTS = ("좋음", "보통", "나쁨", "매우나쁨")
 
@@ -96,7 +96,7 @@ def _one_of(column: str, values: tuple[str, ...]) -> str:
 
 
 class RegionWeather(Base):
-    """원 지역 하루의 **자동** 날씨 (ADR-081).
+    """원 지역 하루의 **자동** 날씨 (ADR-089).
 
     기상청 · 에어코리아를 지역 · 날짜마다 한 번만 부르려고 둔다.
 
@@ -127,7 +127,7 @@ class RegionWeather(Base):
 
 
 class RoutineWeather(Base):
-    """교사가 고른 그날 날씨 — 반 × 날짜 하나 (ADR-081). 있으면 자동 값보다 이긴다."""
+    """교사가 고른 그날 날씨 — 반 × 날짜 하나 (ADR-089). 있으면 자동 값보다 이긴다."""
 
     __tablename__ = "routine_weather"
     __table_args__ = (

@@ -6,7 +6,7 @@
 `PUT` · `DELETE` 는 이 기록을 근거로 쓴 §11 일일 보육일지를 `stale` 로 바꾼다. 판정은 문서
 쪽이 갖고 있다 — `stale` 칸의 주인이 documents 다 (features/documents/stale.py).
 
-하루치 조회에는 그날 날씨가 붙고, 교사가 그 날씨를 고를 수 있다 (`weather.py`, ADR-081).
+하루치 조회에는 그날 날씨가 붙고, 교사가 그 날씨를 고를 수 있다 (`weather.py`, ADR-089).
 """
 
 from dataclasses import asdict
@@ -133,7 +133,7 @@ def list_routines(
         RoutineRecord.id,
     )
     items = [_response(row) for row in session.execute(query)]
-    # 보육일지 화면은 반 하나 · 하루 하나로 부른다. 그때만 그날 날씨를 붙인다 (ADR-081).
+    # 보육일지 화면은 반 하나 · 하루 하나로 부른다. 그때만 그날 날씨를 붙인다 (ADR-089).
     one_day = class_id is not None and date_from is not None and date_from == date_to
     weather = _weather(day_weather(session, class_id, date_from)) if one_day else None
     return RoutineListResponse(items=items, weather=weather)
@@ -147,7 +147,7 @@ def _weather(value: DayWeather) -> DayWeatherResponse:
 def choose_weather(
     body: WeatherChoice, session: DbSession, user: CurrentUser
 ) -> DayWeatherResponse:
-    """교사가 그날 날씨를 고른다. 자동 값과 따로 남기고, 있으면 그것이 이긴다 (ADR-081).
+    """교사가 그날 날씨를 고른다. 자동 값과 따로 남기고, 있으면 그것이 이긴다 (ADR-089).
 
     `/{record_id}` 보다 먼저 둔다 — 뒤에 두면 「weather」를 기록 id 로 읽고 422 를 낸다.
     """

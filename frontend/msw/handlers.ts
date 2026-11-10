@@ -158,7 +158,7 @@ const withMemo = <T extends { id: number }>(
 };
 const missing = () => failure("NOT_FOUND", "대상을 찾을 수 없습니다.");
 
-// 그날 날씨 목업 (ADR-081). 자동 값은 비 · 보통 — 대체놀이 칩이 뜨는 쪽을 보여 준다.
+// 그날 날씨 목업 (ADR-089). 자동 값은 비 · 보통 — 대체놀이 칩이 뜨는 쪽을 보여 준다.
 // 교사가 고른 값은 이 탭이 열려 있는 동안만 남는다.
 const MOCK_SKIES = ["맑음", "구름많음", "흐림", "비", "눈", "비나 눈"];
 const mockWeatherChoice = new Map<string, string>();

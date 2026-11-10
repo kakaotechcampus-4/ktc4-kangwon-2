@@ -1,4 +1,4 @@
-"""일지 날씨 — 지역 하루 자동 값(region_weather) · 교사가 고른 값(routine_weather) (ADR-081)
+"""일지 날씨 — 지역 하루 자동 값(region_weather) · 교사가 고른 값(routine_weather) (ADR-089)
 
 표 둘을 새로 만들기만 한다. 이미 있는 표 · 열 · 제약은 건드리지 않는다 — 이 리비전에 선 DB 에서
 직전 코드가 그대로 돈다(ADR-073 롤백 한 칸).

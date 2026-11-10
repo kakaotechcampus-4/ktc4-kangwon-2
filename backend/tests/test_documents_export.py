@@ -551,7 +551,7 @@ def test_일과가_하나면_원형_줄만_채운다(db_session, mine):
 
 
 def test_일일_보육일지_머리_줄에_날짜와_날씨를_넣고_없으면_비운다(db_session, mine):
-    """실물 일일 양식의 머리는 날짜 · 요일 · 날씨다(ADR-081). 표 밖, 제목 바로 아래 문단이다."""
+    """실물 일일 양식의 머리는 날짜 · 요일 · 날씨다(ADR-089). 표 밖, 제목 바로 아래 문단이다."""
     klass, _ = mine
     only = _routine(
         db_session, klass, position=0, start=None, end=None, name="등원", execution="인사했다."
