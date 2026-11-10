@@ -2160,3 +2160,18 @@ test("AI 검토 결과는 한 문장에 한 줄, 어긋난 기록 원문을 같�
   assert.match(lines[0], /기록에는 「아이가 블록을 쌓았다\.」로 적혀 있어요\./);
   assert.match(lines[0], / \/ 단정하는 표현이 있어요\./);
 });
+
+test("영유아 평가는 만들지 않고 올린 것만 받는다 (ADR-091)", () => {
+  // 보관함 · 증빙 등록은 네 종류를 다 다루고, 초안 만들기는 셋만 고를 수 있다.
+  assert.ok(documents.RECORD_KINDS.includes("assessment"));
+  assert.deepEqual([...documents.GENERATED_KINDS], ["dailyLog", "weeklyLog", "observation"]);
+  assert.equal(documents.isGeneratedKind("assessment"), false);
+  // 평가 점검 4-2 가 막다른 생성 화면으로 보내지 않는다.
+  for (const file of ["EvaluationAuto.tsx", "EvaluationSheet.tsx", "DocumentsPage.tsx"]) {
+    const source = readFileSync(
+      new URL(`../components/workspace/${file}`, import.meta.url),
+      "utf8",
+    );
+    assert.doesNotMatch(source, /kind=assessment|영유아 평가 쓰기/, file);
+  }
+});

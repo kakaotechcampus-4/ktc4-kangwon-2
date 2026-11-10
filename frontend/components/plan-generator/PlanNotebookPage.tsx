@@ -115,6 +115,14 @@ export function readyAnnual(annual: AnnualPlanSummary[]) {
 }
 
 /**
+ * 이미 만든 연간(초안 · 확정)의 방식. 반 하나에 연간은 하나라(서버 409) 다른 방식의
+ * 「연간부터 시작하기」는 끈다. `readyAnnual` 처럼 가장 최근 연간을 본다.
+ */
+export function annualFormat(annual: AnnualPlanSummary[]) {
+  return [...annual].sort((a, b) => b.created_at.localeCompare(a.created_at))[0]?.format ?? null;
+}
+
+/**
  * 주간을 바로 만들 수 있는 월간 — 확정한 연간과 같은 반 · 학년도에서 **가장 최근에 확정한** 월간.
  * 있으면 월별 주제형 칸에 [주간계획안 만들기] 가 따로 붙고, 주간 화면이 그 달을 먼저 연다.
  */
@@ -151,6 +159,7 @@ export default function PlanNotebookPage() {
   const [skip, setSkip] = useState(false);
   const [drafts, setDrafts] = useState<DraftCard[] | null>(null);
   const [ready, setReady] = useState<AnnualPlanSummary | null>(null);
+  const [taken, setTaken] = useState<AnnualPlanSummary["format"] | null>(null);
   const [weekly, setWeekly] = useState<MonthlyPlanSummary | null>(null);
   const [error, setError] = useState("");
   const [checks, setChecks] = useState<Record<string, CheckItem[]>>({});
@@ -172,6 +181,7 @@ export default function PlanNotebookPage() {
       setDrafts(draftCards(items(annual), items(monthly), items(play), items(weekly)));
       const annualReady = readyAnnual(items(annual));
       setReady(annualReady);
+      setTaken(annualFormat(items(annual)));
       setWeekly(
         annualReady?.format === "MONTHLY_THEME" ? readyMonthly(annualReady, items(monthly)) : null,
       );
@@ -227,6 +237,7 @@ export default function PlanNotebookPage() {
         <Panel
           format="MONTHLY_THEME"
           ready={ready?.format === "MONTHLY_THEME" ? ready : null}
+          locked={taken === "PLAY_PROJECT"}
           weekly={weekly}
           skip={skip}
           onSkip={setSkip}
@@ -235,6 +246,7 @@ export default function PlanNotebookPage() {
         <Panel
           format="PLAY_PROJECT"
           ready={ready?.format === "PLAY_PROJECT" ? ready : null}
+          locked={taken === "MONTHLY_THEME"}
           skip={false}
           onSkip={setSkip}
           onImport={() => {}}
@@ -596,6 +608,9 @@ const PRIMARY =
   "flex min-h-[54px] flex-1 items-center justify-center gap-2 rounded-md bg-primary text-base font-bold text-white no-underline shadow-[0_3px_0_#59416e] transition-transform hover:bg-primary-hover active:translate-y-[3px] active:shadow-none motion-reduce:transition-none";
 const SECONDARY =
   "flex min-h-[54px] flex-1 items-center justify-center gap-2 rounded-md border-2 border-[#c5b7dd] bg-white text-base font-bold text-[#5e4b96] shadow-[0_2px_0_#c5b7dd] transition-transform hover:bg-[#f6f1fb] active:translate-y-[2px] active:shadow-none motion-reduce:transition-none";
+// 꺼진 단추 — 점선 · 흐린 글씨 · 그림자 없음.
+const OFF =
+  "disabled:cursor-not-allowed disabled:border-dashed disabled:border-[#d7d0c7] disabled:text-ink-soft disabled:shadow-none disabled:hover:bg-white disabled:active:translate-y-0";
 
 const Arrow = () => (
   <svg
@@ -641,6 +656,7 @@ const Chevron = () => (
 function Panel({
   format,
   ready,
+  locked = false,
   weekly = null,
   skip,
   onSkip,
@@ -648,6 +664,8 @@ function Panel({
 }: {
   format: keyof typeof MODE;
   ready: AnnualPlanSummary | null;
+  /** 다른 방식 연간이 이미 있음 — 「연간부터 시작하기」를 끈다. */
+  locked?: boolean;
   weekly?: MonthlyPlanSummary | null;
   skip: boolean;
   onSkip: (skip: boolean) => void;
@@ -797,15 +815,22 @@ function Panel({
         </div>
       ) : (
         <div className="flex items-center gap-3">
-          <Link href={`/plans/annual/new?format=${format}`} className={PRIMARY}>
-            연간부터 시작하기
-            <Arrow />
-          </Link>
+          {locked ? (
+            <button type="button" disabled className={`${SECONDARY} ${OFF}`}>
+              연간부터 시작하기
+              <Arrow />
+            </button>
+          ) : (
+            <Link href={`/plans/annual/new?format=${format}`} className={PRIMARY}>
+              연간부터 시작하기
+              <Arrow />
+            </Link>
+          )}
           <button
             type="button"
             onClick={() => onSkip(true)}
             disabled={!v1}
-            className={`${SECONDARY} disabled:cursor-not-allowed disabled:border-dashed disabled:border-[#d7d0c7] disabled:text-ink-soft disabled:shadow-none disabled:hover:bg-white disabled:active:translate-y-0`}
+            className={`${SECONDARY} ${OFF}`}
           >
             월간부터 시작하기
           </button>

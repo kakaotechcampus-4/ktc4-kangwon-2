@@ -1,5 +1,6 @@
 """shared/gates 3층 규격 검사 단위 테스트. DB 를 쓰지 않는다."""
 
+import datetime
 from dataclasses import dataclass, field
 
 from app.shared.gates.sections import InputExtras, check_sections, join_facts, logger
@@ -81,6 +82,60 @@ def test_age_outside_the_class_and_counts_are_still_compared():
         "sections.해석"
     ]
     assert _check("블록 놀이가 4개 영역의 배움과 두루 이어지는 모습을 보였다.") == ["sections.해석"]
+
+
+def test_decimal_in_a_date_or_period_is_one_number():
+    # 「1.5일」은 1 과 5 가 아니라 1.5 하나다. 사실과 같으면 통과, 사실에 없으면 거절.
+    facts = ["블록 탑을 1.5일에 걸쳐 완성했다."]
+    assert _check("블록 탑을 1.5일에 걸쳐 끝까지 완성하려는 끈기를 보였다.", facts=facts) == []
+    assert _check("블록 탑을 2.5일에 걸쳐 끝까지 완성하려는 끈기를 보였다.", facts=facts) == [
+        "sections.해석"
+    ]
+
+
+def test_source_date_passes_only_inside_a_real_date():
+    # 근거 날짜가 11월 3일이다. 「11월 3일」의 3 은 날짜라 통과,
+    # 「3일 동안」의 3 은 기간이라 사실과 견준다.
+    third = InputExtras(dates=(datetime.date(2026, 11, 3),))
+    plain = ["블록을 쌓았다가 무너뜨렸다."]
+    assert (
+        _check("11월 3일 블록을 쌓으며 친구와 협력하는 모습을 보였다.", facts=plain, extras=third)
+        == []
+    )
+    assert (
+        _check("3일에 블록을 쌓으며 친구와 협력하는 모습을 보였다.", facts=plain, extras=third)
+        == []
+    )
+    for period in ("3일 동안", "3일간", "3일째", "3일 만에"):
+        assert _check(
+            f"{period} 블록을 쌓으며 끈기 있게 반복하는 모습을 보였다.", facts=plain, extras=third
+        ) == ["sections.해석"], period
+    # 사실에 같은 기간이 있으면 통과다.
+    facts = ["3일 동안 블록을 쌓았다."]
+    assert _check("3일 동안 블록을 쌓으며 끈기 있게 반복했다.", facts=facts, extras=third) == []
+    # 「간식」은 기간이 아니다.
+    assert (
+        _check("3일 간식 시간에 친구와 나누어 먹는 모습을 보였다.", facts=plain, extras=third) == []
+    )
+
+
+def test_class_age_and_domain_count_in_short_forms():
+    four = InputExtras(ages=(4,))
+    assert _check("4세반 유아답게 블록을 쌓으며 끝까지 해 보려는 모습을 보였다.", extras=four) == []
+    assert _check("5세반 유아답게 블록을 쌓으며 끝까지 해 보려는 모습을 보였다.", extras=four) == [
+        "sections.해석"
+    ]
+    # 「3세트」는 나이가 아니라 개수다.
+    three = InputExtras(ages=(3,))
+    assert _check(
+        "블록을 3세트 쌓으며 끈기 있게 반복하는 모습을 보였다.",
+        facts=["블록을 쌓았다."],
+        extras=three,
+    ) == ["sections.해석"]
+    assert _check("블록 놀이가 누리과정 5영역 가운데 신체운동 · 건강과 이어진다.") == []
+    assert _check("블록 놀이가 누리과정 4영역 가운데 신체운동 · 건강과 이어진다.") == [
+        "sections.해석"
+    ]
 
 
 def test_short_interpretation_is_reported_once():
