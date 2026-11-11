@@ -38,12 +38,12 @@ NEXT_PUBLIC_API_MOCKING=enabled
 
 ## 검사와 테스트
 
-| 명령 | 무엇을 하나 |
-|---|---|
-| `npm run lint` | ESLint |
-| `npm run format:check` | Prettier 검사(CI 와 같다) |
-| `npm test` | `tests/` 를 `node --test` 로 돈다 |
-| `npm run e2e` | `e2e/` 를 Playwright 로 돈다 |
+| 명령                   | 무엇을 하나                       |
+| ---------------------- | --------------------------------- |
+| `npm run lint`         | ESLint                            |
+| `npm run format:check` | Prettier 검사(CI 와 같다)         |
+| `npm test`             | `tests/` 를 `node --test` 로 돈다 |
+| `npm run e2e`          | `e2e/` 를 Playwright 로 돈다      |
 
 E2E 는 띄워 둔 서버에 붙기만 한다. DB · 백엔드 · Next 를 먼저 세우고 MSW 는 끈다.
 기본 주소는 `http://127.0.0.1:3000`, 다르면 `E2E_BASE_URL` 로 바꾼다.
