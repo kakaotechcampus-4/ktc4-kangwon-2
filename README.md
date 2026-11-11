@@ -59,9 +59,38 @@
 - **두 가지 형식**: 「월별 주제형」과 「놀이 중심형」을 지원합니다.
 - **칸 단위 수정**: AI가 채운 칸은 눌러서 고치고, 교사가 써야 하는 칸은 따로 표시합니다.
 
-<p align="center"><img src="docs/images/readme/usage-3-annual.webp" width="100%" alt="연간 계획안"/><br/><sub>연간 계획안</sub></p>
+#### 계획안 만드는 순서
 
-<p align="center"><img src="docs/images/readme/usage-3-monthly.webp" width="100%" alt="월간 계획안"/><br/><sub>월간 계획안</sub></p>
+<p align="center"><img src="docs/images/readme/usage-3-plan-type.png" width="100%" alt="계획안 방식 고르기 — 월별 주제형(연간 → 월간 → 주간)과 놀이 중심형(연간 → 월간)"/><br/><sub><b>방식 고르기</b> — 「월별 주제형」과 「놀이 중심형」 중 하나를 고릅니다. 한 반에서는 한 가지 방식만 씁니다.</sub></p>
+
+**월별 주제형** · 연간 → 월간 → 주간
+
+<table>
+<tr>
+<td align="center" valign="top"><img src="docs/images/readme/usage-3-theme-1-annual-create.png" width="520" alt="월별 주제형 연간계획안 만들기 — 반 정보, 양식, 요청 사항"/><br/><sub><b>① 연간 만들기</b><br/>반 정보를 확인하고 요청 사항을 적어 연간계획안을 만듭니다.</sub></td>
+<td align="center" valign="top"><img src="docs/images/readme/usage-3-theme-2-annual-edit.png" width="520" alt="월별 주제형 연간계획안 다듬기 — 생활주제와 소주제 수정"/><br/><sub><b>② 연간 다듬기</b><br/>생활주제 · 소주제를 고치고 확정합니다.</sub></td>
+</tr>
+<tr>
+<td align="center" valign="top"><img src="docs/images/readme/usage-3-theme-3-monthly-ai-candidates.png" width="520" alt="월별 주제형 월간계획안 — AI 후보로 안전교육 칸 채우기"/><br/><sub><b>③ 월간 · AI 후보로 채우기</b><br/>확정한 연간을 이어받아 월간을 만들고, 빈칸은 AI 후보에서 골라 채웁니다.</sub></td>
+<td align="center" valign="top"><img src="docs/images/readme/usage-3-theme-4-weekly-play.png" width="520" alt="월별 주제형 주간계획안 — 이번 주 놀이 후보 넣기"/><br/><sub><b>④ 주간 · 놀이 넣기</b><br/>확정한 월간의 한 주로 주간을 만들고, 놀이 후보를 넣습니다.</sub></td>
+</tr>
+<tr>
+<td align="center" colspan="2"><img src="docs/images/readme/usage-3-theme-5-confirm-export.png" width="600" alt="월별 주제형 주간계획안 확정 — PDF · HWPX · HWP 내보내기"/><br/><sub><b>⑤ 확정 · 내보내기</b><br/>확정한 계획안을 PDF · HWPX · HWP로 내려받습니다.</sub></td>
+</tr>
+</table>
+
+**놀이 중심형** · 연간 → 월간 (주간계획안은 없습니다)
+
+<table>
+<tr>
+<td align="center" valign="top"><img src="docs/images/readme/usage-3-play-1-annual-season-pick.png" width="520" alt="놀이 중심형 연간 — 계절별 놀이 후보 고르기"/><br/><sub><b>① 연간 · 계절별 놀이 고르기</b><br/>계절마다 놀이 후보를 고릅니다.</sub></td>
+<td align="center" valign="top"><img src="docs/images/readme/usage-3-play-2-annual-edit.png" width="520" alt="놀이 중심형 연간 놀이계획안 — 칸 편집"/><br/><sub><b>② 연간 · 문서 다듬기</b><br/>고른 놀이로 연간 놀이계획안을 만들고, 칸을 눌러 고칩니다.</sub></td>
+</tr>
+<tr>
+<td align="center" valign="top"><img src="docs/images/readme/usage-3-play-3-monthly-pick.png" width="520" alt="놀이 중심형 월간 — 함께 하는 활동 · 유아 예상 자유놀이 후보 고르기"/><br/><sub><b>③ 월간 · 활동 고르기</b><br/>「함께 하는 활동」과 「유아 예상 자유놀이」 후보를 고릅니다.</sub></td>
+<td align="center" valign="top"><img src="docs/images/readme/usage-3-play-4-monthly-confirm-export.png" width="520" alt="놀이 중심형 월간계획안 확정 — PDF · HWPX · HWP 내보내기"/><br/><sub><b>④ 월간 · 확정 · 내보내기</b><br/>월간계획안을 확정하고 내려받습니다.</sub></td>
+</tr>
+</table>
 
 ### 4. 문서 보관함 · 내보내기
 - **모아 보기**: 계획안과 일지를 종류 · 날짜별로 모아 봅니다.
@@ -77,9 +106,6 @@
 
 ### 6. 트렌드봇 (기본 꺼짐)
 승인된 채널의 놀이 자료를 매주 모아 사람이 승인하고, 원에서 켜면 계획안 활동 후보로 씁니다.
-
-> [!NOTE]
-> 알림장 · 사고보고서 · 투약의뢰서는 만들지 않습니다. 식사 · 투약 같은 사실을 AI가 지어 쓰면 문서 조작이 되기 때문입니다([ADR-007](docs/adr/007-spec-out-notice-and-assessment.md)).
 
 ## 시스템 아키텍처 구조도
 
@@ -148,10 +174,6 @@ ktc4-kangwon-2/
 cp .env.example .env
 ```
 
-> [!WARNING]
-> **`.env`는 꼭 만듭니다.** `POSTGRES_PASSWORD`, `DATABASE_URL`, `SECRET_KEY`에 기본값이 없어서, 없으면 뜨지 않습니다.
-> 예제 값은 로컬용입니다. 운영에는 따로 만든 비밀번호와 키를 씁니다.
-
 #### 실행 순서
 
 ```
@@ -166,21 +188,12 @@ cp .env.example .env
 sh scripts/local-cert.sh --i-am-not-the-server
 ```
 
-> [!NOTE]
-> `local-cert.sh`는 로컬 nginx용 자체 서명 인증서를 만듭니다. **운영 서버에서는 돌리지 않습니다.**
-
 ### 2. 실행
 
 ```bash
 docker compose up -d --build
 curl -f http://localhost/health                  # {"status":"ok"}
 ```
-
-> [!IMPORTANT]
-> 브라우저는 **`http://localhost`** 주소로 엽니다(3000 아님). nginx를 거쳐야 `/api`가 FastAPI로 갑니다.
-
-> [!NOTE]
-> `LLM_MODE` 기본값이 `mock`이라 로컬에서는 가짜 응답으로 화면 흐름만 확인합니다. 실제 생성 품질은 볼 수 없습니다.
 
 ### 3. 테스트
 
@@ -200,9 +213,6 @@ cd frontend && npm ci && npx playwright install chromium
 | 백엔드 타입 | `cd backend && mypy` |
 | 프론트엔드 | `cd frontend && npm run lint && npm test` |
 | E2E | 서버를 띄운 뒤 `cd frontend && E2E_BASE_URL=http://localhost npm run e2e` |
-
-> [!WARNING]
-> 백엔드 테스트는 받은 DB에 마이그레이션과 시험 데이터를 올립니다. **서비스 DB가 아니라 테스트 DB를 따로** 띄웁니다.
 
 <details>
 <summary>테스트 DB 띄우는 방법</summary>
