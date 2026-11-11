@@ -21,7 +21,8 @@ tree -a --dirsfirst -I '.git|node_modules|.next|.ruff_cache'
 
 | 파일 | 무엇을 두는가 |
 |---|---|
-| `docker-compose.yml` | db · backend · frontend 3개 서비스 |
+| `docker-compose.yml` | db · backend · frontend · nginx · certbot 5개 서비스 |
+| `docker-compose.server.yml` | 운영 서버에서만 붙이는 덧칠 — backend 로그를 journald 로(ADR-058) |
 | `.env.example` | 환경변수 예시. 실제 `.env` 는 커밋하지 않는다 |
 | `.gitignore` | 무시 목록. 비밀값 패턴이 들어 있어 함부로 지우지 않는다 |
 | `README.md` | 서비스 소개, 구조와 폴더, 실행, 테스트, 알려진 제한, 자주 찾는 문서 |
