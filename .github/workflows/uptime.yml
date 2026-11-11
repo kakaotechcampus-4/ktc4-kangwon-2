@@ -1,0 +1,51 @@
+name: Uptime
+
+# 10분마다 밖에서 공개 주소(`/` · `/health/ready`)를 보고, 내려갔으면 알린다(#458).
+# 지금까지 장애 알림은 배포가 실패할 때(deploy.yml 「Health check」)만 왔다 — 배포와 상관없이 서버가 죽으면 아무도 몰랐다.
+#
+# 판정은 scripts/uptime-check.sh 한 곳에 있다: 실패하면 30초 뒤 한 번 더 보고, 배포 중이면 알리지 않고, 이미 알렸으면 또 알리지 않는다.
+# 표와 한계는 docs/deploy.md 「업타임 확인」.
+#
+# **예약 실행은 기본 브랜치(develop)에 있는 이 파일로 돈다.** 머지 전에는 돌지 않는다 — 그동안은 스크립트를 로컬에서 돌려 본다.
+# GitHub 예약 실행은 바쁠 때 늦게 시작한다. 「10분마다」는 대략 10~25분마다다.
+on:
+  schedule:
+    # 정각(*/10)을 비킨다 — 정각은 GitHub 예약 실행이 가장 밀리거나 빠지는 때다.
+    - cron: "4-59/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      test_alert:
+        description: "시험 알림 — 실제 장애가 아니어도 지금 확인 결과를 UPTIME_WEBHOOK 으로 보낸다"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read # checkout 용
+  actions: read # Deploy · 업타임 run 목록을 읽는다
+
+# 두 run 이 겹치면 같은 장애를 둘 다 처음 본 것으로 알려 알림이 두 번 간다. 취소하지 않고 기다린다.
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: 업타임 확인
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: 주소 확인
+        env:
+          # deploy.yml 「Health check」와 같은 식 — 주소가 바뀌면 HEALTHCHECK_URL secret 한 곳만 고친다.
+          BASE: ${{ secrets.HEALTHCHECK_URL || 'https://ssample.duckdns.org' }}
+          # 팀만 보는 채널의 Discord 웹훅을 따로 넣는다. 배포 알림 채널(DISCORD_WEBHOOK)은 많은 사람이 봐서 쓰지 않는다.
+          # 비어 있으면 Discord 로는 안 가고, 내려간 run 이 빨갛게 끝나 GitHub 이 예약 워크플로 실패 메일을
+          # cron 줄을 마지막으로 고친 사람에게 보낸다.
+          WEBHOOK: ${{ secrets.UPTIME_WEBHOOK }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # 예약 실행에는 입력이 없어 빈 값이다.
+          TEST_ALERT: ${{ inputs.test_alert }}
+        run: scripts/uptime-check.sh

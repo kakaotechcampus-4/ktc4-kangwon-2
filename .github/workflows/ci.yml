@@ -257,8 +257,11 @@ jobs:
         id: real_db
         run: pytest -m real_db
       # 위 단계가 실패해도 돌아 백엔드 실패가 한 번에 다 보이게 한다 (전에는 한 단계라 그랬다).
+      # 닿지 않는 주소로 돈다. 연결 거부로 죽으면 real_db 표시 누락 — `_schema` 를 받게 한다.
       - name: pytest — DB 없는 테스트
         if: ${{ success() || steps.real_db.outcome == 'failure' }}
+        env:
+          DATABASE_URL: postgresql+psycopg://x:x@127.0.0.1:1/x
         run: pytest -m "not real_db"
       # p0-planning 은 backend 와 별도 패키지라 위 pytest 가 보지 않는다.
       # job 을 새로 만들지 않고 스텝으로 붙인다 — job 개수는 멘토 리뷰 후 정한다.

@@ -7,9 +7,10 @@
 **열린 실행이 없으면 아무것도 안 한다.** 테스트 · 편집 · 다른 기능에서 불려도 영향이 없다. 실행은
 요청이 도는 스레드의 `contextvars` 에만 보인다.
 
-**밖에서 볼 수 있게 두 가지를 열어 둔다**(`observe` · `note_prompt`) — 구간이 바뀔 때와 끝날 때 관측 쪽을
-부르고, 요청이 보낸 프롬프트 판 이름을 모은다. 이것도 숫자 · 이름뿐이다. 관측 쪽이 예외를 내지 않는 것은
-관측 쪽 몫이다 — 여기서 삼키지 않는다.
+**밖에서 볼 수 있게 세 가지를 열어 둔다**(`observe` · `note_prompt` · `note_attempt`) — 구간이 바뀔 때와
+끝날 때 관측 쪽을 부르고, 요청이 보낸 프롬프트 판 이름과 요청 안의 다시 하기(`attempt`)를 모은다. 이것도
+숫자 · 이름뿐이다 — 시도 기록은 종류 · 구간 · 번호 · 예외 **클래스 이름**만 받는다. 관측 쪽이 예외를 내지
+않는 것은 관측 쪽 몫이다 — 여기서 삼키지 않는다.
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ class Run:
         # 관측 쪽은 구간이 바뀔 때 `phase(name)`, 끝날 때 `end(run, result, error)` 를 받는다.
         self.observer = None
         self.prompts: list[str] = []  # 이 실행이 보낸 프롬프트 판 이름 — 처음 쓴 순서, 중복 없이
+        self.attempts: list[dict] = []  # 요청 안의 다시 하기 — 적힌 순서
         self._started = self._mark = time.perf_counter()
 
     def switch(self, name: str) -> str:
@@ -134,6 +136,31 @@ def note_prompt(version: str | None) -> None:
     with _count:
         if version not in root.prompts:
             root.prompts.append(version)
+
+
+def note_attempt(kind: str, result: str, **names: str | int) -> None:
+    """요청 안의 다시 하기 하나를 적는다 — `kind` · 지금 구간 · `names`(구간 키 · 번호) · `result`.
+
+    `result` 는 `"ok"` 나 예외 **클래스 이름**이다 — 메시지는 받지 않는다. `note_prompt` 처럼 작업 스레드에서도
+    루트 실행에 적고 같은 락을 쓴다. 실행이 없으면 아무것도 안 한다.
+    """
+    run = _current.get()
+    if run is None:
+        return
+    root = run.root if isinstance(run, _Worker) else run
+    with _count:
+        root.attempts.append({"kind": kind, "phase": run.phase, **names, "result": result})
+
+
+@contextmanager
+def attempt(kind: str, **names: str | int):
+    """몸통을 시도 하나로 적는다 — 끝나면 `ok`, 예외가 나면 그 클래스 이름. 예외는 그대로 다시 올린다."""
+    try:
+        yield
+    except Exception as error:
+        note_attempt(kind, type(error).__name__, **names)
+        raise
+    note_attempt(kind, "ok", **names)
 
 
 def phase(name: str) -> None:

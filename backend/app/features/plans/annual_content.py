@@ -189,8 +189,8 @@ def generate_subthemes_with_memo(
                 "skipped": [{"summary": n.summary, "reason": n.reason.value} for n in notices],
             }
         timing.note_prompt(repair_payload["prompt_version"])
-        repaired = parse_subthemes(
-            complete_json(
+        with timing.attempt("repair"):
+            answer = complete_json(
                 SYSTEM_PROMPT
                 + V1_GUIDANCE
                 + VENUE_GUIDANCE
@@ -198,9 +198,8 @@ def generate_subthemes_with_memo(
                 "기존 메모 반영·미반영 판정은 유지하며 memo_applied·memo_skipped는 답하지 않는다.",
                 json.dumps(repair_payload, ensure_ascii=False),
                 transport=transport,
-            ),
-            tuple(item["month"] for item in wrong),
-        )
+            )
+        repaired = parse_subthemes(answer, tuple(item["month"] for item in wrong))
         _validate_subtheme_content(repaired, memo, payload["curriculum_context"])
         result.update(repaired)
         timing.phase("validate")

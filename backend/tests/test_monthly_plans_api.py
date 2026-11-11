@@ -33,7 +33,7 @@ from app.db import engine
 from app.features.auth.models import User
 from app.features.centers.models import Center, Class
 from app.features.plans import monthly_llm, monthly_router
-from app.features.plans.models import Plan
+from app.features.plans.models import GenerationRun, Plan
 from app.features.plans.repository import PostgresPlanRepository
 from app.features.template_profiles import service as profile_service
 from app.features.template_profiles.models import TemplateProfileVersion
@@ -774,7 +774,7 @@ def test_동시에_같은_달을_만들면_하나만_남고_LLM_대기_중_trans
             assert [row.id for row in rows] == [winner["id"]]
     finally:
         with Session(engine) as session:
-            for model in (Plan, TemplateProfileVersion):
+            for model in (GenerationRun, Plan, TemplateProfileVersion):
                 session.execute(delete(model).where(model.center_id == center_id))
             session.execute(delete(Class).where(Class.center_id == center_id))
             session.execute(delete(User).where(User.id == member_id))

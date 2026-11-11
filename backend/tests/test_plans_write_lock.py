@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.db import engine
 from app.features.centers.models import Center, Class
 from app.features.plans import router as annual_router
-from app.features.plans.models import Plan
+from app.features.plans.models import GenerationRun, Plan
 from app.main import app
 
 client = TestClient(app)
@@ -58,6 +58,7 @@ def live(_schema, teacher):
         yield {**ids, "plan": created.json()["id"]}
     finally:
         with Session(engine) as session:
+            session.execute(delete(GenerationRun).where(GenerationRun.center_id == ids["center"]))
             session.execute(delete(Plan).where(Plan.center_id == ids["center"]))
             session.execute(delete(Class).where(Class.id == ids["class"]))
             session.execute(delete(Center).where(Center.id == ids["center"]))
