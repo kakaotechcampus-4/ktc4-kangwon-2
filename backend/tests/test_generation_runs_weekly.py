@@ -7,6 +7,7 @@
 
 import json
 import uuid
+from urllib import error as urllib_error
 
 import pytest
 from fastapi.testclient import TestClient
@@ -19,6 +20,7 @@ from ssuksak.planning.venue_policy import VENUE_POLICY_TAG
 from test_generation_runs import (  # noqa: F401
     Broken,
     _rows,
+    assert_attempts_shape,
     assert_forward,
     broken_run,
     captured_run,
@@ -28,6 +30,7 @@ from test_generation_runs import (  # noqa: F401
     warnings,
 )
 from test_play_monthly_create_api import _annual as _play_annual
+from test_play_monthly_create_api import _Calls
 from test_weekly_plans_api import (  # noqa: F401
     FOCUS,
     LABELS,
@@ -101,6 +104,7 @@ def test_주간은_단계를_앞으로만_가고_저장으로_끝나며_끝_줄�
     final = run.final
     assert (final["status"], final["plan_id"]) == ("SUCCEEDED", response.json()["id"])
     assert (final["model"], final["llm_calls"]) == (None, 0)
+    assert final["attempts"] is None  # 다시 한 일이 없다
     assert {"db_read", "select", "validate", "assemble", "save"} <= set(final["phase_ms"])
     assert _versions(provider) and final["prompt_versions"] == _versions(provider)
 
@@ -135,6 +139,36 @@ def test_real_모드_주간은_전송을_지나_요일별_활동_나누기_단�
     # 어댑터가 보내는 payload 에는 판이 없다 — 판은 요청에 실려 provider 를 지날 때 적힌다.
     assert [v.split("+")[0] for v in final["prompt_versions"]] == [WEEKLY_CONTEXT_PROMPT_VERSION]
     assert "llm" in final["phase_ms"]
+
+
+def test_real_모드_주간의_전송_재시도는_부른_쪽_구간의_시도로_남고_생성은_같다(
+    world, captured_run, monkeypatch
+):
+    """첫 연결이 거부돼 한 번 다시 보낸다. `phase` 는 `llm` 이 아니라 그것을 부른 쪽의 구간이다."""
+    sent = []
+
+    def urlopen(request, timeout):
+        payload = json.loads(request.data)
+        sent.append(payload)
+        if len(sent) == 1:
+            raise urllib_error.URLError(ConnectionRefusedError())
+        return _Response(_answer(payload))
+
+    monkeypatch.setattr(llm.urllib_request, "urlopen", urlopen)
+    monkeypatch.setattr(llm, "RETRY_DELAY_SECONDS", 0)
+    monkeypatch.setattr(settings, "llm_mode", "real")
+    monkeypatch.setattr(settings, "weekly_llm_enabled", True)
+    monkeypatch.setattr(settings, "is_server", True)
+    monkeypatch.setattr(settings, "elice_mlapi_base_url", "https://llm.invalid/v1")
+    monkeypatch.setattr(settings, "elice_mlapi_api_key", "test-only-not-a-key")
+
+    response = _create(world)
+
+    assert response.status_code == 201, response.text
+    final = captured_run[-1].final
+    assert final["llm_calls"] == len(sent) >= 2  # 시도 기록은 상한 셈을 바꾸지 않는다
+    assert final["attempts"] == [{"kind": "transport", "phase": "select", "result": "ok"}]
+    assert_attempts_shape(final["attempts"])
 
 
 def test_주간_LLM_이_실패하면_저장까지_가지_않고_보낸_판이_남는다(world, captured_run, monkeypatch):
@@ -283,6 +317,44 @@ def test_놀이_월간도_단계를_앞으로만_가고_끝_줄에_판이_남는
     assert (final["status"], final["plan_id"]) == ("SUCCEEDED", response.json()["id"])
     assert recording.versions
     assert final["prompt_versions"] == list(dict.fromkeys(recording.versions))
+
+
+def _unknown_id(data):
+    data["together"][0]["content_ids"] = ["no.such.id"]
+
+
+def test_놀이_월간_수리_1회로_만들면_수리_호출_하나가_ok_로_남고_실행은_성공한다(
+    world, captured_run, monkeypatch
+):
+    calls = _Calls(_unknown_id)
+    monkeypatch.setattr(monthly_llm, "play_monthly_provider", lambda: calls)
+    _play_annual(world)
+
+    response = _post_play(world)
+
+    assert response.status_code == 201, response.text
+    assert calls.count == 2  # 첫 호출은 수리가 아니다 — 시도는 수리 하나뿐이다
+    final = captured_run[-1].final
+    assert final["status"] == "SUCCEEDED"
+    assert final["attempts"] == [{"kind": "repair", "phase": "repair", "result": "ok"}]
+    assert_attempts_shape(final["attempts"])
+
+
+def test_놀이_월간은_수리_뒤에도_검사에_걸리면_수리는_ok_고_실행은_check_에서_실패로_끝난다(
+    world, captured_run, monkeypatch
+):
+    """수리 결과는 호출 결과(답을 받았나)고, 고친 답이 검사를 통과했는지는 실행의 끝이 말한다."""
+    calls = _Calls(_unknown_id, _unknown_id)
+    monkeypatch.setattr(monthly_llm, "play_monthly_provider", lambda: calls)
+    _play_annual(world)
+
+    response = _post_play(world)
+
+    assert _error(response) == (500, "GENERATION_FAILED", [])
+    assert calls.count == 2
+    run = captured_run[-1]
+    assert (run.final["status"], run.stages[-1]) == ("FAILED", "check")
+    assert run.final["attempts"] == [{"kind": "repair", "phase": "repair", "result": "ok"}]
 
 
 def test_놀이_월간은_판_기록을_가명_처리_안쪽에_둔다(world, monkeypatch):

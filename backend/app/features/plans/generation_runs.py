@@ -74,6 +74,8 @@ class PromptNoted:
     """provider 를 부르기 직전에 요청의 `prompt_version` 을 timing 에 적는다.
 
     수리 호출도 같은 문을 지난다. `MaskedMemoProvider.__getattr__` 와 같은 모양이다.
+    수리 구간(`repair`)에서 불렸으면 그 호출을 수리 시도로 적는다. 월간 · 주간 · 놀이 월간의 수리
+    호출이 모두 이 문을 지나고, 수리 구간 안에서 provider 를 부르는 일은 그 한 번뿐이다(ADR-096).
     `with_masked_memo` 에 얹지 않고 그 **안쪽**에 둔다 — 이름표가 없으면 그 함수는 원래 provider 를
     그대로 돌려주고, 가명 치환을 통과하지 못해 부르지 않은 요청의 판은 남기지 않아야 한다.
     """
@@ -88,6 +90,9 @@ class PromptNoted:
 
         def call(request, *args, **kwargs):
             timing.note_prompt(getattr(request, "prompt_version", None))
+            if getattr(timing.current(), "phase", None) == "repair":
+                with timing.attempt("repair"):
+                    return method(request, *args, **kwargs)
             return method(request, *args, **kwargs)
 
         return call
@@ -160,6 +165,7 @@ class RunRecorder:
                     "phase_ms": {name: round(ms) for name, ms in run.ms.items()},
                     "model": MODEL if run.llm_calls else None,
                     "prompt_versions": list(run.prompts) or None,
+                    "attempts": list(run.attempts) or None,
                 }
             )
         except Exception as failure:
@@ -224,6 +230,7 @@ class GenerationRunOut(BaseModel):
     prompt_versions: list[str] | None
     llm_calls: int | None
     phase_ms: dict[str, int] | None
+    attempts: list[dict[str, str | int]] | None
     started_at: datetime
     finished_at: datetime | None
 

@@ -211,6 +211,10 @@ class GenerationRun(Base):
     phase_ms: Mapped[dict | None] = mapped_column(
         JSONB(none_as_null=True), comment="구간 이름 -> 걸린 ms. 끝날 때 채운다"
     )
+    attempts: Mapped[list | None] = mapped_column(
+        JSONB(none_as_null=True),
+        comment="요청 안의 다시 하기 — 구간 · 전송 · 수리 시도. 이름 · 번호만 (ADR-096)",
+    )
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), comment="끝난 시각. RUNNING 이면 NULL"
