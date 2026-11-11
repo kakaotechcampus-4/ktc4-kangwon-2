@@ -32,6 +32,7 @@ GitHub 이 「나는 이 저장소의 워크플로다」를 증명하면 AWS 가
 AWS_ACCOUNT_ID   Variable    12자리 계정 ID.  비밀이 아니라 Variables 에 넣는다
 HEALTHCHECK_URL  Secret      배포 후 확인할 주소
 DISCORD_WEBHOOK  Secret      실패 알림.  없으면 알림만 건너뛴다
+UPTIME_WEBHOOK   Secret      업타임 알림(팀만 보는 채널).  없으면 GitHub 실패 메일만
 ```
 
 `EC2_HOST` · `EC2_USER` · `EC2_SSH_KEY` 는 **더 이상 쓰지 않는다.** 지워도 된다.
@@ -515,7 +516,7 @@ FAIL   위와 같은데 실패. 하나라도 있으면 종료 코드 1
 
 ## 업타임 확인
 
-`.github/workflows/uptime.yml` — **10분마다 밖에서** 공개 주소를 보고, 내려갔으면 Discord 로 알린다.
+`.github/workflows/uptime.yml` — **10분마다 밖에서** 공개 주소를 보고, 내려갔으면 알린다.
 배포 알림은 배포가 실패할 때만 온다. 배포와 상관없이 서버가 죽으면 이 확인이 생기기 전에는 아무도 몰랐다.
 판정은 `scripts/uptime-check.sh` 한 곳에 있고, `backend/tests/test_uptime_check.py` 가 가짜 `curl` · `gh` 로 아래 표를 본다.
 
@@ -526,7 +527,7 @@ FAIL   위와 같은데 실패. 하나라도 있으면 종료 코드 1
 내려감 + Deploy run 이 끝나지 않은 것이 있다   새로 알리지 않는다 (배포 중). 시간 창이 아니라 run 상태를 봐서 47분짜리 배포도 덮는다.
                                               직전 업타임 run 이 실패였으면 그 상태를 이어 run 빨강, 아니면 run 초록
 내려감 + 직전 업타임 run 이 실패               이미 알렸다.  또 알리지 않는다 · run 빨강
-내려감 + 그 밖                                🔴 어느 주소가 무슨 코드였나 · run 주소를 Discord 로 · run 빨강
+내려감 + 그 밖                                🔴 어느 주소가 무슨 코드였나 · run 주소를 알림 경로로 · run 빨강
 정상   + 직전 업타임 run 이 실패               🟢 복구 알림 · run 초록
 정상   + 그 밖                                조용히 · run 초록
 ```
@@ -538,10 +539,20 @@ FAIL   위와 같은데 실패. 하나라도 있으면 종료 코드 1
 말해 주지 않으므로 건너뛰고 그 앞을 본다. 이 결론이 「이미 알렸다」의 유일한 기록이라, 알리지 않는 갈래(배포 중)도 상태를 이어 간다 —
 초록으로 끝나면 배포 뒤 정상 run 이 직전을 success 로 읽어 🟢 가 빠진다.
 
-**secret 은 배포가 쓰는 둘 그대로다.** `HEALTHCHECK_URL`(없으면 `https://ssample.duckdns.org`) · `DISCORD_WEBHOOK`.
-웹훅이 비어 있으면 알림만 건너뛰고 판정은 그대로다 — 내려갔으면 run 은 빨갛다.
+**secret 은 둘이다.** `HEALTHCHECK_URL`은 배포 확인과 같이 쓴다(없으면 `https://ssample.duckdns.org`).
+`UPTIME_WEBHOOK`은 이 확인 전용으로 새로 넣는다 — **팀만 보는 채널의** Discord 웹훅이다.
+배포 알림 채널(`DISCORD_WEBHOOK`)은 많은 사람이 봐서 업타임 알림에는 쓰지 않는다.
 
-**알림 경로를 시험하려면** Actions → Uptime → Run workflow 에서 `test_alert` 를 켠다. 🧪 「시험 알림 — 실제 장애 아님」과
+**알림이 가는 길은 둘 중 하나다.** 어느 쪽이든 판정은 그대로고, 내려갔으면 run 은 빨갛다.
+
+```
+UPTIME_WEBHOOK 이 있다   그 Discord 채널로 🔴 · 🟢 (· 🧪)
+없다                    Discord 로는 안 간다.  내려간 run 이 빨갛게 끝나 GitHub 이 예약 워크플로 실패 메일을
+                        cron 줄을 마지막으로 고친 사람에게 보낸다.  🟢 복구는 메일로 오지 않는다 · 장애 중에는 run 마다 메일
+```
+
+**알림 경로를 시험하려면** `UPTIME_WEBHOOK` 을 넣은 뒤 Actions → Uptime → Run workflow 에서 `test_alert` 를 켠다.
+비어 있으면 시험 알림은 보낼 내용을 로그에만 찍고 아무 데도 안 간다. 🧪 「시험 알림 — 실제 장애 아님」과
 지금 확인 결과를 한 번 보내고 초록으로 끝난다(내려가 있고 직전이 이미 실패였으면 그 상태를 이어 빨강). 예약 실행은 기본 브랜치(develop)의 파일로 돌아서, 머지 뒤에야 돌기 시작한다.
 
 **로컬에서 같은 판정을 돌려 볼 수 있다.** 웹훅을 비워 두면 보낼 내용을 찍기만 한다. **로컬에 웹훅을 넣지 않는다.**
@@ -559,7 +570,9 @@ BASE=https://ssample.duckdns.org REPO=kakaotechcampus-4/ktc4-kangwon-2 GH_TOKEN=
   그동안 서버가 죽어도 새 알림이 없고, 배포가 끝난 뒤에도 죽어 있으면 그다음 run 이 알린다.
 - **직전 run 이 장애가 아닌 이유(러너 오류 따위)로 실패여도 「이미 알렸다」로 읽는다.** 그 뒤에 진짜 내려가면 새 알림이 안 간다.
   그 실패는 다음 정상 run 이 🟢 를 보내면서 풀리니, 이유 모를 🟢 가 오면 Actions 의 Uptime 기록을 본다.
-- **장애가 이어지는 동안 run 마다 빨갛게 끝나** GitHub 이 예약 워크플로 실패 메일을 보낸다(2시간이면 약 12통).
+- **장애가 이어지는 동안 run 마다 빨갛게 끝나** GitHub 이 예약 워크플로 실패 메일을 보낸다(2시간이면 약 12통). 웹훅이 있어도 같다.
+  메일은 cron 줄을 마지막으로 고친 사람에게만 가고, 복구(🟢)는 메일로 오지 않는다.
+- **`UPTIME_WEBHOOK` 을 넣기 전에는 메일이 유일한 알림이다.** 메일을 받는 사람이 놓치면 아무도 모른다.
 - **알림 전송이 실패하면 다음 run 이 다시 보내지 않는다** — 직전 run 이 이미 실패라서 「이미 알렸다」로 읽는다.
   대신 run 이 빨간 채 남고 GitHub 이 예약 워크플로 실패 메일을 보낸다. Discord 가 조용해도 Actions 의 Uptime 기록을 본다.
 
