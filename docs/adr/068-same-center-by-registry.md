@@ -2,7 +2,7 @@
 
 - 2026-11-07
 - 상태 — 채택
-- 관련 — ADR-029(대체) · ADR-059(§3 · §4 보충) · ADR-017 · `docs/api-spec.md` §1 · §2-2
+- 관련 — ADR-029(대체) · ADR-059(§3 대체 · §4 보충) · ADR-017 · `docs/api-spec.md` §1 · §2-2
 
 ## 맥락
 
@@ -17,9 +17,9 @@ PM 은 「같은 어린이집으로 가입하면 같은 원」을 원했다. 원
 2026-11-07 PM 결정이다.
 
 1. **원은 정부 어린이집 목록에서 고른다.** 어린이집정보공개포털 「어린이집 기본정보」(매월 말일 적재)를
-   `scripts/fetch_daycares.py` 로 받아 `backend/resources/daycares/daycares.csv` 에 사본으로 둔다.
+   `backend/scripts/fetch_daycares.py` 로 받아 `backend/resources/daycares/daycares.csv` 에 사본으로 둔다.
    **가입할 때 정부 서버를 부르지 않는다** — 그쪽이 멈추거나 인증이 막혀도 첫 설정은 된다. 사본은 매달 다시 받는다.
-   사본을 새로 받아 배포한 뒤에는 `scripts/registry_keys.py` 로 DB 의 열쇠를 새 사본에 맞춘다 — 표기가 바뀐 옛 열쇠와
+   사본을 새로 받아 배포한 뒤에는 `backend/scripts/registry_keys.py` 로 DB 의 열쇠를 새 사본에 맞춘다 — 표기가 바뀐 옛 열쇠와
    #415 전 열쇠 없는 원을, 후보가 하나뿐일 때만 옮긴다(2026-11-10).
 2. **한 원의 열쇠는 「시도|시군구|어린이집명|주소」다.** 정부 목록에 고유 번호가 없다.
    `centers.registry_key`(UNIQUE, NULL 허용)에 저장한다. 시도 · 시군구는 우리 지역 고르개 이름에 맞춘다 —

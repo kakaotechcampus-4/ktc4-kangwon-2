@@ -2,6 +2,7 @@
 
 - 날짜: 2026-11-03
 - 상태: 사용자 방향 확정 (2026-11-03 하민). 1차(글 요청 · 반영 못한 요청) · 2차(안전교육 개수 · 주차) 로컬 구현
+  → 2026-11-11 현재 채택 · 구현됨(develop). 생성 요청이 `memo` 를 받고 응답이 `memo_notices` 를 싣는다(`backend/app/features/plans/monthly_schemas.py:24` · `:179`).
 - 보완: api-spec §9 「받지 않는 것: 자유 메모」를 이 ADR 의 `memo` 로 바꾼다. CLAUDE.md §5(Rule/LLM 경계)는 그대로다.
 
 ## 맥락

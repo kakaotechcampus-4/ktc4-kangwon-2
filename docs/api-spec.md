@@ -380,10 +380,9 @@ GET /health/ready    DB 까지 본다(SELECT 1).  배포 판정은 이쪽   200 
 
 ### 반 수정 — `PATCH /api/classes/{class_id}`
 
-등록한 반의 이름 · 연령 · 담임 이름 · 동의를 고친다(FR-108 · ADR-062). **서버는 구현했고 화면은 후속이다**(ADR-062 순서 ④).
+등록한 반의 이름 · 연령 · 담임 이름 · 동의를 고친다(FR-108 · ADR-062). 화면은 온보딩 마지막 확인(S3a)의 반 수정(`components/onboarding/ReviewClassEdit.tsx` → `lib/api/onboarding.ts` `saveClassEdit` → `updateClass`)이 부른다.
 
-**Request** — 보낸 칸만 바꾼다. 원 정보 수정 `PATCH /api/centers/{center_id}` 와 같은 방식이다
-(`backend/app/features/centers/schemas.py` `CenterUpdate`).
+**Request** — 보낸 칸만 바꾼다(`backend/app/features/centers/schemas.py` `ClassUpdate`).
 
 ```json
 { "name": "해님반" }
@@ -1136,7 +1135,7 @@ generation                     §4 의 generation 과 같은 객체
    다시 만든 뒤에도 비슷한 겹침이 남으면 원래 후보를 둔다. **이름이 똑같은 후보가 남으면 500** 이다.
 
 네 구간이 모두 통과해야 한 번 저장한다. 호출 하나의 마감은 120초다. 120초는 호출 하나 전체에 거는 벽시계 한도이며(읽기 한 번 상한이 아니다) 이 형식에만 적용한다 — 문서 · 연간 월별 주제형의 기존 30초 타임아웃은 그대로다(월간 생성은 2026-10-31 부터 같은 120초 스트리밍이다, §9-1).
-nginx `proxy_read_timeout` 은 upstream 에서 두 번 읽는 사이의 무응답 간격 한도다 — 이 경로만 510초, 나머지는 120초다. 단계가 셋(동시 호출 · 실패 구간 · 겹친 후보)이라 최악은 3 × 120초 = 6분이고 510초 안이다. Sol 실측 평균은 38초다(2026-11-09, `docs/evaluation/runs/2026-11-09-play-annual/`).
+nginx `proxy_read_timeout` 은 upstream 에서 두 번 읽는 사이의 무응답 간격 한도다 — 이 경로만 510초, 월간 생성 · 놀이 중심 월간 생성 · 주간 생성 · 월간 · 주간 칸 재생성 · 연간 이어받기 추출은 270초, 나머지는 120초다(`nginx/app-routes.conf` · `nginx/nginx.conf`). 단계가 셋(동시 호출 · 실패 구간 · 겹친 후보)이라 최악은 3 × 120초 = 6분이고 510초 안이다. Sol 실측 평균은 38초다(2026-11-09, `docs/evaluation/runs/2026-11-09-play-annual/`).
 호출마다 `llm_usage` 한 줄이 남아 계획안 하나에 4~12줄이다(ADR-036). `stop` 으로 끝나지 않은 스트림은 토큰을 쓰고도 줄이 남지 않는다.
 서버 로그에는 숫자만 남는다: `annual play-project parallel recalled=… replaced=… overlaps_left=…`.
 
@@ -2737,7 +2736,7 @@ copied_from        CANDIDATE_COPIED 만.  복사한 훈련 후보의 cell.item_i
 
 연간 계약은 §7-1 이다. 월간은 같은 키(`type` · `occurred_at` · `actor` · `system_actor`)를 쓰고,
 연간의 `month` 대신 `scope` · `item_id` · `section_key` · `week_id` 로 칸을 가리키며, `value_change` · `generation_change` 를
-준다. 연간은 `value_change` 만 더하기로 정했고 아직 구현 전이다(§7-1, ADR-030 PM-07). 연간에는 `item_id` 고르기가 없다.
+준다. 연간은 `value_change` 만 더한다(§7-1, ADR-030 PM-07 — `plans/router.py` 연간 audit 이 싣는다). 연간에는 `item_id` 고르기가 없다.
 
 ---
 
@@ -4223,7 +4222,7 @@ true    근거가 수정·삭제됐다.  교사가 다시 봐야 한다
 
 **초안의 근거 갱신은 `POST /api/documents/{id}/refresh`다.** 교사가 「바뀐 원본을 보고 다시 검토하겠다」고 누른다.
 확정된 stale 일일 보육일지는 비교 토큰을 사용하는 `reconfirm`으로 반영·검증·재확정을
-한 트랜잭션에서 처리할 수 있다 (아래 TASK 2 후속 계약). 단순 stale 표시로 확정을 취소하지 않는다.
+한 트랜잭션에서 처리할 수 있다 (아래 「일일 보육일지 재확정 후속 계약」). 단순 stale 표시로 확정을 취소하지 않는다.
 
 ```
 1  근거 사본을 지금 원본으로 다시 뜬다        관찰 기록이면 fact · date,  문서면 사실 · start · status
@@ -5015,8 +5014,9 @@ item    operation-plan · annual-plan · interaction-record · duty-training · 
 「Audit 테이블」은 PR #17 답변(*"해당 기능 담당했던 하민, 성진에게 전달하여…"*)에 근거한다.
 **2026-09-19 PM 배정 완료.** 「담당 미정」이었던 4건을 위와 같이 나눴다.
 
-**이 계약이 요구하는데 DB 에 아직 없는 것** — 마이그레이션 PR 이 따로 필요하다.
-체크리스트에 안 적으면 담당자가 필드 갭을 통째로 놓친다.
+**이 계약이 요구해 DB 에 더한 것** — 처음에는 「DB 에 아직 없는 것」 목록이었다.
+2026-11-11 대조로 아래는 모두 마이그레이션이 들어갔다. **`plan_items` 만 만들지 않았다** — 계획안 본문은 `plans.body` JSONB 하나에 둔다(docs/schema.md).
+지금 테이블 전체는 docs/schema.md 「테이블」이다.
 
 ```
 centers.region_sido            VARCHAR                   §1  region 을 둘로 나눈다
@@ -5024,7 +5024,7 @@ centers.region_sigungu         VARCHAR                   §1  기존 region 컬�
 classes.consent_confirmed_at   TIMESTAMPTZ nullable      §2  consent_confirmed
 children.code                  VARCHAR                   §2-1
 UNIQUE(class_id, code)         children 제약              §2-1
-plans · plan_items             연간계획안 본체             §4 · §5 · §6 · §7
+plans                          연간계획안 본체             §4 · §5 · §6 · §7  (plan_items 는 만들지 않음 — body JSONB)
 greetings                      enabled + 12개월 items      §3  (7주차)
 observations                   관찰 기록 본체              §10
 INDEX(class_id, date)          observations 조회           §10  목록이 반·기간으로 거른다
@@ -5036,8 +5036,9 @@ INDEX(source_kind, source_id)  document_sources            §11  stale 전파가
 evaluation_checks              원 · 학년도 · 평가요소 체크    §12  체크 시각만. 지표 완료는 저장하지 않는다(ADR-022)
 ```
 
-`classes.school_year` 는 **컬럼이 이미 있다.** 서버가 채우는 로직만 만들면 된다.
-# TASK 2 후속 계약 (2026-10-19)
+`classes.school_year` 도 컬럼이 있다.
+
+## 일일 보육일지 재확정 후속 계약 (2026-10-19)
 
 일일 보육일지의 교사 검토 UI는 체크박스 하나다. 선택한 경우만 기존 API 필드
 `checks.fact`, `checks.interpretation`, `checks.support`를 모두 true로 보낸다.

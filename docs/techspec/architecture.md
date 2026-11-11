@@ -229,6 +229,7 @@ Golden 테스트는 왼쪽 열만 쓴다. 그래서 결과가 매번 같다(CLAU
 | Elice Sol | `backend/app/shared/llm/client.py` | 모든 생성 호출이 이 한 곳을 지난다. `openai/gpt-6.1-sol` · 한 호출 30초 · 생성 한 번에 최대 48호출 · 모델에 닿지 못한 요청만 한 번 더(ADR-076). 긴 출력은 스트리밍으로 받는다 |
 | 구조화 출력 | `adapters/elice_openai_monthly.py` · `backend/.../plans/llm.py` | JSON 스키마로 받는다. 연간 문장은 요청한 `theme_id`와 대조해 다른 id는 버린다 |
 | 호출 기록 | `client.py` `_log_usage` | 성공한 호출마다 모델 · 입력 · 출력 · 합계 토큰 숫자만 한 줄. 실패는 예산 초과 · 전달 안 됨 · 시간 초과 · 기타로 나눈다. 프롬프트 · 응답은 남기지 않는다(ADR-036) |
+| 생성 실행 기록 | `generation_runs` 표(`plans/models.py`) | 생성 요청마다 한 줄 — 종류 · 상태 · 단계 · 오류 코드 · 모델 · prompt 판 · 호출 수 · 단계별 시간 · 요청 안 다시 하기(`attempts`). 숫자와 이름만 든다(ADR-096) |
 | jev | 품질 측정 | `typesafe/jev-1.14` · 10초. 계획안 저장 게이트와 교사 화면에는 쓰지 않는다 — [evaluation.md](evaluation.md) |
 | 요청 사항 메모 가명 | `backend/.../plans/memo_privacy.py` | 메모 속 이름을 가명으로 바꿔 보내고, 답에서 되돌린다. 바꾸지 못하면 호출하지 않는다 |
 | FastAPI | `features/plans/router.py` · `monthly_router.py` · `weekly_router.py` · `play_monthly_router.py` | 요청을 Core 유스케이스 명령으로 바꿔 부르고, Core 오류를 공개 오류 코드로 바꾼다 |

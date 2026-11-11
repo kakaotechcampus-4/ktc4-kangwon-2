@@ -2,6 +2,7 @@
 
 - 날짜: 2026-10-31
 - 상태: 제안 — 결정 WD-1~WD-4 는 하민 확정(2026-10-31). Template v0.2.0 파일은 2026-10-31 하민 승인(`reviewer_ai_lead_001`). WD-4 출력 양식 · WD-5 공개 필드는 2026-11-01 서버 담당과 합의(구현 전).
+  → 2026-11-11 현재 채택 · 구현됨(develop). 서버 응답의 `repeat_by`(`backend/app/features/plans/weekly_schemas.py:68`) · HWPX 의 `DAY` 분기(`export.py:398`)가 있다.
 - 보충 · 일부 대체: ADR-030 WQ-02 와 ADR-027 「`DAY` 는 후속」을 **`group_activity` · `special_program` 두 Section 에 한해** 대체한다. 다른 Section 은 WQ-02 그대로 주 단위 값이다.
 
 ## 맥락
