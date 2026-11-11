@@ -131,16 +131,69 @@ run 기록의 커밋과 서버 로그의 「배포 … <sha>」 줄을 맞춰 �
 - 계획을 세운 뒤 실행 전에 develop 에 머지가 두 번(#503 · #505) 들어와 L 이 바뀌었다. F 를 새 develop 위에 다시 합쳐 「L + 세 줄」을 지켰다 —
   옛 L 위의 F 를 올렸으면 F 가 도는 동안 그 두 PR 이 빠진다. **연습 직전에 배포 브랜치 끝(지금은 main, ADR-094) = 마지막 성공 배포인지 다시 본다**
 
+## 운영에서 마이그레이션을 건너는 롤백을 해 봤다
+
+2026-11-11 12:44 ~ 12:52 KST(03:44 ~ 03:52Z), 운영 코드를 `6a75b4c4`(#554, main)에서 `4b772ff4`(#553)로 되감았다가 `6a75b4c4` 로 다시 올렸다.
+운영 DB 는 내내 리비전 `7addee8ef8af` 였다 — `generation_runs` 표(#542)를 만드는 마이그레이션이다. 새 표 하나와 인덱스 둘만 더하고 기존 표는 안 바꾼다(`plans` 를 가리키는 FK 는 `ON DELETE SET NULL`).
+되감은 `4b772ff4` 는 그 리비전을 들여온 develop 머지 `778c7320`(#542)의 바로 앞 커밋이다. 운영에 나간 적이 없고,
+#542 PR 의 CI `backend (rollback compat)`([run 42892166177](https://github.com/kakaotechcampus-4/ktc4-kangwon-2/actions/runs/42892166177))이 이 조합을 빈 DB 에서 시험했다.
+둘 다 main 에서 손 배포(`workflow_dispatch`)를 `auto_rollback=true` 로 돌렸다.
+
+- 되감기 [run 42954693841](https://github.com/kakaotechcampus-4/ktc4-kangwon-2/actions/runs/42954693841) — 2분 33초. 서버 로그:
+  「직전 성공 6a75b4c4」 → 「배포 4b772ff4」 →
+  「마이그레이션을 건너뛴다 — DB 는 7addee8ef8af(778c7320 에서 들어옴), 올리는 코드는 그 직전 4b772ff4. CI rollback compat 이 이 조합을 시험했다 (ADR-073)」 →
+  「서버 안 확인 통과 — health/ready 200 · 화면 200 (3회째)」 → 서버 종료 코드 0. 밖 Health check `health/ready 200 (1회째)`
+- 복귀 [run 42955392390](https://github.com/kakaotechcampus-4/ktc4-kangwon-2/actions/runs/42955392390) — 41초. 「직전 성공 4b772ff4」 → 「배포 6a75b4c4」 →
+  서버 안 확인 통과(3회째) → 서버 종료 코드 0. 밖 `health/ready 200 (1회째)`
+- **서버 상태를 세 번 읽었다** — 읽기만 하는 SSM 으로 되감기 전(03:43:48Z) · 되감은 뒤(03:50:29Z) · 복귀 뒤(03:52:03Z).
+  last-good · HEAD 는 `6a75b4c4` → `4b772ff4` → `6a75b4c4`. backend · frontend 컨테이너 생성 시각은 2026-11-10 20:41:36Z → 11-11 03:46:34Z → 03:51:17Z(각 run 시작 뒤).
+  DB 리비전 `7addee8ef8af` 와 행 수(plans 64 · documents 72 · generation_runs 10, 그중 `plan_id` NULL 7)는 세 번 다 같았다
+- **밖에서 어느 코드인지 봤다** — `/openapi.json` 의 `/api/generation-runs` 경로 수가 2(`6a75b4c4`) → 0(`4b772ff4`, #542 이전이라 없다) → 2.
+  감시가 10바퀴(약 12초)마다 물었다. 첫 0 은 03:46:53Z, 다시 첫 2 는 03:51:24Z
+- **끊긴 시간** — 밖에서 1초마다 `/health` · 화면(`/`) · `/health/ready` 를 물었다(한 바퀴 1~5초). 시각은 UTC 다.
+  되감기: API(`/health` · `/health/ready`) 마지막 200 03:46:35 → 첫 200 03:46:45, 약 8~10초. 화면은 502 · 000 을 본 뒤 03:46:42 에 200, 약 2~7초.
+  감시 한 바퀴가 03:46:37 에서 03:46:42 로 5초 걸려서 화면 쪽 폭이 넓다.
+  복귀: API 마지막 200 03:51:18 → 첫 200 03:51:24, 약 5~6초. 화면 03:51:19 502 → 03:51:22 200, 약 1~4초. 감시 원본(03:41:28 ~ 03:52:20Z, 526줄)에서 두 구간 앞뒤만 옮긴다
+
+```text
+03:46:35 health=200 front=200 ready=200
+03:46:36 health=502 front=502 ready=502
+03:46:37 health=502 front=000 ready=502 genruns=err
+03:46:42 health=502 front=200 ready=502   ← 앞 줄에서 5초 뒤 (감시 한 바퀴)
+03:46:44 health=502 front=200 ready=502
+03:46:45 health=200 front=200 ready=200
+   … 03:46:53 genruns=0 (되감은 코드) …
+03:51:18 health=200 front=200 ready=200
+03:51:19 health=502 front=502 ready=502
+03:51:22 health=502 front=200 ready=502
+03:51:23 health=502 front=200 ready=502
+03:51:24 health=200 front=200 ready=200 genruns=2   ← 6a75b4c4 로 돌아왔다
+```
+
+알게 된 것:
+
+- **되감는 곳을 develop 이력의 쌍으로 골랐다.** main 쪽 쌍인 `8fbeb0ea` 는 `6a75b4c4` 와 사이에 머지 34개 · 마이그레이션 13개 · backend 125파일(+8466 −607)이 있고
+  권한 수정 #491 도 들어 있어 PR 하나가 아니다. develop 쪽 `4b772ff4` ~ `778c7320` 사이는 #542 하나다(39파일 +3002 −148)
+- 지난 롤백 연습에서는 「밖에서 지금 도는 커밋을 알려 주는 주소가 없다」고 적었다. 이번엔 openapi 경로 수가 그 구실을 했다.
+  **두 코드의 라우트가 다를 때만 통한다** — 라우트가 같은 두 커밋은 못 가른다
+- 되감기 run 이 2분 33초로 복귀 41초보다 길었다 — 옛 코드는 서버에 빌드 캐시가 없어 다시 빌드했다
+- **이 연습은 옛 코드가 새 데이터 위에서 쓰는 것을 시험하지 않았다.** 옛 코드가 도는 동안 행 수가 그대로였다(세 번 읽은 숫자가 같다). 계획의 주장 범위도
+  판정이 skip 으로 나오는 것 · 되감은 프로세스가 새 DB 에 붙고 화면이 뜨는 것 · 끊긴 시간 · 되감는 동안 쓰기 수까지다.
+  「옛 코드가 새 데이터를 다 읽는다」 · 「API 가 정상 동작한다」는 주장하지 않는다
+- 시작 전에 main 끝 = 마지막 성공 배포 = `6a75b4c4` 이고 진행 중 · 대기 중 배포 run 이 없는 것을 다시 봤다. 이 계획은 main 이 안 바뀌는 동안에만 맞다
+
 ## 아직 아닌 것
 
-- **응답이 없는 경우는 밖에서 10분마다 본다 — 아직 운영에서 한 번도 안 돌았다.** `uptime.yml`(#458)이 `/` 와 `/health/ready` 가 둘 다 200 인지 보고, 실패하면 30초 뒤 한 번 더 본 뒤에도 실패일 때만 알린다(팀 전용 웹훅 `UPTIME_WEBHOOK`, 없으면 GitHub 실패 메일).
+- **응답이 없는 경우는 밖에서 10분마다 본다 — 실패 알림이 실제로 오는지는 아직 못 봤다.** `uptime.yml`(#458, 2026-11-11 머지)이 `/` 와 `/health/ready` 가 둘 다 200 인지 보고, 실패하면 30초 뒤 한 번 더 본 뒤에도 실패일 때만 알린다.
+  손으로 한 번 돌렸다([run 42952869636](https://github.com/kakaotechcampus-4/ktc4-kangwon-2/actions/runs/42952869636)) — 두 주소 모두 200 · 「정상」 · 초록.
+  팀 전용 웹훅 `UPTIME_WEBHOOK` 은 넣지 않기로 했다(2026-11-11). 알림은 GitHub 실패 워크플로 메일뿐이고, 메일은 cron 줄을 마지막으로 바꾼 사람에게만 가며 복구 메일은 없다.
   공개 주소의 응답 코드만 보고, GitHub 예약 실행이 늦거나 빠져 죽은 순간부터 알림까지 보통 최대 약 25분이고 더 걸릴 때도 있고, 배포 중에는 알리지 않는다 — `docs/deploy.md` 「업타임 확인」. 예약 실행은 기본 브랜치에 들어가야 돌기 시작한다
 - **자동 롤백은 운영에서 한 갈래만 돌려 봤다** — ready 만 503 인 커밋 → 3(위). 되돌리기마저 실패하는 4 · `up -d` 실패 · reload · restart 실패 갈래는
   pytest 가 가짜 서버로만 보고, 알림 갈래는 워크플로 안이라 단위 테스트가 없다 — 가짜 스크립트로 손 시험만 했다.
   응답 코드만 봐서 화면 내용이 깨진 경우 · 기능 버그는 못 잡고, 이 기능이 머지된 뒤 첫 성공 배포 전에는 되돌아갈 기록이 없으며, 마이그레이션 판정(ADR-073)이 거절하는 롤백과
   롤백 뒤에도 브랜치 끝이 그대로인 것은 사람이 한다 — ADR-078 「한계」
-- **CI 를 기다리는 배포는 아직 운영에서 한 번도 안 돌았다.** push 배포는 같은 커밋의 CI(push)가 성공해야 나가게 했다(`scripts/wait-ci.sh` ·
-  `deploy.yml` 「CI 기다리기」) — 다음 develop→main 머지가 첫 회다. 손 배포(`workflow_dispatch`)는 CI 를 기다리지 않는다
+- **CI 를 기다리는 것은 push 배포뿐이다.** push 배포는 같은 커밋의 CI(push)가 성공해야 나가게 했다(`scripts/wait-ci.sh` ·
+  `deploy.yml` 「CI 기다리기」) — 첫 운영 회는 2026-11-11 05:33 KST(아래 「더 모을 근거」). 손 배포(`workflow_dispatch`)는 CI 를 기다리지 않는다 — 급히 되감을 때 막히지 않게
 - **마이그레이션을 건너는 롤백은 PR 하나까지만 된다.** `deploy.sh` 가 올리기 전에 DB 리비전을 읽어, 그 리비전을 들여온 PR 의
   머지 직전 커밋으로는 `alembic upgrade` 를 건너뛰어 되감고 그 밖은 checkout 전에 멈춘다 — `scripts/deploy.sh` · ADR-073.
   건너뛰어도 되는 근거는 CI `backend (rollback compat)` 다. 머지 직전 코드가 PR 의 새 DB 에서 도는지 pytest 로 시험한다 — `.github/workflows/ci.yml`.
@@ -160,8 +213,10 @@ run 기록의 커밋과 서버 로그의 「배포 … <sha>」 줄을 맞춰 �
 - [x] 배포 1회 성공 로그 — 2026-10-31 18:26 KST `main` `43cb0fe` 자동 배포(run 41188715632), `health/ready 200 (1회째)`
 - [x] 롤백 1회 연습 — 2026-11-07 02:45 KST 운영 `8d4630a8` → `d59ceaf8` → `8d4630a8`(run 42264552753 · 42264741582), 둘 다 `health/ready 200 (1회째)`, 끊김 약 5초씩. 위 「운영에서 롤백을 한 번 해 봤다」
 - [x] 마이그레이션 PR 하나를 건너는 롤백 판정 — 올림 · 건너뜀 · 거절 판정표 전부와 실제 리비전을 선언한 파일로 찾는 것을 pytest 가 본다(CI 에서 돈다). 2026-11-08 실제 이력 손 시험: #424 직전 `de04e2c0` 는 건너뜀, 그보다 앞 #383 직전은 거절, 최신은 평소대로 — `backend/tests/test_deploy_script.py` · ADR-073
-- [ ] 운영에서 마이그레이션을 건너는 롤백 연습 — 머지 · 필수 검사를 켠 뒤, 그때 DB 리비전을 들여온 머지의 직전 커밋으로(main 배포면 develop→main 머지의 직전 main, 로그에 「마이그레이션을 건너뛴다」) → 최신,
-  둘 다 `health/ready 200`. 커밋은 그때 다시 정한다 — 11/08 에 적은 `89e84790` → `de04e2c0` 은 그 뒤 #448 · #470 이 마이그레이션을 더해 지금은 거절된다
+- [x] 운영에서 마이그레이션을 건너는 롤백 연습 — 2026-11-11 12:44~12:52 KST 운영 DB 리비전 `7addee8ef8af`(#542)는 그대로 두고 코드만 `6a75b4c4` → `4b772ff4` → `6a75b4c4`
+  (run 42954693841 · 42955392390): 로그 「마이그레이션을 건너뛴다」 · 서버 종료 코드 0 · 밖 `health/ready 200 (1회째)` 둘 다, 끊김 API 약 8~10초 · 5~6초,
+  서버 상태를 세 번 읽어 DB 리비전 · 행 수 그대로. 되감은 곳은 develop 이력의 쌍 — 리비전을 들여온 develop 머지 `778c7320` 의 직전 `4b772ff4` 다.
+  「develop→main 머지의 직전 main」(`8fbeb0ea`)은 사이에 머지 34개 · 마이그레이션 13개라 PR 하나가 아니어서 안 썼다. 위 「운영에서 마이그레이션을 건너는 롤백을 해 봤다」
 - [x] 자동 롤백의 서버 안 판정 · 되돌리기 · 종료 코드 — F 가 안 살아나면 L 의 `deploy.sh`(F 의 것이 아니다)가 `DEPLOY_REF=L` · `AUTO_ROLLBACK=0` · 잠금이 풀린 채로 돌아 3,
   그 스크립트가 0 이 아니게 끝나면 · 롤백이 꺼짐 · 기록 없음 · L = F · L 에 `deploy.sh` 가 없으면 4, 교체 전 실패는 1, `up -d` 실패와 reload · restart 실패도 되돌리고,
   root 로 시작해도 코드와 결과 줄이 그대로 나오고 잠금이 겹침을 막는 것을 pytest 가 가짜 서버로 본다(CI 에서 돈다) — `backend/tests/test_deploy_script.py` · `backend/tests/test_ssm_deploy_script.py` · ADR-078
@@ -180,9 +235,12 @@ run 기록의 커밋과 서버 로그의 「배포 … <sha>」 줄을 맞춰 �
   `backend/tests/test_deploy_script.py` · ADR-094
 - [x] main 배포 첫 회 — 2026-11-11 00:20 KST #529 머지 `8fbeb0ea` push 배포([run 42843300103](https://github.com/kakaotechcampus-4/ktc4-kangwon-2/actions/runs/42843300103)):
   「올릴 커밋」 · 서버 로그 「배포 8fbeb0ea…」 가 같고, 직전 성공 `e5e5e883`, 서버 안 「health/ready 200 · 화면 200 (1회째)」 · 밖 `health/ready 200 (1회째)` · 서버 종료 코드 0
-- [ ] CI 를 기다리는 배포 첫 회 — 다음 develop→main 머지에서 「CI 기다리기」가 CI 성공을 본 뒤에 배포가 시작되는지(run 의 두 job 시각).
+- [x] CI 를 기다리는 배포 첫 회 — 2026-11-11 05:33 KST(11-10 20:33Z) #554 `6a75b4c4` main push 배포
+  ([run 42896486416](https://github.com/kakaotechcampus-4/ktc4-kangwon-2/actions/runs/42896486416)): job 「CI 기다리기」 20:33:42Z → 20:39:20Z success,
+  로그 「CI success — …/runs/42896486637」(그 [CI run](https://github.com/kakaotechcampus-4/ktc4-kangwon-2/actions/runs/42896486637) 20:33:38Z → 20:38:57Z success)을 본 뒤
+  job 「deploy」가 20:39:24Z 에 시작해 success. 시각은 UTC.
   판정은 `backend/tests/test_wait_ci_script.py`(성공 · 실패 5종 · 더 새 push 가 취소 · 뒤따를 배포 없는 취소 · 조회 실패 · 시간 초과,
   그리고 잠금 안의 「아직 브랜치 끝인지」 — 성공했지만 대체된 커밋은 안 올림)와
   2026-11-11 실제 커밋 손 시험이 본다 — `8fbeb0ea`@main(CI 성공) 통과, `d07b8ada`@develop(CI 실패) 막음,
   `083d2848`@develop(CI 취소, 브랜치 끝은 이미 `4d5a5bed`) 건너뜀, `8fbeb0ea`@develop(그 브랜치의 CI 없음) · 없는 커밋은 시간 초과로 막음
-- [ ] 업타임 알림 첫 확인 — `UPTIME_WEBHOOK` 을 넣은 뒤 수동 실행(test_alert)으로 시험 알림 1회
+- [ ] 업타임 알림 첫 확인 — 첫 실패 run 에서 GitHub 실패 메일이 실제로 오는지 (웹훅은 넣지 않기로 했다 · 2026-11-11)
