@@ -36,6 +36,7 @@ GenerateMonthlyPlan / RegenerateMonthlyPlanItem          (Core)
 
 - 월간 생성은 동기 201 이다. 비동기 큐 · Job 테이블 · polling 을 만들지 않는다.
 - 근거는 실측 3건이다(LLM 10.3 ~ 13.0초, 호출 타임아웃 30초, nginx `proxy_read_timeout 120s`). **표본 3건이라 장기 실패율 · p95 는 모른다.**
+  > 2026-11-11 덧붙임: 지금 월간 생성 경로의 nginx 한도는 270초다(`nginx/app-routes.conf`).
 - 다시 볼 조건(제안): 호출 시간이 20초를 자주 넘거나, 타임아웃 · 수리가 반복되거나, 동시 생성으로 요청 스레드가 모자라면 비동기를 다시 검토한다.
 
 ### 3. 호출 기록 — 차단하지 않고 남긴다 (K-43)
@@ -63,3 +64,4 @@ GenerateMonthlyPlan / RegenerateMonthlyPlanItem          (Core)
 - 루트 `CLAUDE.md` 「LLM 예산」에 「카운터는 무효, 호출당 `llm_usage` 한 줄은 `post_json` 이 남긴다」를 적는다.
 - api-spec §9-1 「동기 실행」의 「결정 문서 12.9-1」 인용은 이 ADR 을 가리킨다.
 - 남은 것: 실제 Luna-6 + HTTP + PostgreSQL 을 한 번에 지나는 수동 확인, OD-N04 의 남은 부분(재시도 · 최종 실패 정책 수치, 미확정사항 U-13).
+  > 2026-11-11 덧붙임: 모델은 지금 Sol 이다(ADR-023). Luna-6 확인은 더 하지 않는다. U-13 은 ADR-076 이 닫았다.

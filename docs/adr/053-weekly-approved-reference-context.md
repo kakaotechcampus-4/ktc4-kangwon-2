@@ -1,6 +1,7 @@
 # ADR-053: 주간 요일 양식의 승인 자료·부모 월간 연결
 
 - 상태: 제안 — 로컬 구현, 교차 리뷰 대기
+  → 2026-11-11 현재 채택 · 구현됨(develop). 주간 생성이 부모 월간을 PARENT_PLAN 근거로 읽는다(`p0-planning/src/ssuksak/planning/application/generate_weekly_plan.py`).
 - 일자: 2026-11-01
 - 범위: 주간 Template v0.2.0의 LLM 생성·칸 재생성. 기존 v0.1.0 경로는 유지한다.
 - 선행: ADR-032(Rule/LLM 경계), ADR-033(주간), ADR-049(v1 누리과정 맥락), ADR-051(요일 칸).

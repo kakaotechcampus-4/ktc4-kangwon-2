@@ -2,6 +2,7 @@
 
 - 날짜: 2026-10-28 (결정 하민 · 구현 Claude · 검토 Codex). 같은 날 §7 칸 폭 하한 추가(D-3 확정).
 - 상태: 채택 — Core 저장 · 이력 계약까지. **공개 API JSON 모양은 정하지 않는다**(ADR-046 서버 경로와 함께 성진과 맞춘다).
+  → 2026-11-11 덧붙임: 시간표 · 칸 나누기 API 가 공개됐다(`backend/app/features/plans/play_monthly_router.py:617-698`).
 - 관련 — ADR-046(놀이 중심 월간 서버 경로, 제안) · CLAUDE.md §13 Provenance · §19 상태 규칙
 - Core 인용은 `p0-planning/src/ssuksak/planning/` 아래 파일이다. 구현 커밋은 `feature/monthly-v2-timetable-core`.
 

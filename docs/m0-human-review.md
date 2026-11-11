@@ -223,7 +223,7 @@ inst_042는 **진성 스캔본**입니다. 추정하지 않고 `UNREADABLE`로 �
 
 | # | 확인 항목 | 현재 상태 | 근거 |
 |---:|---|---|---|
-| 1 | Section evidence가 실제 sample과 일치 | 각 Section에 `observed_institutions` / `denominator` / `observed_in`(origin_id) / `observed_source_labels` 수록 | `docs/template-a-validation.md` §3.1·§4.5 |
+| 1 | Section evidence가 실제 sample과 일치 | 각 Section에 `observed_institutions` / `denominator` / `observed_in`(origin_id) / `observed_source_labels` 수록 | `docs/template-a-validation.md` §3.1·§4.5 (저장소에 없음) |
 | 2 | activation 정책이 OD-M01과 일치 | 기본 활성 4개(`theme`/`outdoor_play`/`safety_education`/`week_axis`), Optional 전부 `activated:false` | OD-M01 `RESOLVED_FOR_P0` |
 | 3 | `source_label` 보존 | `source_label_scope = PLAN_OR_TEMPLATE_INSTANCE`. 기관 단위 Mapping 테이블 없음 | inst_021 연령별 라벨 불일치(§0.6-7) |
 | 4 | `max_depth = 2` | `hierarchy_max_depth: 2`. 실제 최대 depth 2(`indoor_alternative`) | 2단 4/10 관찰, 3단 0/10 |
@@ -385,7 +385,7 @@ inst_042는 **진성 스캔본**입니다. 추정하지 않고 `UNREADABLE`로 �
 | 2026-08-04 시행 시행령 제28조 | ①이 별표6을 그대로 참조. 별표6의 최종 개정일이 2022-06-21이라는 뜻이며 충돌 아님 |
 | 더 최신 별표6 본문 | 저장소에 없음. 제28조 PDF는 발췌본이라 별표6 본문 미포함 |
 
-**판독 불가 1건**: `references/official/아동복지법_제31조_아동안전교육_2026-08.pdf` —
+**판독 불가 1건**: `references/official/아동복지법_제31조_아동안전교육_2026-08.pdf`(저장소에 없음) —
 현재 poppler 빌드에 `Adobe-Korea1` CMap이 없어 추출 불가. 제31조의 존재와 위임 관계는
 시행령 제28조① 본문과 2026 보육사업안내 표제로 확인했고, 이 한계를 JSON의
 `unreadable_sources`에 기록했습니다.
@@ -412,7 +412,7 @@ data/rules/safety_education_legal_v1.json
   human_review_result    PASS
 ```
 
-`approved_by`는 `docs/open-decisions.md` OD-N10의 `reviewer_<role>_<sequence>` 규칙을
+`approved_by`는 `docs/open-decisions.md`(저장소에 없음 — 규칙은 ADR-027 에 옮겨 적었다) OD-N10의 `reviewer_<role>_<sequence>` 규칙을
 따릅니다. Plan Confirm의 `actor_id` 규칙과는 다른 개념입니다.
 
 ### 5.1 M0 완료 판정

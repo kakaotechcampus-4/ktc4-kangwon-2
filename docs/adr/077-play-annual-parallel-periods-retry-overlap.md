@@ -4,6 +4,8 @@
 - 상태 — 채택 (하민 결정 2026-11-09: ⑦을 서비스에 넣는다, 계획 권장안 1~13 승인). 병합 조건이던 ⑦ 사람 판정은 2026-11-09 마쳤다(⑦ 1.35 · ① 1.30, 실험 README).
 - 관련 — [ADR-043](043-yearly-format-selection-storage-api-call-unit.md) §5 를 **대체** · ADR-076(닿지 못한 요청만 한 번 더) · ADR-060(요청 사항) · ADR-036(사용량 기록) · ADR-023(Golden) · api-spec §4
 
+> 2026-11-11 덧붙임: 프롬프트 판은 ADR-090 으로 `play-project-planner-v8` 이 됐다(`p0-planning/src/ssuksak/planning/planner/play_project.py:39`). 결정 6 의 「호출 수는 끝날 때 더한다」는 ADR-081 이 바꿨다 — 즉시 요청의 수에 쌓인다.
+
 ## 맥락
 
 ADR-043 §5 는 놀이 프로젝트형 연간을 구간마다 한 번, 차례로 불렀다. 앞 구간 놀이명을 「피할 목록」으로 넘겨 겹침을 막았다.

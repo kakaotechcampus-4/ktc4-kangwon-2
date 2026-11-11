@@ -16,7 +16,7 @@
 - 대상 파일: `data/activities/activity_reference_v0.json`
 - 작성일: 2026-09-11
 - 관련 결정: OD-N03 (부분) / D1·D2·D3·D4 (2026-09-11)
-- 사용 메모: `data/activities/README.md`
+- 사용 메모: `data/activities/README.md`(저장소에 없음)
 
 ---
 

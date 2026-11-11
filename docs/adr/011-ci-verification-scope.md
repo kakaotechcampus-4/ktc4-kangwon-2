@@ -19,6 +19,7 @@ backend 이미지 빌드는 실행하지 않는다. 파서의 `_selfcheck()` 는
    검증하고, 503 은 `SessionLocal` 을 모의해서 검증한다.
 3. 이미지는 `docker compose build` 가 아니라 `docker build ./backend` 로 빌드하고
    컨테이너에서 `import app.main` 까지 확인한다.
+   > 2026-11-11 덧붙임: 지금 CI 는 `docker build -f backend/Dockerfile .` 로 저장소 뿌리를 맥락으로 쓴다 — 이미지가 `p0-planning` 도 담기 때문이다(`.github/workflows/ci.yml:365`).
 4. frontend 이미지는 빌드하지 않고, 빌드 캐시는 후속 PR 로 분리한다.
 5. 테스트 의존성으로 `pytest` 와 `TestClient` 실행에 필요한 `httpx` 를 dev extra 에
    추가한다.

@@ -83,7 +83,7 @@
 - 로그인 · 가입 · 카카오 · 비밀번호 바꾸기는 IP 마다 분당 10번 + 한꺼번에 10번 — 비밀번호를 계속 대입하는 길을 막는다 — `nginx/app-routes.conf`
 - 비밀번호 scrypt — ADR-029 · 같은 원은 정부 어린이집 목록으로 묶고 다른 반은 담임 승인 뒤 보기만 — ADR-068 · ADR-059
 
-- 생성에 쓰는 기관 근거 자료에서 사람이 개인정보로 판정한 기록 42개를 통째 제외하고 분류 4종을 같은 SHA에 연결했다 — [검토·승인 기록](../evidence-store-v0-2-human-review.md) · `p0-planning/tests/evidence/test_evidence_store.py` · `p0-planning/tests/finalization/test_freeze.py`
+- 생성에 쓰는 기관 근거 자료에서 사람이 개인정보로 판정한 기록 42개(11-10 아동 이름 행사 기록 1개를 더 빼 43개, ADR-079)를 통째 제외하고 분류 4종을 같은 SHA에 연결했다 — [검토·승인 기록](../evidence-store-v0-2-human-review.md) · `p0-planning/tests/evidence/test_evidence_store.py` · `p0-planning/tests/finalization/test_freeze.py`
 - 그 42개가 남아 있던 옛 근거 본체 v0.1.0 을 저장소에서 지웠다(git 이력에는 남는다) — `p0-planning/data/evidence/` · `p0-planning/tests/unit/test_safety_evidence_classification.py`
 - 남의 이메일로 먼저 가입해 둔 사람이 진짜 주인의 카카오 로그인 뒤에도 남지 못한다 — 이을 때 비밀번호와 그 전 토큰을 끊고, 비밀번호를 바꿔도 그 전 토큰을 끊는다 — ADR-092 · `test_auth_kakao.py` `test_이으면_먼저_가입한_비밀번호와_토큰을_끊는다` · `backend/app/shared/auth/tokens.py`
 

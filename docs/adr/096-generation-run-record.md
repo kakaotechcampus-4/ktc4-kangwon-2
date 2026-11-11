@@ -2,7 +2,7 @@
 
 - 날짜: 2026-11-10
 - 개정: 2026-11-11 — 요청 안의 다시 하기를 시도 단위로 남긴다(`attempts`, D10)
-- 상태: 제안
+- 상태: 채택 (2026-11-11 구현 확인 — `generation_runs`, `backend/app/features/plans/generation_runs.py`)
 - 관련: ADR-030 PM-12 · ADR-032(실행 기록) · ADR-072(트렌드) · ADR-073(롤백 한 칸) · ADR-076(전송 재시도) · ADR-077(놀이 연간 동시 호출) · ADR-081(호출 상한) · `docs/api-spec.md` §9-8 · 5c(실행 이력 조회)
 
 ## 맥락

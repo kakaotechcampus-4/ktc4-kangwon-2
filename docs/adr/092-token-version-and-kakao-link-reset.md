@@ -1,7 +1,7 @@
 # ADR-092: 토큰에 계정 버전을 싣고, 카카오를 이으면 먼저 있던 비밀번호를 끊는다
 
 - 날짜: 2026-11-10
-- 상태: 제안
+- 상태: 채택 (2026-11-11 구현 확인 — `token_version`, `backend/app/shared/auth/tokens.py` · `features/auth/models.py`)
 - 관련: ADR-069(카카오 로그인 · 같은 이메일 계정에 잇기) · `docs/api-spec.md` §0 · §0-1
 
 ## 맥락
