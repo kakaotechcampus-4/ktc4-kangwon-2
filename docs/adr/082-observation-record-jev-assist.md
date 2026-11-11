@@ -2,6 +2,7 @@
 
 - 날짜: 2026-11-10
 - 상태: 제안 (관찰 기록 화면 · 서버. PM 딸깍 시안 3판 「점검으로 바뀐 것」)
+  → 2026-11-11 현재 채택 · 구현됨(develop). `POST /api/observations/domain-suggest` · `/{id}/missing`(`backend/app/features/observations/router.py:143` · `:155`).
 
 ## 맥락
 

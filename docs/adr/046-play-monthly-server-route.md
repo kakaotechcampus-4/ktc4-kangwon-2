@@ -2,6 +2,7 @@
 
 - 날짜: 2026-10-28 (결정 성진 · 검토 하민)
 - 상태 — **제안 (검토 전)** (성진). 경로 · 이름 · 오류 표는 하민 리뷰에서 바뀔 수 있다. **계약만 정하고 구현은 하지 않는다.**
+  → 2026-11-11 현재 채택 · 구현됨(develop, `backend/app/features/plans/play_monthly_router.py`). 그 뒤 확정 취소(`:768`, ADR-055) · 한글 내려받기(`:810`)가 생겨 §6 「확정 취소는 없다」 · §10 「한글 내려받기는 후속」은 지금과 다르다.
 - 관련 — ADR-042 · ADR-043 §4 · ADR-048 · ADR-030 PM-03 · PM-04 · api-spec §9-7
 - Core 인용은 `p0-planning/src/ssuksak/planning/` 아래 파일이고, develop `b26f5ff` 기준 줄 번호다. 서버 인용은 이 브랜치의 `backend/app/features/plans/` 다.
 
@@ -60,6 +61,7 @@ GET    /api/plans/monthly/play/{id}/audit                                   이�
 - 기존 월간처럼 한 요청이 Core 를 부르고(LLM 1회 + 수리 최대 1회, `generate_play_monthly_plan.py:254-265`) 끝나면 `201` 에 단건 응답 전체를 준다. 실패하면 아무것도 저장하지 않는다.
 - **걸리는 시간을 재 본 적이 없다.** 구현 뒤 실제로 재서 너무 길면 스트리밍으로 바꾼다(ADR-043 §5 의 연간 방식). 그때 이 ADR 을 고친다. 지금 마감 · nginx timeout 숫자를 정하지 않는다.
 - **갱신(2026-10-29, 생성 연결):** 첫 요청 · 수리 모두 서버 안에서 스트리밍하고 호출마다 마감 120초라 최악 약 240초다. nginx `proxy_read_timeout` 을 이 경로(`= /api/plans/monthly/play`)만 270초(= 2 × 120 + 30)로 늘렸다(`nginx/app-routes.conf`, 연간 510초와 같은 방식). 120초에 끊으면 화면은 실패인데 서버는 저장해 재시도가 409 가 된다. 270초는 기다리는 여유이고 운영 Luna 실측 뒤 조정한다.
+  > 2026-11-11 덧붙임: 모델은 지금 Sol 이다(ADR-023). 270초는 월간 · 주간 생성과 칸 재생성 경로에도 같이 쓴다(`nginx/app-routes.conf`).
 - 요청 `{ class_id, month, emphasized_row_keys? }`. 학년도는 반이 정하고 부모 연간은 서버가 반으로 찾는다(기존 월간과 같다). `emphasized_row_keys` 는 부모 놀이 중 강조할 `row_key` 이고 기본 `[]` 다. 부모 구간에서 고른 것이어야 한다(`EMPHASIS_NOT_SELECTED`).
 - **생성 게이트** (순서 고정):
   0. **스키마(422)** — `month` 1~12 · `emphasized_row_keys` 중복 · 빈 문자열 · 모양. 아래 모든 검사보다 앞이다.

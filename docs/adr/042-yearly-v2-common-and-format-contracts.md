@@ -2,6 +2,7 @@
 
 - 날짜: 2026-10-24 (결정 2026-10-23 하민)
 - 상태 — **제안 (검토 전)**. 저장 · API 이름은 담당자 협의 전 제안이다.
+  → 2026-11-11 현재 채택 · 구현됨(develop). 두 형식이 `plans.body.format` 으로 나뉜다(`backend/app/features/plans/schemas.py:151`).
 - 관련 — ADR-030 PM-03 · PM-04 · ADR-032 · ADR-035 · ADR-038 · ADR-041 · `p0-planning/data/curriculum/nuri_curriculum_content_v0_1_0_draft.json`
 
 ## 맥락

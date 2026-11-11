@@ -2,7 +2,7 @@
 
 - 날짜: 2026-11-09
 - 개정: 2026-11-10 — 8 → 48, 스레드로 나뉜 호출을 합쳐 센다, 전용 오류 `LlmCallCapExceeded` (PR #466 리뷰 반영)
-- 상태: 제안
+- 상태: 채택 (2026-11-11 구현 확인 — `MAX_LLM_CALLS_PER_RUN = 48`, `backend/app/shared/llm/client.py:63`)
 
 ## 맥락
 

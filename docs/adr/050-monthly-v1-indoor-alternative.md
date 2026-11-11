@@ -2,6 +2,7 @@
 
 - 날짜: 2026-10-31
 - 상태: 제안 — 결정 D-1~D-5 는 하민 확정(2026-10-31). Template v0.2.2 파일은 2026-10-31 하민 승인(`reviewer_ai_lead_001`, D-3). PR 전 번호 중복 확인 필요.
+  → 2026-11-11 현재 채택 · 구현됨(develop). Template v0.2.2 · 내보내기의 `indoor_alternative` 가 있다(`backend/app/features/plans/export.py`).
 - 보충: ADR-027(v0.1.1 의 `indoor_alternative` 「반복 단위 미결정」을 v0.2.2 에서 `WEEK` 로 정한다). 기존 Template · Profile · 계획은 바꾸지 않는다.
 
 ## 맥락
