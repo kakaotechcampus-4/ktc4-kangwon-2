@@ -156,7 +156,7 @@ def test_헤더가_uuid_v4_가_아니면_생성_없이_422(teacher, route, value
     assert response.json()["error"]["fields"] == [RUN_HEADER]
 
 
-def test_v1_uuid_로_거절한_요청은_기록도_생성도_없다(teacher):
+def test_v1_uuid_로_거절한_요청은_기록도_생성도_없다(_schema, teacher):
     rid = uuid.uuid1()
     path, body = ROUTES["annual"]
 

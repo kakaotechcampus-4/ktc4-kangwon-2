@@ -48,7 +48,7 @@ e2e (playwright)               실제 DB 로
 - 같은 PR 에 연달아 push 하면 이전 실행을 취소한다 (`concurrency`)
 - E2E 를 CI 에 넣은 이유 — ADR-028
 - CI 로 무엇을 검증하고 무엇을 안 하는지 — ADR-011
-- 7번째 잡 `backend (rollback compat)` 는 main · develop 으로 가는 PR 에서 마이그레이션이 바뀔 때만 돈다(ADR-094) — 머지 전 코드가 새 스키마에서도 도나 본다. 아직 필수 검사가 아니다 (`ci.yml:286`)
+- 7번째 잡 `backend (rollback compat)` 는 main · develop 으로 가는 PR 에서 마이그레이션이 바뀔 때만 돈다(ADR-094) — 머지 전 코드가 새 스키마에서도 도나 본다. 아직 필수 검사가 아니다 (`ci.yml:289`)
 
 ## 머지 전에 CI 를 통과해야 한다 — develop 규칙 (2026-11-10 부터)
 
@@ -75,22 +75,23 @@ develop 에 **켜진(active) 규칙**이 있다 — ruleset `23517686` 「develo
 ## 통합 테스트 범위 — 백엔드가 진짜 Postgres 를 쓰는 테스트
 
 CI 의 `backend (pytest)` 잡은 `postgres:15` 서비스 컨테이너를 띄우고 그 DB 로 돈다(`ci.yml:219` ~ `:235`).
-테스트는 처음 한 번 `alembic upgrade head` 로 스키마를 올리고(`backend/tests/conftest.py:45`),
-테스트마다 바깥 트랜잭션을 열어 끝나면 통째로 되돌린다(`db_session`, `conftest.py:61`).
+테스트는 처음 한 번 `alembic upgrade head` 로 스키마를 올리고(`_schema`, `backend/tests/conftest.py:59`),
+테스트마다 바깥 트랜잭션을 열어 끝나면 통째로 되돌린다(`db_session`, `conftest.py:75`).
 `create_all` 이 아니라 마이그레이션을 쓰므로 마이그레이션이 깨지면 테스트도 깨진다.
 
-**숫자 (2026-11-10, develop `0e02a19c` + 이 PR, `backend/tests/test_*.py` 105개 — 위 「숫자」 표의 98개는 같은 날 앞선 커밋 `e532701b` 기준)**
+**숫자 (2026-11-11, develop `778c7320` + 이 PR, `backend/tests/test_*.py` 117개)**
 
 | 종류 | 파일 수 | 무엇을 지나나 | 예 |
 |---|---|---|---|
-| API 통합 | **53** | `TestClient` → FastAPI 라우터 · 의존성 → Postgres 15 | `test_documents.py` · `test_routines_db.py` · `test_play_project_export_api.py` |
-| DB 통합 (HTTP 없이) | **10** | 저장소 · 쿼리 · 서비스 함수를 같은 Postgres 로. 동시 요청 시험 3개 포함 | `test_plans_repository.py` · `test_reconfirm_concurrency.py` |
-| DB 안 씀 | 42 | 규칙 · 코덱 · 한글 파일 채우기 · LLM 가짜 응답 · 운영 스크립트 | `test_gates_sections.py` · `test_plan_rules.py` |
+| API 통합 | **62** | `TestClient` → FastAPI 라우터 · 의존성 → Postgres 15 | `test_documents.py` · `test_routines_db.py` · `test_play_project_export_api.py` |
+| DB 통합 (HTTP 없이) | **11** | 저장소 · 쿼리 · 서비스 함수를 같은 Postgres 로. 동시 요청 시험 6개 포함 | `test_plans_repository.py` · `test_reconfirm_concurrency.py` |
+| DB 안 씀 | 44 | 규칙 · 코덱 · 한글 파일 채우기 · LLM 가짜 응답 · 운영 스크립트 | `test_gates_sections.py` · `test_plan_rules.py` |
 
-- 표시 — 실 DB 를 쓰는 시험에는 `real_db` 마커가 붙는다. 마이그레이션을 올리는 `_schema` 를 거치는 시험에 `conftest.py` 끝의 훅이 붙이고, 픽스처 없이 앱의 `SessionLocal` 로 붙는 `/health/ready` 한 개는 직접 달았다. **시험 1,236개**(전체 2,021개)가 **파일 63개**에 있다
-- CI 는 이 마커로 두 단계로 나눠 돈다 — `pytest — 실 Postgres 통합 (real_db)` 와 `pytest — DB 없는 테스트`(`ci.yml:256` ~ `:262`). 백엔드 두 단계는 앞 단계가 실패해도 뒤 단계가 돌아 실패가 한 번에 보인다
-- 세는 법 — `cd backend && DATABASE_URL=… pytest -m real_db --collect-only -q | tail -1`(시험 수, 앞 숫자) · `… | grep :: | cut -d: -f1 | sort -u | wc -l`(파일 수). 그 파일 중 `TestClient` 를 쓰거나 `test_monthly_lifecycle_api` 의 `client` 를 가져다 쓰는 파일(`grep -lE "TestClient|test_monthly_lifecycle_api"`)이 API 통합, 나머지가 DB 통합이다. DB 안 씀은 `test_*.py` 전체(105)에서 63을 뺀 값이다
-- e2e 는 따로다 — 같은 `postgres:15` 위에 실제 FastAPI · Next 빌드본을 띄우고 브라우저가 누른다(`ci.yml:393` ~ `:424`, 아래 「화면 경로 E2E」)
+- 표시 — 실 DB 를 쓰는 시험에는 `real_db` 마커가 붙는다. 마이그레이션을 올리는 `_schema` 를 거치는 시험에 `conftest.py` 끝의 훅이 붙이고, 픽스처 없이 앱의 `SessionLocal` 로 붙는 `/health/ready` 한 개는 직접 달았다. **시험 1,390개**(전체 2,219개)가 **파일 73개**에 있다
+- CI 는 이 마커로 두 단계로 나눠 돈다 — `pytest — 실 Postgres 통합 (real_db)` 와 `pytest — DB 없는 테스트`(`ci.yml:256` ~ `:265`). 백엔드 두 단계는 앞 단계가 실패해도 뒤 단계가 돌아 실패가 한 번에 보인다
+- DB 없는 단계는 닿지 않는 주소(`127.0.0.1:1`)로 돈다(`ci.yml:263` ~ `:264`) — 표시 없이 DB 에 붙는 시험이 끼면 연결 거부로 실패한다
+- 세는 법 — `cd backend && DATABASE_URL=… pytest -m real_db --collect-only -q | tail -1`(시험 수, 앞 숫자) · `… | grep :: | cut -d: -f1 | sort -u | wc -l`(파일 수). 그 파일 중 `TestClient` 를 쓰거나 `test_monthly_lifecycle_api` 의 `client` 를 가져다 쓰는 파일(`grep -lE "TestClient|test_monthly_lifecycle_api"`)이 API 통합, 나머지가 DB 통합이다. DB 안 씀은 `test_*.py` 전체(117)에서 73을 뺀 값이다. 동시 요청 시험은 DB 통합 파일에서 이름에 `concurrent` · `simultaneous` · `parallel` · `동시` 가 든 시험 함수를 센 값이다
+- e2e 는 따로다 — 같은 `postgres:15` 위에 실제 FastAPI · Next 빌드본을 띄우고 브라우저가 누른다(`ci.yml:396` ~ `:427`, 아래 「화면 경로 E2E」)
 - LLM 은 CI 에서 부르지 않는다(가짜 응답). 실제 모델은 운영 서버에서 따로 잰다 — [06 AI 품질](06-ai-quality.md)
 
 ## CI 시간 — 줄인 기록
