@@ -187,7 +187,7 @@ export default function NotificationBell() {
         popoverTarget={panelId}
         aria-label={unread.length ? `알림 ${unread.length}건 안 읽음` : "알림, 안 읽은 알림 없음"}
         aria-expanded={open}
-        className="relative inline-flex h-11 w-11 flex-none items-center justify-center rounded-[10px] bg-primary-tint text-primary-deep"
+        className="relative inline-flex h-11 w-11 flex-none items-center justify-center text-primary-deep"
       >
         <Icon name="bell" className="h-5 w-5" />
         {unread.length > 0 && (
