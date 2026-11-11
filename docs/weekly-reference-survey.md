@@ -310,7 +310,7 @@ I01 은 16파일 · 31건이다 — 15파일 × 두 반 + 「2025 07월_1주」 
 
 ## 8. Evidence Store 현황
 
-**`p0-planning/data/evidence/institution_evidence_v0_1_0.json`** (빌드 2026-09-13) `[실측]`
+**`p0-planning/data/evidence/institution_evidence_v0_1_0.json`** (빌드 2026-09-13) `[실측]` (이후 저장소에서 지움 — `bdbc44bd`, 현재는 `institution_evidence_v0_2_0.json`)
 
 | | 값 |
 |---|---|

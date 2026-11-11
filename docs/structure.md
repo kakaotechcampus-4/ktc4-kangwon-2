@@ -12,8 +12,11 @@ tree -a --dirsfirst -I '.git|node_modules|.next|.ruff_cache'
 
 | 경로 | 무엇을 두는가 |
 |---|---|
-| `backend/` | FastAPI 애플리케이션. Python 코드는 전부 여기 |
+| `backend/` | FastAPI 애플리케이션 |
+| `p0-planning/` | 계획안 엔진(Python 패키지). 규칙과 근거 자료(`data/`). `backend` 이미지에 같이 설치된다. 이 안에서는 `p0-planning/CLAUDE.md` 가 우선한다 |
 | `frontend/` | Next.js 애플리케이션 (App Router, TypeScript) |
+| `nginx/` | nginx 설정 (`nginx.conf` · `app-routes.conf`) |
+| `scripts/` | 서버 배포 · 백업 · 점검 셸 스크립트 |
 | `docs/` | 팀 문서 |
 | `.github/` | PR 템플릿과 GitHub Actions |
 
@@ -74,8 +77,14 @@ app/
 
 | 폴더 | 소유 데이터 |
 |---|---|
-| `centers` | 원 · 반 · 아동 명단 · 성품인사 |
+| `auth` | 회원가입 · 로그인 · 카카오 로그인(`users`). 이 라우터만 인증 없이 열린다 |
+| `centers` | 원 · 반 · 아동 명단 · 성품인사 · 반 열람 요청 테이블. 정부 어린이집 목록 사본(`registry.py`, ADR-068) |
+| `children` | 아동 명단 API. 테이블은 `centers` 의 것을 쓴다 |
+| `class_access` | 같은 원 다른 반 열람 요청 · 승인과 반 요약 API(ADR-059). 테이블은 `centers` 의 것 |
 | `activities` | 활동 풀 |
+| `observations` | 관찰 기록. 생성 API 가 없다 — 교사가 적은 그대로 저장한다 |
+| `routines` | 일과 기록 · 일과 초안 · 날씨(ADR-025 · ADR-089). 생성 API 가 없다 |
+| `template_profiles` | 월간 양식 설정(TemplateProfile) — 원 기본 · 반 override |
 | `plans` | 연간 · 월간 · 주간 계획안. `rules/verify.py` 는 만들어진 계획안을 검사한다(ADR-014) |
 | `forms` | 원이 등록한 양식의 파싱 결과 · 원본 저장 · 숨김(ADR-020 · ADR-026). parse 는 저장하지 않는다 |
 | `documents` | 일지 · 평가 문서. 다른 기능은 `service.py` 창구로 읽는다 |
@@ -85,11 +94,11 @@ app/
 
 ### 규칙
 
-**한 feature 는 다른 feature 를 직접 import 하지 않는다.** 다른 기능의 데이터가
-필요하면 그 소유자의 service 를 통한다.
+**다른 feature 의 `router` · `schemas` 는 import 하지 않는다.** 다른 feature 의 `models` 와
+함수 모듈(`service` · `planning` 등)은 직접 import 해도 된다([ADR-002](adr/002-features-folder.md) 2026-11-11 개정).
 
-**파일을 미리 만들어 두지 않는다.** `centers` 와 `activities` 에는 DB 테이블이
-필요해져 `models.py` 가 생겼다. 아래 파일은 필요해진 사람이 그때 추가한다.
+**파일을 미리 만들어 두지 않는다.** `models.py` 는 DB 테이블이 필요해진 feature 에만
+있다(`children` · `class_access` · `trends` 에는 없다). 아래 파일은 필요해진 사람이 그때 추가한다.
 
 | 파일 | 언제 만드는가 |
 |---|---|
@@ -112,15 +121,21 @@ app/
 
 | 폴더 | 무엇을 두는가 |
 |---|---|
-| `llm` | LLM 호출 래퍼 |
-| `gates` | 검증 — 스키마 게이트 · 추출 대조 · LLM Judge |
-| `citation` | 칸 단위 출처 기록 (`TEMPLATE` / `TREND` / `AI`) |
-| `auth` | 인증 |
-| `audit` | 변경 이력 |
-| `childCode` | 아동 실명 ↔ 코드 치환 |
+| `llm` | backend 에서 LLM 으로 나가는 유일한 문(`client.py` · `errors.py`). `p0-planning` 은 자기 어댑터를 따로 갖는다 |
+| `gates` | 해석형 문서의 3단 게이트 — 스키마 · 추출 대조(`sections.py`), AI 판정(`judge.py`) |
+| `auth` | 토큰 · 비밀번호 · 현재 사용자 의존성 · 자기 원/반 소유 검사(`ownership.py`) |
+| `childCode` | 아동 실명 ↔ 가명 치환 |
+| `citation` | 빈 `__init__.py` 만 있다 |
+| `audit` | 빈 `__init__.py` 만 있다 |
 | `hwpx.py` | hwpx 내보내기 — 양식 표 칸 글자만 바꾼다(ADR-021). `?format=hwp` 면 그 hwpx 를 `.hwp` 로 바꾼다(ADR-039). 양식 파일은 각 feature 의 `templates/` |
+| `hwpx_pdf.py` | 채운 hwpx 를 PDF 로 바꾼다(ADR-061) |
+| `school_year.py` | 학년도 계산. 3월 1일에 바뀐다 |
 
-`childCode` 는 구현됐다(ADR-004). 나머지 5개는 빈 `__init__.py` 만 있고 각 담당자가 채운다.
+칸의 출처는 `citation` 이 아니라 각 계획안 응답이 두 축으로 따로 적는다. `evidence` 는
+무엇을 근거로 썼나(`source_type` · `source_id` · `source_version`), `generation` 은 어떤
+방식으로 만들었나(`method` · `rule_id` · `rule_version`)다. **AI(LLM) 는 근거가 아니다** —
+LLM 이 쓴 칸은 `generation.method` 가 `RULE_LLM` 일 뿐이다(CLAUDE.md §13). 변경 이력도
+`audit` 폴더가 아니라 계획안 feature 의 `/audit` 조회가 낸다.
 
 ### 규칙
 
@@ -133,8 +148,9 @@ DB 테이블이 필요한 것은 소유자를 정해 `features/` 에 둔다.
 ### `childCode` — 구현됨
 
 ```
-pool.py         가명 발급.  받침으로 두 묶음 (resources/pseudonyms.yaml)
+pool.py         가명 발급.  받침으로 두 묶음 (backend/resources/pseudonyms.yaml)
 names.py        등록 이름에서 실제 표기를 뽑는다 (박서준 -> 박서준 · 서준)
+allocation.py   등록 전 반 전체 치환표 검증. 이미 발급한 가명은 바꾸지 않는다
 substitute.py   NameTable · mask · unmask
 ```
 
@@ -146,18 +162,22 @@ substitute.py   NameTable · mask · unmask
 
 ## backend/resources — 데이터 파일
 
-**네 폴더 모두 아직 비어 있다(`.gitkeep` 만 있음).** 아래는 각 폴더가 받을 데이터다.
-
-| 폴더 | 무엇을 두는가 |
+| 경로 | 무엇이 있는가 |
 |---|---|
-| `activities` | 활동 풀 |
-| `calendars` | 달력 |
-| `curriculum` | 누리과정 5영역 준거표 |
-| `rules` | 법정 로테이션 규칙 |
+| `pseudonyms.yaml` | 아동 가명 풀(`childCode`) |
+| `daycares/` | 정부 어린이집 목록 사본 `daycares.csv`(ADR-068) |
+| `evaluation/` | 평가제 지표 카탈로그 v1 · v2, 체크리스트 규칙 |
+| `forms/` | 양식 칸 이름 매핑 `label_mapping.json` |
+| `rules/` | `safety_flags.yaml` |
+| `trends/` | 승인 출처 · 위험어 목록, 그림책(`books/`), 수집본(`collected/`) |
+| `weather/` | 기상청 격자 `kma_grid.csv` |
+| `activities/` · `calendars/` · `curriculum/` | 비어 있다(`.gitkeep` 만 있음) |
 
-JSON · YAML 로 둔다. **이런 데이터를 코드에 하드코딩하지 않는다.**
+계획안 쪽 근거 자료(누리과정 · 활동 · Theme · 규칙 · 양식 등)는 여기가 아니라 `p0-planning/data/` 에 있다.
 
-`backend/Dockerfile` 이 `COPY resources ./resources` 로 이미지에 넣는다.
+JSON · YAML · CSV 로 둔다. **이런 데이터를 코드에 하드코딩하지 않는다.**
+
+`backend/Dockerfile` 이 `COPY backend/resources ./resources` 로 이미지에 넣는다.
 따라서 **파일을 고치면 이미지를 다시 빌드해야 반영된다.**
 
 ---
@@ -167,19 +187,20 @@ JSON · YAML 로 둔다. **이런 데이터를 코드에 하드코딩하지 않�
 | 경로 | 무엇을 두는가 |
 |---|---|
 | `env.py` | 모델 목록 연결. `DATABASE_URL` 을 환경변수에서 읽는다 |
-| `versions/` | 마이그레이션 파일. 초기 마이그레이션 1개가 있다 |
+| `versions/` | 마이그레이션 파일. 2026-11-11 기준 57개 |
 | `script.py.mako` | 마이그레이션 파일 템플릿 |
 
 설정 파일 `alembic.ini` 는 이 폴더가 아니라 `backend/` 바로 아래에 있다.
 
 ### models.py 를 만들면 env.py 도 같이 고친다
 
-`env.py` 에는 지금 `Base` 와 두 모델 모듈이 연결돼 있다. 새 `models.py` 를 만들면
-**같은 PR 에서** import 한 줄을 추가한다.
+`env.py` 에는 지금 `Base` 와 모델 모듈 11개(`models.py` 가 있는 feature 전부)가 연결돼 있다.
+새 `models.py` 를 만들면 **같은 PR 에서** import 한 줄을 추가한다.
 
 ```python
 from app.features.activities import models as _activities  # noqa: F401
-from app.features.centers import models as _centers  # noqa: F401
+from app.features.auth import models as _auth  # noqa: F401
+# ... 이하 feature 이름순
 ```
 
 자동 스캔을 쓰지 않는다. 이 줄을 빠뜨리면 상황에 따라 실패 방향이 다르다.
@@ -248,7 +269,8 @@ docker compose run --rm -v "$(pwd)/backend:/app" backend alembic downgrade -1   
 | `app/` | 화면. 라우팅 규칙은 `frontend/CLAUDE.md` 「라우팅」 |
 | `components/` | 화면 조각. `app/` 아래 폴더 이름과 짝을 맞춘다 |
 | `lib/` | 화면이 아닌 것 — API 호출 · 목업 데이터 모델 · 훅 |
-| `msw/` | 목업 서버 핸들러. 브라우저용 워커는 `public/mockServiceWorker.js` |
+| `msw/` | 목업 서버 핸들러. 켜고 끄는 법은 `msw/README.md` |
+| `scripts/` | `msw-worker.mjs` — `predev` · `prebuild` 가 불러 `public/mockServiceWorker.js` 를 놓거나 지운다. 이 워커 파일은 커밋하지 않는다 |
 | `tests/` | `node --test` 로 도는 테스트 |
 | `e2e/` | Playwright 브라우저 테스트. `npm run e2e` 로만 돈다 — 아래 「E2E」 |
 | `styles/` | 폰트 `@font-face` 와 디자인 토큰 |
@@ -316,25 +338,15 @@ npm run e2e                              # 다른 포트면 E2E_BASE_URL=http://
 
 실행마다 새 계정을 만든다. 아동 이름은 가명이다 — 개발 DB 에 실명을 넣지 않는다.
 
+`e2e/routines.spec.ts` 는 DB 를 직접 읽어 확인하는 단계가 있다. `E2E_DATABASE_URL` 이
+없으면 실패한다. 그 확인에 쓸 Python 은 `E2E_PYTHON` 으로 바꿀 수 있다(기본 `python`).
 
-### TASK 2: routines and home regression verification
+`npm test` 의 `tests/api-workspace.test.mjs` 4개는 `SAESSAK_TEST_URL` 이 없으면 건너뛴다.
+주면 그 주소의 띄워 둔 서버에 HTTP 로 붙는다.
 
-Use the ADR-028 real PostgreSQL/FastAPI/Next stack with API mocking disabled.
-Run `npm run e2e` for routines A-J and home K/L. Set `E2E_DATABASE_URL` and
-`E2E_PYTHON` for the direct database assertion in the routines test.
-`SAESSAK_TEST_URL` enables all four HTTP integration tests during `npm test`.
-# TASK 2 후속 구성 (2026-10-19)
+### 문서 재확정
 
-- `frontend/components/workspace/RoutineTimePicker.tsx`: 시작/종료 공용 12시간제 피커.
-- `frontend/lib/api/routines.ts`: 24시간제 변환과 명시적 안정 시간 정렬. 조회 순서는 서버 우선.
-- `frontend/components/workspace/SourceReview.tsx`: 확정본 앞의 근거 비교·교사 편집·단일 확인.
-- `document-selection.ts`: 선택한 문서에만 원자적 reconfirm 응답 적용, 중복 작업 방지.
-- `backend/app/features/documents/review.py`: 비교 토큰과 원본 → 문서 잠금,
-  공유 게이트, 원자적 재확정과 완료 재시도 처리. 기존 router의 개별 API는 유지.
-- `document_reconfirmations`: 확정본 재확정의 완료 토큰별 영수증. `f7a1c3d5e902` · `b6e2d4a71c38`, ADR-040.
-- `document_source_resolutions`: **초안** 에서 사라진 근거를 빼거나 바꾼 흔적
-  (`refresh`). 영수증과 섞지 않는다. 마이그레이션 `c41ab7d6e508`, ADR-040.
-
-UI 체크박스 하나를 API checks 세 필드로 보내며, stale이어도 기존 확정 상태를 유지한다.
-근거 사본/현재 원본의 차이를 먼저 보여주고 모든 검증을 통과한 트랜잭션만 확정본을 바꾼다.
-시간순 정렬은 버튼으로만 실행하고 수동 position과 S-J2 체크 선택 순서를 보존한다.
+확정본 문서의 근거 비교 · 재확정은 `backend/app/features/documents/review.py` 와 화면
+`frontend/components/workspace/SourceReview.tsx` · `document-selection.ts` 가 맡는다(ADR-040).
+테이블 `document_reconfirmations` 는 재확정 영수증이고, `document_source_resolutions` 는
+**초안** 에서 사라진 근거를 빼거나 바꾼 흔적이다. 둘을 섞지 않는다.
